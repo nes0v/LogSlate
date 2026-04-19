@@ -10,6 +10,7 @@
   --color-accent: #7c5cff;
   --color-win: #22c55e;
   --color-loss: #ef4444;
+  --color-fee: #f59e0b;
 
   --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
@@ -17,6 +18,12 @@
 
 :root {
   color-scheme: dark;
+}
+
+html {
+  /* Reserve room for the scrollbar even when content fits, so navigating
+     between short and long pages doesn't cause the layout to shift. */
+  scrollbar-gutter: stable;
 }
 
 html, body, #root {

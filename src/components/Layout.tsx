@@ -3,7 +3,6 @@ import { cn } from '@/lib/utils'
 
 const links = [
   { to: '/', label: 'Month', end: true },
-  { to: '/week', label: 'Week' },
   { to: '/year', label: 'Year' },
   { to: '/stats', label: 'Stats' },
   { to: '/settings', label: 'Settings' },

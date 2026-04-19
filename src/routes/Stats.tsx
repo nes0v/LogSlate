@@ -19,6 +19,7 @@ import { bucketByDay } from '@/lib/buckets'
 import { StatsGrid } from '@/components/StatsGrid'
 import { EquityCurve } from '@/components/EquityCurve'
 import { CandlestickChart } from '@/components/CandlestickChart'
+import { FeesChart } from '@/components/FeesChart'
 import { FacetBreakdown } from '@/components/FacetBreakdown'
 import { TradeRow } from '@/components/TradeRow'
 import { Pills } from '@/components/form/Pills'
@@ -119,15 +120,21 @@ export function StatsRoute() {
     [filtered],
   )
 
-  // Show trade list newest first.
-  const tradesDesc = useMemo(
-    () =>
-      [...filtered].sort((a, b) => {
-        if (a.trade_date !== b.trade_date) return a.trade_date > b.trade_date ? -1 : 1
-        return a.created_at > b.created_at ? -1 : 1
-      }),
-    [filtered],
-  )
+  // Chronological order — oldest trade at the top, newest at the bottom.
+  const tradesDesc = useMemo(() => {
+    function firstExec(t: typeof filtered[number]): number {
+      let min = Infinity
+      for (const e of t.executions) {
+        const ms = Date.parse(e.time)
+        if (!Number.isNaN(ms) && ms < min) min = ms
+      }
+      return min === Infinity ? 0 : min
+    }
+    return [...filtered].sort((a, b) => {
+      if (a.trade_date !== b.trade_date) return a.trade_date < b.trade_date ? -1 : 1
+      return firstExec(a) - firstExec(b)
+    })
+  }, [filtered])
 
   function update(next: Partial<TradeFilters>) {
     const merged = { ...filters, ...next }
@@ -197,6 +204,7 @@ export function StatsRoute() {
         <>
           <EquityCurve points={equityPoints} cumulative />
           <CandlestickChart points={candles} />
+          <FeesChart points={candles} />
           <div className="grid md:grid-cols-2 gap-4">
             <FacetBreakdown title="By Symbol" items={bySymbol} />
             <FacetBreakdown title="By Contract" items={byContract} />
@@ -208,8 +216,8 @@ export function StatsRoute() {
               Trades <span className="text-(--color-text-dim) font-normal">({filtered.length})</span>
             </h2>
             <div className="space-y-1.5">
-              {tradesDesc.map(t => (
-                <TradeRow key={t.id} trade={t} onDelete={handleDelete} />
+              {tradesDesc.map((t, i) => (
+                <TradeRow key={t.id} trade={t} index={i + 1} onDelete={handleDelete} />
               ))}
             </div>
           </section>

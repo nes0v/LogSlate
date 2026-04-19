@@ -377,7 +377,7 @@ export function TradeForm({ initialValues, initialDate, onSubmit, onCancel, subm
 
       <aside className="space-y-4 lg:sticky lg:top-6 self-start bg-(--color-panel) border border-(--color-border) rounded-md p-4">
         <div className="text-xs text-(--color-text-dim) uppercase tracking-wider">Live preview</div>
-        <PreviewRow label="Side" value={side ? side : '—'} accent={side === 'long' ? 'win' : side === 'short' ? 'loss' : undefined} />
+        <PreviewRow label="Side" value={side === 'long' ? 'buy' : side === 'short' ? 'sell' : '—'} accent={side === 'long' ? 'win' : side === 'short' ? 'loss' : undefined} />
         <PreviewRow label="Contracts" value={contracts || '—'} />
         <PreviewRow label="Duration" value={formatDuration(dur.total_ms)} />
         <PreviewRow label="To first exit" value={formatDuration(dur.before_first_exit_ms)} />

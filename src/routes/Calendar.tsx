@@ -21,6 +21,7 @@ import { bucketByDay, bucketByWeek, parseYearMonth, WEEK_OPTS } from '@/lib/buck
 import { StatsGrid } from '@/components/StatsGrid'
 import { EquityCurve } from '@/components/EquityCurve'
 import { CandlestickChart } from '@/components/CandlestickChart'
+import { FeesChart } from '@/components/FeesChart'
 import { PeriodBreakdown } from '@/components/PeriodBreakdown'
 import { PeriodNav } from '@/components/PeriodNav'
 import { cn } from '@/lib/utils'
@@ -184,6 +185,7 @@ export function CalendarRoute() {
       <StatsGrid stats={monthStats} />
       <EquityCurve points={equityPoints} cumulative />
       <CandlestickChart points={candles} />
+      <FeesChart points={candles} />
       <PeriodBreakdown title="Weekly" buckets={weekBuckets} />
     </div>
   )

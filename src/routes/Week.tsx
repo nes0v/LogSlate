@@ -14,6 +14,7 @@ import { aggregate, computeCandles } from '@/lib/trade-stats'
 import { StatsGrid } from '@/components/StatsGrid'
 import { EquityCurve } from '@/components/EquityCurve'
 import { CandlestickChart } from '@/components/CandlestickChart'
+import { FeesChart } from '@/components/FeesChart'
 import { PeriodBreakdown } from '@/components/PeriodBreakdown'
 import { PeriodNav } from '@/components/PeriodNav'
 
@@ -54,6 +55,7 @@ export function WeekRoute() {
       <StatsGrid stats={stats} />
       <EquityCurve points={points} cumulative />
       <CandlestickChart points={candles} />
+      <FeesChart points={candles} />
       <PeriodBreakdown title="Daily" buckets={days} />
     </div>
   )

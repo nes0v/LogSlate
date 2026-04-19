@@ -74,6 +74,21 @@ Sessions: `pre | AM | LT | PM | aft` (pre-market, morning, lunch, evening, after
 - Numbers: store `number` (JS floats). Money values are USD; format at the edge with `Intl.NumberFormat`.
 - Times: store ISO strings (UTC). Use date-fns for all computation.
 
+## Google Drive sync setup
+
+The app syncs to a **hidden app-specific folder** in the user's own Google Drive. Scope: `https://www.googleapis.com/auth/drive.appdata` — the file is not visible in the normal Drive UI; only this app can read/write it. No backend involved.
+
+To enable sync locally:
+
+1. Go to Google Cloud Console → *APIs & Services → Credentials*.
+2. Create an **OAuth 2.0 Client ID** (Application type: **Web application**).
+3. Under *Authorized JavaScript origins*, add `http://localhost:5173` (dev) and the production origin if applicable.
+4. Copy the client ID.
+5. `cp .env.example .env.local` and set `VITE_GOOGLE_CLIENT_ID=<the id>`.
+6. Restart `npm run dev`.
+
+Sync engine is in `src/lib/sync.ts`. Merge is per-trade last-write-wins (by `updated_at`), plus a `lastSyncedIds` set in `localStorage` that distinguishes "new on this device" from "deleted on the other device". Drive API wrappers are in `src/lib/drive.ts`.
+
 ## PWA
 
 - Service worker via `vite-plugin-pwa` with `registerType: 'autoUpdate'`.

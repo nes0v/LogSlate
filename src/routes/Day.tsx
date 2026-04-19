@@ -50,8 +50,8 @@ export function DayRoute() {
 
       {trades && trades.length > 0 ? (
         <div className="space-y-1.5">
-          {trades.map(t => (
-            <TradeRow key={t.id} trade={t} onDelete={handleDelete} />
+          {trades.map((t, i) => (
+            <TradeRow key={t.id} trade={t} index={i + 1} onDelete={handleDelete} />
           ))}
         </div>
       ) : (
