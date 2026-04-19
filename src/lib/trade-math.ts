@@ -1,5 +1,5 @@
 import type { Execution, Side, TradeRecord } from '@/db/types'
-import { FEE_PER_SIDE, handleValue } from '@/lib/symbols'
+import { feePerSide, handleValue } from '@/lib/symbols'
 
 // ---------- small helpers ----------
 
@@ -64,9 +64,9 @@ export function computeDuration(t: Pick<TradeRecord, 'buys' | 'sells'>): TradeDu
   return { total_ms: end - start, before_first_exit_ms: before }
 }
 
-export function computeFees(t: Pick<TradeRecord, 'buys' | 'sells'>): number {
+export function computeFees(t: Pick<TradeRecord, 'buys' | 'sells' | 'contract_type'>): number {
   const sides = sumContracts(t.buys) + sumContracts(t.sells)
-  return sides * FEE_PER_SIDE
+  return sides * feePerSide(t.contract_type)
 }
 
 export function computeGrossPnl(

@@ -51,7 +51,9 @@ Sessions: `pre | AM | LT | PM | aft` (pre-market, morning, lunch, evening, after
 - `trade_date` — set by the day-click in the month calendar view (UX sets it, not a form field)
 - `duration` (total) and `duration_before_first_exit`
 - `total_contracts` — sum of contracts on one side (buys and sells match for closed trades)
-- `fees` — total sides × $0.62 (e.g. 1 buy + 1 sell = $1.24)
+- `fees` — total sides × fee-per-side, by contract type:
+  - micro: $0.62/side → 1 buy + 1 sell = $1.24
+  - mini: $2.25/side → 1 buy + 1 sell = $4.50
 - `ahpc` (average handles per contract) = weighted_avg_exit_price − weighted_avg_entry_price (sign-flipped for shorts)
 - `realized_rr` = pnl / stop_loss
 

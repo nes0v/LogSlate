@@ -13,5 +13,14 @@ export function handleValue(symbol: SymbolKey, contract_type: ContractType): num
   return HANDLE_VALUE[symbol][contract_type]
 }
 
-// Broker fee per contract per side.
-export const FEE_PER_SIDE = 0.62
+// Broker fee per contract per side, by contract type.
+// Micro: $0.62/side → 1 buy + 1 sell = $1.24
+// Mini:  $2.25/side → 1 buy + 1 sell = $4.50
+export const FEE_PER_SIDE_BY_CONTRACT: Record<ContractType, number> = {
+  micro: 0.62,
+  mini: 2.25,
+}
+
+export function feePerSide(contract_type: ContractType): number {
+  return FEE_PER_SIDE_BY_CONTRACT[contract_type]
+}

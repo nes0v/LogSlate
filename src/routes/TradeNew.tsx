@@ -1,12 +1,28 @@
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { format } from 'date-fns'
+import { TradeForm } from '@/components/TradeForm'
+import { createTrade } from '@/db/queries'
+import type { TradeDraft } from '@/db/types'
 
 export function TradeNewRoute() {
   const [params] = useSearchParams()
-  const date = params.get('date')
+  const navigate = useNavigate()
+  const date = params.get('date') || format(new Date(), 'yyyy-MM-dd')
+
+  async function handleSubmit(draft: TradeDraft) {
+    await createTrade(draft)
+    navigate(`/day/${draft.trade_date}`)
+  }
+
   return (
-    <div>
-      <h1 className="text-xl font-semibold mb-2">New trade {date ? `on ${date}` : ''}</h1>
-      <p className="text-(--color-text-dim)">Trade entry form. Coming in step 4.</p>
+    <div className="space-y-4">
+      <h1 className="text-lg font-semibold">New trade</h1>
+      <TradeForm
+        initialDate={date}
+        onSubmit={handleSubmit}
+        onCancel={() => navigate(`/day/${date}`)}
+        submitLabel="Save trade"
+      />
     </div>
   )
 }

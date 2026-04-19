@@ -157,7 +157,7 @@ export function CalendarRoute() {
                 !inMonth && 'opacity-40',
               )}
             >
-              <div className="flex items-center justify-between">
+              <div className="flex items-center">
                 <span
                   className={cn(
                     'text-xs',
@@ -168,22 +168,20 @@ export function CalendarRoute() {
                 >
                   {format(d, 'd')}
                 </span>
-                {cell && (
-                  <span className="text-[10px] text-(--color-text-dim) font-mono">
-                    {cell.count}
-                  </span>
-                )}
               </div>
               {cell ? (
                 <div
                   className={cn(
-                    'text-sm font-mono font-medium mt-auto',
+                    'text-sm font-mono font-medium mt-auto flex items-baseline gap-1',
                     cell.pnl > 0 && 'text-(--color-win)',
                     cell.pnl < 0 && 'text-(--color-loss)',
                     cell.pnl === 0 && 'text-(--color-text-dim)',
                   )}
                 >
-                  {formatUsd(cell.pnl)}
+                  <span>{formatUsd(cell.pnl)}</span>
+                  <span className="text-[10px] text-(--color-text-dim) font-normal">
+                    ({cell.count} trade{cell.count === 1 ? '' : 's'})
+                  </span>
                 </div>
               ) : null}
             </Link>
