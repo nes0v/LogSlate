@@ -1,13 +1,13 @@
 import { cn } from '@/lib/utils'
 
-interface PillsProps<T extends string | number> {
+interface PillsProps<T extends string | number | null> {
   value: T
   onChange: (v: T) => void
   options: ReadonlyArray<{ value: T; label: string }>
   className?: string
 }
 
-export function Pills<T extends string | number>({ value, onChange, options, className }: PillsProps<T>) {
+export function Pills<T extends string | number | null>({ value, onChange, options, className }: PillsProps<T>) {
   return (
     <div className={cn('inline-flex rounded-md border border-(--color-border) bg-(--color-panel) p-0.5', className)}>
       {options.map(opt => {
