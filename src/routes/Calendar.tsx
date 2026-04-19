@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
   addMonths,
@@ -9,40 +9,37 @@ import {
   format,
   isSameMonth,
   isToday,
-  parse,
   startOfMonth,
   startOfWeek,
   subMonths,
 } from 'date-fns'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { db } from '@/db/schema'
 import { effectivePnl } from '@/lib/trade-math'
+import { aggregate, computeCandles } from '@/lib/trade-stats'
 import { formatUsd } from '@/lib/money'
+import { bucketByDay, bucketByWeek, parseYearMonth, WEEK_OPTS } from '@/lib/buckets'
+import { StatsGrid } from '@/components/StatsGrid'
+import { EquityCurve } from '@/components/EquityCurve'
+import { CandlestickChart } from '@/components/CandlestickChart'
+import { PeriodBreakdown } from '@/components/PeriodBreakdown'
+import { PeriodNav } from '@/components/PeriodNav'
 import { cn } from '@/lib/utils'
 
-const MONTH_PARAM_FORMAT = 'yyyy-MM'
-const DATE_KEY_FORMAT = 'yyyy-MM-dd'
-// Sunday-start weeks (US convention for futures traders).
-const WEEK_OPTS = { weekStartsOn: 0 as const }
-
-function parseMonthParam(raw: string | null): Date {
-  if (raw) {
-    const d = parse(raw, MONTH_PARAM_FORMAT, new Date())
-    if (!Number.isNaN(d.getTime())) return startOfMonth(d)
-  }
-  return startOfMonth(new Date())
-}
+const DATE_KEY = 'yyyy-MM-dd'
 
 export function CalendarRoute() {
-  const [params, setParams] = useSearchParams()
-  const month = parseMonthParam(params.get('month'))
+  const { ym } = useParams()
+  const navigate = useNavigate()
+  const month = parseYearMonth(ym)
 
-  const gridStart = startOfWeek(startOfMonth(month), WEEK_OPTS)
-  const gridEnd = endOfWeek(endOfMonth(month), WEEK_OPTS)
+  const ms = startOfMonth(month)
+  const me = endOfMonth(month)
+  const gridStart = startOfWeek(ms, WEEK_OPTS)
+  const gridEnd = endOfWeek(me, WEEK_OPTS)
   const days = eachDayOfInterval({ start: gridStart, end: gridEnd })
 
-  const rangeStart = format(gridStart, DATE_KEY_FORMAT)
-  const rangeEnd = format(gridEnd, DATE_KEY_FORMAT)
+  const rangeStart = format(gridStart, DATE_KEY)
+  const rangeEnd = format(gridEnd, DATE_KEY)
 
   const trades = useLiveQuery(
     () => db.trades.where('trade_date').between(rangeStart, rangeEnd, true, true).toArray(),
@@ -50,6 +47,7 @@ export function CalendarRoute() {
     [],
   )
 
+  // Per-day map for the grid (spans padded out-of-month days).
   const perDay = useMemo(() => {
     const m = new Map<string, { pnl: number; count: number }>()
     for (const t of trades ?? []) {
@@ -62,13 +60,36 @@ export function CalendarRoute() {
     return m
   }, [trades])
 
-  function navMonth(dir: -1 | 1) {
-    const next = dir === -1 ? subMonths(month, 1) : addMonths(month, 1)
-    setParams({ month: format(next, MONTH_PARAM_FORMAT) })
-  }
+  // Aggregates below the grid only consider trades in the current month.
+  const monthTrades = useMemo(
+    () => (trades ?? []).filter(t => isSameMonth(new Date(t.trade_date + 'T00:00:00'), month)),
+    [trades, month],
+  )
+  const monthStats = aggregate(monthTrades)
+  const dayBuckets = useMemo(() => bucketByDay(monthTrades, ms, me), [monthTrades, ms, me])
+  const weekBuckets = useMemo(() => bucketByWeek(monthTrades, ms, me), [monthTrades, ms, me])
+  const equityPoints = useMemo(
+    () =>
+      dayBuckets.map(b => ({
+        key: b.key,
+        label: format(new Date(b.key + 'T00:00:00'), 'd'),
+        pnl: aggregate(b.trades).net_pnl,
+      })),
+    [dayBuckets],
+  )
+  const candles = useMemo(
+    () =>
+      computeCandles(
+        dayBuckets.map(b => ({
+          ...b,
+          label: format(new Date(b.key + 'T00:00:00'), 'd'),
+        })),
+      ),
+    [dayBuckets],
+  )
 
-  function goToday() {
-    setParams({ month: format(new Date(), MONTH_PARAM_FORMAT) })
+  function go(d: Date) {
+    navigate(`/month/${format(d, 'yyyy-MM')}`)
   }
 
   const weekdayLabels = useMemo(() => {
@@ -80,61 +101,32 @@ export function CalendarRoute() {
     })
   }, [gridStart])
 
-  const monthTotal = useMemo(() => {
-    let sum = 0
-    for (const t of trades ?? []) {
-      if (isSameMonth(parse(t.trade_date, DATE_KEY_FORMAT, new Date()), month)) {
-        sum += effectivePnl(t) ?? 0
-      }
-    }
-    return sum
-  }, [trades, month])
-
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => navMonth(-1)}
-            aria-label="Previous month"
-            className="p-1.5 rounded-md text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)"
-          >
-            <ChevronLeft className="size-4" />
-          </button>
-          <h1 className="text-lg font-semibold min-w-40 text-center">
-            {format(month, 'MMMM yyyy')}
-          </h1>
-          <button
-            onClick={() => navMonth(1)}
-            aria-label="Next month"
-            className="p-1.5 rounded-md text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)"
-          >
-            <ChevronRight className="size-4" />
-          </button>
-          <button
-            onClick={goToday}
-            className="ml-2 px-2 py-1 text-xs rounded-md border border-(--color-border) text-(--color-text-dim) hover:text-(--color-text)"
-          >
-            Today
-          </button>
-        </div>
+        <PeriodNav
+          title={format(month, 'MMMM yyyy')}
+          onPrev={() => go(subMonths(month, 1))}
+          onNext={() => go(addMonths(month, 1))}
+          onToday={() => go(new Date())}
+        />
         <div className="text-sm">
           <span className="text-(--color-text-dim) mr-2">Month net</span>
           <span
             className={cn(
               'font-mono',
-              monthTotal > 0 && 'text-(--color-win)',
-              monthTotal < 0 && 'text-(--color-loss)',
-              monthTotal === 0 && 'text-(--color-text-dim)',
+              monthStats.net_pnl > 0 && 'text-(--color-win)',
+              monthStats.net_pnl < 0 && 'text-(--color-loss)',
+              monthStats.net_pnl === 0 && 'text-(--color-text-dim)',
             )}
           >
-            {formatUsd(monthTotal)}
+            {formatUsd(monthStats.net_pnl)}
           </span>
         </div>
       </div>
 
       <div className="grid grid-cols-7 gap-px bg-(--color-border) border border-(--color-border) rounded-md overflow-hidden">
-        {weekdayLabels.map((lbl) => (
+        {weekdayLabels.map(lbl => (
           <div
             key={lbl}
             className="bg-(--color-panel) text-xs text-(--color-text-dim) text-center py-2"
@@ -142,8 +134,8 @@ export function CalendarRoute() {
             {lbl}
           </div>
         ))}
-        {days.map((d) => {
-          const key = format(d, DATE_KEY_FORMAT)
+        {days.map(d => {
+          const key = format(d, DATE_KEY)
           const cell = perDay.get(key)
           const inMonth = isSameMonth(d, month)
           const today = isToday(d)
@@ -188,6 +180,11 @@ export function CalendarRoute() {
           )
         })}
       </div>
+
+      <StatsGrid stats={monthStats} />
+      <EquityCurve points={equityPoints} cumulative />
+      <CandlestickChart points={candles} />
+      <PeriodBreakdown title="Weekly" buckets={weekBuckets} />
     </div>
   )
 }
