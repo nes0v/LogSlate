@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { RouterProvider } from 'react-router-dom'
 import { router } from '@/router'
 import '@/index.css'
+import '@/db/seed' // registers dev helpers on window in dev builds; no-op in prod
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
