@@ -12,8 +12,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg'],
       manifest: {
-        name: 'logslate',
-        short_name: 'logslate',
+        name: 'LogSlate',
+        short_name: 'LogSlate',
         description: 'Personal trading journal for index futures',
         theme_color: '#0b0d12',
         background_color: '#0b0d12',

@@ -5,7 +5,10 @@ export type Rating = 'good' | 'excellent' | 'meh'
 export type PlannedRR = 1 | 2 | 3 | 4 | 5 | 6 | 7
 export type Side = 'long' | 'short'
 
+export type ExecutionKind = 'buy' | 'sell'
+
 export interface Execution {
+  kind: ExecutionKind
   price: number
   time: string // ISO 8601
   contracts: number
@@ -18,11 +21,10 @@ export interface TradeRecord {
   contract_type: ContractType
   session: Session
   idea: string
-  buys: Execution[]
-  sells: Execution[]
+  executions: Execution[] // stored sorted by time ascending
   stop_loss: number // USD (positive number representing risk amount)
   drawdown: number // USD, MAE — max adverse excursion
-  buildup: number // USD, MFE — max favorable excursion
+  buildup: number | null // USD, MFE — max favorable excursion (optional)
   planned_rr: PlannedRR
   rating: Rating
   pnl_override: number | null // when set, overrides computed net PnL

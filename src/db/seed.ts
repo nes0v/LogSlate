@@ -1,7 +1,7 @@
 import { db } from '@/db/schema'
 import { createTrade } from '@/db/queries'
 
-// Small deterministic sample spanning a couple of weeks — used for dev.
+// Small deterministic sample spanning a couple of days — used for dev.
 // Call `seedSampleTrades()` from the browser devtools to populate.
 export async function seedSampleTrades(): Promise<number> {
   const existing = await db.trades.count()
@@ -14,13 +14,11 @@ export async function seedSampleTrades(): Promise<number> {
       contract_type: 'micro',
       session: 'AM',
       idea: 'Opening range break — held vwap reclaim, target prior day high.',
-      buys: [
-        { price: 21050, time: '2026-04-14T13:35:00Z', contracts: 2 },
-        { price: 21045, time: '2026-04-14T13:37:00Z', contracts: 1 },
-      ],
-      sells: [
-        { price: 21075, time: '2026-04-14T13:50:00Z', contracts: 2 },
-        { price: 21080, time: '2026-04-14T14:05:00Z', contracts: 1 },
+      executions: [
+        { kind: 'buy', price: 21050, time: '2026-04-14T13:35:00Z', contracts: 2 },
+        { kind: 'buy', price: 21045, time: '2026-04-14T13:37:00Z', contracts: 1 },
+        { kind: 'sell', price: 21075, time: '2026-04-14T13:50:00Z', contracts: 2 },
+        { kind: 'sell', price: 21080, time: '2026-04-14T14:05:00Z', contracts: 1 },
       ],
       stop_loss: 60,
       drawdown: 20,
@@ -36,8 +34,10 @@ export async function seedSampleTrades(): Promise<number> {
       contract_type: 'micro',
       session: 'PM',
       idea: 'Fade the pop at resistance — got stopped.',
-      buys: [{ price: 21120, time: '2026-04-14T19:45:00Z', contracts: 1 }],
-      sells: [{ price: 21105, time: '2026-04-14T19:30:00Z', contracts: 1 }],
+      executions: [
+        { kind: 'sell', price: 21105, time: '2026-04-14T19:30:00Z', contracts: 1 },
+        { kind: 'buy', price: 21120, time: '2026-04-14T19:45:00Z', contracts: 1 },
+      ],
       stop_loss: 40,
       drawdown: 50,
       buildup: 5,
@@ -52,11 +52,11 @@ export async function seedSampleTrades(): Promise<number> {
       contract_type: 'micro',
       session: 'AM',
       idea: 'Support bounce, scaled in.',
-      buys: [
-        { price: 5820, time: '2026-04-15T13:40:00Z', contracts: 1 },
-        { price: 5818, time: '2026-04-15T13:45:00Z', contracts: 1 },
+      executions: [
+        { kind: 'buy', price: 5820, time: '2026-04-15T13:40:00Z', contracts: 1 },
+        { kind: 'buy', price: 5818, time: '2026-04-15T13:45:00Z', contracts: 1 },
+        { kind: 'sell', price: 5830, time: '2026-04-15T14:10:00Z', contracts: 2 },
       ],
-      sells: [{ price: 5830, time: '2026-04-15T14:10:00Z', contracts: 2 }],
       stop_loss: 50,
       drawdown: 15,
       buildup: 70,

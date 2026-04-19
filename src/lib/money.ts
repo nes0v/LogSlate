@@ -1,11 +1,4 @@
-const usdCompact = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-  maximumFractionDigits: 0,
-  signDisplay: 'auto',
-})
-
-const usdPrecise = new Intl.NumberFormat('en-US', {
+const usd = new Intl.NumberFormat('en-US', {
   style: 'currency',
   currency: 'USD',
   minimumFractionDigits: 2,
@@ -13,6 +6,6 @@ const usdPrecise = new Intl.NumberFormat('en-US', {
   signDisplay: 'auto',
 })
 
-export function formatUsd(n: number, opts: { precise?: boolean } = {}): string {
-  return (opts.precise ? usdPrecise : usdCompact).format(n)
+export function formatUsd(n: number): string {
+  return usd.format(n)
 }

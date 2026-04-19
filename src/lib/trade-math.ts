@@ -3,6 +3,13 @@ import { feePerSide, handleValue } from '@/lib/symbols'
 
 // ---------- small helpers ----------
 
+function buysOf(execs: Execution[]): Execution[] {
+  return execs.filter(e => e.kind === 'buy')
+}
+function sellsOf(execs: Execution[]): Execution[] {
+  return execs.filter(e => e.kind === 'sell')
+}
+
 function sumContracts(execs: Execution[]): number {
   return execs.reduce((n, e) => n + e.contracts, 0)
 }
@@ -26,19 +33,19 @@ function firstTime(execs: Execution[]): number | null {
 
 // ---------- public API ----------
 
-export function inferSide(t: Pick<TradeRecord, 'buys' | 'sells'>): Side | null {
-  const firstBuy = firstTime(t.buys)
-  const firstSell = firstTime(t.sells)
+export function inferSide(t: Pick<TradeRecord, 'executions'>): Side | null {
+  const firstBuy = firstTime(buysOf(t.executions))
+  const firstSell = firstTime(sellsOf(t.executions))
   if (firstBuy === null && firstSell === null) return null
   if (firstBuy === null) return 'short'
   if (firstSell === null) return 'long'
   return firstBuy <= firstSell ? 'long' : 'short'
 }
 
-export function totalContracts(t: Pick<TradeRecord, 'buys' | 'sells'>): number {
+export function totalContracts(t: Pick<TradeRecord, 'executions'>): number {
   // For a closed trade, buys.contracts === sells.contracts. Use the max to
   // reflect "position size at peak" when data is incomplete.
-  return Math.max(sumContracts(t.buys), sumContracts(t.sells))
+  return Math.max(sumContracts(buysOf(t.executions)), sumContracts(sellsOf(t.executions)))
 }
 
 export interface TradeDuration {
@@ -46,36 +53,38 @@ export interface TradeDuration {
   before_first_exit_ms: number | null
 }
 
-export function computeDuration(t: Pick<TradeRecord, 'buys' | 'sells'>): TradeDuration {
+export function computeDuration(t: Pick<TradeRecord, 'executions'>): TradeDuration {
   const side = inferSide(t)
-  const allTimes = [...t.buys, ...t.sells].map(e => Date.parse(e.time)).filter(n => !Number.isNaN(n))
+  const allTimes = t.executions.map(e => Date.parse(e.time)).filter(n => !Number.isNaN(n))
   if (allTimes.length < 2) return { total_ms: null, before_first_exit_ms: null }
   const start = Math.min(...allTimes)
   const end = Math.max(...allTimes)
 
   let before: number | null = null
   if (side === 'long') {
-    const firstSell = firstTime(t.sells)
+    const firstSell = firstTime(sellsOf(t.executions))
     if (firstSell !== null) before = firstSell - start
   } else if (side === 'short') {
-    const firstBuy = firstTime(t.buys)
+    const firstBuy = firstTime(buysOf(t.executions))
     if (firstBuy !== null) before = firstBuy - start
   }
   return { total_ms: end - start, before_first_exit_ms: before }
 }
 
-export function computeFees(t: Pick<TradeRecord, 'buys' | 'sells' | 'contract_type'>): number {
-  const sides = sumContracts(t.buys) + sumContracts(t.sells)
+export function computeFees(t: Pick<TradeRecord, 'executions' | 'contract_type'>): number {
+  const sides = sumContracts(t.executions)
   return sides * feePerSide(t.contract_type)
 }
 
 export function computeGrossPnl(
-  t: Pick<TradeRecord, 'buys' | 'sells' | 'symbol' | 'contract_type'>,
+  t: Pick<TradeRecord, 'executions' | 'symbol' | 'contract_type'>,
 ): number | null {
-  const avgBuy = weightedAvgPrice(t.buys)
-  const avgSell = weightedAvgPrice(t.sells)
+  const buys = buysOf(t.executions)
+  const sells = sellsOf(t.executions)
+  const avgBuy = weightedAvgPrice(buys)
+  const avgSell = weightedAvgPrice(sells)
   if (avgBuy === null || avgSell === null) return null
-  const contracts = Math.min(sumContracts(t.buys), sumContracts(t.sells))
+  const contracts = Math.min(sumContracts(buys), sumContracts(sells))
   if (contracts === 0) return null
   // Symmetric: profit = avgSell − avgBuy regardless of side (long or short).
   const handles = avgSell - avgBuy
@@ -83,7 +92,7 @@ export function computeGrossPnl(
 }
 
 export function computeNetPnl(
-  t: Pick<TradeRecord, 'buys' | 'sells' | 'symbol' | 'contract_type'>,
+  t: Pick<TradeRecord, 'executions' | 'symbol' | 'contract_type'>,
 ): number | null {
   const gross = computeGrossPnl(t)
   if (gross === null) return null
@@ -92,7 +101,7 @@ export function computeNetPnl(
 
 // Net PnL used for display: manual override wins if set, else computed.
 export function effectivePnl(
-  t: Pick<TradeRecord, 'buys' | 'sells' | 'symbol' | 'contract_type' | 'pnl_override'>,
+  t: Pick<TradeRecord, 'executions' | 'symbol' | 'contract_type' | 'pnl_override'>,
 ): number | null {
   if (t.pnl_override !== null && t.pnl_override !== undefined) return t.pnl_override
   return computeNetPnl(t)
@@ -100,15 +109,15 @@ export function effectivePnl(
 
 // Average handles per contract. Positive = profitable, negative = losing.
 // Symmetric across long/short: avgSell − avgBuy is profit direction in both cases.
-export function computeAhpc(t: Pick<TradeRecord, 'buys' | 'sells'>): number | null {
-  const avgBuy = weightedAvgPrice(t.buys)
-  const avgSell = weightedAvgPrice(t.sells)
+export function computeAhpc(t: Pick<TradeRecord, 'executions'>): number | null {
+  const avgBuy = weightedAvgPrice(buysOf(t.executions))
+  const avgSell = weightedAvgPrice(sellsOf(t.executions))
   if (avgBuy === null || avgSell === null) return null
   return avgSell - avgBuy
 }
 
 export function computeRealizedRr(
-  t: Pick<TradeRecord, 'buys' | 'sells' | 'symbol' | 'contract_type' | 'pnl_override' | 'stop_loss'>,
+  t: Pick<TradeRecord, 'executions' | 'symbol' | 'contract_type' | 'pnl_override' | 'stop_loss'>,
 ): number | null {
   if (!t.stop_loss || t.stop_loss === 0) return null
   const pnl = effectivePnl(t)

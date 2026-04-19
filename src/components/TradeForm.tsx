@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useMemo } from 'react'
 import { Controller, useFieldArray, useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Plus, Trash2, Upload, X } from 'lucide-react'
@@ -20,8 +20,6 @@ import { Field, inputClass } from '@/components/form/Field'
 import { formatUsd } from '@/lib/money'
 import { cn } from '@/lib/utils'
 
-// Select all on focus so typing replaces the default (e.g. 0) instead of
-// requiring the user to manually clear it first.
 const selectOnFocus = (e: React.FocusEvent<HTMLInputElement>) => e.currentTarget.select()
 
 const SYMBOLS = [
@@ -45,6 +43,10 @@ const RATINGS = [
   { value: 'excellent', label: '🔥 excellent' },
   { value: 'meh', label: '🥚 meh' },
 ] as const
+const EXECUTION_KINDS = [
+  { value: 'buy', label: 'Buy' },
+  { value: 'sell', label: 'Sell' },
+] as const
 
 interface TradeFormProps {
   initialValues?: TradeFormValues
@@ -67,31 +69,23 @@ export function TradeForm({ initialValues, initialDate, onSubmit, onCancel, subm
     mode: 'onChange',
   })
 
-  const buys = useFieldArray({ control, name: 'buys' })
-  const sells = useFieldArray({ control, name: 'sells' })
-
+  const executions = useFieldArray({ control, name: 'executions' })
   const values = useWatch({ control }) as TradeFormValues
 
-  // Build a synthetic record (ISO timestamps combined from trade_date + time)
-  // so the trade-math helpers can operate against in-progress form data.
+  // Build a synthetic record so the trade-math helpers can operate on in-progress form data.
   const synthetic = useMemo(() => {
     function toIso(time: string | undefined) {
       if (!time || !/^\d{2}:\d{2}$/.test(time)) return ''
       return `${values.trade_date ?? initialDate}T${time}:00`
     }
-    const buys = (values.buys ?? []).map(b => ({
-      price: Number(b?.price) || 0,
-      contracts: Number(b?.contracts) || 0,
-      time: toIso(b?.time),
-    }))
-    const sells = (values.sells ?? []).map(s => ({
-      price: Number(s?.price) || 0,
-      contracts: Number(s?.contracts) || 0,
-      time: toIso(s?.time),
+    const execs = (values.executions ?? []).map(e => ({
+      kind: (e?.kind ?? 'buy') as 'buy' | 'sell',
+      price: Number(e?.price) || 0,
+      contracts: Number(e?.contracts) || 0,
+      time: toIso(e?.time),
     }))
     return {
-      buys,
-      sells,
+      executions: execs,
       symbol: values.symbol ?? 'NQ',
       contract_type: values.contract_type ?? 'micro',
       stop_loss: Number(values.stop_loss) || 0,
@@ -121,15 +115,17 @@ export function TradeForm({ initialValues, initialDate, onSubmit, onCancel, subm
     reader.readAsDataURL(file)
   }
 
-  // Reset form when initialValues changes (e.g., navigating from one trade to another).
-  useEffect(() => {
-    if (initialValues) {
-      // no-op: useForm takes defaultValues once; parent is expected to key by id.
-    }
-  }, [initialValues])
-
   async function submit(v: TradeFormValues) {
     await onSubmit(formToDraft(v))
+  }
+
+  // Default a new row's kind to whichever is currently under-represented;
+  // keeps scaling flows natural (add buys to enter, then sells to exit).
+  function addExecution() {
+    const current = values.executions ?? []
+    const buys = current.filter(e => e?.kind === 'buy').length
+    const sells = current.filter(e => e?.kind === 'sell').length
+    executions.append({ kind: buys <= sells ? 'buy' : 'sell', price: 0, time: '', contracts: 1 })
   }
 
   return (
@@ -170,25 +166,80 @@ export function TradeForm({ initialValues, initialDate, onSubmit, onCancel, subm
           />
         </Field>
 
-        <ExecutionArray
-          title="Buys"
-          items={buys.fields}
-          onAdd={() => buys.append({ price: 0, time: '', contracts: 1 })}
-          onRemove={i => buys.remove(i)}
-          register={register}
-          errors={errors.buys}
-          name="buys"
-        />
-
-        <ExecutionArray
-          title="Sells"
-          items={sells.fields}
-          onAdd={() => sells.append({ price: 0, time: '', contracts: 1 })}
-          onRemove={i => sells.remove(i)}
-          register={register}
-          errors={errors.sells}
-          name="sells"
-        />
+        <section className="space-y-2">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-medium">Executions</h2>
+            <button
+              type="button"
+              onClick={addExecution}
+              className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md border border-(--color-border) text-(--color-text-dim) hover:text-(--color-text)"
+            >
+              <Plus className="size-3" /> Add execution
+            </button>
+          </div>
+          {errors.executions && 'message' in errors.executions && errors.executions.message && (
+            <div className="text-xs text-(--color-loss)">{String(errors.executions.message)}</div>
+          )}
+          {Array.isArray(errors.executions) && errors.executions
+            .filter(Boolean)
+            .flatMap(e => Object.values(e ?? {}).map(v => (v as { message?: string }).message))
+            .filter(Boolean)
+            .slice(0, 3)
+            .map((msg, i) => (
+              <div key={i} className="text-xs text-(--color-loss)">{msg}</div>
+            ))}
+          <div className="space-y-2">
+            {executions.fields.map((item, i) => (
+              <div
+                key={item.id}
+                className="grid grid-cols-[auto_1fr_1fr_80px_32px] gap-2 items-center"
+              >
+                <Controller
+                  control={control}
+                  name={`executions.${i}.kind`}
+                  render={({ field }) => (
+                    <Pills value={field.value} onChange={field.onChange} options={EXECUTION_KINDS} />
+                  )}
+                />
+                <input
+                  type="number"
+                  step="0.01"
+                  placeholder="Price"
+                  className={inputClass}
+                  onFocus={selectOnFocus}
+                  {...register(`executions.${i}.price`, { valueAsNumber: true })}
+                />
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="HH:MM"
+                  maxLength={5}
+                  pattern="^([01][0-9]|2[0-3]):[0-5][0-9]$"
+                  className={cn(inputClass, 'font-mono')}
+                  onFocus={selectOnFocus}
+                  {...register(`executions.${i}.time`)}
+                />
+                <input
+                  type="number"
+                  step="1"
+                  placeholder="Qty"
+                  className={inputClass}
+                  onFocus={selectOnFocus}
+                  {...register(`executions.${i}.contracts`, { valueAsNumber: true })}
+                />
+                <button
+                  type="button"
+                  onClick={() => executions.remove(i)}
+                  disabled={executions.fields.length <= 2}
+                  aria-label="Remove execution"
+                  className="size-8 rounded-md text-(--color-text-dim) hover:text-(--color-loss) disabled:opacity-30 flex items-center justify-center"
+                >
+                  <Trash2 className="size-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
 
         <section className="grid grid-cols-3 gap-4">
           <Field label="Stop loss ($)" error={errors.stop_loss?.message}>
@@ -209,13 +260,23 @@ export function TradeForm({ initialValues, initialDate, onSubmit, onCancel, subm
               {...register('drawdown', { valueAsNumber: true })}
             />
           </Field>
-          <Field label="Buildup / MFE ($)" error={errors.buildup?.message}>
-            <input
-              type="number"
-              step="0.01"
-              className={inputClass}
-              onFocus={selectOnFocus}
-              {...register('buildup', { valueAsNumber: true })}
+          <Field label="Buildup / MFE ($)" hint="Optional" error={errors.buildup?.message}>
+            <Controller
+              control={control}
+              name="buildup"
+              render={({ field }) => (
+                <input
+                  type="number"
+                  step="0.01"
+                  className={inputClass}
+                  onFocus={selectOnFocus}
+                  value={field.value ?? ''}
+                  onChange={e => {
+                    const v = e.target.value
+                    field.onChange(v === '' ? null : Number(v))
+                  }}
+                />
+              )}
             />
           </Field>
         </section>
@@ -321,11 +382,11 @@ export function TradeForm({ initialValues, initialDate, onSubmit, onCancel, subm
         <PreviewRow label="Duration" value={formatDuration(dur.total_ms)} />
         <PreviewRow label="To first exit" value={formatDuration(dur.before_first_exit_ms)} />
         <div className="border-t border-(--color-border) my-2" />
-        <PreviewRow label="Gross PnL" value={gross === null ? '—' : formatUsd(gross, { precise: true })} accent={pnlAccent(gross)} />
-        <PreviewRow label="Fees" value={formatUsd(-fees, { precise: true })} accent="dim" />
-        <PreviewRow label="Net PnL" value={net === null ? '—' : formatUsd(net, { precise: true })} accent={pnlAccent(net)} />
+        <PreviewRow label="Gross PnL" value={gross === null ? '—' : formatUsd(gross)} accent={pnlAccent(gross)} />
+        <PreviewRow label="Fees" value={formatUsd(-fees)} accent="dim" />
+        <PreviewRow label="Net PnL" value={net === null ? '—' : formatUsd(net)} accent={pnlAccent(net)} />
         {values.pnl_override !== null && values.pnl_override !== undefined && (
-          <PreviewRow label="Effective PnL" value={effPnl === null ? '—' : formatUsd(effPnl, { precise: true })} accent={pnlAccent(effPnl)} />
+          <PreviewRow label="Effective PnL" value={effPnl === null ? '—' : formatUsd(effPnl)} accent={pnlAccent(effPnl)} />
         )}
         <div className="border-t border-(--color-border) my-2" />
         <PreviewRow label="AHPC" value={ahpc === null ? '—' : ahpc.toFixed(2) + ' h'} />
@@ -380,75 +441,4 @@ function formatDuration(ms: number | null): string {
   const h = Math.floor(m / 60)
   const rm = m % 60
   return rm === 0 ? `${h}h` : `${h}h ${rm}m`
-}
-
-interface ExecutionArrayProps {
-  title: string
-  items: Array<{ id: string }>
-  onAdd: () => void
-  onRemove: (index: number) => void
-  register: ReturnType<typeof useForm<TradeFormValues>>['register']
-  errors: { message?: string; [index: number]: unknown } | undefined
-  name: 'buys' | 'sells'
-}
-
-function ExecutionArray({ title, items, onAdd, onRemove, register, errors, name }: ExecutionArrayProps) {
-  return (
-    <section className="space-y-2">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-medium">{title}</h2>
-        <button
-          type="button"
-          onClick={onAdd}
-          className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md border border-(--color-border) text-(--color-text-dim) hover:text-(--color-text)"
-        >
-          <Plus className="size-3" /> Add row
-        </button>
-      </div>
-      {errors && 'message' in errors && errors.message && (
-        <div className="text-xs text-(--color-loss)">{errors.message}</div>
-      )}
-      <div className="space-y-2">
-        {items.map((item, i) => (
-          <div key={item.id} className="grid grid-cols-[1fr_1fr_80px_32px] gap-2 items-center">
-            <input
-              type="number"
-              step="0.01"
-              placeholder="Price"
-              className={inputClass}
-              onFocus={selectOnFocus}
-              {...register(`${name}.${i}.price`, { valueAsNumber: true })}
-            />
-            <input
-              type="text"
-              inputMode="numeric"
-              placeholder="HH:MM"
-              maxLength={5}
-              pattern="^([01][0-9]|2[0-3]):[0-5][0-9]$"
-              className={cn(inputClass, 'font-mono')}
-              onFocus={selectOnFocus}
-              {...register(`${name}.${i}.time`)}
-            />
-            <input
-              type="number"
-              step="1"
-              placeholder="Qty"
-              className={inputClass}
-              onFocus={selectOnFocus}
-              {...register(`${name}.${i}.contracts`, { valueAsNumber: true })}
-            />
-            <button
-              type="button"
-              onClick={() => onRemove(i)}
-              disabled={items.length === 1}
-              aria-label="Remove row"
-              className="size-8 rounded-md text-(--color-text-dim) hover:text-(--color-loss) disabled:opacity-30 flex items-center justify-center"
-            >
-              <Trash2 className="size-4" />
-            </button>
-          </div>
-        ))}
-      </div>
-    </section>
-  )
 }
