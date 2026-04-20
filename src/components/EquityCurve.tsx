@@ -3,6 +3,7 @@ import {
   CartesianGrid,
   Line,
   LineChart,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -18,6 +19,13 @@ export interface EquityPoint {
   count?: number // number of trades in the bucket (for tooltip)
 }
 
+export interface AdjustmentMarker {
+  /** X-axis value (must match a point's label). */
+  x: string
+  /** Signed amount — positive for deposits, negative for withdrawals. */
+  amount: number
+}
+
 interface EquityCurveProps {
   points: EquityPoint[]
   /**
@@ -31,9 +39,18 @@ interface EquityCurveProps {
   xTicks?: string[]
   /** Optional element to render on the right of the section header. */
   headerRight?: React.ReactNode
+  /** Dashed vertical markers drawn at each deposit/withdrawal date. */
+  adjustments?: AdjustmentMarker[]
 }
 
-export function EquityCurve({ points, cumulative = true, height = 360, xTicks, headerRight }: EquityCurveProps) {
+export function EquityCurve({
+  points,
+  cumulative = true,
+  height = 360,
+  xTicks,
+  headerRight,
+  adjustments,
+}: EquityCurveProps) {
   const data = useMemo(() => {
     if (!cumulative) return points.map(p => ({ ...p, y: p.pnl }))
     let running = 0
@@ -76,6 +93,27 @@ export function EquityCurve({ points, cumulative = true, height = 360, xTicks, h
               cursor={{ stroke: 'var(--color-text-dim)', strokeWidth: 1, strokeDasharray: '3 3', shapeRendering: 'crispEdges' }}
               content={<EquityTooltip cumulative={cumulative} />}
             />
+            {adjustments?.map(a => {
+              const color = a.amount >= 0 ? 'var(--color-win)' : 'var(--color-loss)'
+              const label = `${a.amount >= 0 ? '+' : '−'}${formatUsd(Math.abs(a.amount))}`
+              return (
+                <ReferenceLine
+                  key={a.x}
+                  x={a.x}
+                  stroke={color}
+                  strokeDasharray="3 3"
+                  shapeRendering="crispEdges"
+                  label={{
+                    value: label,
+                    position: 'top',
+                    offset: 16,
+                    fill: color,
+                    fontSize: 12,
+                    fontFamily: 'var(--font-mono)',
+                  }}
+                />
+              )
+            })}
             <Line
               type="linear"
               dataKey="y"

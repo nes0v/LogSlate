@@ -168,6 +168,30 @@ describe('computeCandles', () => {
     expect(c.high).toBeCloseTo(695.5, 5)
   })
 
+  it('carries a withdraw forward to later days (subsequent candles open lower)', () => {
+    // Day 1: 2 winning trades = +391
+    // Day 2: withdraw -600 (no trades)
+    // Day 3: 1 winning trade
+    // Day 4: 1 winning trade
+    const day1 = bucketWith([winningTrade(), winningTrade()], '2026-04-15')
+    const day2 = bucketWith([], '2026-04-16')
+    const day3 = bucketWith([winningTrade()], '2026-04-17')
+    const day4 = bucketWith([winningTrade()], '2026-04-18')
+
+    const adjMap = new Map<string, number>([['2026-04-16', -600]])
+    const candles = computeCandles([day1, day2, day3, day4], adjMap)
+
+    expect(candles[0].close).toBeCloseTo(391, 5)
+    // Withdraw day: open carried from day1 close, drops by 600
+    expect(candles[1].open).toBeCloseTo(391, 5)
+    expect(candles[1].close).toBeCloseTo(-209, 5)
+    // Subsequent days continue from the post-withdraw level
+    expect(candles[2].open).toBeCloseTo(-209, 5)
+    expect(candles[2].close).toBeCloseTo(-13.5, 5)
+    expect(candles[3].open).toBeCloseTo(-13.5, 5)
+    expect(candles[3].close).toBeCloseTo(182, 5)
+  })
+
   it('negative adjustments (withdraw) lower equity', () => {
     const day1 = bucketWith([], '2026-04-01')
     const adjMap = new Map<string, number>([['2026-04-01', -300]])

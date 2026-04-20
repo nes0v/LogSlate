@@ -146,6 +146,14 @@ export function StatsRoute() {
     [days, adjByDate],
   )
 
+  const adjustmentMarkers = useMemo(
+    () =>
+      Array.from(adjByDate.entries())
+        .filter(([date]) => days.some(b => b.key === date))
+        .map(([date, amount]) => ({ x: chartDayLabel(date), amount })),
+    [adjByDate, days],
+  )
+
   const bySymbol = useMemo(
     () => [
       { label: 'NQ', trades: filtered.filter(t => t.symbol === 'NQ') },
@@ -270,12 +278,14 @@ export function StatsRoute() {
               points={equityPoints}
               cumulative
               xTicks={xTicks}
+              adjustments={adjustmentMarkers}
               headerRight={<EquityChartToggle value={equityView} onChange={setEquityView} />}
             />
           ) : (
             <CandlestickChart
               points={candles}
               xTicks={xTicks}
+              adjustments={adjustmentMarkers}
               headerRight={<EquityChartToggle value={equityView} onChange={setEquityView} />}
             />
           )}

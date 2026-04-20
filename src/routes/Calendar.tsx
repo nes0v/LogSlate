@@ -129,6 +129,14 @@ export function CalendarRoute() {
     [dayBuckets, adjByDate],
   )
 
+  const adjustmentMarkers = useMemo(
+    () =>
+      Array.from(adjByDate.entries())
+        .filter(([date]) => dayBuckets.some(b => b.key === date))
+        .map(([date, amount]) => ({ x: chartDayLabel(date), amount })),
+    [adjByDate, dayBuckets],
+  )
+
   const weekdayLabels = useMemo(() => {
     const first = gridStart
     return Array.from({ length: 7 }, (_, i) => {
@@ -225,12 +233,14 @@ export function CalendarRoute() {
           points={equityPoints}
           cumulative
           xTicks={xTicks}
+          adjustments={adjustmentMarkers}
           headerRight={<EquityChartToggle value={equityView} onChange={setEquityView} />}
         />
       ) : (
         <CandlestickChart
           points={candles}
           xTicks={xTicks}
+          adjustments={adjustmentMarkers}
           headerRight={<EquityChartToggle value={equityView} onChange={setEquityView} />}
         />
       )}

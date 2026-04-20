@@ -3,11 +3,13 @@ import {
   Bar,
   CartesianGrid,
   ComposedChart,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts'
+import type { AdjustmentMarker } from '@/components/EquityCurve'
 import { format } from 'date-fns'
 import type { CandlePoint } from '@/lib/trade-stats'
 import { niceDomain } from '@/lib/chart'
@@ -21,6 +23,8 @@ interface CandlestickChartProps {
   xTicks?: string[]
   /** Optional element to render on the right of the section header. */
   headerRight?: React.ReactNode
+  /** Dashed vertical markers drawn at each deposit/withdrawal date. */
+  adjustments?: AdjustmentMarker[]
 }
 
 interface Row extends CandlePoint {
@@ -30,7 +34,13 @@ interface Row extends CandlePoint {
 
 const LEFT_AXIS_W = 60
 
-export function CandlestickChart({ points, height = 360, xTicks, headerRight }: CandlestickChartProps) {
+export function CandlestickChart({
+  points,
+  height = 360,
+  xTicks,
+  headerRight,
+  adjustments,
+}: CandlestickChartProps) {
   const data: Row[] = useMemo(
     () =>
       points.map(p => ({
@@ -91,6 +101,27 @@ export function CandlestickChart({ points, height = 360, xTicks, headerRight }: 
                 content={<CandleTooltip />}
                 cursor={{ stroke: 'var(--color-text-dim)', strokeWidth: 1, strokeDasharray: '3 3', shapeRendering: 'crispEdges' }}
               />
+              {adjustments?.map(a => {
+                const color = a.amount >= 0 ? 'var(--color-win)' : 'var(--color-loss)'
+                const label = `${a.amount >= 0 ? '+' : '−'}${formatUsd(Math.abs(a.amount))}`
+                return (
+                  <ReferenceLine
+                    key={a.x}
+                    x={a.x}
+                    stroke={color}
+                    strokeDasharray="3 3"
+                    shapeRendering="crispEdges"
+                    label={{
+                      value: label,
+                      position: 'top',
+                      offset: 16,
+                      fill: color,
+                      fontSize: 12,
+                      fontFamily: 'var(--font-mono)',
+                    }}
+                  />
+                )
+              })}
               <Bar dataKey="wick" isAnimationActive={false} shape={CandleShape} />
             </ComposedChart>
           </ResponsiveContainer>
@@ -114,40 +145,19 @@ interface CandleShapeProps {
 function CandleShape(props: CandleShapeProps) {
   const { x = 0, y = 0, width = 0, height = 0, payload } = props
   if (!payload) return null
-  const { open, close, high, low, up, count, adjustment } = payload
+  const { open, close, high, low, up, count } = payload
+  if (count === 0) return null // Adjustment-only days are drawn via ReferenceLine.
+
   const cx = x + width / 2
   const bodyW = Math.max(Math.min(width * 0.75, 18), 2)
   const range = Math.max(high - low, 1e-9)
   const priceY = (v: number) => y + ((high - v) / range) * height
-  // Snap the wick to half-pixel x so a 1px stroke lands on a whole pixel.
-  const wickX = Math.round(cx) + 0.5
-
-  // Adjustment-only day (no trades): draw a thin vertical line from open→close
-  // so the deposit/withdraw step is visible in the chart.
-  if (count === 0) {
-    if (adjustment === 0) return null
-    const openY = priceY(open)
-    const closeY = priceY(close)
-    const color = adjustment > 0 ? 'var(--color-win)' : 'var(--color-loss)'
-    return (
-      <g shapeRendering="crispEdges">
-        <line x1={wickX} x2={wickX} y1={openY} y2={closeY} stroke={color} strokeWidth={1} strokeDasharray="2 2" />
-        <rect
-          x={Math.round(cx - bodyW / 2)}
-          y={Math.round(Math.min(openY, closeY))}
-          width={Math.round(bodyW)}
-          height={1}
-          fill={color}
-          stroke="none"
-        />
-      </g>
-    )
-  }
-
   const bodyTop = priceY(Math.max(open, close))
   const bodyBottom = priceY(Math.min(open, close))
   const bodyH = Math.max(bodyBottom - bodyTop, 1)
   const color = up ? 'var(--color-win)' : 'var(--color-loss)'
+  // Snap the wick to half-pixel x so a 1px stroke lands on a whole pixel.
+  const wickX = Math.round(cx) + 0.5
   return (
     <g shapeRendering="crispEdges">
       <line x1={wickX} x2={wickX} y1={y} y2={y + height} stroke={color} strokeWidth={1} />
@@ -180,7 +190,17 @@ function CandleTooltip({ active, payload }: TooltipProps) {
       <TooltipRow k="H" v={formatUsd(p.high)} />
       <TooltipRow k="L" v={formatUsd(p.low)} />
       <TooltipRow k="C" v={formatUsd(p.close)} />
-      <TooltipRow k="Δ" v={formatUsd(p.close - p.open)} tone={p.close > p.open ? 'win' : p.close < p.open ? 'loss' : 'dim'} />
+      <TooltipRow
+        k="Δ"
+        v={formatUsd(p.close - p.open - p.adjustment)}
+        tone={
+          p.close - p.open - p.adjustment > 0
+            ? 'win'
+            : p.close - p.open - p.adjustment < 0
+              ? 'loss'
+              : 'dim'
+        }
+      />
       <TooltipRow k="trades" v={String(p.count)} />
     </div>
   )
