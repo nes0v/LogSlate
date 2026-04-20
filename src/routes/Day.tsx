@@ -1,9 +1,11 @@
+import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { format, parseISO } from 'date-fns'
-import { Plus, ChevronLeft } from 'lucide-react'
+import { Plus, ChevronLeft, Wallet } from 'lucide-react'
 import { db } from '@/db/schema'
 import { aggregate } from '@/lib/trade-stats'
+import { AdjustmentDialog } from '@/components/AdjustmentDialog'
 import { StatsGrid } from '@/components/StatsGrid'
 import { TradeRow, TRADE_ROW_COLS } from '@/components/TradeRow'
 import { cn } from '@/lib/utils'
@@ -20,6 +22,7 @@ export function DayRoute() {
   )
 
   const stats = aggregate(trades ?? [])
+  const [adjOpen, setAdjOpen] = useState(false)
 
   return (
     <div className="space-y-6">
@@ -34,13 +37,24 @@ export function DayRoute() {
           </Link>
           <h1 className="text-lg font-semibold">{pretty}</h1>
         </div>
-        <Link
-          to={`/trade/new?date=${date}`}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md bg-(--color-accent) text-white hover:opacity-90"
-        >
-          <Plus className="size-4" /> New trade
-        </Link>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setAdjOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md border border-(--color-border) text-(--color-text) hover:bg-(--color-panel-2)"
+          >
+            <Wallet className="size-4" /> Adjust
+          </button>
+          <Link
+            to={`/trade/new?date=${date}`}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md bg-(--color-accent) text-white hover:opacity-90"
+          >
+            <Plus className="size-4" /> New trade
+          </Link>
+        </div>
       </div>
+
+      {adjOpen && <AdjustmentDialog onClose={() => setAdjOpen(false)} defaultDate={date} />}
 
       <StatsGrid stats={stats} />
 
