@@ -114,19 +114,40 @@ interface CandleShapeProps {
 function CandleShape(props: CandleShapeProps) {
   const { x = 0, y = 0, width = 0, height = 0, payload } = props
   if (!payload) return null
-  const { open, close, high, low, up, count } = payload
-  if (count === 0) return null
-
+  const { open, close, high, low, up, count, adjustment } = payload
   const cx = x + width / 2
   const bodyW = Math.max(Math.min(width * 0.75, 18), 2)
   const range = Math.max(high - low, 1e-9)
   const priceY = (v: number) => y + ((high - v) / range) * height
+  // Snap the wick to half-pixel x so a 1px stroke lands on a whole pixel.
+  const wickX = Math.round(cx) + 0.5
+
+  // Adjustment-only day (no trades): draw a thin vertical line from open→close
+  // so the deposit/withdraw step is visible in the chart.
+  if (count === 0) {
+    if (adjustment === 0) return null
+    const openY = priceY(open)
+    const closeY = priceY(close)
+    const color = adjustment > 0 ? 'var(--color-win)' : 'var(--color-loss)'
+    return (
+      <g shapeRendering="crispEdges">
+        <line x1={wickX} x2={wickX} y1={openY} y2={closeY} stroke={color} strokeWidth={1} strokeDasharray="2 2" />
+        <rect
+          x={Math.round(cx - bodyW / 2)}
+          y={Math.round(Math.min(openY, closeY))}
+          width={Math.round(bodyW)}
+          height={1}
+          fill={color}
+          stroke="none"
+        />
+      </g>
+    )
+  }
+
   const bodyTop = priceY(Math.max(open, close))
   const bodyBottom = priceY(Math.min(open, close))
   const bodyH = Math.max(bodyBottom - bodyTop, 1)
   const color = up ? 'var(--color-win)' : 'var(--color-loss)'
-  // Snap the wick to half-pixel x so a 1px stroke lands on a whole pixel.
-  const wickX = Math.round(cx) + 0.5
   return (
     <g shapeRendering="crispEdges">
       <line x1={wickX} x2={wickX} y1={y} y2={y + height} stroke={color} strokeWidth={1} />
