@@ -121,20 +121,21 @@ function candleFromBucket(
   let low = running
   let fees = 0
 
-  // Adjustments (deposits/withdrawals) post at the open of the bucket so the
-  // wick and body reflect the post-adjustment running equity.
-  if (bucketAdjustment !== 0) {
-    running += bucketAdjustment
-    if (running > high) high = running
-    if (running < low) low = running
-  }
-
   const sorted = [...b.trades].sort((a, b2) => firstExecTime(a) - firstExecTime(b2))
   for (const t of sorted) {
     running += effectivePnl(t) ?? 0
     if (running > high) high = running
     if (running < low) low = running
     fees += computeFees(t)
+  }
+
+  // Adjustments (deposits/withdrawals) settle at the end of the bucket, after
+  // all trades have closed — so the wick and body reflect trading movement
+  // first, then the cash flow snaps the close up/down.
+  if (bucketAdjustment !== 0) {
+    running += bucketAdjustment
+    if (running > high) high = running
+    if (running < low) low = running
   }
 
   return {

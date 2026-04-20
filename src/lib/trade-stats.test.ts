@@ -147,15 +147,25 @@ describe('computeCandles', () => {
     expect(second.count).toBe(0)
   })
 
-  it('applies adjustments at bucket open and affects close', () => {
+  it('applies adjustments at bucket close and affects close', () => {
     const day1 = bucketWith([], '2026-04-01')
     const adjMap = new Map<string, number>([['2026-04-01', 1000]])
     const [c] = computeCandles([day1], adjMap)
     expect(c.adjustment).toBe(1000)
-    expect(c.open).toBe(0) // open is startEquity, before adjustment
-    expect(c.close).toBe(1000) // adjustment posts at open, carries into close
+    expect(c.open).toBe(0)
+    expect(c.close).toBe(1000)
     expect(c.high).toBe(1000)
     expect(c.low).toBe(0)
+  })
+
+  it('adjustment posts after trades (end-of-day)', () => {
+    // A winning trade closes at +195.5, then a $500 deposit lands on top.
+    const day = bucketWith([winningTrade()], '2026-04-01')
+    const adjMap = new Map<string, number>([['2026-04-01', 500]])
+    const [c] = computeCandles([day], adjMap)
+    expect(c.close).toBeCloseTo(195.5 + 500, 5)
+    // High should reflect the post-adjustment peak, not an intermediate value.
+    expect(c.high).toBeCloseTo(695.5, 5)
   })
 
   it('negative adjustments (withdraw) lower equity', () => {
