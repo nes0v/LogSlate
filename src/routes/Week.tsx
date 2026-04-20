@@ -10,7 +10,7 @@ import {
   weekBounds,
   WEEK_OPTS,
 } from '@/lib/buckets'
-import { aggregate, computeCandles } from '@/lib/trade-stats'
+import { adjustmentsByDate, aggregate, computeCandles } from '@/lib/trade-stats'
 import { StatsGrid } from '@/components/StatsGrid'
 import { EquityCurve } from '@/components/EquityCurve'
 import { CandlestickChart } from '@/components/CandlestickChart'
@@ -31,14 +31,26 @@ export function WeekRoute() {
     [wsKey, weKey],
     [],
   )
+  const adjustments = useLiveQuery(
+    () => db.adjustments.where('date').between(wsKey, weKey, true, true).toArray(),
+    [wsKey, weKey],
+    [],
+  )
 
   const stats = aggregate(trades ?? [])
   const days = useMemo(() => bucketByDay(trades ?? [], ws, we), [trades, ws, we])
+  const adjByDate = useMemo(() => adjustmentsByDate(adjustments ?? []), [adjustments])
   const points = useMemo(
-    () => days.map(b => ({ key: b.key, label: b.label, pnl: aggregate(b.trades).net_pnl })),
-    [days],
+    () =>
+      days.map(b => ({
+        key: b.key,
+        label: b.label,
+        pnl: aggregate(b.trades).net_pnl + (adjByDate.get(b.key) ?? 0),
+        count: b.trades.length,
+      })),
+    [days, adjByDate],
   )
-  const candles = useMemo(() => computeCandles(days), [days])
+  const candles = useMemo(() => computeCandles(days, adjByDate), [days, adjByDate])
 
   function go(date: Date) {
     navigate(`/week/${format(startOfWeek(date, WEEK_OPTS), 'yyyy-MM-dd')}`)

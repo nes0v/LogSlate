@@ -45,7 +45,7 @@ function saveToken(t: StoredToken | null) {
 
 // ---------- external store ----------
 
-const state: DriveState = {
+let state: DriveState = {
   status: loadToken() && loadToken()!.expiresAt > Date.now() + 30_000 ? 'signed-in' : 'signed-out',
   error: null,
   userEmail: null,
@@ -65,7 +65,10 @@ export function getDriveState(): DriveState {
 }
 
 function update(patch: Partial<DriveState>): void {
-  Object.assign(state, patch)
+  // Create a new object so useSyncExternalStore detects the change via
+  // reference equality — mutating in place would leave getSnapshot() returning
+  // the same reference and React would skip the re-render.
+  state = { ...state, ...patch }
   listeners.forEach(fn => fn())
 }
 

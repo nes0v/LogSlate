@@ -8,13 +8,19 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
+import { format } from 'date-fns'
 import type { CandlePoint } from '@/lib/trade-stats'
+import { niceDomain } from '@/lib/chart'
 import { formatUsd } from '@/lib/money'
 import { cn } from '@/lib/utils'
 
 interface CandlestickChartProps {
   points: CandlePoint[]
   height?: number
+  /** Explicit X-axis tick values (must match point labels). */
+  xTicks?: string[]
+  /** Optional element to render on the right of the section header. */
+  headerRight?: React.ReactNode
 }
 
 interface Row extends CandlePoint {
@@ -22,9 +28,9 @@ interface Row extends CandlePoint {
   up: boolean
 }
 
-const LEFT_AXIS_W = 64
+const LEFT_AXIS_W = 60
 
-export function CandlestickChart({ points, height = 240 }: CandlestickChartProps) {
+export function CandlestickChart({ points, height = 360, xTicks, headerRight }: CandlestickChartProps) {
   const data: Row[] = useMemo(
     () =>
       points.map(p => ({
@@ -35,39 +41,56 @@ export function CandlestickChart({ points, height = 240 }: CandlestickChartProps
     [points],
   )
 
+  const domain = useMemo<[number, number]>(() => {
+    if (points.length === 0) return [0, 1]
+    let min = Infinity
+    let max = -Infinity
+    for (const p of points) {
+      if (p.low < min) min = p.low
+      if (p.high > max) max = p.high
+    }
+    return niceDomain(min, max)
+  }, [points])
+
   const hasData = points.length > 0 && points.some(p => p.count > 0)
 
   return (
-    <div className="bg-(--color-panel) border border-(--color-border) rounded-md p-3">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-xs text-(--color-text-dim) uppercase tracking-wider">
-          Equity candles
-        </span>
+    <section className="space-y-2">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-medium">Equity</h2>
+        {headerRight}
       </div>
+      <div className="bg-(--color-panel) border border-(--color-border) rounded-md p-3">
       {hasData ? (
         <div style={{ height }}>
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart
               data={data}
-              margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+              margin={{ top: 28, right: 12, left: 8, bottom: 0 }}
               syncId="equity"
             >
-              <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 3" vertical={false} />
+              <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 3" vertical={false} shapeRendering="crispEdges" />
               <XAxis
                 dataKey="label"
                 tick={{ fill: 'var(--color-text-dim)', fontSize: 11 }}
                 tickLine={false}
-                axisLine={{ stroke: 'var(--color-border)' }}
+                axisLine={false}
+                padding={{ left: 0, right: 0 }}
+                {...(xTicks ? { ticks: xTicks, interval: 0 as const } : {})}
               />
               <YAxis
                 width={LEFT_AXIS_W}
                 tick={{ fill: 'var(--color-text-dim)', fontSize: 11 }}
                 tickLine={false}
                 axisLine={false}
-                domain={['dataMin', 'dataMax']}
+                tickMargin={10}
+                domain={domain}
                 tickFormatter={v => formatUsd(v)}
               />
-              <Tooltip content={<CandleTooltip />} cursor={{ fill: 'var(--color-panel-2)', opacity: 0.5 }} />
+              <Tooltip
+                content={<CandleTooltip />}
+                cursor={{ stroke: 'var(--color-text-dim)', strokeWidth: 1, strokeDasharray: '3 3', shapeRendering: 'crispEdges' }}
+              />
               <Bar dataKey="wick" isAnimationActive={false} shape={CandleShape} />
             </ComposedChart>
           </ResponsiveContainer>
@@ -75,7 +98,8 @@ export function CandlestickChart({ points, height = 240 }: CandlestickChartProps
       ) : (
         <div className="text-sm text-(--color-text-dim) text-center py-8">No data in this period.</div>
       )}
-    </div>
+      </div>
+    </section>
   )
 }
 
@@ -90,19 +114,30 @@ interface CandleShapeProps {
 function CandleShape(props: CandleShapeProps) {
   const { x = 0, y = 0, width = 0, height = 0, payload } = props
   if (!payload) return null
-  const { open, close, high, low, up } = payload
+  const { open, close, high, low, up, count } = payload
+  if (count === 0) return null
+
+  const cx = x + width / 2
+  const bodyW = Math.max(Math.min(width * 0.75, 18), 2)
   const range = Math.max(high - low, 1e-9)
   const priceY = (v: number) => y + ((high - v) / range) * height
   const bodyTop = priceY(Math.max(open, close))
   const bodyBottom = priceY(Math.min(open, close))
   const bodyH = Math.max(bodyBottom - bodyTop, 1)
-  const cx = x + width / 2
-  const bodyW = Math.max(Math.min(width * 0.65, 14), 2)
   const color = up ? 'var(--color-win)' : 'var(--color-loss)'
+  // Snap the wick to half-pixel x so a 1px stroke lands on a whole pixel.
+  const wickX = Math.round(cx) + 0.5
   return (
-    <g>
-      <line x1={cx} x2={cx} y1={y} y2={y + height} stroke={color} strokeWidth={1} shapeRendering="crispEdges" />
-      <rect x={cx - bodyW / 2} y={bodyTop} width={bodyW} height={bodyH} fill={color} stroke={color} />
+    <g shapeRendering="crispEdges">
+      <line x1={wickX} x2={wickX} y1={y} y2={y + height} stroke={color} strokeWidth={1} />
+      <rect
+        x={Math.round(cx - bodyW / 2)}
+        y={Math.round(bodyTop)}
+        width={Math.round(bodyW)}
+        height={Math.max(Math.round(bodyH), 1)}
+        fill={color}
+        stroke="none"
+      />
     </g>
   )
 }
@@ -113,18 +148,19 @@ interface TooltipProps {
   payload?: Array<{ payload: Row }>
 }
 
-function CandleTooltip({ active, label, payload }: TooltipProps) {
+function CandleTooltip({ active, payload }: TooltipProps) {
   if (!active || !payload || payload.length === 0) return null
   const p = payload[0].payload
+  const labelText = p.key ? format(new Date(p.key + 'T00:00:00'), 'MMM d') : p.label
   return (
     <div className="bg-(--color-panel-2) border border-(--color-border) rounded-md p-2 text-xs font-mono">
-      <div className="text-(--color-text-dim) mb-1">{label}</div>
+      <div className="text-(--color-text-dim) mb-2">{labelText}</div>
       <TooltipRow k="O" v={formatUsd(p.open)} />
-      <TooltipRow k="H" v={formatUsd(p.high)} tone="win" />
-      <TooltipRow k="L" v={formatUsd(p.low)} tone="loss" />
-      <TooltipRow k="C" v={formatUsd(p.close)} tone={p.close > p.open ? 'win' : p.close < p.open ? 'loss' : 'dim'} />
+      <TooltipRow k="H" v={formatUsd(p.high)} />
+      <TooltipRow k="L" v={formatUsd(p.low)} />
+      <TooltipRow k="C" v={formatUsd(p.close)} />
       <TooltipRow k="Δ" v={formatUsd(p.close - p.open)} tone={p.close > p.open ? 'win' : p.close < p.open ? 'loss' : 'dim'} />
-      <TooltipRow k="trades" v={String(p.count)} tone="dim" />
+      <TooltipRow k="trades" v={String(p.count)} />
     </div>
   )
 }

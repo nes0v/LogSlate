@@ -4,6 +4,7 @@ import { CheckCircle2, CloudDownload, CloudUpload, LogIn, LogOut, RefreshCw } fr
 import { isConfigured, signIn, signOut, useDriveState } from '@/lib/drive'
 import { clearSyncState, lastSyncAt, syncNow, type SyncResult } from '@/lib/sync'
 import { exportBackup, importBackup } from '@/lib/backup'
+import { EquityAdjustmentsPanel } from '@/components/EquityAdjustmentsPanel'
 
 export function SettingsRoute() {
   const drive = useDriveState()
@@ -37,7 +38,9 @@ export function SettingsRoute() {
       const r = await importBackup(file)
       setError(null)
       setLastResult(null)
-      alert(`Imported ${r.imported} trade${r.imported === 1 ? '' : 's'}. Local DB replaced.`)
+      alert(
+        `Imported ${r.imported} trade${r.imported === 1 ? '' : 's'} and ${r.adjustments} adjustment${r.adjustments === 1 ? '' : 's'}. Local DB replaced.`,
+      )
     } catch (e) {
       setError((e as Error).message ?? String(e))
     }
@@ -130,10 +133,19 @@ export function SettingsRoute() {
                 </div>
 
                 {lastResult && !error && (
-                  <div className="text-xs text-(--color-text-dim) font-mono">
-                    merged {lastResult.mergedCount} · local {lastResult.localCount} · remote {lastResult.remoteCount}
-                    {lastResult.createdRemote ? ' · created remote file' : ''}
-                    {lastResult.skippedPush ? ' · skipped push (no changes)' : ''}
+                  <div className="text-xs text-(--color-text-dim) font-mono space-y-0.5">
+                    <div>
+                      trades: merged {lastResult.mergedCount} · local {lastResult.localCount} · remote{' '}
+                      {lastResult.remoteCount}
+                    </div>
+                    <div>
+                      adjustments: merged {lastResult.mergedAdjustmentCount} · local{' '}
+                      {lastResult.localAdjustmentCount} · remote {lastResult.remoteAdjustmentCount}
+                    </div>
+                    <div>
+                      {lastResult.createdRemote ? 'created remote file · ' : ''}
+                      {lastResult.skippedPush ? 'skipped push (no changes)' : ''}
+                    </div>
                   </div>
                 )}
                 {error && <div className="text-sm text-(--color-loss)">Sync error: {error}</div>}
@@ -142,6 +154,8 @@ export function SettingsRoute() {
           </div>
         )}
       </section>
+
+      <EquityAdjustmentsPanel />
 
       <section className="space-y-3">
         <h2 className="text-sm font-medium">Backup &amp; restore</h2>

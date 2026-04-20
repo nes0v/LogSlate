@@ -1,27 +1,27 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { format } from 'date-fns'
+import { addDays, endOfMonth, format, startOfMonth } from 'date-fns'
 import { X } from 'lucide-react'
 import type { ContractType, Rating, Session, SymbolKey } from '@/db/types'
 import { db } from '@/db/schema'
-import { deleteTrade } from '@/db/queries'
 import {
   applyFilters,
   EMPTY_FILTERS,
   filtersFromParams,
-  hasAnyFilter,
   paramsFromFilters,
   type TradeFilters,
 } from '@/lib/filters'
-import { aggregate, computeCandles } from '@/lib/trade-stats'
-import { bucketByDay } from '@/lib/buckets'
+import { adjustmentsByDate, aggregate, computeCandles } from '@/lib/trade-stats'
+import { bucketByDay, bucketByWeek } from '@/lib/buckets'
 import { StatsGrid } from '@/components/StatsGrid'
 import { EquityCurve } from '@/components/EquityCurve'
 import { CandlestickChart } from '@/components/CandlestickChart'
 import { FeesChart } from '@/components/FeesChart'
+import { WeeklyCards } from '@/components/WeeklyCards'
+import { PeriodBreakdown } from '@/components/PeriodBreakdown'
 import { FacetBreakdown } from '@/components/FacetBreakdown'
-import { TradeRow } from '@/components/TradeRow'
+import { TradeRow, TRADE_ROW_COLS } from '@/components/TradeRow'
 import { Pills } from '@/components/form/Pills'
 import { Field, inputClass } from '@/components/form/Field'
 import { cn } from '@/lib/utils'
@@ -56,37 +56,100 @@ const RATING_OPTS = [
 
 export function StatsRoute() {
   const [params, setParams] = useSearchParams()
-  const filters = filtersFromParams(params)
-  const activeFilters = hasAnyFilter(filters)
+  const urlFilters = filtersFromParams(params)
+  const [equityView, setEquityView] = useState<'curve' | 'candles'>('curve')
+
+  // Effective filters = URL filters with current month as the default date
+  // range when none is specified. The URL stays clean (no params) for the
+  // default view; params only appear when the user deviates from it.
+  const filters = useMemo<TradeFilters>(() => {
+    const now = new Date()
+    return {
+      ...urlFilters,
+      from: urlFilters.from ?? format(startOfMonth(now), 'yyyy-MM-dd'),
+      to: urlFilters.to ?? format(endOfMonth(now), 'yyyy-MM-dd'),
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params])
 
   const allTrades = useLiveQuery(() => db.trades.orderBy('trade_date').toArray(), [], [])
+  const allAdjustments = useLiveQuery(
+    () => db.adjustments.orderBy('date').toArray(),
+    [],
+    [],
+  )
 
   const filtered = useMemo(() => applyFilters(allTrades ?? [], filters), [allTrades, filters])
+  const adjustmentsInRange = useMemo(() => {
+    const list = allAdjustments ?? []
+    return list.filter(a => {
+      if (filters.from && a.date < filters.from) return false
+      if (filters.to && a.date > filters.to) return false
+      return true
+    })
+  }, [allAdjustments, filters.from, filters.to])
+  const adjByDate = useMemo(() => adjustmentsByDate(adjustmentsInRange), [adjustmentsInRange])
 
   const stats = aggregate(filtered)
 
-  // Bucket trades by day across the filtered range for charts.
+  // Bucket trades by day across the filter range (falling back to first/last
+  // traded day when no explicit from/to). Using the filter bounds makes charts
+  // show every day in the period, not just days that had trades.
   const { rangeStart, rangeEnd } = useMemo(() => {
+    if (filters.from && filters.to) return { rangeStart: filters.from, rangeEnd: filters.to }
     if (filtered.length === 0) return { rangeStart: null, rangeEnd: null }
     const dates = filtered.map(t => t.trade_date).sort()
-    return { rangeStart: dates[0], rangeEnd: dates[dates.length - 1] }
-  }, [filtered])
+    return {
+      rangeStart: filters.from ?? dates[0],
+      rangeEnd: filters.to ?? dates[dates.length - 1],
+    }
+  }, [filtered, filters.from, filters.to])
 
   const days = useMemo(() => {
+    if (!rangeStart || !rangeEnd) return []
+    // Include one extra day after the range so charts show the first of the
+    // following month as the right edge.
+    const endPlusOne = addDays(new Date(rangeEnd + 'T00:00:00'), 1)
+    return bucketByDay(filtered, new Date(rangeStart + 'T00:00:00'), endPlusOne)
+  }, [filtered, rangeStart, rangeEnd])
+
+  // Label each day as the day number; the 1st of each month keeps the month
+  // prefix so the axis still anchors the viewer to which month they're in.
+  const labelFor = (dateKey: string) => {
+    const d = new Date(dateKey + 'T00:00:00')
+    return d.getDate() === 1 ? format(d, 'MMM d') : format(d, 'd')
+  }
+
+  // Every day is a tick; Recharts handles spacing via `interval={0}` on the XAxis.
+  const xTicks = useMemo(() => days.map(b => labelFor(b.key)), [days])
+
+  const weeks = useMemo(() => {
+    if (!rangeStart || !rangeEnd) return []
+    return bucketByWeek(filtered, new Date(rangeStart + 'T00:00:00'), new Date(rangeEnd + 'T00:00:00'))
+  }, [filtered, rangeStart, rangeEnd])
+
+  const dayBuckets = useMemo(() => {
     if (!rangeStart || !rangeEnd) return []
     return bucketByDay(filtered, new Date(rangeStart + 'T00:00:00'), new Date(rangeEnd + 'T00:00:00'))
   }, [filtered, rangeStart, rangeEnd])
 
   const equityPoints = useMemo(
-    () => days.map(b => ({ key: b.key, label: format(new Date(b.key + 'T00:00:00'), 'MMM d'), pnl: aggregate(b.trades).net_pnl })),
-    [days],
+    () =>
+      days.map(b => ({
+        key: b.key,
+        label: labelFor(b.key),
+        pnl: aggregate(b.trades).net_pnl + (adjByDate.get(b.key) ?? 0),
+        count: b.trades.length,
+      })),
+    [days, adjByDate],
   )
   const candles = useMemo(
     () =>
       computeCandles(
-        days.map(b => ({ ...b, label: format(new Date(b.key + 'T00:00:00'), 'MMM d') })),
+        days.map(b => ({ ...b, label: labelFor(b.key) })),
+        adjByDate,
       ),
-    [days],
+    [days, adjByDate],
   )
 
   const bySymbol = useMemo(
@@ -136,24 +199,30 @@ export function StatsRoute() {
     })
   }, [filtered])
 
+  // Writes the user-facing change back to URL params. If a field matches the
+  // current-month default, we drop it so the URL stays clean on the default view.
   function update(next: Partial<TradeFilters>) {
-    const merged = { ...filters, ...next }
+    const now = new Date()
+    const defaultFrom = format(startOfMonth(now), 'yyyy-MM-dd')
+    const defaultTo = format(endOfMonth(now), 'yyyy-MM-dd')
+    const merged: TradeFilters = { ...urlFilters, ...next }
+    if (merged.from === defaultFrom) merged.from = null
+    if (merged.to === defaultTo) merged.to = null
     setParams(paramsFromFilters(merged))
   }
 
+  // "Clear" returns to the bare /stats URL — which resolves to the current month.
   function clear() {
     setParams(paramsFromFilters(EMPTY_FILTERS))
   }
 
-  async function handleDelete(id: string) {
-    await deleteTrade(id)
-  }
+  const isDefault = params.toString() === ''
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold">Stats</h1>
-        {activeFilters && (
+        {!isDefault && (
           <button
             onClick={clear}
             className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md border border-(--color-border) text-(--color-text-dim) hover:text-(--color-text)"
@@ -202,22 +271,57 @@ export function StatsRoute() {
 
       {filtered.length > 0 ? (
         <>
-          <EquityCurve points={equityPoints} cumulative />
-          <CandlestickChart points={candles} />
-          <FeesChart points={candles} />
-          <div className="grid md:grid-cols-2 gap-4">
+          {(() => {
+            const toggle = (
+              <div className="flex gap-1 text-xs font-mono">
+                <button
+                  type="button"
+                  onClick={() => setEquityView('curve')}
+                  className={cn(
+                    'px-2 py-1 rounded-md border transition-colors',
+                    equityView === 'curve'
+                      ? 'border-(--color-border) bg-(--color-panel-2) text-(--color-text)'
+                      : 'border-transparent text-(--color-text-dim) hover:text-(--color-text)',
+                  )}
+                >
+                  Line
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEquityView('candles')}
+                  className={cn(
+                    'px-2 py-1 rounded-md border transition-colors',
+                    equityView === 'candles'
+                      ? 'border-(--color-border) bg-(--color-panel-2) text-(--color-text)'
+                      : 'border-transparent text-(--color-text-dim) hover:text-(--color-text)',
+                  )}
+                >
+                  Candles
+                </button>
+              </div>
+            )
+            return equityView === 'curve' ? (
+              <EquityCurve points={equityPoints} cumulative xTicks={xTicks} headerRight={toggle} />
+            ) : (
+              <CandlestickChart points={candles} xTicks={xTicks} headerRight={toggle} />
+            )
+          })()}
+          <FeesChart points={candles} xTicks={xTicks} />
+          <div className="grid md:grid-cols-2 gap-x-4 gap-y-8">
             <FacetBreakdown title="By Symbol" items={bySymbol} />
             <FacetBreakdown title="By Contract" items={byContract} />
             <FacetBreakdown title="By Session" items={bySession} />
             <FacetBreakdown title="By Rating" items={byRating} />
           </div>
+          <WeeklyCards buckets={weeks} />
+          <PeriodBreakdown title="Days" buckets={dayBuckets} />
           <section>
             <h2 className="text-sm font-medium mb-2">
               Trades <span className="text-(--color-text-dim) font-normal">({filtered.length})</span>
             </h2>
-            <div className="space-y-1.5">
+            <div className={cn('grid gap-x-5 gap-y-1.5', TRADE_ROW_COLS)}>
               {tradesDesc.map((t, i) => (
-                <TradeRow key={t.id} trade={t} index={i + 1} onDelete={handleDelete} />
+                <TradeRow key={t.id} trade={t} index={i + 1} />
               ))}
             </div>
           </section>

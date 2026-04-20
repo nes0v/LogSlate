@@ -1,5 +1,10 @@
 import { db } from '@/db/schema'
-import type { TradeDraft, TradeRecord } from '@/db/types'
+import type {
+  AdjustmentDraft,
+  EquityAdjustment,
+  TradeDraft,
+  TradeRecord,
+} from '@/db/types'
 
 function now(): string {
   return new Date().toISOString()
@@ -38,4 +43,25 @@ export async function listTradesInRange(startDate: string, endDate: string): Pro
 
 export async function listAllTrades(): Promise<TradeRecord[]> {
   return db.trades.orderBy('trade_date').toArray()
+}
+
+// ---------- equity adjustments ----------
+
+export async function createAdjustment(draft: AdjustmentDraft): Promise<EquityAdjustment> {
+  const ts = now()
+  const rec: EquityAdjustment = { ...draft, id: newId(), created_at: ts, updated_at: ts }
+  await db.adjustments.add(rec)
+  return rec
+}
+
+export async function updateAdjustment(id: string, patch: Partial<AdjustmentDraft>): Promise<void> {
+  await db.adjustments.update(id, { ...patch, updated_at: now() })
+}
+
+export async function deleteAdjustment(id: string): Promise<void> {
+  await db.adjustments.delete(id)
+}
+
+export async function listAdjustments(): Promise<EquityAdjustment[]> {
+  return db.adjustments.orderBy('date').toArray()
 }

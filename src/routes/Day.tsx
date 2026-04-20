@@ -3,10 +3,10 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { format, parseISO } from 'date-fns'
 import { Plus, ChevronLeft } from 'lucide-react'
 import { db } from '@/db/schema'
-import { deleteTrade } from '@/db/queries'
 import { aggregate } from '@/lib/trade-stats'
 import { StatsGrid } from '@/components/StatsGrid'
-import { TradeRow } from '@/components/TradeRow'
+import { TradeRow, TRADE_ROW_COLS } from '@/components/TradeRow'
+import { cn } from '@/lib/utils'
 
 export function DayRoute() {
   const { date = '' } = useParams()
@@ -20,10 +20,6 @@ export function DayRoute() {
   )
 
   const stats = aggregate(trades ?? [])
-
-  async function handleDelete(id: string) {
-    await deleteTrade(id)
-  }
 
   return (
     <div className="space-y-6">
@@ -49,9 +45,9 @@ export function DayRoute() {
       <StatsGrid stats={stats} />
 
       {trades && trades.length > 0 ? (
-        <div className="space-y-1.5">
+        <div className={cn('grid gap-x-5 gap-y-1.5', TRADE_ROW_COLS)}>
           {trades.map((t, i) => (
-            <TradeRow key={t.id} trade={t} index={i + 1} onDelete={handleDelete} />
+            <TradeRow key={t.id} trade={t} index={i + 1} />
           ))}
         </div>
       ) : (

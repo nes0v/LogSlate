@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie'
-import type { Execution, TradeRecord } from '@/db/types'
+import type { EquityAdjustment, Execution, TradeRecord } from '@/db/types'
 
 interface LegacyV1Trade extends Omit<TradeRecord, 'executions'> {
   buys?: Omit<Execution, 'kind'>[]
@@ -8,6 +8,7 @@ interface LegacyV1Trade extends Omit<TradeRecord, 'executions'> {
 
 class LogslateDB extends Dexie {
   trades!: EntityTable<TradeRecord, 'id'>
+  adjustments!: EntityTable<EquityAdjustment, 'id'>
 
   constructor() {
     super('logslate')
@@ -37,6 +38,12 @@ class LogslateDB extends Dexie {
             delete t.sells
           })
       })
+
+    // v3: equity adjustments (deposits / withdrawals).
+    this.version(3).stores({
+      trades: '&id, trade_date, symbol, session, updated_at, created_at',
+      adjustments: '&id, date, updated_at, created_at',
+    })
   }
 }
 

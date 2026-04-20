@@ -1,68 +1,111 @@
 import { useMemo } from 'react'
 import {
   Bar,
-  BarChart,
   CartesianGrid,
+  ComposedChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts'
+import { format } from 'date-fns'
 import type { CandlePoint } from '@/lib/trade-stats'
+import { niceDomain } from '@/lib/chart'
 import { formatUsd } from '@/lib/money'
 
 interface FeesChartProps {
   points: CandlePoint[]
   height?: number
+  /** Explicit X-axis tick values (must match point labels). */
+  xTicks?: string[]
 }
 
-const LEFT_AXIS_W = 64
+const LEFT_AXIS_W = 60
 
-export function FeesChart({ points, height = 140 }: FeesChartProps) {
-  const data = useMemo(() => points.map(p => ({ key: p.key, label: p.label, fees: p.fees })), [points])
+export function FeesChart({ points, height = 180, xTicks }: FeesChartProps) {
+  const data = useMemo(
+    () => points.map(p => ({ key: p.key, label: p.label, fees: p.fees, count: p.count })),
+    [points],
+  )
   const hasFees = points.some(p => p.fees > 0)
+  const domain = useMemo<[number, number]>(() => {
+    if (points.length === 0) return [0, 1]
+    let max = 0
+    for (const p of points) {
+      if (p.fees > max) max = p.fees
+    }
+    return niceDomain(0, max)
+  }, [points])
 
   return (
-    <div className="bg-(--color-panel) border border-(--color-border) rounded-md p-3">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-xs text-(--color-text-dim) uppercase tracking-wider">Fees paid</span>
-      </div>
+    <section className="space-y-2">
+      <h2 className="text-sm font-medium">Fees</h2>
+      <div className="bg-(--color-panel) border border-(--color-border) rounded-md p-3">
       {hasFees ? (
         <div style={{ height }}>
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }} syncId="equity">
-              <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 3" vertical={false} />
+            <ComposedChart data={data} margin={{ top: 28, right: 12, left: 8, bottom: 0 }} syncId="equity">
+              <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 3" vertical={false} shapeRendering="crispEdges" />
               <XAxis
                 dataKey="label"
                 tick={{ fill: 'var(--color-text-dim)', fontSize: 11 }}
                 tickLine={false}
-                axisLine={{ stroke: 'var(--color-border)' }}
+                axisLine={false}
+                padding={{ left: 0, right: 0 }}
+                {...(xTicks ? { ticks: xTicks, interval: 0 as const } : {})}
               />
               <YAxis
                 width={LEFT_AXIS_W}
                 tick={{ fill: 'var(--color-text-dim)', fontSize: 11 }}
                 tickLine={false}
                 axisLine={false}
+                tickMargin={10}
+                domain={domain}
                 tickFormatter={v => formatUsd(v)}
               />
               <Tooltip
-                cursor={{ fill: 'var(--color-panel-2)', opacity: 0.5 }}
-                contentStyle={{
-                  background: 'var(--color-panel-2)',
-                  border: '1px solid var(--color-border)',
-                  borderRadius: 6,
-                  fontSize: 12,
-                }}
-                labelStyle={{ color: 'var(--color-text-dim)' }}
-                formatter={(v) => [formatUsd(Number(v)), 'fees']}
+                cursor={{ stroke: 'var(--color-text-dim)', strokeWidth: 1, strokeDasharray: '3 3', shapeRendering: 'crispEdges' }}
+                content={<FeesTooltip />}
               />
-              <Bar dataKey="fees" barSize={10} fill="var(--color-fee)" fillOpacity={0.85} isAnimationActive={false} />
-            </BarChart>
+              <Bar dataKey="fees" maxBarSize={18} fill="var(--color-fee)" fillOpacity={0.85} isAnimationActive={false} />
+            </ComposedChart>
           </ResponsiveContainer>
         </div>
       ) : (
         <div className="text-sm text-(--color-text-dim) text-center py-8">No fees in this period.</div>
       )}
+      </div>
+    </section>
+  )
+}
+
+interface TooltipPayload {
+  key?: string
+  label?: string
+  fees?: number
+  count?: number
+}
+
+interface FeesTooltipProps {
+  active?: boolean
+  payload?: Array<{ payload: TooltipPayload }>
+}
+
+function FeesTooltip({ active, payload }: FeesTooltipProps) {
+  if (!active || !payload || payload.length === 0) return null
+  const p = payload[0].payload
+  const dateLabel = p.key ? format(new Date(p.key + 'T00:00:00'), 'MMM d') : p.label ?? ''
+  return (
+    <div className="bg-(--color-panel-2) border border-(--color-border) rounded-md p-2 text-xs font-mono">
+      <div className="text-(--color-text-dim) mb-2">{dateLabel}</div>
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-(--color-text-dim)">fees</span>
+        <span>{formatUsd(p.fees ?? 0)}</span>
+      </div>
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-(--color-text-dim)">trades</span>
+        <span>{p.count ?? 0}</span>
+      </div>
     </div>
   )
 }

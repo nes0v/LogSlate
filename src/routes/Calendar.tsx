@@ -1,7 +1,8 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
+  addDays,
   addMonths,
   eachDayOfInterval,
   endOfMonth,
@@ -15,14 +16,12 @@ import {
 } from 'date-fns'
 import { db } from '@/db/schema'
 import { effectivePnl } from '@/lib/trade-math'
-import { aggregate, computeCandles } from '@/lib/trade-stats'
 import { formatUsd } from '@/lib/money'
-import { bucketByDay, bucketByWeek, parseYearMonth, WEEK_OPTS } from '@/lib/buckets'
-import { StatsGrid } from '@/components/StatsGrid'
-import { EquityCurve } from '@/components/EquityCurve'
+import { bucketByDay, parseYearMonth, WEEK_OPTS } from '@/lib/buckets'
+import { adjustmentsByDate, aggregate, computeCandles } from '@/lib/trade-stats'
 import { CandlestickChart } from '@/components/CandlestickChart'
+import { EquityCurve } from '@/components/EquityCurve'
 import { FeesChart } from '@/components/FeesChart'
-import { PeriodBreakdown } from '@/components/PeriodBreakdown'
 import { PeriodNav } from '@/components/PeriodNav'
 import { cn } from '@/lib/utils'
 
@@ -32,6 +31,7 @@ export function CalendarRoute() {
   const { ym } = useParams()
   const navigate = useNavigate()
   const month = parseYearMonth(ym)
+  const [equityView, setEquityView] = useState<'curve' | 'candles'>('curve')
 
   const ms = startOfMonth(month)
   const me = endOfMonth(month)
@@ -48,6 +48,21 @@ export function CalendarRoute() {
     [],
   )
 
+  const monthStartKey = format(ms, DATE_KEY)
+  const monthEndKey = format(me, DATE_KEY)
+  const monthTrades = useLiveQuery(
+    () =>
+      db.trades.where('trade_date').between(monthStartKey, monthEndKey, true, true).toArray(),
+    [monthStartKey, monthEndKey],
+    [],
+  )
+  const monthAdjustments = useLiveQuery(
+    () =>
+      db.adjustments.where('date').between(monthStartKey, monthEndKey, true, true).toArray(),
+    [monthStartKey, monthEndKey],
+    [],
+  )
+
   // Per-day map for the grid (spans padded out-of-month days).
   const perDay = useMemo(() => {
     const m = new Map<string, { pnl: number; count: number }>()
@@ -61,37 +76,58 @@ export function CalendarRoute() {
     return m
   }, [trades])
 
-  // Aggregates below the grid only consider trades in the current month.
-  const monthTrades = useMemo(
-    () => (trades ?? []).filter(t => isSameMonth(new Date(t.trade_date + 'T00:00:00'), month)),
-    [trades, month],
-  )
-  const monthStats = aggregate(monthTrades)
-  const dayBuckets = useMemo(() => bucketByDay(monthTrades, ms, me), [monthTrades, ms, me])
-  const weekBuckets = useMemo(() => bucketByWeek(monthTrades, ms, me), [monthTrades, ms, me])
-  const equityPoints = useMemo(
-    () =>
-      dayBuckets.map(b => ({
-        key: b.key,
-        label: format(new Date(b.key + 'T00:00:00'), 'd'),
-        pnl: aggregate(b.trades).net_pnl,
-      })),
-    [dayBuckets],
-  )
-  const candles = useMemo(
-    () =>
-      computeCandles(
-        dayBuckets.map(b => ({
-          ...b,
-          label: format(new Date(b.key + 'T00:00:00'), 'd'),
-        })),
-      ),
-    [dayBuckets],
-  )
+  // Running total for the "Month net" indicator in the header.
+  const monthNet = useMemo(() => {
+    let total = 0
+    for (const t of trades ?? []) {
+      if (isSameMonth(new Date(t.trade_date + 'T00:00:00'), month)) {
+        total += effectivePnl(t) ?? 0
+      }
+    }
+    return total
+  }, [trades, month])
 
   function go(d: Date) {
     navigate(`/month/${format(d, 'yyyy-MM')}`)
   }
+
+  // Day buckets across the month, extended by 1 so charts show the first of
+  // the next month as the right edge.
+  const dayBuckets = useMemo(() => {
+    return bucketByDay(monthTrades ?? [], ms, addDays(me, 1))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [monthTrades, monthStartKey, monthEndKey])
+
+  const adjByDate = useMemo(
+    () => adjustmentsByDate(monthAdjustments ?? []),
+    [monthAdjustments],
+  )
+
+  const labelFor = (dateKey: string) => {
+    const d = new Date(dateKey + 'T00:00:00')
+    return d.getDate() === 1 ? format(d, 'MMM d') : format(d, 'd')
+  }
+
+  const xTicks = useMemo(() => dayBuckets.map(b => labelFor(b.key)), [dayBuckets])
+
+  const equityPoints = useMemo(
+    () =>
+      dayBuckets.map(b => ({
+        key: b.key,
+        label: labelFor(b.key),
+        pnl: aggregate(b.trades).net_pnl + (adjByDate.get(b.key) ?? 0),
+        count: b.trades.length,
+      })),
+    [dayBuckets, adjByDate],
+  )
+  const candles = useMemo(
+    () =>
+      computeCandles(
+        dayBuckets.map(b => ({ ...b, label: labelFor(b.key) })),
+        adjByDate,
+      ),
+    [dayBuckets, adjByDate],
+  )
 
   const weekdayLabels = useMemo(() => {
     const first = gridStart
@@ -103,7 +139,7 @@ export function CalendarRoute() {
   }, [gridStart])
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div className="flex items-center justify-between">
         <PeriodNav
           title={format(month, 'MMMM yyyy')}
@@ -111,22 +147,22 @@ export function CalendarRoute() {
           onNext={() => go(addMonths(month, 1))}
           onToday={() => go(new Date())}
         />
-        <div className="text-sm">
-          <span className="text-(--color-text-dim) mr-2">Month net</span>
+        <div className="flex items-baseline gap-2">
+          <span className="text-sm text-(--color-text-dim)">Month net</span>
           <span
             className={cn(
-              'font-mono',
-              monthStats.net_pnl > 0 && 'text-(--color-win)',
-              monthStats.net_pnl < 0 && 'text-(--color-loss)',
-              monthStats.net_pnl === 0 && 'text-(--color-text-dim)',
+              'text-base font-mono',
+              monthNet > 0 && 'text-(--color-win)',
+              monthNet < 0 && 'text-(--color-loss)',
+              monthNet === 0 && 'text-(--color-text-dim)',
             )}
           >
-            {formatUsd(monthStats.net_pnl)}
+            {formatUsd(monthNet)}
           </span>
         </div>
       </div>
 
-      <div className="grid grid-cols-7 gap-px bg-(--color-border) border border-(--color-border) rounded-md overflow-hidden">
+      <div className="grid grid-cols-7 gap-px bg-(--color-border) border border-(--color-border) rounded-md overflow-hidden mb-20">
         {weekdayLabels.map(lbl => (
           <div
             key={lbl}
@@ -155,7 +191,7 @@ export function CalendarRoute() {
                   className={cn(
                     'text-xs',
                     today
-                      ? 'bg-(--color-accent) text-white rounded-full size-5 flex items-center justify-center'
+                      ? 'bg-(--color-accent) text-white rounded-sm size-5 flex items-center justify-center font-semibold'
                       : 'text-(--color-text-dim)',
                   )}
                 >
@@ -163,18 +199,20 @@ export function CalendarRoute() {
                 </span>
               </div>
               {cell ? (
-                <div
-                  className={cn(
-                    'text-sm font-mono font-medium mt-auto flex items-baseline gap-1',
-                    cell.pnl > 0 && 'text-(--color-win)',
-                    cell.pnl < 0 && 'text-(--color-loss)',
-                    cell.pnl === 0 && 'text-(--color-text-dim)',
-                  )}
-                >
-                  <span>{formatUsd(cell.pnl)}</span>
-                  <span className="text-[10px] text-(--color-text-dim) font-normal">
-                    ({cell.count} trade{cell.count === 1 ? '' : 's'})
-                  </span>
+                <div className="mt-auto">
+                  <div
+                    className={cn(
+                      'text-base font-mono font-medium',
+                      cell.pnl > 0 && 'text-(--color-win)',
+                      cell.pnl < 0 && 'text-(--color-loss)',
+                      cell.pnl === 0 && 'text-(--color-text-dim)',
+                    )}
+                  >
+                    {formatUsd(cell.pnl)}
+                  </div>
+                  <div className="text-xs text-(--color-text-dim) font-normal">
+                    {cell.count} trade{cell.count === 1 ? '' : 's'}
+                  </div>
                 </div>
               ) : null}
             </Link>
@@ -182,11 +220,42 @@ export function CalendarRoute() {
         })}
       </div>
 
-      <StatsGrid stats={monthStats} />
-      <EquityCurve points={equityPoints} cumulative />
-      <CandlestickChart points={candles} />
-      <FeesChart points={candles} />
-      <PeriodBreakdown title="Weekly" buckets={weekBuckets} />
+      {(() => {
+        const toggle = (
+          <div className="flex gap-1 text-xs font-mono">
+            <button
+              type="button"
+              onClick={() => setEquityView('curve')}
+              className={cn(
+                'px-2 py-1 rounded-md border transition-colors',
+                equityView === 'curve'
+                  ? 'border-(--color-border) bg-(--color-panel-2) text-(--color-text)'
+                  : 'border-transparent text-(--color-text-dim) hover:text-(--color-text)',
+              )}
+            >
+              Line
+            </button>
+            <button
+              type="button"
+              onClick={() => setEquityView('candles')}
+              className={cn(
+                'px-2 py-1 rounded-md border transition-colors',
+                equityView === 'candles'
+                  ? 'border-(--color-border) bg-(--color-panel-2) text-(--color-text)'
+                  : 'border-transparent text-(--color-text-dim) hover:text-(--color-text)',
+              )}
+            >
+              Candles
+            </button>
+          </div>
+        )
+        return equityView === 'curve' ? (
+          <EquityCurve points={equityPoints} cumulative xTicks={xTicks} headerRight={toggle} />
+        ) : (
+          <CandlestickChart points={candles} xTicks={xTicks} headerRight={toggle} />
+        )
+      })()}
+      <FeesChart points={candles} xTicks={xTicks} />
     </div>
   )
 }

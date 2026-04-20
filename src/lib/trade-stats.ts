@@ -1,6 +1,10 @@
-import type { TradeRecord } from '@/db/types'
+import type { EquityAdjustment, TradeRecord } from '@/db/types'
 import type { Bucket } from '@/lib/buckets'
 import { computeFees, computeGrossPnl, computeRealizedRr, effectivePnl } from '@/lib/trade-math'
+
+export function signedAdjustment(a: EquityAdjustment): number {
+  return a.kind === 'deposit' ? a.amount : -a.amount
+}
 
 export interface AggregateStats {
   count: number
@@ -95,6 +99,7 @@ export interface CandlePoint {
   low: number
   fees: number
   count: number
+  adjustment: number // signed cash flow on this bucket (deposit+ / withdraw-)
 }
 
 function firstExecTime(t: TradeRecord): number {
@@ -106,11 +111,23 @@ function firstExecTime(t: TradeRecord): number {
   return min === Infinity ? 0 : min
 }
 
-function candleFromBucket(b: Bucket, startEquity: number): CandlePoint {
+function candleFromBucket(
+  b: Bucket,
+  startEquity: number,
+  bucketAdjustment: number,
+): CandlePoint {
   let running = startEquity
   let high = running
   let low = running
   let fees = 0
+
+  // Adjustments (deposits/withdrawals) post at the open of the bucket so the
+  // wick and body reflect the post-adjustment running equity.
+  if (bucketAdjustment !== 0) {
+    running += bucketAdjustment
+    if (running > high) high = running
+    if (running < low) low = running
+  }
 
   const sorted = [...b.trades].sort((a, b2) => firstExecTime(a) - firstExecTime(b2))
   for (const t of sorted) {
@@ -129,16 +146,31 @@ function candleFromBucket(b: Bucket, startEquity: number): CandlePoint {
     low,
     fees,
     count: b.trades.length,
+    adjustment: bucketAdjustment,
   }
 }
 
-export function computeCandles(buckets: Bucket[], startEquity = 0): CandlePoint[] {
+export function computeCandles(
+  buckets: Bucket[],
+  adjustmentsByBucket: Map<string, number> = new Map(),
+  startEquity = 0,
+): CandlePoint[] {
   const out: CandlePoint[] = []
   let running = startEquity
   for (const b of buckets) {
-    const c = candleFromBucket(b, running)
+    const adj = adjustmentsByBucket.get(b.key) ?? 0
+    const c = candleFromBucket(b, running, adj)
     out.push(c)
     running = c.close
   }
   return out
+}
+
+/** Groups signed adjustments by their date string (bucket key for day buckets). */
+export function adjustmentsByDate(adjustments: EquityAdjustment[]): Map<string, number> {
+  const m = new Map<string, number>()
+  for (const a of adjustments) {
+    m.set(a.date, (m.get(a.date) ?? 0) + signedAdjustment(a))
+  }
+  return m
 }

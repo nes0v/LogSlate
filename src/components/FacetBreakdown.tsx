@@ -15,11 +15,9 @@ interface FacetBreakdownProps {
 
 export function FacetBreakdown({ title, items }: FacetBreakdownProps) {
   return (
-    <section className="bg-(--color-panel) border border-(--color-border) rounded-md">
-      <header className="px-3 py-2 border-b border-(--color-border)">
-        <h2 className="text-sm font-medium">{title}</h2>
-      </header>
-      <div className="divide-y divide-(--color-border)">
+    <section className="space-y-2">
+      <h2 className="text-sm font-medium">{title}</h2>
+      <div className="bg-(--color-panel) border border-(--color-border) rounded-md divide-y divide-(--color-border)">
         {items.map(item => {
           const s = aggregate(item.trades)
           return (
@@ -54,3 +52,4 @@ export function FacetBreakdown({ title, items }: FacetBreakdownProps) {
     </section>
   )
 }
+

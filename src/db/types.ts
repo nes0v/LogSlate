@@ -34,3 +34,17 @@ export interface TradeRecord {
 }
 
 export type TradeDraft = Omit<TradeRecord, 'id' | 'created_at' | 'updated_at'>
+
+export type AdjustmentKind = 'deposit' | 'withdraw'
+
+export interface EquityAdjustment {
+  id: string
+  date: string // YYYY-MM-DD (local)
+  kind: AdjustmentKind
+  amount: number // positive USD; the kind determines sign at the math layer
+  note: string
+  created_at: string // ISO
+  updated_at: string // ISO
+}
+
+export type AdjustmentDraft = Omit<EquityAdjustment, 'id' | 'created_at' | 'updated_at'>
