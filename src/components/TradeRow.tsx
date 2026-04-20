@@ -9,7 +9,7 @@ import {
   totalContracts,
 } from '@/lib/trade-math'
 import { formatUsd } from '@/lib/money'
-import { SESSION_BADGE, SESSION_BADGE_CLASS } from '@/components/SessionTags'
+import { SESSION_BADGE, SESSION_BADGE_CLASS } from '@/lib/session-badge'
 import { cn } from '@/lib/utils'
 
 const RATING_EMOJI: Record<TradeRecord['rating'], string> = {

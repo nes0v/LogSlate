@@ -2,16 +2,12 @@ import {
   addDays,
   addMonths,
   eachDayOfInterval,
-  eachMonthOfInterval,
   eachWeekOfInterval,
-  endOfMonth,
   endOfWeek,
-  endOfYear,
   format,
   parse,
   startOfMonth,
   startOfWeek,
-  startOfYear,
 } from 'date-fns'
 import type { TradeRecord } from '@/db/types'
 
@@ -75,28 +71,15 @@ export function bucketByWeek(trades: TradeRecord[], rangeStart: Date, rangeEnd: 
   })
 }
 
-export function bucketByMonth(trades: TradeRecord[], rangeStart: Date, rangeEnd: Date): Bucket[] {
-  const byDay = groupTrades(trades)
-  return eachMonthOfInterval({ start: rangeStart, end: rangeEnd }).map(monthStart => {
-    const ms = startOfMonth(monthStart)
-    const me = endOfMonth(monthStart)
-    const msKey = format(ms, DATE_KEY)
-    const meKey = format(me, DATE_KEY)
-    const ymKey = format(ms, 'yyyy-MM')
-    const monthTrades: TradeRecord[] = []
-    for (const day of eachDayOfInterval({ start: ms, end: me })) {
-      const t = byDay.get(format(day, DATE_KEY))
-      if (t) monthTrades.push(...t)
-    }
-    return {
-      key: ymKey,
-      label: format(ms, 'MMM'),
-      rangeStart: msKey,
-      rangeEnd: meKey,
-      navTarget: `/month/${ymKey}`,
-      trades: monthTrades,
-    }
-  })
+// ---------- chart-axis helpers ----------
+
+/**
+ * X-axis tick label for a day: just the day number, except the 1st of each
+ * month keeps the month prefix so the axis still anchors which month we're in.
+ */
+export function chartDayLabel(dateKey: string): string {
+  const d = new Date(dateKey + 'T00:00:00')
+  return d.getDate() === 1 ? format(d, 'MMM d') : format(d, 'd')
 }
 
 // ---------- period navigation helpers ----------
@@ -109,14 +92,6 @@ export function parseYearMonth(ym: string | undefined): Date {
   return startOfMonth(new Date())
 }
 
-export function parseYear(y: string | undefined): Date {
-  if (y && /^\d{4}$/.test(y)) {
-    const d = parse(y, 'yyyy', new Date())
-    if (!Number.isNaN(d.getTime())) return startOfYear(d)
-  }
-  return startOfYear(new Date())
-}
-
 export function parseWeekStart(d: string | undefined): Date {
   if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) {
     const parsed = parse(d, DATE_KEY, new Date())
@@ -125,12 +100,6 @@ export function parseWeekStart(d: string | undefined): Date {
   return startOfWeek(new Date(), WEEK_OPTS)
 }
 
-export function monthBounds(monthStart: Date) {
-  return { start: startOfMonth(monthStart), end: endOfMonth(monthStart) }
-}
-export function yearBounds(yearStart: Date) {
-  return { start: startOfYear(yearStart), end: endOfYear(yearStart) }
-}
 export function weekBounds(weekStart: Date) {
   return { start: startOfWeek(weekStart, WEEK_OPTS), end: endOfWeek(weekStart, WEEK_OPTS) }
 }

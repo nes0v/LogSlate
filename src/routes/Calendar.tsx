@@ -17,9 +17,10 @@ import {
 import { db } from '@/db/schema'
 import { effectivePnl } from '@/lib/trade-math'
 import { formatUsd } from '@/lib/money'
-import { bucketByDay, parseYearMonth, WEEK_OPTS } from '@/lib/buckets'
+import { bucketByDay, chartDayLabel, parseYearMonth, WEEK_OPTS } from '@/lib/buckets'
 import { adjustmentsByDate, aggregate, computeCandles } from '@/lib/trade-stats'
 import { CandlestickChart } from '@/components/CandlestickChart'
+import { EquityChartToggle, type EquityView } from '@/components/EquityChartToggle'
 import { EquityCurve } from '@/components/EquityCurve'
 import { FeesChart } from '@/components/FeesChart'
 import { PeriodNav } from '@/components/PeriodNav'
@@ -30,14 +31,18 @@ const DATE_KEY = 'yyyy-MM-dd'
 export function CalendarRoute() {
   const { ym } = useParams()
   const navigate = useNavigate()
-  const month = parseYearMonth(ym)
-  const [equityView, setEquityView] = useState<'curve' | 'candles'>('curve')
+  const [equityView, setEquityView] = useState<EquityView>('curve')
 
-  const ms = startOfMonth(month)
-  const me = endOfMonth(month)
-  const gridStart = startOfWeek(ms, WEEK_OPTS)
-  const gridEnd = endOfWeek(me, WEEK_OPTS)
-  const days = eachDayOfInterval({ start: gridStart, end: gridEnd })
+  // Memoize date derivations so `useMemo` deps compare by stable reference.
+  const { month, ms, me, gridStart, gridEnd, days } = useMemo(() => {
+    const month = parseYearMonth(ym)
+    const ms = startOfMonth(month)
+    const me = endOfMonth(month)
+    const gridStart = startOfWeek(ms, WEEK_OPTS)
+    const gridEnd = endOfWeek(me, WEEK_OPTS)
+    const days = eachDayOfInterval({ start: gridStart, end: gridEnd })
+    return { month, ms, me, gridStart, gridEnd, days }
+  }, [ym])
 
   const rangeStart = format(gridStart, DATE_KEY)
   const rangeEnd = format(gridEnd, DATE_KEY)
@@ -103,18 +108,13 @@ export function CalendarRoute() {
     [monthAdjustments],
   )
 
-  const labelFor = (dateKey: string) => {
-    const d = new Date(dateKey + 'T00:00:00')
-    return d.getDate() === 1 ? format(d, 'MMM d') : format(d, 'd')
-  }
-
-  const xTicks = useMemo(() => dayBuckets.map(b => labelFor(b.key)), [dayBuckets])
+  const xTicks = useMemo(() => dayBuckets.map(b => chartDayLabel(b.key)), [dayBuckets])
 
   const equityPoints = useMemo(
     () =>
       dayBuckets.map(b => ({
         key: b.key,
-        label: labelFor(b.key),
+        label: chartDayLabel(b.key),
         pnl: aggregate(b.trades).net_pnl + (adjByDate.get(b.key) ?? 0),
         count: b.trades.length,
       })),
@@ -123,7 +123,7 @@ export function CalendarRoute() {
   const candles = useMemo(
     () =>
       computeCandles(
-        dayBuckets.map(b => ({ ...b, label: labelFor(b.key) })),
+        dayBuckets.map(b => ({ ...b, label: chartDayLabel(b.key) })),
         adjByDate,
       ),
     [dayBuckets, adjByDate],
@@ -220,41 +220,20 @@ export function CalendarRoute() {
         })}
       </div>
 
-      {(() => {
-        const toggle = (
-          <div className="flex gap-1 text-xs font-mono">
-            <button
-              type="button"
-              onClick={() => setEquityView('curve')}
-              className={cn(
-                'px-2 py-1 rounded-md border transition-colors',
-                equityView === 'curve'
-                  ? 'border-(--color-border) bg-(--color-panel-2) text-(--color-text)'
-                  : 'border-transparent text-(--color-text-dim) hover:text-(--color-text)',
-              )}
-            >
-              Line
-            </button>
-            <button
-              type="button"
-              onClick={() => setEquityView('candles')}
-              className={cn(
-                'px-2 py-1 rounded-md border transition-colors',
-                equityView === 'candles'
-                  ? 'border-(--color-border) bg-(--color-panel-2) text-(--color-text)'
-                  : 'border-transparent text-(--color-text-dim) hover:text-(--color-text)',
-              )}
-            >
-              Candles
-            </button>
-          </div>
-        )
-        return equityView === 'curve' ? (
-          <EquityCurve points={equityPoints} cumulative xTicks={xTicks} headerRight={toggle} />
-        ) : (
-          <CandlestickChart points={candles} xTicks={xTicks} headerRight={toggle} />
-        )
-      })()}
+      {equityView === 'curve' ? (
+        <EquityCurve
+          points={equityPoints}
+          cumulative
+          xTicks={xTicks}
+          headerRight={<EquityChartToggle value={equityView} onChange={setEquityView} />}
+        />
+      ) : (
+        <CandlestickChart
+          points={candles}
+          xTicks={xTicks}
+          headerRight={<EquityChartToggle value={equityView} onChange={setEquityView} />}
+        />
+      )}
       <FeesChart points={candles} xTicks={xTicks} />
     </div>
   )

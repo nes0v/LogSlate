@@ -13,12 +13,13 @@ import {
   type TradeFilters,
 } from '@/lib/filters'
 import { adjustmentsByDate, aggregate, computeCandles } from '@/lib/trade-stats'
-import { bucketByDay, bucketByWeek } from '@/lib/buckets'
+import { bucketByDay, bucketByWeek, chartDayLabel } from '@/lib/buckets'
 import { StatsGrid } from '@/components/StatsGrid'
 import { EquityCurve } from '@/components/EquityCurve'
 import { CandlestickChart } from '@/components/CandlestickChart'
 import { FeesChart } from '@/components/FeesChart'
 import { WeeklyCards } from '@/components/WeeklyCards'
+import { EquityChartToggle, type EquityView } from '@/components/EquityChartToggle'
 import { PeriodBreakdown } from '@/components/PeriodBreakdown'
 import { FacetBreakdown } from '@/components/FacetBreakdown'
 import { TradeRow, TRADE_ROW_COLS } from '@/components/TradeRow'
@@ -57,7 +58,7 @@ const RATING_OPTS = [
 export function StatsRoute() {
   const [params, setParams] = useSearchParams()
   const urlFilters = filtersFromParams(params)
-  const [equityView, setEquityView] = useState<'curve' | 'candles'>('curve')
+  const [equityView, setEquityView] = useState<EquityView>('curve')
 
   // Effective filters = URL filters with current month as the default date
   // range when none is specified. The URL stays clean (no params) for the
@@ -113,15 +114,8 @@ export function StatsRoute() {
     return bucketByDay(filtered, new Date(rangeStart + 'T00:00:00'), endPlusOne)
   }, [filtered, rangeStart, rangeEnd])
 
-  // Label each day as the day number; the 1st of each month keeps the month
-  // prefix so the axis still anchors the viewer to which month they're in.
-  const labelFor = (dateKey: string) => {
-    const d = new Date(dateKey + 'T00:00:00')
-    return d.getDate() === 1 ? format(d, 'MMM d') : format(d, 'd')
-  }
-
   // Every day is a tick; Recharts handles spacing via `interval={0}` on the XAxis.
-  const xTicks = useMemo(() => days.map(b => labelFor(b.key)), [days])
+  const xTicks = useMemo(() => days.map(b => chartDayLabel(b.key)), [days])
 
   const weeks = useMemo(() => {
     if (!rangeStart || !rangeEnd) return []
@@ -137,7 +131,7 @@ export function StatsRoute() {
     () =>
       days.map(b => ({
         key: b.key,
-        label: labelFor(b.key),
+        label: chartDayLabel(b.key),
         pnl: aggregate(b.trades).net_pnl + (adjByDate.get(b.key) ?? 0),
         count: b.trades.length,
       })),
@@ -146,7 +140,7 @@ export function StatsRoute() {
   const candles = useMemo(
     () =>
       computeCandles(
-        days.map(b => ({ ...b, label: labelFor(b.key) })),
+        days.map(b => ({ ...b, label: chartDayLabel(b.key) })),
         adjByDate,
       ),
     [days, adjByDate],
@@ -271,41 +265,20 @@ export function StatsRoute() {
 
       {filtered.length > 0 ? (
         <>
-          {(() => {
-            const toggle = (
-              <div className="flex gap-1 text-xs font-mono">
-                <button
-                  type="button"
-                  onClick={() => setEquityView('curve')}
-                  className={cn(
-                    'px-2 py-1 rounded-md border transition-colors',
-                    equityView === 'curve'
-                      ? 'border-(--color-border) bg-(--color-panel-2) text-(--color-text)'
-                      : 'border-transparent text-(--color-text-dim) hover:text-(--color-text)',
-                  )}
-                >
-                  Line
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setEquityView('candles')}
-                  className={cn(
-                    'px-2 py-1 rounded-md border transition-colors',
-                    equityView === 'candles'
-                      ? 'border-(--color-border) bg-(--color-panel-2) text-(--color-text)'
-                      : 'border-transparent text-(--color-text-dim) hover:text-(--color-text)',
-                  )}
-                >
-                  Candles
-                </button>
-              </div>
-            )
-            return equityView === 'curve' ? (
-              <EquityCurve points={equityPoints} cumulative xTicks={xTicks} headerRight={toggle} />
-            ) : (
-              <CandlestickChart points={candles} xTicks={xTicks} headerRight={toggle} />
-            )
-          })()}
+          {equityView === 'curve' ? (
+            <EquityCurve
+              points={equityPoints}
+              cumulative
+              xTicks={xTicks}
+              headerRight={<EquityChartToggle value={equityView} onChange={setEquityView} />}
+            />
+          ) : (
+            <CandlestickChart
+              points={candles}
+              xTicks={xTicks}
+              headerRight={<EquityChartToggle value={equityView} onChange={setEquityView} />}
+            />
+          )}
           <FeesChart points={candles} xTicks={xTicks} />
           <div className="grid md:grid-cols-2 gap-x-4 gap-y-8">
             <FacetBreakdown title="By Symbol" items={bySymbol} />
