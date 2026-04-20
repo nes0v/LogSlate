@@ -18,11 +18,21 @@ interface FeesChartProps {
   height?: number
   /** Explicit X-axis tick values (must match point labels). */
   xTicks?: string[]
+  /** X-axis label currently hovered (shared across charts for cursor sync). */
+  hoverLabel?: string | null
+  /** Notifies the parent when the hovered X label changes. */
+  onHoverLabel?: (label: string | null) => void
 }
 
 const LEFT_AXIS_W = 60
 
-export function FeesChart({ points, height = 180, xTicks }: FeesChartProps) {
+export function FeesChart({
+  points,
+  height = 180,
+  xTicks,
+  hoverLabel = null,
+  onHoverLabel,
+}: FeesChartProps) {
   const data = useMemo(
     () => points.map(p => ({ key: p.key, label: p.label, fees: p.fees, count: p.count })),
     [points],
@@ -44,8 +54,28 @@ export function FeesChart({ points, height = 180, xTicks }: FeesChartProps) {
       {hasFees ? (
         <div style={{ height }}>
           <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={data} margin={{ top: 28, right: 12, left: 8, bottom: 0 }} syncId="equity">
-              <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 3" vertical={false} shapeRendering="crispEdges" />
+            <ComposedChart
+              data={data}
+              margin={{ top: 28, right: 12, left: 8, bottom: 0 }}
+              syncId="equity"
+              onMouseMove={state => {
+                if (!onHoverLabel) return
+                const label = state?.activeLabel
+                onHoverLabel(typeof label === 'string' ? label : null)
+              }}
+              onMouseLeave={() => onHoverLabel?.(null)}
+            >
+              <CartesianGrid
+                horizontal={false}
+                stroke="var(--color-text-dim)"
+                strokeDasharray="3 3"
+                shapeRendering="crispEdges"
+                verticalCoordinatesGenerator={({ xAxis }) => {
+                  if (hoverLabel === null || !xAxis?.scale) return []
+                  const x = xAxis.scale.map(hoverLabel, { position: 'middle' })
+                  return typeof x === 'number' && !Number.isNaN(x) ? [x] : []
+                }}
+              />
               <XAxis
                 dataKey="label"
                 tick={{ fill: 'var(--color-text-dim)', fontSize: 11 }}
@@ -63,11 +93,14 @@ export function FeesChart({ points, height = 180, xTicks }: FeesChartProps) {
                 domain={domain}
                 tickFormatter={v => formatUsd(v)}
               />
-              <Tooltip
-                cursor={{ stroke: 'var(--color-text-dim)', strokeWidth: 1, strokeDasharray: '3 3', shapeRendering: 'crispEdges' }}
-                content={<FeesTooltip />}
+              <Tooltip cursor={false} content={<FeesTooltip />} offset={24} />
+              <Bar
+                dataKey="fees"
+                maxBarSize={18}
+                fill="var(--color-fee)"
+                isAnimationActive={false}
+                activeBar={{ stroke: '#fff', strokeWidth: 2 }}
               />
-              <Bar dataKey="fees" maxBarSize={18} fill="var(--color-fee)" fillOpacity={0.85} isAnimationActive={false} />
             </ComposedChart>
           </ResponsiveContainer>
         </div>

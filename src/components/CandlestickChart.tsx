@@ -25,6 +25,12 @@ interface CandlestickChartProps {
   headerRight?: React.ReactNode
   /** Dashed vertical markers drawn at each deposit/withdrawal date. */
   adjustments?: AdjustmentMarker[]
+  /** Fired when a candle is clicked — gets the bucket key. */
+  onPointClick?: (key: string) => void
+  /** X-axis label currently hovered (shared across charts for cursor sync). */
+  hoverLabel?: string | null
+  /** Notifies the parent when the hovered X label changes. */
+  onHoverLabel?: (label: string | null) => void
 }
 
 interface Row extends CandlePoint {
@@ -40,6 +46,9 @@ export function CandlestickChart({
   xTicks,
   headerRight,
   adjustments,
+  onPointClick,
+  hoverLabel = null,
+  onHoverLabel,
 }: CandlestickChartProps) {
   const data: Row[] = useMemo(
     () =>
@@ -78,8 +87,50 @@ export function CandlestickChart({
               data={data}
               margin={{ top: 28, right: 12, left: 8, bottom: 0 }}
               syncId="equity"
+              onClick={state => {
+                if (!onPointClick) return
+                const i = state?.activeTooltipIndex
+                if (typeof i !== 'number') return
+                const point = data[i]
+                if (point?.key) onPointClick(point.key)
+              }}
+              onMouseMove={state => {
+                if (!onHoverLabel) return
+                const label = state?.activeLabel
+                onHoverLabel(typeof label === 'string' ? label : null)
+              }}
+              onMouseLeave={() => onHoverLabel?.(null)}
             >
-              <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 3" vertical={false} shapeRendering="crispEdges" />
+              {adjustments && adjustments.length > 0 && (
+                <CartesianGrid
+                  horizontal={false}
+                  stroke="#374151"
+                  strokeDasharray="3 3"
+                  shapeRendering="crispEdges"
+                  verticalCoordinatesGenerator={({ xAxis }) => {
+                    if (!xAxis?.scale) return []
+                    const out: number[] = []
+                    for (const a of adjustments) {
+                      const x = xAxis.scale.map(a.x, { position: 'middle' })
+                      if (typeof x === 'number' && !Number.isNaN(x)) out.push(x)
+                    }
+                    return out
+                  }}
+                />
+              )}
+              {/* Hover cursor: direct CartesianGrid child of ComposedChart so
+                  Recharts routes it to the background layer, under the bars. */}
+              <CartesianGrid
+                horizontal={false}
+                stroke="var(--color-text-dim)"
+                strokeDasharray="3 3"
+                shapeRendering="crispEdges"
+                verticalCoordinatesGenerator={({ xAxis }) => {
+                  if (hoverLabel === null || !xAxis?.scale) return []
+                  const x = xAxis.scale.map(hoverLabel, { position: 'middle' })
+                  return typeof x === 'number' && !Number.isNaN(x) ? [x] : []
+                }}
+              />
               <XAxis
                 dataKey="label"
                 tick={{ fill: 'var(--color-text-dim)', fontSize: 11 }}
@@ -97,32 +148,34 @@ export function CandlestickChart({
                 domain={domain}
                 tickFormatter={v => formatUsd(v)}
               />
-              <Tooltip
-                content={<CandleTooltip />}
-                cursor={{ stroke: 'var(--color-text-dim)', strokeWidth: 1, strokeDasharray: '3 3', shapeRendering: 'crispEdges' }}
-              />
+              <Tooltip content={<CandleTooltip />} cursor={false} offset={24} />
+              {/* Labels only — the visible line is drawn by the CartesianGrid
+                  above so it renders beneath the candles. */}
               {adjustments?.map(a => {
-                const color = a.amount >= 0 ? 'var(--color-win)' : 'var(--color-loss)'
+                const textColor = a.amount >= 0 ? 'var(--color-win)' : 'var(--color-loss)'
                 const label = `${a.amount >= 0 ? '+' : '−'}${formatUsd(Math.abs(a.amount))}`
                 return (
                   <ReferenceLine
                     key={a.x}
                     x={a.x}
-                    stroke={color}
-                    strokeDasharray="3 3"
-                    shapeRendering="crispEdges"
+                    stroke="transparent"
                     label={{
                       value: label,
                       position: 'top',
                       offset: 16,
-                      fill: color,
+                      fill: textColor,
                       fontSize: 12,
                       fontFamily: 'var(--font-mono)',
                     }}
                   />
                 )
               })}
-              <Bar dataKey="wick" isAnimationActive={false} shape={CandleShape} />
+              <Bar
+                dataKey="wick"
+                isAnimationActive={false}
+                shape={props => <CandleShape {...props} onPointClick={onPointClick} />}
+                activeBar={props => <CandleShape {...props} onPointClick={onPointClick} active />}
+              />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
@@ -140,12 +193,14 @@ interface CandleShapeProps {
   width?: number
   height?: number
   payload?: Row
+  onPointClick?: (key: string) => void
+  active?: boolean
 }
 
 function CandleShape(props: CandleShapeProps) {
-  const { x = 0, y = 0, width = 0, height = 0, payload } = props
+  const { x = 0, y = 0, width = 0, height = 0, payload, onPointClick, active } = props
   if (!payload) return null
-  const { open, close, high, low, up, count } = payload
+  const { open, close, high, low, up, count, key } = payload
   if (count === 0) return null // Adjustment-only days are drawn via ReferenceLine.
 
   const cx = x + width / 2
@@ -154,20 +209,55 @@ function CandleShape(props: CandleShapeProps) {
   const priceY = (v: number) => y + ((high - v) / range) * height
   const bodyTop = priceY(Math.max(open, close))
   const bodyBottom = priceY(Math.min(open, close))
-  const bodyH = Math.max(bodyBottom - bodyTop, 1)
+  const bodyTopY = Math.round(bodyTop)
+  const bodyBotY = Math.round(bodyBottom)
+  const bodyH = Math.max(bodyBotY - bodyTopY, 1)
   const color = up ? 'var(--color-win)' : 'var(--color-loss)'
   // Snap the wick to half-pixel x so a 1px stroke lands on a whole pixel.
   const wickX = Math.round(cx) + 0.5
+  const handleClick = onPointClick ? () => onPointClick(key) : undefined
+  const bandW = Math.max(width, 2)
+  // Only render wick segments that actually extend beyond the body. Compare
+  // at the pixel level so float noise doesn't produce phantom 1px wicks
+  // when high === max(open, close) or low === min(open, close).
+  const wickTopY = Math.round(y)
+  const wickBotY = Math.round(y + height)
+  const hasUpperWick = wickTopY < bodyTopY
+  const hasLowerWick = wickBotY > bodyBotY
   return (
-    <g shapeRendering="crispEdges">
-      <line x1={wickX} x2={wickX} y1={y} y2={y + height} stroke={color} strokeWidth={1} />
+    <g shapeRendering="crispEdges" onClick={handleClick}>
+      {/* Invisible click-target covers the full band so the whole column is clickable. */}
+      {handleClick && (
+        <rect x={x} y={y} width={bandW} height={height} fill="transparent" />
+      )}
+      {hasUpperWick && (
+        <line
+          x1={wickX}
+          x2={wickX}
+          y1={wickTopY}
+          y2={bodyTopY}
+          stroke={active ? '#fff' : color}
+          strokeWidth={active ? 3 : 2}
+        />
+      )}
+      {hasLowerWick && (
+        <line
+          x1={wickX}
+          x2={wickX}
+          y1={bodyBotY}
+          y2={wickBotY}
+          stroke={active ? '#fff' : color}
+          strokeWidth={active ? 3 : 2}
+        />
+      )}
       <rect
         x={Math.round(cx - bodyW / 2)}
-        y={Math.round(bodyTop)}
+        y={bodyTopY}
         width={Math.round(bodyW)}
-        height={Math.max(Math.round(bodyH), 1)}
+        height={bodyH}
         fill={color}
-        stroke="none"
+        stroke={active ? '#fff' : 'none'}
+        strokeWidth={active ? 2 : 0}
       />
     </g>
   )
@@ -192,14 +282,8 @@ function CandleTooltip({ active, payload }: TooltipProps) {
       <TooltipRow k="C" v={formatUsd(p.close)} />
       <TooltipRow
         k="Δ"
-        v={formatUsd(p.close - p.open - p.adjustment)}
-        tone={
-          p.close - p.open - p.adjustment > 0
-            ? 'win'
-            : p.close - p.open - p.adjustment < 0
-              ? 'loss'
-              : 'dim'
-        }
+        v={formatUsd(p.close - p.open)}
+        tone={p.close > p.open ? 'win' : p.close < p.open ? 'loss' : 'dim'}
       />
       <TooltipRow k="trades" v={String(p.count)} />
     </div>

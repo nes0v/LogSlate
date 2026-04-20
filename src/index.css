@@ -45,3 +45,10 @@ body {
 * {
   box-sizing: border-box;
 }
+
+/* Recharts adds focus outlines on clicked SVG paths / surfaces. They show up
+   as thick white borders on click which looks broken in our dark theme. */
+.recharts-wrapper *:focus,
+.recharts-wrapper *:focus-visible {
+  outline: none;
+}

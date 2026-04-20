@@ -116,6 +116,9 @@ function candleFromBucket(
   startEquity: number,
   bucketAdjustment: number,
 ): CandlePoint {
+  // The candle reflects ONLY the day's trading — deposits/withdrawals don't
+  // affect the open/high/low/close. The adjustment shifts the starting point
+  // of the *next* bucket (handled in computeCandles).
   let running = startEquity
   let high = running
   let low = running
@@ -127,15 +130,6 @@ function candleFromBucket(
     if (running > high) high = running
     if (running < low) low = running
     fees += computeFees(t)
-  }
-
-  // Adjustments (deposits/withdrawals) settle at the end of the bucket, after
-  // all trades have closed — so the wick and body reflect trading movement
-  // first, then the cash flow snaps the close up/down.
-  if (bucketAdjustment !== 0) {
-    running += bucketAdjustment
-    if (running > high) high = running
-    if (running < low) low = running
   }
 
   return {
@@ -162,7 +156,9 @@ export function computeCandles(
     const adj = adjustmentsByBucket.get(b.key) ?? 0
     const c = candleFromBucket(b, running, adj)
     out.push(c)
-    running = c.close
+    // Carry forward post-adjustment equity so the next bucket opens at the
+    // new baseline, without the current candle itself reflecting the cash flow.
+    running = c.close + adj
   }
   return out
 }

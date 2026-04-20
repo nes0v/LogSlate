@@ -23,6 +23,7 @@ import { CandlestickChart } from '@/components/CandlestickChart'
 import { EquityChartToggle, type EquityView } from '@/components/EquityChartToggle'
 import { EquityCurve } from '@/components/EquityCurve'
 import { FeesChart } from '@/components/FeesChart'
+import { ForexFactoryNews } from '@/components/ForexFactoryNews'
 import { PeriodNav } from '@/components/PeriodNav'
 import { cn } from '@/lib/utils'
 
@@ -32,6 +33,7 @@ export function CalendarRoute() {
   const { ym } = useParams()
   const navigate = useNavigate()
   const [equityView, setEquityView] = useState<EquityView>('curve')
+  const [hoverLabel, setHoverLabel] = useState<string | null>(null)
 
   // Memoize date derivations so `useMemo` deps compare by stable reference.
   const { month, ms, me, gridStart, gridEnd, days } = useMemo(() => {
@@ -228,12 +230,17 @@ export function CalendarRoute() {
         })}
       </div>
 
+      <ForexFactoryNews />
+
       {equityView === 'curve' ? (
         <EquityCurve
           points={equityPoints}
           cumulative
           xTicks={xTicks}
           adjustments={adjustmentMarkers}
+          onPointClick={key => navigate(`/day/${key}`)}
+          hoverLabel={hoverLabel}
+          onHoverLabel={setHoverLabel}
           headerRight={<EquityChartToggle value={equityView} onChange={setEquityView} />}
         />
       ) : (
@@ -241,10 +248,18 @@ export function CalendarRoute() {
           points={candles}
           xTicks={xTicks}
           adjustments={adjustmentMarkers}
+          onPointClick={key => navigate(`/day/${key}`)}
+          hoverLabel={hoverLabel}
+          onHoverLabel={setHoverLabel}
           headerRight={<EquityChartToggle value={equityView} onChange={setEquityView} />}
         />
       )}
-      <FeesChart points={candles} xTicks={xTicks} />
+      <FeesChart
+        points={candles}
+        xTicks={xTicks}
+        hoverLabel={hoverLabel}
+        onHoverLabel={setHoverLabel}
+      />
     </div>
   )
 }

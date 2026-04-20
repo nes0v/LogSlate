@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { addDays, endOfMonth, format, startOfMonth } from 'date-fns'
 import { X } from 'lucide-react'
@@ -57,8 +57,10 @@ const RATING_OPTS = [
 
 export function StatsRoute() {
   const [params, setParams] = useSearchParams()
+  const navigate = useNavigate()
   const urlFilters = filtersFromParams(params)
   const [equityView, setEquityView] = useState<EquityView>('curve')
+  const [hoverLabel, setHoverLabel] = useState<string | null>(null)
 
   // Effective filters = URL filters with current month as the default date
   // range when none is specified. The URL stays clean (no params) for the
@@ -279,6 +281,9 @@ export function StatsRoute() {
               cumulative
               xTicks={xTicks}
               adjustments={adjustmentMarkers}
+              onPointClick={key => navigate(`/day/${key}`)}
+              hoverLabel={hoverLabel}
+              onHoverLabel={setHoverLabel}
               headerRight={<EquityChartToggle value={equityView} onChange={setEquityView} />}
             />
           ) : (
@@ -286,10 +291,18 @@ export function StatsRoute() {
               points={candles}
               xTicks={xTicks}
               adjustments={adjustmentMarkers}
+              onPointClick={key => navigate(`/day/${key}`)}
+              hoverLabel={hoverLabel}
+              onHoverLabel={setHoverLabel}
               headerRight={<EquityChartToggle value={equityView} onChange={setEquityView} />}
             />
           )}
-          <FeesChart points={candles} xTicks={xTicks} />
+          <FeesChart
+            points={candles}
+            xTicks={xTicks}
+            hoverLabel={hoverLabel}
+            onHoverLabel={setHoverLabel}
+          />
           <div className="grid md:grid-cols-2 gap-x-4 gap-y-8">
             <FacetBreakdown title="By Symbol" items={bySymbol} />
             <FacetBreakdown title="By Contract" items={byContract} />

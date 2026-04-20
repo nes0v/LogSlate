@@ -41,6 +41,12 @@ interface EquityCurveProps {
   headerRight?: React.ReactNode
   /** Dashed vertical markers drawn at each deposit/withdrawal date. */
   adjustments?: AdjustmentMarker[]
+  /** Fired when a point/area in the chart is clicked — gets the bucket key. */
+  onPointClick?: (key: string) => void
+  /** X-axis label currently hovered (shared across charts for cursor sync). */
+  hoverLabel?: string | null
+  /** Notifies the parent when the hovered X label changes. */
+  onHoverLabel?: (label: string | null) => void
 }
 
 export function EquityCurve({
@@ -50,6 +56,8 @@ export function EquityCurve({
   xTicks,
   headerRight,
   adjustments,
+  onPointClick,
+  onHoverLabel,
 }: EquityCurveProps) {
   const data = useMemo(() => {
     if (!cumulative) return points.map(p => ({ ...p, y: p.pnl }))
@@ -71,8 +79,34 @@ export function EquityCurve({
       <div className="bg-(--color-panel) border border-(--color-border) rounded-md p-3">
       {hasData ? (
         <ResponsiveContainer width="100%" height={height}>
-          <LineChart data={data} margin={{ top: 28, right: 12, left: 8, bottom: 0 }} syncId="equity">
-            <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 3" vertical={false} shapeRendering="crispEdges" />
+          <LineChart
+            data={data}
+            margin={{ top: 28, right: 12, left: 8, bottom: 0 }}
+            syncId="equity"
+            onMouseMove={state => {
+              if (!onHoverLabel) return
+              const label = state?.activeLabel
+              onHoverLabel(typeof label === 'string' ? label : null)
+            }}
+            onMouseLeave={() => onHoverLabel?.(null)}
+          >
+            {adjustments && adjustments.length > 0 && (
+              <CartesianGrid
+                horizontal={false}
+                stroke="#374151"
+                strokeDasharray="3 3"
+                shapeRendering="crispEdges"
+                verticalCoordinatesGenerator={({ xAxis }) => {
+                  if (!xAxis?.scale) return []
+                  const out: number[] = []
+                  for (const a of adjustments) {
+                    const x = xAxis.scale.map(a.x, { position: 'middle' })
+                    if (typeof x === 'number' && !Number.isNaN(x)) out.push(x)
+                  }
+                  return out
+                }}
+              />
+            )}
             <XAxis
               dataKey="label"
               tick={{ fill: 'var(--color-text-dim)', fontSize: 11 }}
@@ -93,21 +127,21 @@ export function EquityCurve({
               cursor={{ stroke: 'var(--color-text-dim)', strokeWidth: 1, strokeDasharray: '3 3', shapeRendering: 'crispEdges' }}
               content={<EquityTooltip cumulative={cumulative} />}
             />
+            {/* Labels only — the visible line is drawn by the CartesianGrid
+                above so it renders beneath the curve. */}
             {adjustments?.map(a => {
-              const color = a.amount >= 0 ? 'var(--color-win)' : 'var(--color-loss)'
+              const textColor = a.amount >= 0 ? 'var(--color-win)' : 'var(--color-loss)'
               const label = `${a.amount >= 0 ? '+' : '−'}${formatUsd(Math.abs(a.amount))}`
               return (
                 <ReferenceLine
                   key={a.x}
                   x={a.x}
-                  stroke={color}
-                  strokeDasharray="3 3"
-                  shapeRendering="crispEdges"
+                  stroke="transparent"
                   label={{
                     value: label,
                     position: 'top',
                     offset: 16,
-                    fill: color,
+                    fill: textColor,
                     fontSize: 12,
                     fontFamily: 'var(--font-mono)',
                   }}
@@ -120,8 +154,25 @@ export function EquityCurve({
               stroke="var(--color-line)"
               strokeWidth={1.5}
               shapeRendering="geometricPrecision"
-              dot={{ r: 2, fill: 'var(--color-line)' }}
-              activeDot={{ r: 4 }}
+              dot={{ r: 4, fill: 'var(--color-line)' }}
+              activeDot={(dotProps: { cx?: number; cy?: number; payload?: { key?: string } }) => {
+                const { cx, cy, payload } = dotProps
+                if (typeof cx !== 'number' || typeof cy !== 'number') return <></>
+                return (
+                  <circle
+                    cx={cx}
+                    cy={cy}
+                    r={6}
+                    fill="var(--color-line)"
+                    stroke="#fff"
+                    strokeWidth={2}
+                    onClick={() => {
+                      const key = payload?.key
+                      if (key && onPointClick) onPointClick(key)
+                    }}
+                  />
+                )
+              }}
               isAnimationActive={false}
             />
           </LineChart>
