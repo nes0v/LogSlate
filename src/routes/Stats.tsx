@@ -13,7 +13,7 @@ import {
   type TradeFilters,
 } from '@/lib/filters'
 import { adjustmentsByDate, aggregate, computeCandles } from '@/lib/trade-stats'
-import { bucketByDay, bucketByWeek, chartDayLabel } from '@/lib/buckets'
+import { bucketByDay, bucketByWeek } from '@/lib/buckets'
 import { StatsGrid } from '@/components/StatsGrid'
 import { EquityCurve } from '@/components/EquityCurve'
 import { CandlestickChart } from '@/components/CandlestickChart'
@@ -116,8 +116,10 @@ export function StatsRoute() {
     return bucketByDay(filtered, new Date(rangeStart + 'T00:00:00'), endPlusOne)
   }, [filtered, rangeStart, rangeEnd])
 
-  // Every day is a tick; Recharts handles spacing via `interval={0}` on the XAxis.
-  const xTicks = useMemo(() => days.map(b => chartDayLabel(b.key)), [days])
+  // Every day is a tick. XAxis now uses the unique bucket KEY (YYYY-MM-DD)
+  // as the category value — day-only labels like "15" would collide between
+  // months in a multi-month range.
+  const xTicks = useMemo(() => days.map(b => b.key), [days])
 
   const weeks = useMemo(() => {
     if (!rangeStart || !rangeEnd) return []
@@ -133,7 +135,7 @@ export function StatsRoute() {
     () =>
       days.map(b => ({
         key: b.key,
-        label: chartDayLabel(b.key),
+        label: b.key, // axis category — XAxis renders a formatted tick instead
         pnl: aggregate(b.trades).net_pnl + (adjByDate.get(b.key) ?? 0),
         count: b.trades.length,
       })),
@@ -142,7 +144,7 @@ export function StatsRoute() {
   const candles = useMemo(
     () =>
       computeCandles(
-        days.map(b => ({ ...b, label: chartDayLabel(b.key) })),
+        days.map(b => ({ ...b, label: b.key })),
         adjByDate,
       ),
     [days, adjByDate],
@@ -152,7 +154,7 @@ export function StatsRoute() {
     () =>
       Array.from(adjByDate.entries())
         .filter(([date]) => days.some(b => b.key === date))
-        .map(([date, amount]) => ({ x: chartDayLabel(date), amount })),
+        .map(([date, amount]) => ({ x: date, amount })),
     [adjByDate, days],
   )
 

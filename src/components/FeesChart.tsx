@@ -1,7 +1,6 @@
 import { useMemo } from 'react'
 import {
   Bar,
-  CartesianGrid,
   ComposedChart,
   ResponsiveContainer,
   Tooltip,
@@ -9,6 +8,8 @@ import {
   YAxis,
 } from 'recharts'
 import { format } from 'date-fns'
+import { ChartHoverCursor } from '@/components/ChartHoverCursor'
+import { chartDayLabel } from '@/lib/buckets'
 import type { CandlePoint } from '@/lib/trade-stats'
 import { niceDomain } from '@/lib/chart'
 import { formatUsd } from '@/lib/money'
@@ -65,22 +66,13 @@ export function FeesChart({
               }}
               onMouseLeave={() => onHoverLabel?.(null)}
             >
-              <CartesianGrid
-                horizontal={false}
-                stroke="var(--color-text-dim)"
-                strokeDasharray="3 3"
-                shapeRendering="crispEdges"
-                verticalCoordinatesGenerator={({ xAxis }) => {
-                  if (hoverLabel === null || !xAxis?.scale) return []
-                  const x = xAxis.scale.map(hoverLabel, { position: 'middle' })
-                  return typeof x === 'number' && !Number.isNaN(x) ? [x] : []
-                }}
-              />
+              <ChartHoverCursor hoverLabel={hoverLabel} />
               <XAxis
                 dataKey="label"
                 tick={{ fill: 'var(--color-text-dim)', fontSize: 11 }}
                 tickLine={false}
                 axisLine={false}
+                tickFormatter={v => chartDayLabel(String(v))}
                 padding={{ left: 0, right: 0 }}
                 {...(xTicks ? { ticks: xTicks, interval: 0 as const } : {})}
               />

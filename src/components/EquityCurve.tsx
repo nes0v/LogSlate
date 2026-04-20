@@ -10,6 +10,7 @@ import {
   YAxis,
 } from 'recharts'
 import { format } from 'date-fns'
+import { chartDayLabel } from '@/lib/buckets'
 import { formatUsd } from '@/lib/money'
 
 export interface EquityPoint {
@@ -112,6 +113,7 @@ export function EquityCurve({
               tick={{ fill: 'var(--color-text-dim)', fontSize: 11 }}
               tickLine={false}
               axisLine={false}
+              tickFormatter={v => chartDayLabel(String(v))}
               padding={{ left: 18, right: 18 }}
               {...(xTicks ? { ticks: xTicks, interval: 0 as const } : {})}
             />

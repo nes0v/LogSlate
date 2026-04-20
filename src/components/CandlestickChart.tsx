@@ -11,6 +11,8 @@ import {
 } from 'recharts'
 import type { AdjustmentMarker } from '@/components/EquityCurve'
 import { format } from 'date-fns'
+import { ChartHoverCursor } from '@/components/ChartHoverCursor'
+import { chartDayLabel } from '@/lib/buckets'
 import type { CandlePoint } from '@/lib/trade-stats'
 import { niceDomain } from '@/lib/chart'
 import { formatUsd } from '@/lib/money'
@@ -118,24 +120,13 @@ export function CandlestickChart({
                   }}
                 />
               )}
-              {/* Hover cursor: direct CartesianGrid child of ComposedChart so
-                  Recharts routes it to the background layer, under the bars. */}
-              <CartesianGrid
-                horizontal={false}
-                stroke="var(--color-text-dim)"
-                strokeDasharray="3 3"
-                shapeRendering="crispEdges"
-                verticalCoordinatesGenerator={({ xAxis }) => {
-                  if (hoverLabel === null || !xAxis?.scale) return []
-                  const x = xAxis.scale.map(hoverLabel, { position: 'middle' })
-                  return typeof x === 'number' && !Number.isNaN(x) ? [x] : []
-                }}
-              />
+              <ChartHoverCursor hoverLabel={hoverLabel} />
               <XAxis
                 dataKey="label"
                 tick={{ fill: 'var(--color-text-dim)', fontSize: 11 }}
                 tickLine={false}
                 axisLine={false}
+                tickFormatter={v => chartDayLabel(String(v))}
                 padding={{ left: 0, right: 0 }}
                 {...(xTicks ? { ticks: xTicks, interval: 0 as const } : {})}
               />

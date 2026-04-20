@@ -17,7 +17,7 @@ import {
 import { db } from '@/db/schema'
 import { effectivePnl } from '@/lib/trade-math'
 import { formatUsd } from '@/lib/money'
-import { bucketByDay, chartDayLabel, parseYearMonth, WEEK_OPTS } from '@/lib/buckets'
+import { bucketByDay, parseYearMonth, WEEK_OPTS } from '@/lib/buckets'
 import { adjustmentsByDate, aggregate, computeCandles } from '@/lib/trade-stats'
 import { CandlestickChart } from '@/components/CandlestickChart'
 import { EquityChartToggle, type EquityView } from '@/components/EquityChartToggle'
@@ -110,13 +110,13 @@ export function CalendarRoute() {
     [monthAdjustments],
   )
 
-  const xTicks = useMemo(() => dayBuckets.map(b => chartDayLabel(b.key)), [dayBuckets])
+  const xTicks = useMemo(() => dayBuckets.map(b => b.key), [dayBuckets])
 
   const equityPoints = useMemo(
     () =>
       dayBuckets.map(b => ({
         key: b.key,
-        label: chartDayLabel(b.key),
+        label: b.key,
         pnl: aggregate(b.trades).net_pnl + (adjByDate.get(b.key) ?? 0),
         count: b.trades.length,
       })),
@@ -125,7 +125,7 @@ export function CalendarRoute() {
   const candles = useMemo(
     () =>
       computeCandles(
-        dayBuckets.map(b => ({ ...b, label: chartDayLabel(b.key) })),
+        dayBuckets.map(b => ({ ...b, label: b.key })),
         adjByDate,
       ),
     [dayBuckets, adjByDate],
@@ -135,7 +135,7 @@ export function CalendarRoute() {
     () =>
       Array.from(adjByDate.entries())
         .filter(([date]) => dayBuckets.some(b => b.key === date))
-        .map(([date, amount]) => ({ x: chartDayLabel(date), amount })),
+        .map(([date, amount]) => ({ x: date, amount })),
     [adjByDate, dayBuckets],
   )
 

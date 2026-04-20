@@ -134,7 +134,9 @@ export function ForexFactoryNews() {
 
   const loading = events.length === 0 && error === null
 
-  const todayKey = nyDateKey(new Date())
+  // `nowMs` ticks every minute — derive today's NY key from it so a midnight
+  // rollover refreshes the Today button state without a Date() call in render.
+  const todayKey = useMemo(() => nyDateKey(new Date(nowMs)), [nowMs])
   const allDay = useMemo(
     () =>
       eventsOnDay(events, dayKey).sort(
