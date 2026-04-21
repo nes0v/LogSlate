@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildFilename,
   driveViewUrlFromRef,
+  extensionFromBlobType,
   formatScreenshotRef,
+  monthKey,
   parseScreenshotRef,
 } from './drive-images'
 
@@ -40,6 +43,46 @@ describe('formatScreenshotRef', () => {
 
   it('returns null for a null ref', () => {
     expect(formatScreenshotRef(null)).toBeNull()
+  })
+})
+
+describe('monthKey', () => {
+  it('returns the YYYY-MM prefix', () => {
+    expect(monthKey('2026-04-17')).toBe('2026-04')
+  })
+})
+
+describe('extensionFromBlobType', () => {
+  it('extracts the subtype as the extension', () => {
+    expect(extensionFromBlobType('image/png')).toBe('png')
+    expect(extensionFromBlobType('image/jpeg')).toBe('jpeg')
+  })
+
+  it('strips non-alphanumeric characters', () => {
+    expect(extensionFromBlobType('image/svg+xml')).toBe('svgxml')
+  })
+
+  it('falls back to "bin" when the type is missing or malformed', () => {
+    expect(extensionFromBlobType('')).toBe('bin')
+    expect(extensionFromBlobType(null)).toBe('bin')
+    expect(extensionFromBlobType(undefined)).toBe('bin')
+    expect(extensionFromBlobType('not-a-mime-type')).toBe('bin')
+  })
+})
+
+describe('buildFilename', () => {
+  it('composes day + lowercase month abbreviation + year + suffix + extension', () => {
+    expect(buildFilename('2026-04-17', 'trade-1', 'png')).toBe('17-apr-2026-trade-1.png')
+    expect(buildFilename('2026-12-01', 'day', 'jpg')).toBe('01-dec-2026-day.jpg')
+  })
+
+  it('sanitises arbitrary characters out of the suffix', () => {
+    expect(buildFilename('2026-04-17', 'trade/../1', 'png')).toBe('17-apr-2026-trade1.png')
+    expect(buildFilename('2026-04-17', 'Day-1!', 'png')).toBe('17-apr-2026-day-1.png')
+  })
+
+  it('falls back to "screenshot" when the sanitised suffix is empty', () => {
+    expect(buildFilename('2026-04-17', '!!!', 'png')).toBe('17-apr-2026-screenshot.png')
   })
 })
 

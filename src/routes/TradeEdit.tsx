@@ -80,7 +80,12 @@ export function TradeEditRoute() {
     navigate(`/day/${state.record.trade_date}`)
   }
 
-  if (state.status === 'loading') {
+  // Treat "we have a record but it's for a different id" as still loading.
+  // Without this guard, navigating between trades shows the previous trade's
+  // form values (stale state propagates into TradeForm's initialValues, and
+  // react-hook-form pins those defaults for the lifetime of the mount).
+  const stale = state.status === 'ready' && state.record.id !== id
+  if (state.status === 'loading' || stale) {
     return <div className="text-(--color-text-dim)">Loading…</div>
   }
   if (state.status === 'not-found') {
@@ -132,6 +137,15 @@ export function TradeEditRoute() {
         onSubmit={handleSubmit}
         onCancel={() => navigate(`/day/${state.record.trade_date}`)}
         submitLabel="Save changes"
+        getTradeOrdinal={async () => {
+          const rows = await db.trades
+            .where('[account_id+trade_date]')
+            .equals([accountId, state.record.trade_date])
+            .sortBy('created_at')
+          const idx = rows.findIndex(t => t.id === id)
+          return idx >= 0 ? idx + 1 : rows.length + 1
+        }}
+        onScreenshotPersist={ref => updateTrade(id, { screenshot: ref })}
       />
     </div>
   )

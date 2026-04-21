@@ -1,5 +1,6 @@
 import { Link, NavLink, Outlet } from 'react-router-dom'
 import { AccountSwitcher } from '@/components/AccountSwitcher'
+import { NotificationBanner } from '@/components/NotificationBanner'
 import { SyncStatusIndicator } from '@/components/SyncStatusIndicator'
 import { cn } from '@/lib/utils'
 
@@ -44,6 +45,7 @@ export function Layout() {
         </div>
       </header>
       <main className="flex-1 mx-auto max-w-7xl w-full px-4 py-6">
+        <NotificationBanner />
         <Outlet />
       </main>
     </div>

@@ -200,9 +200,24 @@ export function signOut(): void {
 // If GIS can't refresh without user interaction (cookies blocked, session
 // lost, consent needed), this rejects and the caller surfaces a sync error
 // — the user can re-connect manually via Settings.
+//
+// Concurrent callers share a single in-flight refresh — otherwise when two
+// parallel API calls hit an expired token they each fire their own GIS
+// refresh, and Google will reject one, leaving that caller with a spurious
+// "Couldn't load" error even though nothing's wrong with the resource.
+let inFlightRefresh: Promise<string> | null = null
+
 async function refreshTokenSilently(): Promise<string> {
-  await loadGis()
-  return requestToken({ prompt: 'none', silent: true })
+  if (inFlightRefresh) return inFlightRefresh
+  inFlightRefresh = (async () => {
+    await loadGis()
+    return requestToken({ prompt: 'none', silent: true })
+  })()
+  try {
+    return await inFlightRefresh
+  } finally {
+    inFlightRefresh = null
+  }
 }
 
 async function getValidTokenForBackground(): Promise<string> {
@@ -275,29 +290,51 @@ export async function downloadAppDataFile(id: string): Promise<string> {
 // These operate on files/folders the app created in the user's main Drive.
 // Screenshots live here so the user can browse them manually.
 
-export async function findDriveFolder(name: string): Promise<string | null> {
+// Raised when a Drive call 403s because the current token doesn't hold the
+// scope we asked for. Happens after we add a new scope to SCOPE: existing
+// tokens only carry the scopes they were minted with, and silent refresh
+// reuses that set — so the user has to Disconnect + Connect once to
+// re-consent. The UI surfaces this differently from generic errors.
+export class DriveScopeError extends Error {
+  constructor(message = 'Drive access is missing the screenshot folder scope. Disconnect and reconnect in Settings to re-grant access.') {
+    super(message)
+    this.name = 'DriveScopeError'
+  }
+}
+
+function throwForStatus(resp: Response, context: string): never {
+  if (resp.status === 403) throw new DriveScopeError()
+  throw new Error(`${context}: ${resp.status}`)
+}
+
+export async function findDriveFolder(name: string, parentId?: string): Promise<string | null> {
   const url = new URL('https://www.googleapis.com/drive/v3/files')
-  const q =
-    `mimeType = 'application/vnd.google-apps.folder' and ` +
-    `name = '${name.replace(/'/g, "\\'")}' and trashed = false`
-  url.searchParams.set('q', q)
+  const parts = [
+    `mimeType = 'application/vnd.google-apps.folder'`,
+    `name = '${name.replace(/'/g, "\\'")}'`,
+    `trashed = false`,
+  ]
+  if (parentId) parts.push(`'${parentId.replace(/'/g, "\\'")}' in parents`)
+  url.searchParams.set('q', parts.join(' and '))
   url.searchParams.set('fields', 'files(id)')
   const resp = await authFetch(url.toString())
-  if (!resp.ok) throw new Error(`Drive folder search failed: ${resp.status}`)
+  if (!resp.ok) throwForStatus(resp, 'Drive folder search failed')
   const body = (await resp.json()) as { files?: Array<{ id: string }> }
   return body.files?.[0]?.id ?? null
 }
 
-export async function createDriveFolder(name: string): Promise<string> {
+export async function createDriveFolder(name: string, parentId?: string): Promise<string> {
+  const metadata: Record<string, unknown> = {
+    name,
+    mimeType: 'application/vnd.google-apps.folder',
+  }
+  if (parentId) metadata.parents = [parentId]
   const resp = await authFetch('https://www.googleapis.com/drive/v3/files?fields=id', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      name,
-      mimeType: 'application/vnd.google-apps.folder',
-    }),
+    body: JSON.stringify(metadata),
   })
-  if (!resp.ok) throw new Error(`Drive folder create failed: ${resp.status}`)
+  if (!resp.ok) throwForStatus(resp, 'Drive folder create failed')
   const body = (await resp.json()) as { id: string }
   return body.id
 }
@@ -343,15 +380,25 @@ export async function uploadDriveFile(opts: {
       body: combined,
     },
   )
-  if (!resp.ok) throw new Error(`Drive upload failed: ${resp.status} ${await resp.text()}`)
+  if (!resp.ok) {
+    if (resp.status === 403) throw new DriveScopeError()
+    throw new Error(`Drive upload failed: ${resp.status} ${await resp.text()}`)
+  }
   return (await resp.json()) as { id: string }
 }
 
 export async function downloadDriveFile(id: string): Promise<Blob> {
   const url = `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}?alt=media`
   const resp = await authFetch(url)
-  if (!resp.ok) throw new Error(`Drive download failed: ${resp.status}`)
+  if (!resp.ok) throwForStatus(resp, 'Drive download failed')
   return resp.blob()
+}
+
+export async function deleteDriveFile(id: string): Promise<void> {
+  const url = `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}`
+  const resp = await authFetch(url, { method: 'DELETE' })
+  // 404 = already gone, treat as success.
+  if (!resp.ok && resp.status !== 404) throwForStatus(resp, 'Drive delete failed')
 }
 
 export function driveViewLink(fileId: string): string {

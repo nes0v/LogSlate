@@ -7,6 +7,7 @@ import { db } from '@/db/schema'
 import { useActiveAccountId } from '@/lib/active-account'
 import { aggregate } from '@/lib/trade-stats'
 import { useArrowNavigation } from '@/lib/use-arrow-navigation'
+import { DayScreenshotSection } from '@/components/DayScreenshotSection'
 import { NavArrow } from '@/components/NavArrow'
 import { StatsGrid } from '@/components/StatsGrid'
 import { TradeRow, TRADE_ROW_COLS } from '@/components/TradeRow'
@@ -98,6 +99,8 @@ export function DayRoute() {
       </div>
 
       <StatsGrid stats={stats} />
+
+      <DayScreenshotSection accountId={accountId} date={date} />
 
       {trades && trades.length > 0 ? (
         <div className={cn('grid gap-x-5 gap-y-1.5', TRADE_ROW_COLS)}>

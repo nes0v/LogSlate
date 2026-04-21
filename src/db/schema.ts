@@ -1,6 +1,7 @@
 import Dexie, { type EntityTable } from 'dexie'
 import type {
   Account,
+  DayScreenshot,
   EquityAdjustment,
   Execution,
   PendingUpload,
@@ -18,6 +19,7 @@ class LogslateDB extends Dexie {
   adjustments!: EntityTable<EquityAdjustment, 'id'>
   accounts!: EntityTable<Account, 'id'>
   pending_uploads!: EntityTable<PendingUpload, 'id'>
+  day_screenshots!: EntityTable<DayScreenshot, 'id'>
 
   constructor() {
     super('logslate')
@@ -129,6 +131,51 @@ class LogslateDB extends Dexie {
             t.screenshot = null
           })
       })
+
+    // v7: organised Drive storage.
+    // - `pending_uploads` now carries the precomputed Drive filename and
+    //   month_key so the drainer uploads into the right YYYY-MM subfolder
+    //   with a human-readable name ("17-apr-2026-trade-1.png", etc.) —
+    //   without re-deriving context from trade records that might change.
+    // - New `day_screenshots` table for per-day (not per-trade) screenshots.
+    //   Id is `${account_id}:${date}` so cross-device sync produces the
+    //   same row naturally. One screenshot per (account, date).
+    // - Old queued items from v6 are dropped (there was no production
+    //   data; the `.clear()` only runs if anything was there).
+    this.version(7)
+      .stores({
+        pending_uploads: '&id, month_key, created_at',
+        day_screenshots: '&id, [account_id+date], account_id, date, screenshot, updated_at',
+      })
+      .upgrade(async tx => {
+        // Pending blobs from v6 have different metadata (no filename/month_key)
+        // and can't be replayed by the v7 drainer, so drop them — and clear
+        // any trade refs that pointed at them so the UI doesn't keep trying
+        // to resolve missing blobs.
+        await tx.table('pending_uploads').clear()
+        await tx
+          .table('trades')
+          .toCollection()
+          .modify((t: TradeRecord) => {
+            if (typeof t.screenshot === 'string' && t.screenshot.startsWith('pending:')) {
+              t.screenshot = null
+            }
+          })
+      })
+
+    // v8: rating "meh" renamed to "egg" (emoji stays 🥚, just a label change
+    // in code). Any existing trades carrying "meh" are rewritten so they
+    // still pass the zod enum on load.
+    this.version(8).upgrade(async tx => {
+      await tx
+        .table('trades')
+        .toCollection()
+        .modify((t: TradeRecord) => {
+          if ((t.rating as string) === 'meh') {
+            ;(t as { rating: string }).rating = 'egg'
+          }
+        })
+    })
   }
 }
 
@@ -146,5 +193,51 @@ export async function ensureMainAccount(): Promise<void> {
     is_main: true,
     created_at: ts,
     updated_at: ts,
+  })
+}
+
+// Clears any trade / day-screenshot references that point at pending uploads
+// that no longer exist in the queue. Happens when the v6→v7 schema upgrade
+// wipes legacy pending blobs but leaves the records still referring to them,
+// which would show as "Pending upload missing" forever.
+//
+// Also deletes any day_screenshot rows whose screenshot field is null —
+// those only existed under the old one-row-per-day model where null meant
+// "cleared"; in the multi-per-day model a missing screenshot is just zero
+// rows, so null rows are orphans.
+//
+// Safe to call repeatedly; cheap when there's nothing to do.
+export async function cleanOrphanedPendingRefs(): Promise<void> {
+  const [staleTrades, staleDays, emptyDays, pending] = await Promise.all([
+    db.trades.where('screenshot').startsWith('pending:').toArray(),
+    db.day_screenshots.where('screenshot').startsWith('pending:').toArray(),
+    db.day_screenshots.filter(d => d.screenshot === null).toArray(),
+    db.pending_uploads.toArray(),
+  ])
+  if (
+    staleTrades.length === 0 &&
+    staleDays.length === 0 &&
+    emptyDays.length === 0
+  ) {
+    return
+  }
+  const live = new Set(pending.map(p => p.id))
+  const now = new Date().toISOString()
+  await db.transaction('rw', db.trades, db.day_screenshots, async () => {
+    for (const t of staleTrades) {
+      const pid = t.screenshot?.slice('pending:'.length)
+      if (!pid || !live.has(pid)) {
+        await db.trades.update(t.id, { screenshot: null, updated_at: now })
+      }
+    }
+    for (const d of staleDays) {
+      const pid = d.screenshot?.slice('pending:'.length)
+      if (!pid || !live.has(pid)) {
+        await db.day_screenshots.delete(d.id)
+      }
+    }
+    for (const d of emptyDays) {
+      await db.day_screenshots.delete(d.id)
+    }
   })
 }

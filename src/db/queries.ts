@@ -3,6 +3,7 @@ import type {
   Account,
   AccountDraft,
   AdjustmentDraft,
+  DayScreenshot,
   EquityAdjustment,
   TradeDraft,
   TradeRecord,
@@ -163,11 +164,19 @@ export async function renameAccount(id: string, name: string): Promise<void> {
 // too).
 export async function deleteAccount(id: string): Promise<void> {
   if (id === MAIN_ACCOUNT_ID) throw new Error('The Main account cannot be deleted.')
-  await db.transaction('rw', db.accounts, db.trades, db.adjustments, async () => {
-    await db.trades.where('account_id').equals(id).delete()
-    await db.adjustments.where('account_id').equals(id).delete()
-    await db.accounts.delete(id)
-  })
+  await db.transaction(
+    'rw',
+    db.accounts,
+    db.trades,
+    db.adjustments,
+    db.day_screenshots,
+    async () => {
+      await db.trades.where('account_id').equals(id).delete()
+      await db.adjustments.where('account_id').equals(id).delete()
+      await db.day_screenshots.where('account_id').equals(id).delete()
+      await db.accounts.delete(id)
+    },
+  )
 }
 
 // Counts the data an account owns — used by the UI confirm dialog before a
@@ -180,4 +189,44 @@ export async function countAccountData(
     db.adjustments.where('account_id').equals(id).count(),
   ])
   return { trades, adjustments }
+}
+
+// ---------- day screenshots ----------
+
+// A day can have many screenshots — each one is a row of its own, keyed by a
+// random UUID so independent uploads on two synced devices don't collide.
+export async function listDayScreenshotsFor(
+  accountId: string,
+  date: string,
+): Promise<DayScreenshot[]> {
+  return db.day_screenshots
+    .where('[account_id+date]')
+    .equals([accountId, date])
+    .sortBy('created_at')
+}
+
+export async function addDayScreenshot(
+  accountId: string,
+  date: string,
+  screenshot: string,
+): Promise<DayScreenshot> {
+  const ts = now()
+  const rec: DayScreenshot = {
+    id: newId(),
+    account_id: accountId,
+    date,
+    screenshot,
+    created_at: ts,
+    updated_at: ts,
+  }
+  await db.day_screenshots.add(rec)
+  return rec
+}
+
+export async function deleteDayScreenshot(id: string): Promise<void> {
+  await db.day_screenshots.delete(id)
+}
+
+export async function listAllDayScreenshots(accountId: string): Promise<DayScreenshot[]> {
+  return db.day_screenshots.where('account_id').equals(accountId).sortBy('date')
 }

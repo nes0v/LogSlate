@@ -8,8 +8,9 @@
 
 import { useSyncExternalStore } from 'react'
 import { db } from '@/db/schema'
-import { getDriveState, subscribeDrive, type DriveStatus } from '@/lib/drive'
+import { DriveScopeError, getDriveState, subscribeDrive, type DriveStatus } from '@/lib/drive'
 import { drainPendingUploads } from '@/lib/drive-images'
+import { pushError } from '@/lib/notifications'
 import { syncNow, type SyncResult } from '@/lib/sync'
 
 export type AutoSyncStatus = 'idle' | 'syncing' | 'error'
@@ -64,7 +65,13 @@ async function runSync(): Promise<SyncResult | null> {
     update({ status: 'idle', error: null })
     return result
   } catch (e) {
-    update({ status: 'error', error: (e as Error).message ?? String(e) })
+    const message = (e as Error).message ?? String(e)
+    update({ status: 'error', error: message })
+    if (e instanceof DriveScopeError) {
+      pushError(message, { label: 'Reconnect', to: '/settings' })
+    } else {
+      pushError(`Drive sync failed: ${message}`, { label: 'Settings', to: '/settings' })
+    }
     return null
   } finally {
     isSyncing = false

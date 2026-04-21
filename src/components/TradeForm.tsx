@@ -11,7 +11,6 @@ import {
   computeGrossPnl,
   computeNetPnl,
   computeRealizedRr,
-  effectivePnl,
   inferSide,
   totalContracts,
 } from '@/lib/trade-math'
@@ -42,7 +41,7 @@ const PLANNED_RR = [1, 2, 3, 4, 5, 6, 7].map(v => ({ value: v as 1 | 2 | 3 | 4 |
 const RATINGS = [
   { value: 'good', label: '👍 good' },
   { value: 'excellent', label: '🔥 excellent' },
-  { value: 'meh', label: '🥚 meh' },
+  { value: 'egg', label: '🥚 egg' },
 ] as const
 const EXECUTION_KINDS = [
   { value: 'buy', label: 'Buy' },
@@ -55,9 +54,26 @@ interface TradeFormProps {
   onSubmit: (draft: TradeDraft) => Promise<void> | void
   onCancel: () => void
   submitLabel?: string
+  /** Resolves the trade's 1-based ordinal within its day when an upload
+   *  happens. Called lazily so the count reflects the DB at upload time.
+   */
+  getTradeOrdinal: () => Promise<number> | number
+  /** Edit flow hooks this to persist the screenshot ref to the trade record
+   *  the moment it changes, so navigating away without clicking Save doesn't
+   *  orphan the uploaded image. Omitted for new-trade flow (no record yet).
+   */
+  onScreenshotPersist?: (ref: string | null) => Promise<void> | void
 }
 
-export function TradeForm({ initialValues, initialDate, onSubmit, onCancel, submitLabel = 'Save trade' }: TradeFormProps) {
+export function TradeForm({
+  initialValues,
+  initialDate,
+  onSubmit,
+  onCancel,
+  submitLabel = 'Save trade',
+  getTradeOrdinal,
+  onScreenshotPersist,
+}: TradeFormProps) {
   const {
     register,
     control,
@@ -100,7 +116,6 @@ export function TradeForm({ initialValues, initialDate, onSubmit, onCancel, subm
   const fees = computeFees(synthetic)
   const gross = computeGrossPnl(synthetic)
   const net = computeNetPnl(synthetic)
-  const effPnl = effectivePnl(synthetic)
   const ahpc = computeAhpc(synthetic)
   const realRr = computeRealizedRr(synthetic)
 
@@ -288,35 +303,15 @@ export function TradeForm({ initialValues, initialDate, onSubmit, onCancel, subm
         </section>
 
         <section>
-          <Field
-            label="PnL override ($)"
-            hint="Leave blank to use the computed net PnL"
-          >
-            <Controller
-              control={control}
-              name="pnl_override"
-              render={({ field }) => (
-                <input
-                  type="number"
-                  step="0.01"
-                  className={inputClass}
-                  onFocus={selectOnFocus}
-                  value={field.value ?? ''}
-                  onChange={e => {
-                    const v = e.target.value
-                    field.onChange(v === '' ? null : Number(v))
-                  }}
-                />
-              )}
-            />
-          </Field>
-        </section>
-
-        <section>
           <Field label="Screenshot">
             <ScreenshotField
               value={values.screenshot ?? null}
-              onChange={ref => setValue('screenshot', ref, { shouldDirty: true })}
+              onChange={ref => {
+                setValue('screenshot', ref, { shouldDirty: true })
+                if (onScreenshotPersist) void onScreenshotPersist(ref)
+              }}
+              date={values.trade_date}
+              getFilenameSuffix={async () => `trade-${await getTradeOrdinal()}`}
             />
           </Field>
         </section>
@@ -349,9 +344,6 @@ export function TradeForm({ initialValues, initialDate, onSubmit, onCancel, subm
         <PreviewRow label="Gross PnL" value={gross === null ? '—' : formatUsd(gross)} accent={pnlAccent(gross)} />
         <PreviewRow label="Fees" value={formatUsd(-fees)} accent="dim" />
         <PreviewRow label="Net PnL" value={net === null ? '—' : formatUsd(net)} accent={pnlAccent(net)} />
-        {values.pnl_override !== null && values.pnl_override !== undefined && (
-          <PreviewRow label="Effective PnL" value={effPnl === null ? '—' : formatUsd(effPnl)} accent={pnlAccent(effPnl)} />
-        )}
         <div className="border-t border-(--color-border) my-2" />
         <PreviewRow label="AHPC" value={ahpc === null ? '—' : ahpc.toFixed(2) + ' h'} />
         <PreviewRow label="Realized R:R" value={realRr === null ? '—' : `${realRr.toFixed(2)}x`} accent={realRr !== null ? (realRr > 0 ? 'win' : realRr < 0 ? 'loss' : 'dim') : undefined} />

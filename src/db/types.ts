@@ -1,7 +1,7 @@
 export type SymbolKey = 'NQ' | 'ES'
 export type ContractType = 'micro' | 'mini'
 export type Session = 'pre' | 'AM' | 'LT' | 'PM' | 'aft'
-export type Rating = 'good' | 'excellent' | 'meh'
+export type Rating = 'good' | 'excellent' | 'egg'
 export type PlannedRR = 1 | 2 | 3 | 4 | 5 | 6 | 7
 export type Side = 'long' | 'short'
 
@@ -68,8 +68,29 @@ export type AdjustmentDraft = Omit<EquityAdjustment, 'id' | 'account_id' | 'crea
 // offline, the blob is stashed in this table; a drainer (wired into
 // auto-sync) uploads it once the app is online and rewrites the trade's
 // screenshot field to the Drive file id.
+//
+// `filename` and `month_key` are computed at enqueue time so the drainer
+// can upload into the right YYYY-MM subfolder with a human-readable name
+// without re-deriving context from the trade record (which might have
+// changed between enqueue and drain).
 export interface PendingUpload {
   id: string
   blob: Blob
+  filename: string
+  month_key: string
   created_at: string
+}
+
+// Per-day screenshot (one per account+date). The user attaches an image to
+// a trading day itself (e.g. a summary chart), independent of any individual
+// trade. Id is derived as `${account_id}:${date}` so the record stays in
+// lockstep across devices on sync without the UI needing to remember a
+// random UUID.
+export interface DayScreenshot {
+  id: string
+  account_id: string
+  date: string // YYYY-MM-DD
+  screenshot: string | null
+  created_at: string
+  updated_at: string
 }

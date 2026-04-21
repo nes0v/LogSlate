@@ -1,5 +1,6 @@
 import { db } from '@/db/schema'
 import { createTrade } from '@/db/queries'
+import { clearNotifications, pushError, pushInfo } from '@/lib/notifications'
 
 // Small deterministic sample spanning a couple of days — used for dev.
 // Call `seedSampleTrades()` from the browser devtools to populate.
@@ -42,7 +43,7 @@ export async function seedSampleTrades(): Promise<number> {
       drawdown: 50,
       buildup: 5,
       planned_rr: 3,
-      rating: 'meh',
+      rating: 'egg',
       pnl_override: null,
       screenshot: null,
     },
@@ -83,10 +84,20 @@ declare global {
       db: typeof db
       seedSampleTrades: typeof seedSampleTrades
       wipeAllTrades: typeof wipeAllTrades
+      pushError: typeof pushError
+      pushInfo: typeof pushInfo
+      clearNotifications: typeof clearNotifications
     }
   }
 }
 
 if (import.meta.env.DEV) {
-  window.__logslate = { db, seedSampleTrades, wipeAllTrades }
+  window.__logslate = {
+    db,
+    seedSampleTrades,
+    wipeAllTrades,
+    pushError,
+    pushInfo,
+    clearNotifications,
+  }
 }
