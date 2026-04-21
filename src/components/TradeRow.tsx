@@ -15,7 +15,7 @@ import { cn } from '@/lib/utils'
 const RATING_EMOJI: Record<TradeRecord['rating'], string> = {
   good: '👍',
   excellent: '🔥',
-  meh: '🥚',
+  egg: '🥚',
 }
 
 // Shared column template used by TradeList. Each row is a subgrid of these

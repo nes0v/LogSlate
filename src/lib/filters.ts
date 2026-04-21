@@ -52,7 +52,7 @@ export function filtersFromParams(p: URLSearchParams): TradeFilters {
     symbol: get<SymbolKey>('symbol', ['NQ', 'ES']),
     contract: get<ContractType>('contract', ['micro', 'mini']),
     session: get<Session>('session', ['pre', 'AM', 'LT', 'PM', 'aft']),
-    rating: get<Rating>('rating', ['good', 'excellent', 'meh']),
+    rating: get<Rating>('rating', ['good', 'excellent', 'egg']),
   }
 }
 

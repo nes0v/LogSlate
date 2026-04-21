@@ -21,7 +21,7 @@ export const tradeFormSchema = z
     drawdown: z.number().min(0, 'must be ≥ 0'),
     buildup: z.number().min(0, 'must be ≥ 0').nullable(),
     planned_rr: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7)]),
-    rating: z.enum(['good', 'excellent', 'meh']),
+    rating: z.enum(['good', 'excellent', 'egg']),
     pnl_override: z.number().nullable(),
     screenshot: z.string().nullable(),
   })

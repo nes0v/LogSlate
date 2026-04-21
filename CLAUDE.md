@@ -42,7 +42,7 @@ Sessions: `pre | AM | LT | PM | aft` (pre-market, morning, lunch, evening, after
 - `sells[]` — array of `{ price, time, contracts }`
 - `stop_loss` USD, `drawdown` USD (MAE), `buildup` USD (MFE)
 - `planned_rr` — integer 1–7 (1x..7x only, no decimals)
-- `rating` — 👍 good | 🔥 excellent | 🥚 meh
+- `rating` — 👍 good | 🔥 excellent | 🥚 egg
 - `pnl` USD — auto-computed by default, with manual override allowed
 - `screenshot` — image (base64 inline in IndexedDB for v1)
 

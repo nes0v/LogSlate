@@ -22,7 +22,7 @@ describe('hasAnyFilter', () => {
 describe('applyFilters', () => {
   const trades = [
     tradeRecord({ trade_date: '2026-04-05', symbol: 'NQ', contract_type: 'mini', session: 'AM', rating: 'good' }),
-    tradeRecord({ trade_date: '2026-04-10', symbol: 'ES', contract_type: 'micro', session: 'PM', rating: 'meh' }),
+    tradeRecord({ trade_date: '2026-04-10', symbol: 'ES', contract_type: 'micro', session: 'PM', rating: 'egg' }),
     tradeRecord({ trade_date: '2026-04-20', symbol: 'NQ', contract_type: 'micro', session: 'LT', rating: 'excellent' }),
   ]
 

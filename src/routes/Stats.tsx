@@ -53,7 +53,7 @@ const RATING_OPTS = [
   { value: null, label: 'All' },
   { value: 'good' as const, label: '👍' },
   { value: 'excellent' as const, label: '🔥' },
-  { value: 'meh' as const, label: '🥚' },
+  { value: 'egg' as const, label: '🥚' },
 ] satisfies Array<{ value: Rating | null; label: string }>
 
 export function StatsRoute() {
@@ -197,7 +197,7 @@ export function StatsRoute() {
     () => [
       { label: '👍 good', trades: filtered.filter(t => t.rating === 'good') },
       { label: '🔥 excellent', trades: filtered.filter(t => t.rating === 'excellent') },
-      { label: '🥚 meh', trades: filtered.filter(t => t.rating === 'meh') },
+      { label: '🥚 egg', trades: filtered.filter(t => t.rating === 'egg') },
     ],
     [filtered],
   )
