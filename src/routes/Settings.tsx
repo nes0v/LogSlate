@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import { CheckCircle2, CloudDownload, CloudUpload, LogIn, LogOut, RefreshCw } from 'lucide-react'
+import { requestManualSync } from '@/lib/auto-sync'
 import { isConfigured, signIn, signOut, useDriveState } from '@/lib/drive'
-import { clearSyncState, lastSyncAt, syncNow, type SyncResult } from '@/lib/sync'
+import { clearSyncState, lastSyncAt, type SyncResult } from '@/lib/sync'
 import { exportBackup, importBackup } from '@/lib/backup'
 import { AccountsPanel } from '@/components/AccountsPanel'
 import { EquityAdjustmentsPanel } from '@/components/EquityAdjustmentsPanel'
@@ -19,8 +20,9 @@ export function SettingsRoute() {
     setSyncing(true)
     setError(null)
     try {
-      const r = await syncNow()
-      setLastResult(r)
+      const r = await requestManualSync()
+      if (r) setLastResult(r)
+      else setError('A sync is already running — try again in a moment.')
     } catch (e) {
       setError((e as Error).message ?? String(e))
     } finally {
