@@ -9,7 +9,14 @@ import {
 interface ScreenshotThumbProps {
   value: string
   onRemove?: () => void | Promise<void>
+  /** "md" (default) for ~128px height, "sm" for ~64px inline thumbnails. */
+  size?: 'sm' | 'md'
 }
+
+const SIZE_CLASSES = {
+  md: { img: 'max-h-32', placeholder: 'h-32 w-32', failed: 'min-h-32 w-44' },
+  sm: { img: 'max-h-16', placeholder: 'h-16 w-16', failed: 'min-h-16 w-32' },
+} as const
 
 type LoadState =
   | { status: 'loading'; ref: string }
@@ -19,7 +26,7 @@ type LoadState =
 // Renders one screenshot — loading placeholder, image (clickable to open in
 // Drive), or a "Couldn't load" fallback with Retry + Drive-link. Optional
 // onRemove wires up an X button in the top-right corner.
-export function ScreenshotThumb({ value, onRemove }: ScreenshotThumbProps) {
+export function ScreenshotThumb({ value, onRemove, size = 'md' }: ScreenshotThumbProps) {
   const [fetched, setFetched] = useState<
     { ref: string; url: string; error: null } | { ref: string; url: null; error: string } | null
   >(null)
@@ -54,7 +61,12 @@ export function ScreenshotThumb({ value, onRemove }: ScreenshotThumbProps) {
 
   return (
     <div className="relative inline-block">
-      <ScreenshotBody load={load} viewUrl={viewUrl} onRetry={() => setFetched(null)} />
+      <ScreenshotBody
+        load={load}
+        viewUrl={viewUrl}
+        onRetry={() => setFetched(null)}
+        sizes={SIZE_CLASSES[size]}
+      />
       {onRemove && load.status !== 'loading' && (
         <button
           type="button"
@@ -75,15 +87,16 @@ interface ScreenshotBodyProps {
   load: LoadState
   viewUrl: string | null
   onRetry: () => void
+  sizes: { img: string; placeholder: string; failed: string }
 }
 
-function ScreenshotBody({ load, viewUrl, onRetry }: ScreenshotBodyProps) {
+function ScreenshotBody({ load, viewUrl, onRetry, sizes }: ScreenshotBodyProps) {
   if (load.status === 'loaded') {
     const img = (
       <img
         src={load.url}
         alt=""
-        className="max-h-32 rounded-md border border-(--color-border)"
+        className={`${sizes.img} rounded-md border border-(--color-border)`}
       />
     )
     if (viewUrl) {
@@ -105,7 +118,7 @@ function ScreenshotBody({ load, viewUrl, onRetry }: ScreenshotBodyProps) {
     return (
       <div
         title={load.error}
-        className="min-h-32 w-44 rounded-md border border-dashed border-(--color-loss)/40 flex flex-col items-center justify-center gap-1 text-xs text-(--color-text-dim) text-center p-2"
+        className={`${sizes.failed} rounded-md border border-dashed border-(--color-loss)/40 flex flex-col items-center justify-center gap-1 text-xs text-(--color-text-dim) text-center p-2`}
       >
         <span className="text-(--color-loss)">Couldn&rsquo;t load</span>
         <span className="text-[10px] break-words">{load.error}</span>
@@ -132,7 +145,7 @@ function ScreenshotBody({ load, viewUrl, onRetry }: ScreenshotBodyProps) {
     )
   }
   return (
-    <div className="h-32 w-32 rounded-md border border-dashed border-(--color-border) flex items-center justify-center text-xs text-(--color-text-dim)">
+    <div className={`${sizes.placeholder} rounded-md border border-dashed border-(--color-border) flex items-center justify-center text-xs text-(--color-text-dim)`}>
       loading…
     </div>
   )

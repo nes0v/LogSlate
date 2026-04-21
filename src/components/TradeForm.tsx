@@ -17,6 +17,7 @@ import {
 import { Pills } from '@/components/form/Pills'
 import { Field, inputClass } from '@/components/form/Field'
 import { ScreenshotField } from '@/components/ScreenshotField'
+import { formatDuration } from '@/lib/duration'
 import { formatUsd } from '@/lib/money'
 import { cn } from '@/lib/utils'
 
@@ -255,7 +256,7 @@ export function TradeForm({
               {...register('stop_loss', { valueAsNumber: true })}
             />
           </Field>
-          <Field label="Drawdown / MAE ($)" error={errors.drawdown?.message}>
+          <Field label="Drawdown ($)" error={errors.drawdown?.message}>
             <input
               type="number"
               step="0.01"
@@ -264,7 +265,7 @@ export function TradeForm({
               {...register('drawdown', { valueAsNumber: true })}
             />
           </Field>
-          <Field label="Buildup / MFE ($)" hint="Optional" error={errors.buildup?.message}>
+          <Field label="Buildup ($)" hint="Optional" error={errors.buildup?.message}>
             <Controller
               control={control}
               name="buildup"
@@ -384,17 +385,4 @@ function pnlAccent(n: number | null): 'win' | 'loss' | 'dim' | undefined {
   if (n > 0) return 'win'
   if (n < 0) return 'loss'
   return 'dim'
-}
-
-function formatDuration(ms: number | null): string {
-  if (ms === null) return '—'
-  if (ms < 0) return '—'
-  const s = Math.round(ms / 1000)
-  if (s < 60) return `${s}s`
-  const m = Math.floor(s / 60)
-  const rs = s % 60
-  if (m < 60) return rs === 0 ? `${m}m` : `${m}m ${rs}s`
-  const h = Math.floor(m / 60)
-  const rm = m % 60
-  return rm === 0 ? `${h}h` : `${h}h ${rm}m`
 }

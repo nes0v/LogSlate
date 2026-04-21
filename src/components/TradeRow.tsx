@@ -9,14 +9,9 @@ import {
   totalContracts,
 } from '@/lib/trade-math'
 import { formatUsd } from '@/lib/money'
+import { RATING_EMOJI } from '@/lib/rating-emoji'
 import { SESSION_BADGE, SESSION_BADGE_CLASS } from '@/lib/session-badge'
 import { cn } from '@/lib/utils'
-
-const RATING_EMOJI: Record<TradeRecord['rating'], string> = {
-  good: '👍',
-  excellent: '🔥',
-  egg: '🥚',
-}
 
 // Shared column template used by TradeList. Each row is a subgrid of these
 // same tracks, so columns line up vertically across all rows.

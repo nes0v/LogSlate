@@ -8,10 +8,9 @@ import { useActiveAccountId } from '@/lib/active-account'
 import { aggregate } from '@/lib/trade-stats'
 import { useArrowNavigation } from '@/lib/use-arrow-navigation'
 import { DayScreenshotSection } from '@/components/DayScreenshotSection'
+import { DayTradeCard } from '@/components/DayTradeCard'
 import { NavArrow } from '@/components/NavArrow'
 import { StatsGrid } from '@/components/StatsGrid'
-import { TradeRow, TRADE_ROW_COLS } from '@/components/TradeRow'
-import { cn } from '@/lib/utils'
 
 export function DayRoute() {
   const { date = '' } = useParams()
@@ -103,9 +102,9 @@ export function DayRoute() {
       <DayScreenshotSection accountId={accountId} date={date} />
 
       {trades && trades.length > 0 ? (
-        <div className={cn('grid gap-x-5 gap-y-1.5', TRADE_ROW_COLS)}>
+        <div className="flex flex-col gap-3">
           {trades.map((t, i) => (
-            <TradeRow key={t.id} trade={t} index={i + 1} />
+            <DayTradeCard key={t.id} trade={t} index={i + 1} />
           ))}
         </div>
       ) : (
