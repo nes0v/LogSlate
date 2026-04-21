@@ -11,6 +11,7 @@ import {
 } from 'recharts'
 import { format } from 'date-fns'
 import { chartDayLabel } from '@/lib/buckets'
+import { setHoverLabel, useHoverLabel } from '@/lib/hover-cursor'
 import { formatUsd } from '@/lib/money'
 
 export interface EquityPoint {
@@ -44,10 +45,6 @@ interface EquityCurveProps {
   adjustments?: AdjustmentMarker[]
   /** Fired when a point/area in the chart is clicked — gets the bucket key. */
   onPointClick?: (key: string) => void
-  /** X-axis label currently hovered (shared across charts for cursor sync). */
-  hoverLabel?: string | null
-  /** Notifies the parent when the hovered X label changes. */
-  onHoverLabel?: (label: string | null) => void
 }
 
 export function EquityCurve({
@@ -58,8 +55,6 @@ export function EquityCurve({
   headerRight,
   adjustments,
   onPointClick,
-  hoverLabel = null,
-  onHoverLabel,
 }: EquityCurveProps) {
   const data = useMemo(() => {
     if (!cumulative) return points.map(p => ({ ...p, y: p.pnl }))
@@ -86,11 +81,10 @@ export function EquityCurve({
             margin={{ top: 28, right: 12, left: 8, bottom: 0 }}
             syncId="equity"
             onMouseMove={state => {
-              if (!onHoverLabel) return
               const label = state?.activeLabel
-              onHoverLabel(typeof label === 'string' ? label : null)
+              setHoverLabel(typeof label === 'string' ? label : null)
             }}
-            onMouseLeave={() => onHoverLabel?.(null)}
+            onMouseLeave={() => setHoverLabel(null)}
           >
             {adjustments && adjustments.length > 0 && (
               <CartesianGrid
@@ -128,7 +122,7 @@ export function EquityCurve({
             />
             <Tooltip
               cursor={{ stroke: 'var(--color-text-dim)', strokeWidth: 1, strokeDasharray: '3 3', shapeRendering: 'crispEdges' }}
-              content={<EquityTooltip cumulative={cumulative} hoverLabel={hoverLabel} />}
+              content={<EquityTooltip cumulative={cumulative} />}
               position={{ x: 76, y: 8 }}
             />
             {/* Labels only — the visible line is drawn by the CartesianGrid
@@ -201,10 +195,10 @@ interface EquityTooltipProps {
   active?: boolean
   payload?: Array<{ payload: TooltipPayload }>
   cumulative: boolean
-  hoverLabel: string | null
 }
 
-function EquityTooltip({ active, payload, cumulative, hoverLabel }: EquityTooltipProps) {
+function EquityTooltip({ active, payload, cumulative }: EquityTooltipProps) {
+  const hoverLabel = useHoverLabel()
   if (!hoverLabel) return null
   if (!active || !payload || payload.length === 0) return null
   const p = payload[0].payload

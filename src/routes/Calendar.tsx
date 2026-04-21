@@ -34,7 +34,6 @@ export function CalendarRoute() {
   const { ym } = useParams()
   const navigate = useNavigate()
   const [equityView, setEquityView] = useState<EquityView>('curve')
-  const [hoverLabel, setHoverLabel] = useState<string | null>(null)
 
   // Memoize date derivations so `useMemo` deps compare by stable reference.
   const { month, ms, me, gridStart, gridEnd, days } = useMemo(() => {
@@ -251,8 +250,6 @@ export function CalendarRoute() {
           xTicks={xTicks}
           adjustments={adjustmentMarkers}
           onPointClick={key => navigate(`/day/${key}`)}
-          hoverLabel={hoverLabel}
-          onHoverLabel={setHoverLabel}
           headerRight={<EquityChartToggle value={equityView} onChange={setEquityView} />}
         />
       ) : (
@@ -261,17 +258,10 @@ export function CalendarRoute() {
           xTicks={xTicks}
           adjustments={adjustmentMarkers}
           onPointClick={key => navigate(`/day/${key}`)}
-          hoverLabel={hoverLabel}
-          onHoverLabel={setHoverLabel}
           headerRight={<EquityChartToggle value={equityView} onChange={setEquityView} />}
         />
       )}
-      <FeesChart
-        points={candles}
-        xTicks={xTicks}
-        hoverLabel={hoverLabel}
-        onHoverLabel={setHoverLabel}
-      />
+      <FeesChart points={candles} xTicks={xTicks} />
     </div>
   )
 }

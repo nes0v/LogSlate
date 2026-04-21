@@ -15,6 +15,7 @@ import { ChartHoverCursor } from '@/components/ChartHoverCursor'
 import { chartDayLabel } from '@/lib/buckets'
 import type { CandlePoint } from '@/lib/trade-stats'
 import { niceDomain } from '@/lib/chart'
+import { setHoverLabel, useHoverLabel } from '@/lib/hover-cursor'
 import { formatUsd } from '@/lib/money'
 import { cn } from '@/lib/utils'
 
@@ -29,10 +30,6 @@ interface CandlestickChartProps {
   adjustments?: AdjustmentMarker[]
   /** Fired when a candle is clicked — gets the bucket key. */
   onPointClick?: (key: string) => void
-  /** X-axis label currently hovered (shared across charts for cursor sync). */
-  hoverLabel?: string | null
-  /** Notifies the parent when the hovered X label changes. */
-  onHoverLabel?: (label: string | null) => void
 }
 
 interface Row extends CandlePoint {
@@ -49,8 +46,6 @@ export function CandlestickChart({
   headerRight,
   adjustments,
   onPointClick,
-  hoverLabel = null,
-  onHoverLabel,
 }: CandlestickChartProps) {
   const data: Row[] = useMemo(
     () =>
@@ -83,8 +78,7 @@ export function CandlestickChart({
       </div>
       <div className="bg-(--color-panel) border border-(--color-border) rounded-md p-3">
       {hasData ? (
-        <div style={{ height }}>
-          <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height={height} minWidth={0} minHeight={0}>
             <ComposedChart
               data={data}
               margin={{ top: 28, right: 12, left: 8, bottom: 0 }}
@@ -97,11 +91,10 @@ export function CandlestickChart({
                 if (point?.key) onPointClick(point.key)
               }}
               onMouseMove={state => {
-                if (!onHoverLabel) return
                 const label = state?.activeLabel
-                onHoverLabel(typeof label === 'string' ? label : null)
+                setHoverLabel(typeof label === 'string' ? label : null)
               }}
-              onMouseLeave={() => onHoverLabel?.(null)}
+              onMouseLeave={() => setHoverLabel(null)}
             >
               {adjustments && adjustments.length > 0 && (
                 <CartesianGrid
@@ -120,7 +113,7 @@ export function CandlestickChart({
                   }}
                 />
               )}
-              <ChartHoverCursor hoverLabel={hoverLabel} />
+              <ChartHoverCursor />
               <XAxis
                 dataKey="label"
                 tick={{ fill: 'var(--color-text-dim)', fontSize: 11 }}
@@ -139,7 +132,7 @@ export function CandlestickChart({
                 domain={domain}
                 tickFormatter={v => formatUsd(v)}
               />
-              <Tooltip content={<CandleTooltip hoverLabel={hoverLabel} />} cursor={false} position={{ x: 76, y: 8 }} />
+              <Tooltip content={<CandleTooltip />} cursor={false} position={{ x: 76, y: 8 }} />
               {/* Labels only — the visible line is drawn by the CartesianGrid
                   above so it renders beneath the candles. */}
               {adjustments?.map(a => {
@@ -167,9 +160,8 @@ export function CandlestickChart({
                 shape={props => <CandleShape {...props} onPointClick={onPointClick} />}
                 activeBar={props => <CandleShape {...props} onPointClick={onPointClick} active />}
               />
-            </ComposedChart>
-          </ResponsiveContainer>
-        </div>
+          </ComposedChart>
+        </ResponsiveContainer>
       ) : (
         <div className="text-sm text-(--color-text-dim) text-center py-8">No data in this period.</div>
       )}
@@ -258,10 +250,10 @@ interface TooltipProps {
   active?: boolean
   label?: string
   payload?: Array<{ payload: Row }>
-  hoverLabel: string | null
 }
 
-function CandleTooltip({ active, payload, hoverLabel }: TooltipProps) {
+function CandleTooltip({ active, payload }: TooltipProps) {
+  const hoverLabel = useHoverLabel()
   if (!hoverLabel) return null
   if (!active || !payload || payload.length === 0) return null
   const p = payload[0].payload

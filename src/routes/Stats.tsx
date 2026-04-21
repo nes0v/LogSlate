@@ -61,7 +61,6 @@ export function StatsRoute() {
   const navigate = useNavigate()
   const urlFilters = filtersFromParams(params)
   const [equityView, setEquityView] = useState<EquityView>('curve')
-  const [hoverLabel, setHoverLabel] = useState<string | null>(null)
 
   // Effective filters = URL filters with current month as the default date
   // range when none is specified. The URL stays clean (no params) for the
@@ -298,8 +297,6 @@ export function StatsRoute() {
               xTicks={xTicks}
               adjustments={adjustmentMarkers}
               onPointClick={key => navigate(`/day/${key}`)}
-              hoverLabel={hoverLabel}
-              onHoverLabel={setHoverLabel}
               headerRight={<EquityChartToggle value={equityView} onChange={setEquityView} />}
             />
           ) : (
@@ -308,17 +305,10 @@ export function StatsRoute() {
               xTicks={xTicks}
               adjustments={adjustmentMarkers}
               onPointClick={key => navigate(`/day/${key}`)}
-              hoverLabel={hoverLabel}
-              onHoverLabel={setHoverLabel}
               headerRight={<EquityChartToggle value={equityView} onChange={setEquityView} />}
             />
           )}
-          <FeesChart
-            points={candles}
-            xTicks={xTicks}
-            hoverLabel={hoverLabel}
-            onHoverLabel={setHoverLabel}
-          />
+          <FeesChart points={candles} xTicks={xTicks} />
           <div className="grid md:grid-cols-2 gap-x-4 gap-y-8">
             <FacetBreakdown title="By Symbol" items={bySymbol} />
             <FacetBreakdown title="By Contract" items={byContract} />

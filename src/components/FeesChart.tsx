@@ -12,6 +12,7 @@ import { ChartHoverCursor } from '@/components/ChartHoverCursor'
 import { chartDayLabel } from '@/lib/buckets'
 import type { CandlePoint } from '@/lib/trade-stats'
 import { niceDomain } from '@/lib/chart'
+import { setHoverLabel, useHoverLabel } from '@/lib/hover-cursor'
 import { formatUsd } from '@/lib/money'
 
 interface FeesChartProps {
@@ -19,21 +20,11 @@ interface FeesChartProps {
   height?: number
   /** Explicit X-axis tick values (must match point labels). */
   xTicks?: string[]
-  /** X-axis label currently hovered (shared across charts for cursor sync). */
-  hoverLabel?: string | null
-  /** Notifies the parent when the hovered X label changes. */
-  onHoverLabel?: (label: string | null) => void
 }
 
 const LEFT_AXIS_W = 60
 
-export function FeesChart({
-  points,
-  height = 180,
-  xTicks,
-  hoverLabel = null,
-  onHoverLabel,
-}: FeesChartProps) {
+export function FeesChart({ points, height = 180, xTicks }: FeesChartProps) {
   const data = useMemo(
     () => points.map(p => ({ key: p.key, label: p.label, fees: p.fees, count: p.count })),
     [points],
@@ -53,49 +44,46 @@ export function FeesChart({
       <h2 className="text-sm font-medium">Fees</h2>
       <div className="bg-(--color-panel) border border-(--color-border) rounded-md p-3">
       {hasFees ? (
-        <div style={{ height }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart
-              data={data}
-              margin={{ top: 28, right: 12, left: 8, bottom: 0 }}
-              syncId="equity"
-              onMouseMove={state => {
-                if (!onHoverLabel) return
-                const label = state?.activeLabel
-                onHoverLabel(typeof label === 'string' ? label : null)
-              }}
-              onMouseLeave={() => onHoverLabel?.(null)}
-            >
-              <ChartHoverCursor hoverLabel={hoverLabel} />
-              <XAxis
-                dataKey="label"
-                tick={{ fill: 'var(--color-text-dim)', fontSize: 11 }}
-                tickLine={false}
-                axisLine={false}
-                tickFormatter={v => chartDayLabel(String(v))}
-                padding={{ left: 0, right: 0 }}
-                {...(xTicks ? { ticks: xTicks, interval: 0 as const } : {})}
-              />
-              <YAxis
-                width={LEFT_AXIS_W}
-                tick={{ fill: 'var(--color-text-dim)', fontSize: 11 }}
-                tickLine={false}
-                axisLine={false}
-                tickMargin={10}
-                domain={domain}
-                tickFormatter={v => formatUsd(v)}
-              />
-              <Tooltip cursor={false} content={<FeesTooltip hoverLabel={hoverLabel} />} position={{ x: 76, y: 8 }} />
-              <Bar
-                dataKey="fees"
-                maxBarSize={18}
-                fill="var(--color-fee)"
-                isAnimationActive={false}
-                activeBar={{ stroke: '#fff', strokeWidth: 2 }}
-              />
-            </ComposedChart>
-          </ResponsiveContainer>
-        </div>
+        <ResponsiveContainer width="100%" height={height} minWidth={0} minHeight={0}>
+          <ComposedChart
+            data={data}
+            margin={{ top: 28, right: 12, left: 8, bottom: 0 }}
+            syncId="equity"
+            onMouseMove={state => {
+              const label = state?.activeLabel
+              setHoverLabel(typeof label === 'string' ? label : null)
+            }}
+            onMouseLeave={() => setHoverLabel(null)}
+          >
+            <ChartHoverCursor />
+            <XAxis
+              dataKey="label"
+              tick={{ fill: 'var(--color-text-dim)', fontSize: 11 }}
+              tickLine={false}
+              axisLine={false}
+              tickFormatter={v => chartDayLabel(String(v))}
+              padding={{ left: 0, right: 0 }}
+              {...(xTicks ? { ticks: xTicks, interval: 0 as const } : {})}
+            />
+            <YAxis
+              width={LEFT_AXIS_W}
+              tick={{ fill: 'var(--color-text-dim)', fontSize: 11 }}
+              tickLine={false}
+              axisLine={false}
+              tickMargin={10}
+              domain={domain}
+              tickFormatter={v => formatUsd(v)}
+            />
+            <Tooltip cursor={false} content={<FeesTooltip />} position={{ x: 76, y: 8 }} />
+            <Bar
+              dataKey="fees"
+              maxBarSize={18}
+              fill="var(--color-fee)"
+              isAnimationActive={false}
+              activeBar={{ stroke: '#fff', strokeWidth: 2 }}
+            />
+          </ComposedChart>
+        </ResponsiveContainer>
       ) : (
         <div className="text-sm text-(--color-text-dim) text-center py-8">No fees in this period.</div>
       )}
@@ -114,10 +102,10 @@ interface TooltipPayload {
 interface FeesTooltipProps {
   active?: boolean
   payload?: Array<{ payload: TooltipPayload }>
-  hoverLabel: string | null
 }
 
-function FeesTooltip({ active, payload, hoverLabel }: FeesTooltipProps) {
+function FeesTooltip({ active, payload }: FeesTooltipProps) {
+  const hoverLabel = useHoverLabel()
   if (!hoverLabel) return null
   if (!active || !payload || payload.length === 0) return null
   const p = payload[0].payload

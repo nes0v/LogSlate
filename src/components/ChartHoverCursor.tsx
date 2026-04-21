@@ -1,9 +1,5 @@
 import { CartesianGrid } from 'recharts'
-
-interface ChartHoverCursorProps {
-  /** Hovered x-axis category (YYYY-MM-DD bucket key), or null when not hovering. */
-  hoverLabel: string | null
-}
+import { useHoverLabel } from '@/lib/hover-cursor'
 
 /**
  * Dashed vertical cursor rendered inside a Recharts chart. Uses a CartesianGrid
@@ -11,9 +7,13 @@ interface ChartHoverCursorProps {
  * or line — Recharts' built-in Tooltip cursor is always drawn on top.
  *
  * Must be rendered as a direct child of a chart component (LineChart /
- * ComposedChart) so Recharts recognizes and routes the CartesianGrid.
+ * ComposedChart) so Recharts recognizes and routes the CartesianGrid. Reads
+ * the current hover label from a module-level store; the chart itself doesn't
+ * have to pass it down as a prop, which means hover moves don't trigger
+ * parent-tree re-renders.
  */
-export function ChartHoverCursor({ hoverLabel }: ChartHoverCursorProps) {
+export function ChartHoverCursor() {
+  const hoverLabel = useHoverLabel()
   return (
     <CartesianGrid
       horizontal={false}
