@@ -74,7 +74,7 @@ export function EquityAdjustmentsPanel() {
         onSubmit={handleSubmit}
         className="bg-(--color-panel) border border-(--color-border) rounded-md p-3 grid grid-cols-[auto_auto_1fr_1fr_auto] gap-3 items-end"
       >
-        <label className="text-xs text-(--color-text-dim) space-y-1">
+        <label className="text-xs text-(--color-text-dim) space-y-2">
           <div>Date</div>
           <input
             type="date"
@@ -83,7 +83,7 @@ export function EquityAdjustmentsPanel() {
             className={inputClass}
           />
         </label>
-        <label className="text-xs text-(--color-text-dim) space-y-1">
+        <label className="text-xs text-(--color-text-dim) space-y-2">
           <div>Type</div>
           <select
             value={kind}
@@ -94,7 +94,7 @@ export function EquityAdjustmentsPanel() {
             <option value="withdraw">Withdraw</option>
           </select>
         </label>
-        <label className="text-xs text-(--color-text-dim) space-y-1">
+        <label className="text-xs text-(--color-text-dim) space-y-2">
           <div>Amount (USD)</div>
           <input
             type="number"
@@ -107,7 +107,7 @@ export function EquityAdjustmentsPanel() {
             className={inputClass}
           />
         </label>
-        <label className="text-xs text-(--color-text-dim) space-y-1">
+        <label className="text-xs text-(--color-text-dim) space-y-2">
           <div>Note (optional)</div>
           <input
             type="text"

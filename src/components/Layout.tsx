@@ -19,7 +19,6 @@ export function Layout() {
           >
             LogSlate
           </Link>
-          <AccountSwitcher />
           <nav className="flex items-center gap-4 text-sm">
             {links.map(l => (
               <NavLink
@@ -38,8 +37,9 @@ export function Layout() {
               </NavLink>
             ))}
           </nav>
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-3">
             <SyncStatusIndicator />
+            <AccountSwitcher />
           </div>
         </div>
       </header>

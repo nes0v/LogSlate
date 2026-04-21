@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Check, Pencil, Plus, Trash2, X } from 'lucide-react'
+import { Check, Pencil, Trash2, X } from 'lucide-react'
 import {
   countAccountData,
   createAccount,
@@ -25,10 +25,8 @@ export function AccountsPanel() {
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
-    const name = newName.trim()
-    if (!name) return
     try {
-      await createAccount({ name })
+      await createAccount({ name: newName })
       setNewName('')
       setError(null)
     } catch (err) {
@@ -103,11 +101,6 @@ export function AccountsPanel() {
                 ) : (
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="text-sm truncate">{a.name}</span>
-                    {a.is_main && (
-                      <span className="text-[10px] uppercase tracking-wide text-(--color-text-dim)">
-                        main
-                      </span>
-                    )}
                     {a.id === activeId && (
                       <span className="text-[10px] uppercase tracking-wide text-(--color-accent)">
                         active
@@ -176,7 +169,7 @@ export function AccountsPanel() {
         onSubmit={handleCreate}
         className="bg-(--color-panel) border border-(--color-border) rounded-md p-3 grid grid-cols-[1fr_auto] gap-2 items-end"
       >
-        <label className="text-xs text-(--color-text-dim) space-y-1">
+        <label className="text-xs text-(--color-text-dim) space-y-2">
           <div>New account name</div>
           <input
             type="text"
@@ -188,14 +181,12 @@ export function AccountsPanel() {
         </label>
         <button
           type="submit"
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md bg-(--color-accent) text-white hover:opacity-90 disabled:opacity-50"
-          disabled={!newName.trim()}
+          className="inline-flex items-center justify-center px-3 py-1.5 text-sm rounded-md bg-(--color-accent) text-white hover:opacity-90"
         >
-          <Plus className="size-4" /> Add
+          Add
         </button>
+        {error && <div className="col-span-2 text-xs text-(--color-loss)">{error}</div>}
       </form>
-
-      {error && <div className="text-xs text-(--color-loss)">{error}</div>}
     </section>
   )
 }

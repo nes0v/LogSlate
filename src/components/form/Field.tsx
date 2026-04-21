@@ -11,7 +11,7 @@ interface FieldProps {
 
 export function Field({ label, hint, error, children, className }: FieldProps) {
   return (
-    <label className={cn('flex flex-col gap-1', className)}>
+    <label className={cn('flex flex-col gap-2', className)}>
       <span className="text-xs text-(--color-text-dim)">{label}</span>
       {children}
       {hint && !error && <span className="text-xs text-(--color-text-dim)">{hint}</span>}

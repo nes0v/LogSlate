@@ -57,7 +57,7 @@ export function AccountSwitcher() {
         <ChevronDown className="size-3.5 text-(--color-text-dim)" />
       </button>
       {open && accounts && (
-        <div className="absolute left-0 top-full mt-1 min-w-52 rounded-md border border-(--color-border) bg-(--color-panel) shadow-lg z-20 py-1">
+        <div className="absolute right-0 top-full mt-1 min-w-52 rounded-md border border-(--color-border) bg-(--color-panel) shadow-lg z-20 py-1">
           {accounts.map(a => (
             <button
               key={a.id}
@@ -79,11 +79,6 @@ export function AccountSwitcher() {
                 )}
               />
               <span className="truncate">{a.name}</span>
-              {a.is_main && (
-                <span className="ml-auto text-[10px] uppercase tracking-wide text-(--color-text-dim)">
-                  main
-                </span>
-              )}
             </button>
           ))}
         </div>
