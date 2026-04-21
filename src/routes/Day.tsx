@@ -1,18 +1,20 @@
-import { useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { useMemo } from 'react'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { format, parseISO } from 'date-fns'
-import { Plus, ChevronLeft, Wallet } from 'lucide-react'
+import { Plus, ChevronLeft } from 'lucide-react'
 import { db } from '@/db/schema'
 import { useActiveAccountId } from '@/lib/active-account'
 import { aggregate } from '@/lib/trade-stats'
-import { AdjustmentDialog } from '@/components/AdjustmentDialog'
+import { useArrowNavigation } from '@/lib/use-arrow-navigation'
+import { NavArrow } from '@/components/NavArrow'
 import { StatsGrid } from '@/components/StatsGrid'
 import { TradeRow, TRADE_ROW_COLS } from '@/components/TradeRow'
 import { cn } from '@/lib/utils'
 
 export function DayRoute() {
   const { date = '' } = useParams()
+  const navigate = useNavigate()
   const parsed = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? parseISO(date) : null
   const pretty = parsed ? format(parsed, 'EEEE, MMMM d, yyyy') : date
 
@@ -27,8 +29,40 @@ export function DayRoute() {
     [],
   )
 
+  // Every distinct day that has trades for this account — used to skip empty
+  // days in prev/next navigation. `uniqueKeys()` walks the compound index
+  // without pulling trade rows into memory, so this stays cheap even with
+  // hundreds of trades.
+  const tradingDays = useLiveQuery(
+    async () => {
+      const keys = await db.trades
+        .where('[account_id+trade_date]')
+        .between([accountId, ''], [accountId, '￿'], true, true)
+        .uniqueKeys()
+      return keys.map(k => (k as unknown as [string, string])[1])
+    },
+    [accountId],
+    [] as string[],
+  )
+
+  const { prevDate, nextDate } = useMemo(() => {
+    const list = tradingDays ?? []
+    let prev: string | null = null
+    let next: string | null = null
+    for (const d of list) {
+      if (d < date) prev = d
+      else if (d > date && next === null) next = d
+    }
+    return { prevDate: prev, nextDate: next }
+  }, [tradingDays, date])
+
+  useArrowNavigation({
+    prev: prevDate ? `/day/${prevDate}` : null,
+    next: nextDate ? `/day/${nextDate}` : null,
+    navigate,
+  })
+
   const stats = aggregate(trades ?? [])
-  const [adjOpen, setAdjOpen] = useState(false)
 
   return (
     <div className="space-y-6">
@@ -42,25 +76,26 @@ export function DayRoute() {
             <ChevronLeft className="size-4" />
           </Link>
           <h1 className="text-lg font-semibold">{pretty}</h1>
+          <div className="flex items-center gap-1 ml-2">
+            <NavArrow
+              to={prevDate ? `/day/${prevDate}` : null}
+              direction="prev"
+              label="Previous day with trades"
+            />
+            <NavArrow
+              to={nextDate ? `/day/${nextDate}` : null}
+              direction="next"
+              label="Next day with trades"
+            />
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setAdjOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md border border-(--color-border) text-(--color-text) hover:bg-(--color-panel-2)"
-          >
-            <Wallet className="size-4" /> Adjust
-          </button>
-          <Link
-            to={`/trade/new?date=${date}`}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md bg-(--color-accent) text-white hover:opacity-90"
-          >
-            <Plus className="size-4" /> New trade
-          </Link>
-        </div>
+        <Link
+          to={`/trade/new?date=${date}`}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md bg-(--color-accent) text-white hover:opacity-90"
+        >
+          <Plus className="size-4" /> New trade
+        </Link>
       </div>
-
-      {adjOpen && <AdjustmentDialog onClose={() => setAdjOpen(false)} defaultDate={date} />}
 
       <StatsGrid stats={stats} />
 
