@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { format, startOfWeek } from 'date-fns'
 import { db } from '@/db/schema'
+import { useActiveAccountId } from '@/lib/active-account'
 import {
   addWeek,
   bucketByDay,
@@ -25,15 +26,24 @@ export function WeekRoute() {
   const { start: ws, end: we } = weekBounds(weekStart)
   const wsKey = format(ws, 'yyyy-MM-dd')
   const weKey = format(we, 'yyyy-MM-dd')
+  const accountId = useActiveAccountId()
 
   const trades = useLiveQuery(
-    () => db.trades.where('trade_date').between(wsKey, weKey, true, true).toArray(),
-    [wsKey, weKey],
+    () =>
+      db.trades
+        .where('[account_id+trade_date]')
+        .between([accountId, wsKey], [accountId, weKey], true, true)
+        .toArray(),
+    [wsKey, weKey, accountId],
     [],
   )
   const adjustments = useLiveQuery(
-    () => db.adjustments.where('date').between(wsKey, weKey, true, true).toArray(),
-    [wsKey, weKey],
+    () =>
+      db.adjustments
+        .where('[account_id+date]')
+        .between([accountId, wsKey], [accountId, weKey], true, true)
+        .toArray(),
+    [wsKey, weKey, accountId],
     [],
   )
 

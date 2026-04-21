@@ -1,5 +1,6 @@
 import Dexie, { type EntityTable } from 'dexie'
-import type { EquityAdjustment, Execution, TradeRecord } from '@/db/types'
+import type { Account, EquityAdjustment, Execution, TradeRecord } from '@/db/types'
+import { MAIN_ACCOUNT_ID } from '@/db/types'
 
 interface LegacyV1Trade extends Omit<TradeRecord, 'executions'> {
   buys?: Omit<Execution, 'kind'>[]
@@ -9,6 +10,7 @@ interface LegacyV1Trade extends Omit<TradeRecord, 'executions'> {
 class LogslateDB extends Dexie {
   trades!: EntityTable<TradeRecord, 'id'>
   adjustments!: EntityTable<EquityAdjustment, 'id'>
+  accounts!: EntityTable<Account, 'id'>
 
   constructor() {
     super('logslate')
@@ -44,7 +46,69 @@ class LogslateDB extends Dexie {
       trades: '&id, trade_date, symbol, session, updated_at, created_at',
       adjustments: '&id, date, updated_at, created_at',
     })
+
+    // v4: multi-account support.
+    // - new `accounts` table (the Main account is undeletable)
+    // - `account_id` added to trades + adjustments, indexed
+    // - migration stamps every existing record with MAIN_ACCOUNT_ID and creates
+    //   the Main account row if it doesn't already exist
+    this.version(4)
+      .stores({
+        trades: '&id, account_id, trade_date, symbol, session, updated_at, created_at',
+        adjustments: '&id, account_id, date, updated_at, created_at',
+        accounts: '&id, is_main, updated_at',
+      })
+      .upgrade(async tx => {
+        const ts = new Date().toISOString()
+        const accounts = tx.table('accounts')
+        const existingMain = await accounts.get(MAIN_ACCOUNT_ID)
+        if (!existingMain) {
+          await accounts.add({
+            id: MAIN_ACCOUNT_ID,
+            name: 'Main',
+            is_main: true,
+            created_at: ts,
+            updated_at: ts,
+          } satisfies Account)
+        }
+        await tx
+          .table('trades')
+          .toCollection()
+          .modify((t: TradeRecord) => {
+            if (!t.account_id) t.account_id = MAIN_ACCOUNT_ID
+          })
+        await tx
+          .table('adjustments')
+          .toCollection()
+          .modify((a: EquityAdjustment) => {
+            if (!a.account_id) a.account_id = MAIN_ACCOUNT_ID
+          })
+      })
+
+    // v5: compound indexes so account-scoped date range queries hit the index
+    // directly instead of scanning by date then filtering by account_id in JS.
+    this.version(5).stores({
+      trades:
+        '&id, [account_id+trade_date], account_id, trade_date, symbol, session, updated_at, created_at',
+      adjustments: '&id, [account_id+date], account_id, date, updated_at, created_at',
+      accounts: '&id, is_main, updated_at',
+    })
   }
 }
 
 export const db = new LogslateDB()
+
+// Ensures the Main account exists even on a fresh DB (no v3→v4 upgrade path
+// ran, because the DB was created straight at v4). Safe to call repeatedly.
+export async function ensureMainAccount(): Promise<void> {
+  const existing = await db.accounts.get(MAIN_ACCOUNT_ID)
+  if (existing) return
+  const ts = new Date().toISOString()
+  await db.accounts.put({
+    id: MAIN_ACCOUNT_ID,
+    name: 'Main',
+    is_main: true,
+    created_at: ts,
+    updated_at: ts,
+  })
+}

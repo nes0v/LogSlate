@@ -5,6 +5,7 @@ import type {
   TradeDraft,
   TradeRecord,
 } from '@/db/types'
+import { MAIN_ACCOUNT_ID } from '@/db/types'
 
 let idSeq = 0
 function nextId(): string {
@@ -50,6 +51,7 @@ export function tradeRecord(overrides: Partial<TradeRecord> = {}): TradeRecord {
   return {
     ...draft,
     id: overrides.id ?? nextId(),
+    account_id: overrides.account_id ?? MAIN_ACCOUNT_ID,
     created_at: overrides.created_at ?? now,
     updated_at: overrides.updated_at ?? now,
   }
@@ -71,6 +73,7 @@ export function adjustmentRecord(overrides: Partial<EquityAdjustment> = {}): Equ
   return {
     ...draft,
     id: overrides.id ?? nextId(),
+    account_id: overrides.account_id ?? MAIN_ACCOUNT_ID,
     created_at: overrides.created_at ?? now,
     updated_at: overrides.updated_at ?? now,
   }

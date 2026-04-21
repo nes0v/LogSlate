@@ -2,27 +2,31 @@
 // User clicks Export → gets a .json file. User clicks Import → picks a file,
 // the local DB is replaced with its contents.
 
-import { db } from '@/db/schema'
-import type { EquityAdjustment, TradeRecord } from '@/db/types'
+import { db, ensureMainAccount } from '@/db/schema'
+import type { Account, EquityAdjustment, TradeRecord } from '@/db/types'
+import { MAIN_ACCOUNT_ID } from '@/db/types'
 
-const BACKUP_VERSION = 3
+const BACKUP_VERSION = 4
 
 interface BackupFile {
   version: number
   trades: TradeRecord[]
   adjustments?: EquityAdjustment[]
+  accounts?: Account[]
   exported_at: string
 }
 
 export async function exportBackup(): Promise<void> {
-  const [trades, adjustments] = await Promise.all([
+  const [trades, adjustments, accounts] = await Promise.all([
     db.trades.toArray(),
     db.adjustments.toArray(),
+    db.accounts.toArray(),
   ])
   const file: BackupFile = {
     version: BACKUP_VERSION,
     trades,
     adjustments,
+    accounts,
     exported_at: new Date().toISOString(),
   }
   const blob = new Blob([JSON.stringify(file, null, 2)], { type: 'application/json' })
@@ -39,7 +43,7 @@ export async function exportBackup(): Promise<void> {
 
 export async function importBackup(
   file: File,
-): Promise<{ imported: number; adjustments: number }> {
+): Promise<{ imported: number; adjustments: number; accounts: number }> {
   const text = await file.text()
   const parsed = JSON.parse(text) as Partial<BackupFile>
   if (!parsed || !Array.isArray(parsed.trades)) {
@@ -49,11 +53,29 @@ export async function importBackup(
   const adjustments = Array.isArray(parsed.adjustments)
     ? (parsed.adjustments as EquityAdjustment[])
     : []
-  await db.transaction('rw', db.trades, db.adjustments, async () => {
+  const accounts = Array.isArray(parsed.accounts) ? (parsed.accounts as Account[]) : []
+
+  // Back-compat: pre-v4 backups have no accounts and no account_id field. Stamp
+  // everything to Main so the imported data is visible in the active account.
+  const tradesFixed = trades.map(t => ({ ...t, account_id: t.account_id ?? MAIN_ACCOUNT_ID }))
+  const adjustmentsFixed = adjustments.map(a => ({
+    ...a,
+    account_id: a.account_id ?? MAIN_ACCOUNT_ID,
+  }))
+
+  await db.transaction('rw', db.trades, db.adjustments, db.accounts, async () => {
     await db.trades.clear()
     await db.adjustments.clear()
-    if (trades.length > 0) await db.trades.bulkAdd(trades)
-    if (adjustments.length > 0) await db.adjustments.bulkAdd(adjustments)
+    await db.accounts.clear()
+    if (accounts.length > 0) await db.accounts.bulkAdd(accounts)
+    if (tradesFixed.length > 0) await db.trades.bulkAdd(tradesFixed)
+    if (adjustmentsFixed.length > 0) await db.adjustments.bulkAdd(adjustmentsFixed)
   })
-  return { imported: trades.length, adjustments: adjustments.length }
+  // Ensure Main exists even if the backup had no accounts array.
+  await ensureMainAccount()
+  return {
+    imported: tradesFixed.length,
+    adjustments: adjustmentsFixed.length,
+    accounts: accounts.length,
+  }
 }

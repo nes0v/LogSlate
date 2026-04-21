@@ -1,12 +1,12 @@
 // Sync engine between local IndexedDB (Dexie) and Google Drive appDataFolder.
 //
-// Strategy: merge per-trade using `updated_at` (last-write-wins) plus a
+// Strategy: merge per-record using `updated_at` (last-write-wins) plus a
 // "last-synced IDs" set to distinguish "new on this device" from "deleted on
 // the other device". After merge, the combined result is written to both
 // local and remote so they converge.
 
 import { db } from '@/db/schema'
-import type { EquityAdjustment, TradeRecord } from '@/db/types'
+import type { Account, EquityAdjustment, TradeRecord } from '@/db/types'
 import {
   downloadAppDataFile,
   findAppDataFile,
@@ -17,14 +17,16 @@ import {
 const FILE_NAME = 'logslate.json'
 const LAST_SYNCED_TRADE_IDS_KEY = 'logslate:sync:ids'
 const LAST_SYNCED_ADJ_IDS_KEY = 'logslate:sync:adjustment_ids'
+const LAST_SYNCED_ACCOUNT_IDS_KEY = 'logslate:sync:account_ids'
 const LAST_SYNC_AT_KEY = 'logslate:sync:at'
 
-const FILE_VERSION = 3
+const FILE_VERSION = 4
 
 interface SyncFile {
   version: number
   trades: TradeRecord[]
   adjustments?: EquityAdjustment[]
+  accounts?: Account[]
   exported_at: string
 }
 
@@ -98,6 +100,14 @@ export function mergeAdjustments(
   return mergeById(local, remote, lastSynced)
 }
 
+export function mergeAccounts(
+  local: Account[],
+  remote: Account[],
+  lastSynced: Set<string>,
+): Account[] {
+  return mergeById(local, remote, lastSynced)
+}
+
 export interface SyncResult {
   remoteCount: number
   localCount: number
@@ -105,6 +115,9 @@ export interface SyncResult {
   remoteAdjustmentCount: number
   localAdjustmentCount: number
   mergedAdjustmentCount: number
+  remoteAccountCount: number
+  localAccountCount: number
+  mergedAccountCount: number
   createdRemote: boolean
   skippedPush: boolean
   fileId: string
@@ -124,14 +137,17 @@ function sameSnapshot<T extends SyncItem>(remote: T[], merged: T[]): boolean {
 export async function syncNow(): Promise<SyncResult> {
   const lastSyncedTrades = loadIdSet(LAST_SYNCED_TRADE_IDS_KEY)
   const lastSyncedAdj = loadIdSet(LAST_SYNCED_ADJ_IDS_KEY)
-  const [localTrades, localAdj] = await Promise.all([
+  const lastSyncedAccounts = loadIdSet(LAST_SYNCED_ACCOUNT_IDS_KEY)
+  const [localTrades, localAdj, localAccounts] = await Promise.all([
     db.trades.toArray(),
     db.adjustments.toArray(),
+    db.accounts.toArray(),
   ])
 
   const meta = await findAppDataFile(FILE_NAME)
   let remoteTrades: TradeRecord[] = []
   let remoteAdj: EquityAdjustment[] = []
+  let remoteAccounts: Account[] = []
   if (meta) {
     const text = await downloadAppDataFile(meta.id)
     try {
@@ -142,27 +158,35 @@ export async function syncNow(): Promise<SyncResult> {
       if (parsed && Array.isArray(parsed.adjustments)) {
         remoteAdj = parsed.adjustments as EquityAdjustment[]
       }
+      if (parsed && Array.isArray(parsed.accounts)) {
+        remoteAccounts = parsed.accounts as Account[]
+      }
     } catch {
       // Corrupt file — treat as empty remote; local will overwrite on push.
       remoteTrades = []
       remoteAdj = []
+      remoteAccounts = []
     }
   }
 
   const mergedTrades = mergeTrades(localTrades, remoteTrades, lastSyncedTrades)
   const mergedAdj = mergeAdjustments(localAdj, remoteAdj, lastSyncedAdj)
+  const mergedAccounts = mergeAccounts(localAccounts, remoteAccounts, lastSyncedAccounts)
 
-  // Replace local in a single transaction across both stores.
-  await db.transaction('rw', db.trades, db.adjustments, async () => {
+  // Replace local in a single transaction across all stores.
+  await db.transaction('rw', db.trades, db.adjustments, db.accounts, async () => {
     await db.trades.clear()
     await db.adjustments.clear()
+    await db.accounts.clear()
     if (mergedTrades.length > 0) await db.trades.bulkAdd(mergedTrades)
     if (mergedAdj.length > 0) await db.adjustments.bulkAdd(mergedAdj)
+    if (mergedAccounts.length > 0) await db.accounts.bulkAdd(mergedAccounts)
   })
 
   const tradesSame = sameSnapshot(remoteTrades, mergedTrades)
   const adjSame = sameSnapshot(remoteAdj, mergedAdj)
-  const remoteSameAsMerged = tradesSame && adjSame
+  const accountsSame = sameSnapshot(remoteAccounts, mergedAccounts)
+  const remoteSameAsMerged = tradesSame && adjSame && accountsSame
 
   let uploaded: DriveFileMeta
   let createdRemote = false
@@ -173,6 +197,7 @@ export async function syncNow(): Promise<SyncResult> {
       version: FILE_VERSION,
       trades: mergedTrades,
       adjustments: mergedAdj,
+      accounts: mergedAccounts,
       exported_at: new Date().toISOString(),
     }
     uploaded = await uploadAppDataFile({ id: meta?.id, name: FILE_NAME, body: JSON.stringify(file) })
@@ -181,6 +206,7 @@ export async function syncNow(): Promise<SyncResult> {
 
   saveIdSet(LAST_SYNCED_TRADE_IDS_KEY, new Set(mergedTrades.map(t => t.id)))
   saveIdSet(LAST_SYNCED_ADJ_IDS_KEY, new Set(mergedAdj.map(a => a.id)))
+  saveIdSet(LAST_SYNCED_ACCOUNT_IDS_KEY, new Set(mergedAccounts.map(a => a.id)))
   const at = new Date().toISOString()
   localStorage.setItem(LAST_SYNC_AT_KEY, at)
 
@@ -191,6 +217,9 @@ export async function syncNow(): Promise<SyncResult> {
     remoteAdjustmentCount: remoteAdj.length,
     localAdjustmentCount: localAdj.length,
     mergedAdjustmentCount: mergedAdj.length,
+    remoteAccountCount: remoteAccounts.length,
+    localAccountCount: localAccounts.length,
+    mergedAccountCount: mergedAccounts.length,
     createdRemote,
     skippedPush: remoteSameAsMerged,
     fileId: uploaded.id,
@@ -204,5 +233,6 @@ export async function syncNow(): Promise<SyncResult> {
 export function clearSyncState(): void {
   localStorage.removeItem(LAST_SYNCED_TRADE_IDS_KEY)
   localStorage.removeItem(LAST_SYNCED_ADJ_IDS_KEY)
+  localStorage.removeItem(LAST_SYNCED_ACCOUNT_IDS_KEY)
   localStorage.removeItem(LAST_SYNC_AT_KEY)
 }

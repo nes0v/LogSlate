@@ -5,6 +5,7 @@ import { Trash2 } from 'lucide-react'
 import { db } from '@/db/schema'
 import { createAdjustment, deleteAdjustment } from '@/db/queries'
 import type { AdjustmentKind } from '@/db/types'
+import { useActiveAccountId } from '@/lib/active-account'
 import { formatUsd } from '@/lib/money'
 import { cn } from '@/lib/utils'
 
@@ -12,9 +13,16 @@ const inputClass =
   'w-full rounded-md border border-(--color-border) bg-(--color-panel) px-2 py-1.5 text-sm outline-none focus:border-(--color-accent)'
 
 export function EquityAdjustmentsPanel() {
+  const accountId = useActiveAccountId()
   const adjustments = useLiveQuery(
-    () => db.adjustments.orderBy('date').reverse().toArray(),
-    [],
+    async () => {
+      const rows = await db.adjustments
+        .where('[account_id+date]')
+        .between([accountId, ''], [accountId, '￿'], true, true)
+        .toArray()
+      return rows.reverse()
+    },
+    [accountId],
     [],
   )
 

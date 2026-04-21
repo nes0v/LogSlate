@@ -1,4 +1,5 @@
 import { Link, NavLink, Outlet } from 'react-router-dom'
+import { AccountSwitcher } from '@/components/AccountSwitcher'
 import { cn } from '@/lib/utils'
 
 const links = [
@@ -17,6 +18,7 @@ export function Layout() {
           >
             LogSlate
           </Link>
+          <AccountSwitcher />
           <nav className="flex items-center gap-4 text-sm">
             {links.map(l => (
               <NavLink

@@ -4,6 +4,7 @@ import { CheckCircle2, CloudDownload, CloudUpload, LogIn, LogOut, RefreshCw } fr
 import { isConfigured, signIn, signOut, useDriveState } from '@/lib/drive'
 import { clearSyncState, lastSyncAt, syncNow, type SyncResult } from '@/lib/sync'
 import { exportBackup, importBackup } from '@/lib/backup'
+import { AccountsPanel } from '@/components/AccountsPanel'
 import { EquityAdjustmentsPanel } from '@/components/EquityAdjustmentsPanel'
 
 export function SettingsRoute() {
@@ -154,6 +155,8 @@ export function SettingsRoute() {
           </div>
         )}
       </section>
+
+      <AccountsPanel />
 
       <EquityAdjustmentsPanel />
 

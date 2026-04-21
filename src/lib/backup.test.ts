@@ -1,16 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { db } from '@/db/schema'
+import { db, ensureMainAccount } from '@/db/schema'
 import { createAdjustment, createTrade, listAllTrades, listAdjustments } from '@/db/queries'
+import { MAIN_ACCOUNT_ID } from '@/db/types'
 import { importBackup } from './backup'
 import { adjustmentDraft, tradeDraft } from '@/test/fixtures'
 
 beforeEach(async () => {
   await db.trades.clear()
   await db.adjustments.clear()
+  await db.accounts.clear()
+  await ensureMainAccount()
 })
 afterEach(async () => {
   await db.trades.clear()
   await db.adjustments.clear()
+  await db.accounts.clear()
 })
 
 async function buildBackupFileFromDb(): Promise<File> {
@@ -42,11 +46,11 @@ describe('importBackup', () => {
     expect(result.imported).toBe(1)
     expect(result.adjustments).toBe(1)
 
-    const trades = await listAllTrades()
+    const trades = await listAllTrades(MAIN_ACCOUNT_ID)
     expect(trades).toHaveLength(1)
     expect(trades[0].idea).toBe('seed trade') // pre-import trade was wiped
 
-    const adjustments = await listAdjustments()
+    const adjustments = await listAdjustments(MAIN_ACCOUNT_ID)
     expect(adjustments).toHaveLength(1)
     expect(adjustments[0].amount).toBe(100)
   })

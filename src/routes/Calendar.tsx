@@ -15,6 +15,7 @@ import {
   subMonths,
 } from 'date-fns'
 import { db } from '@/db/schema'
+import { useActiveAccountId } from '@/lib/active-account'
 import { effectivePnl } from '@/lib/trade-math'
 import { formatUsd } from '@/lib/money'
 import { bucketByDay, parseYearMonth, WEEK_OPTS } from '@/lib/buckets'
@@ -48,10 +49,15 @@ export function CalendarRoute() {
 
   const rangeStart = format(gridStart, DATE_KEY)
   const rangeEnd = format(gridEnd, DATE_KEY)
+  const accountId = useActiveAccountId()
 
   const trades = useLiveQuery(
-    () => db.trades.where('trade_date').between(rangeStart, rangeEnd, true, true).toArray(),
-    [rangeStart, rangeEnd],
+    () =>
+      db.trades
+        .where('[account_id+trade_date]')
+        .between([accountId, rangeStart], [accountId, rangeEnd], true, true)
+        .toArray(),
+    [rangeStart, rangeEnd, accountId],
     [],
   )
 
@@ -59,14 +65,20 @@ export function CalendarRoute() {
   const monthEndKey = format(me, DATE_KEY)
   const monthTrades = useLiveQuery(
     () =>
-      db.trades.where('trade_date').between(monthStartKey, monthEndKey, true, true).toArray(),
-    [monthStartKey, monthEndKey],
+      db.trades
+        .where('[account_id+trade_date]')
+        .between([accountId, monthStartKey], [accountId, monthEndKey], true, true)
+        .toArray(),
+    [monthStartKey, monthEndKey, accountId],
     [],
   )
   const monthAdjustments = useLiveQuery(
     () =>
-      db.adjustments.where('date').between(monthStartKey, monthEndKey, true, true).toArray(),
-    [monthStartKey, monthEndKey],
+      db.adjustments
+        .where('[account_id+date]')
+        .between([accountId, monthStartKey], [accountId, monthEndKey], true, true)
+        .toArray(),
+    [monthStartKey, monthEndKey, accountId],
     [],
   )
 

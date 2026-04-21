@@ -4,6 +4,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { format, parseISO } from 'date-fns'
 import { Plus, ChevronLeft, Wallet } from 'lucide-react'
 import { db } from '@/db/schema'
+import { useActiveAccountId } from '@/lib/active-account'
 import { aggregate } from '@/lib/trade-stats'
 import { AdjustmentDialog } from '@/components/AdjustmentDialog'
 import { StatsGrid } from '@/components/StatsGrid'
@@ -15,9 +16,14 @@ export function DayRoute() {
   const parsed = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? parseISO(date) : null
   const pretty = parsed ? format(parsed, 'EEEE, MMMM d, yyyy') : date
 
+  const accountId = useActiveAccountId()
   const trades = useLiveQuery(
-    () => db.trades.where('trade_date').equals(date).sortBy('created_at'),
-    [date],
+    () =>
+      db.trades
+        .where('[account_id+trade_date]')
+        .equals([accountId, date])
+        .sortBy('created_at'),
+    [date, accountId],
     [],
   )
 

@@ -5,6 +5,7 @@ import { addDays, endOfMonth, format, startOfMonth } from 'date-fns'
 import { X } from 'lucide-react'
 import type { ContractType, Rating, Session, SymbolKey } from '@/db/types'
 import { db } from '@/db/schema'
+import { useActiveAccountId } from '@/lib/active-account'
 import {
   applyFilters,
   EMPTY_FILTERS,
@@ -75,10 +76,23 @@ export function StatsRoute() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params])
 
-  const allTrades = useLiveQuery(() => db.trades.orderBy('trade_date').toArray(), [], [])
-  const allAdjustments = useLiveQuery(
-    () => db.adjustments.orderBy('date').toArray(),
+  const accountId = useActiveAccountId()
+  const allTrades = useLiveQuery(
+    () =>
+      db.trades
+        .where('[account_id+trade_date]')
+        .between([accountId, ''], [accountId, '￿'], true, true)
+        .toArray(),
+    [accountId],
     [],
+  )
+  const allAdjustments = useLiveQuery(
+    () =>
+      db.adjustments
+        .where('[account_id+date]')
+        .between([accountId, ''], [accountId, '￿'], true, true)
+        .toArray(),
+    [accountId],
     [],
   )
 

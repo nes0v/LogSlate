@@ -1,6 +1,20 @@
 import { describe, expect, it } from 'vitest'
-import { mergeAdjustments, mergeTrades } from './sync'
+import type { Account } from '@/db/types'
+import { MAIN_ACCOUNT_ID } from '@/db/types'
+import { mergeAccounts, mergeAdjustments, mergeTrades } from './sync'
 import { adjustmentRecord, tradeRecord } from '@/test/fixtures'
+
+function accountRecord(overrides: Partial<Account> = {}): Account {
+  const now = '2026-04-20T00:00:00Z'
+  return {
+    id: 'alpha',
+    name: 'Alpha',
+    is_main: false,
+    created_at: now,
+    updated_at: now,
+    ...overrides,
+  }
+}
 
 describe('mergeTrades', () => {
   it('unions disjoint local + remote', () => {
@@ -56,5 +70,33 @@ describe('mergeAdjustments', () => {
     const merged = mergeAdjustments(local, remote, new Set(['keep', 'deleted-remotely']))
     expect(merged.map(a => a.id)).toEqual(['keep'])
     expect(merged[0].amount).toBe(2000)
+  })
+})
+
+describe('mergeAccounts', () => {
+  it('unions disjoint accounts from both sides', () => {
+    const local = [accountRecord({ id: MAIN_ACCOUNT_ID, name: 'Main', is_main: true })]
+    const remote = [accountRecord({ id: 'funded', name: 'Funded' })]
+    const merged = mergeAccounts(local, remote, new Set())
+    expect(merged.map(a => a.id).sort()).toEqual(['funded', MAIN_ACCOUNT_ID].sort())
+  })
+
+  it('prefers the newer side when names diverge (rename)', () => {
+    const local = [accountRecord({ id: 'alpha', name: 'Alpha', updated_at: '2026-04-20T10:00:00Z' })]
+    const remote = [accountRecord({ id: 'alpha', name: 'Beta', updated_at: '2026-04-20T14:00:00Z' })]
+    const merged = mergeAccounts(local, remote, new Set())
+    expect(merged[0].name).toBe('Beta')
+  })
+
+  it('drops a local-only account that was in last-synced (deleted remotely)', () => {
+    const local = [accountRecord({ id: 'funded' })]
+    const merged = mergeAccounts(local, [], new Set(['funded']))
+    expect(merged).toHaveLength(0)
+  })
+
+  it('keeps a new-on-local account that is not in last-synced', () => {
+    const local = [accountRecord({ id: 'newlyadded' })]
+    const merged = mergeAccounts(local, [], new Set())
+    expect(merged.map(a => a.id)).toEqual(['newlyadded'])
   })
 })
