@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { getDriveState, signOut, subscribeDrive } from './drive'
+import { getDriveState, parseExpiresIn, signOut, subscribeDrive } from './drive'
 
 beforeEach(() => {
   localStorage.clear()
@@ -39,5 +39,38 @@ describe('drive external store', () => {
     unsub()
     signOut()
     expect(listener).not.toHaveBeenCalled()
+  })
+})
+
+describe('parseExpiresIn', () => {
+  it('accepts a well-formed number within range', () => {
+    expect(parseExpiresIn(3600)).toBe(3600)
+    expect(parseExpiresIn(1800)).toBe(1800)
+  })
+
+  it('accepts a numeric string', () => {
+    expect(parseExpiresIn('3599')).toBe(3599)
+  })
+
+  it('defaults to 3600 on missing / malformed values', () => {
+    expect(parseExpiresIn(undefined)).toBe(3600)
+    expect(parseExpiresIn(null)).toBe(3600)
+    expect(parseExpiresIn('abc')).toBe(3600)
+    expect(parseExpiresIn(NaN)).toBe(3600)
+  })
+
+  it('defaults to 3600 on zero or negative — never produces an instantly-expired token', () => {
+    expect(parseExpiresIn(0)).toBe(3600)
+    expect(parseExpiresIn(-10)).toBe(3600)
+    expect(parseExpiresIn('-5')).toBe(3600)
+  })
+
+  it('clamps to the minimum window so refresh loops cannot happen', () => {
+    expect(parseExpiresIn(1)).toBe(60)
+    expect(parseExpiresIn(30)).toBe(60)
+  })
+
+  it('clamps absurd values to one day', () => {
+    expect(parseExpiresIn(9_999_999)).toBe(86_400)
   })
 })

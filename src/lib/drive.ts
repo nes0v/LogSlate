@@ -99,8 +99,6 @@ function loadGis(): Promise<void> {
   return gisPromise
 }
 
-let tokenClient: TokenClient | null = null
-
 function getClientId(): string | null {
   const id = (import.meta.env.VITE_GOOGLE_CLIENT_ID ?? '').trim()
   return id || null
@@ -110,19 +108,65 @@ export function isConfigured(): boolean {
   return getClientId() !== null
 }
 
-function ensureTokenClient(onToken: (t: TokenResponse) => void): TokenClient {
-  const clientId = getClientId()
-  if (!clientId) throw new Error('VITE_GOOGLE_CLIENT_ID is not set')
-  if (!window.google) throw new Error('Google Identity Services not loaded')
-  tokenClient = window.google.accounts.oauth2.initTokenClient({
-    client_id: clientId,
-    scope: SCOPE,
-    callback: onToken,
-    error_callback: err => {
-      update({ status: 'error', error: String((err as { type?: string })?.type ?? 'auth error') })
-    },
+// Google's `expires_in` is seconds. Some responses omit it or return a value
+// we can't trust — clamp to a sane window so we don't end up with a token
+// that's instantly "expired" (re-auth loop) or absurdly long-lived.
+const MIN_EXPIRES_SEC = 60
+const MAX_EXPIRES_SEC = 86_400
+
+export function parseExpiresIn(raw: unknown): number {
+  const n = typeof raw === 'string' ? Number(raw) : typeof raw === 'number' ? raw : NaN
+  if (!Number.isFinite(n) || n <= 0) return 3600
+  return Math.min(Math.max(n, MIN_EXPIRES_SEC), MAX_EXPIRES_SEC)
+}
+
+interface RequestTokenOpts {
+  prompt: '' | 'none' | 'consent'
+  // When true, drive state is left alone on failure — the caller wants to
+  // refresh in the background without visibly disconnecting the user.
+  silent: boolean
+}
+
+function requestToken(opts: RequestTokenOpts): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    const clientId = getClientId()
+    if (!clientId) {
+      reject(new Error('VITE_GOOGLE_CLIENT_ID is not set'))
+      return
+    }
+    if (!window.google) {
+      reject(new Error('Google Identity Services not loaded'))
+      return
+    }
+    const client = window.google.accounts.oauth2.initTokenClient({
+      client_id: clientId,
+      scope: SCOPE,
+      callback: resp => {
+        if (resp.error || !resp.access_token) {
+          if (!opts.silent) {
+            update({ status: 'error', error: resp.error ?? 'no access token' })
+          }
+          reject(new Error(resp.error ?? 'auth failed'))
+          return
+        }
+        const expiresInSec = parseExpiresIn(resp.expires_in)
+        saveToken({ value: resp.access_token, expiresAt: Date.now() + expiresInSec * 1000 })
+        if (!opts.silent) {
+          update({ status: 'signed-in', error: null })
+        }
+        resolve(resp.access_token)
+      },
+      error_callback: err => {
+        const type = String((err as { type?: string })?.type ?? 'auth error')
+        if (!opts.silent) {
+          update({ status: 'error', error: type })
+        }
+        // Reject the promise so callers can recover instead of hanging.
+        reject(new Error(type))
+      },
+    })
+    client.requestAccessToken({ prompt: opts.prompt })
   })
-  return tokenClient
 }
 
 // ---------- sign in / sign out ----------
@@ -131,24 +175,10 @@ export async function signIn(): Promise<void> {
   update({ status: 'signing-in', error: null })
   try {
     await loadGis()
-    await new Promise<void>((resolve, reject) => {
-      const client = ensureTokenClient(resp => {
-        if (resp.error || !resp.access_token) {
-          update({ status: 'error', error: resp.error ?? 'no access token' })
-          reject(new Error(resp.error ?? 'auth failed'))
-          return
-        }
-        const expiresInSec = typeof resp.expires_in === 'string' ? Number(resp.expires_in) : (resp.expires_in ?? 3600)
-        const tok: StoredToken = { value: resp.access_token, expiresAt: Date.now() + expiresInSec * 1000 }
-        saveToken(tok)
-        update({ status: 'signed-in', error: null })
-        resolve()
-      })
-      client.requestAccessToken({ prompt: '' })
-    })
+    await requestToken({ prompt: '', silent: false })
   } catch (e) {
-    update({ status: 'error', error: String((e as Error).message ?? e) })
-    throw e
+    // requestToken already updated state to 'error'; rethrow for callers.
+    throw e instanceof Error ? e : new Error(String(e))
   }
 }
 
@@ -161,30 +191,34 @@ export function signOut(): void {
   }
 }
 
-async function getValidToken(): Promise<string> {
+// Silent token refresh for background sync. Keeps drive.status at 'signed-in'
+// throughout so the UI doesn't flash "disconnected" on every hourly refresh.
+// If GIS can't refresh without user interaction (cookies blocked, session
+// lost, consent needed), this rejects and the caller surfaces a sync error
+// — the user can re-connect manually via Settings.
+async function refreshTokenSilently(): Promise<string> {
+  await loadGis()
+  return requestToken({ prompt: 'none', silent: true })
+}
+
+async function getValidTokenForBackground(): Promise<string> {
   const t = loadToken()
   if (t && t.expiresAt > Date.now() + 30_000) return t.value
-  // Token expired or missing — re-auth silently.
-  await signIn()
-  const t2 = loadToken()
-  if (!t2) throw new Error('sign-in did not yield a token')
-  return t2.value
+  return refreshTokenSilently()
 }
 
 async function authFetch(url: string, init?: RequestInit): Promise<Response> {
-  const token = await getValidToken()
+  const token = await getValidTokenForBackground()
   const headers = new Headers(init?.headers)
   headers.set('Authorization', `Bearer ${token}`)
   const resp = await fetch(url, { ...init, headers })
-  if (resp.status === 401) {
-    // Token rejected — drop and retry once.
-    saveToken(null)
-    const token2 = await getValidToken()
-    const headers2 = new Headers(init?.headers)
-    headers2.set('Authorization', `Bearer ${token2}`)
-    return fetch(url, { ...init, headers: headers2 })
-  }
-  return resp
+  if (resp.status !== 401) return resp
+  // Token rejected — drop and try one silent refresh.
+  saveToken(null)
+  const token2 = await refreshTokenSilently()
+  const headers2 = new Headers(init?.headers)
+  headers2.set('Authorization', `Bearer ${token2}`)
+  return fetch(url, { ...init, headers: headers2 })
 }
 
 // ---------- Drive API helpers (appDataFolder scoped) ----------
