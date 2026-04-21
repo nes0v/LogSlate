@@ -85,7 +85,7 @@ export function FeesChart({
                 domain={domain}
                 tickFormatter={v => formatUsd(v)}
               />
-              <Tooltip cursor={false} content={<FeesTooltip />} offset={24} />
+              <Tooltip cursor={false} content={<FeesTooltip hoverLabel={hoverLabel} />} position={{ x: 76, y: 8 }} />
               <Bar
                 dataKey="fees"
                 maxBarSize={18}
@@ -114,9 +114,11 @@ interface TooltipPayload {
 interface FeesTooltipProps {
   active?: boolean
   payload?: Array<{ payload: TooltipPayload }>
+  hoverLabel: string | null
 }
 
-function FeesTooltip({ active, payload }: FeesTooltipProps) {
+function FeesTooltip({ active, payload, hoverLabel }: FeesTooltipProps) {
+  if (!hoverLabel) return null
   if (!active || !payload || payload.length === 0) return null
   const p = payload[0].payload
   const dateLabel = p.key ? format(new Date(p.key + 'T00:00:00'), 'MMM d') : p.label ?? ''

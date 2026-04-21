@@ -58,6 +58,7 @@ export function EquityCurve({
   headerRight,
   adjustments,
   onPointClick,
+  hoverLabel = null,
   onHoverLabel,
 }: EquityCurveProps) {
   const data = useMemo(() => {
@@ -127,7 +128,8 @@ export function EquityCurve({
             />
             <Tooltip
               cursor={{ stroke: 'var(--color-text-dim)', strokeWidth: 1, strokeDasharray: '3 3', shapeRendering: 'crispEdges' }}
-              content={<EquityTooltip cumulative={cumulative} />}
+              content={<EquityTooltip cumulative={cumulative} hoverLabel={hoverLabel} />}
+              position={{ x: 76, y: 8 }}
             />
             {/* Labels only — the visible line is drawn by the CartesianGrid
                 above so it renders beneath the curve. */}
@@ -199,9 +201,11 @@ interface EquityTooltipProps {
   active?: boolean
   payload?: Array<{ payload: TooltipPayload }>
   cumulative: boolean
+  hoverLabel: string | null
 }
 
-function EquityTooltip({ active, payload, cumulative }: EquityTooltipProps) {
+function EquityTooltip({ active, payload, cumulative, hoverLabel }: EquityTooltipProps) {
+  if (!hoverLabel) return null
   if (!active || !payload || payload.length === 0) return null
   const p = payload[0].payload
   const dateLabel = p.key ? format(new Date(p.key + 'T00:00:00'), 'MMM d') : p.label ?? ''

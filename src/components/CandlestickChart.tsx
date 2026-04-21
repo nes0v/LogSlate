@@ -139,7 +139,7 @@ export function CandlestickChart({
                 domain={domain}
                 tickFormatter={v => formatUsd(v)}
               />
-              <Tooltip content={<CandleTooltip />} cursor={false} offset={24} />
+              <Tooltip content={<CandleTooltip hoverLabel={hoverLabel} />} cursor={false} position={{ x: 76, y: 8 }} />
               {/* Labels only — the visible line is drawn by the CartesianGrid
                   above so it renders beneath the candles. */}
               {adjustments?.map(a => {
@@ -258,9 +258,11 @@ interface TooltipProps {
   active?: boolean
   label?: string
   payload?: Array<{ payload: Row }>
+  hoverLabel: string | null
 }
 
-function CandleTooltip({ active, payload }: TooltipProps) {
+function CandleTooltip({ active, payload, hoverLabel }: TooltipProps) {
+  if (!hoverLabel) return null
   if (!active || !payload || payload.length === 0) return null
   const p = payload[0].payload
   const labelText = p.key ? format(new Date(p.key + 'T00:00:00'), 'MMM d') : p.label
