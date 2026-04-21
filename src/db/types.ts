@@ -63,3 +63,13 @@ export interface EquityAdjustment {
 }
 
 export type AdjustmentDraft = Omit<EquityAdjustment, 'id' | 'account_id' | 'created_at' | 'updated_at'>
+
+// Screenshots are uploaded to Drive. When the user picks an image while
+// offline, the blob is stashed in this table; a drainer (wired into
+// auto-sync) uploads it once the app is online and rewrites the trade's
+// screenshot field to the Drive file id.
+export interface PendingUpload {
+  id: string
+  blob: Blob
+  created_at: string
+}

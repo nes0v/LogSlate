@@ -30,4 +30,14 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  server: {
+    headers: {
+      // Google Identity Services opens a cross-origin popup and polls
+      // `window.closed` to detect it being dismissed. The strict default COOP
+      // blocks that cross-origin access and prints a console warning on every
+      // sign-in. `same-origin-allow-popups` keeps this document isolated
+      // while letting popups it opens retain an opener reference.
+      'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
+    },
+  },
 })

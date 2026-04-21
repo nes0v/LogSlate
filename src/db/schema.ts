@@ -1,5 +1,11 @@
 import Dexie, { type EntityTable } from 'dexie'
-import type { Account, EquityAdjustment, Execution, TradeRecord } from '@/db/types'
+import type {
+  Account,
+  EquityAdjustment,
+  Execution,
+  PendingUpload,
+  TradeRecord,
+} from '@/db/types'
 import { MAIN_ACCOUNT_ID } from '@/db/types'
 
 interface LegacyV1Trade extends Omit<TradeRecord, 'executions'> {
@@ -11,6 +17,7 @@ class LogslateDB extends Dexie {
   trades!: EntityTable<TradeRecord, 'id'>
   adjustments!: EntityTable<EquityAdjustment, 'id'>
   accounts!: EntityTable<Account, 'id'>
+  pending_uploads!: EntityTable<PendingUpload, 'id'>
 
   constructor() {
     super('logslate')
@@ -93,6 +100,35 @@ class LogslateDB extends Dexie {
       adjustments: '&id, [account_id+date], account_id, date, updated_at, created_at',
       accounts: '&id, is_main, updated_at',
     })
+
+    // v6: trade screenshots live in Google Drive instead of base64-in-record.
+    // - `pending_uploads` holds images picked while offline until the next
+    //   online sync.
+    // - The `screenshot` field on trades becomes a reference string of the
+    //   form `drive:{fileId}` or `pending:{pendingId}`; see
+    //   src/lib/drive-images.ts. Any legacy base64 value gets wiped here —
+    //   there was no production data to migrate.
+    // - `screenshot` gets an index so the pending-upload drainer can rewrite
+    //   trades pointing at a specific pending id without scanning.
+    this.version(6)
+      .stores({
+        trades:
+          '&id, [account_id+trade_date], account_id, trade_date, symbol, session, screenshot, updated_at, created_at',
+        adjustments: '&id, [account_id+date], account_id, date, updated_at, created_at',
+        accounts: '&id, is_main, updated_at',
+        pending_uploads: '&id, created_at',
+      })
+      .upgrade(async tx => {
+        await tx
+          .table('trades')
+          .toCollection()
+          .modify((t: TradeRecord) => {
+            const s = t.screenshot
+            if (typeof s !== 'string') return
+            if (s.startsWith('drive:') || s.startsWith('pending:')) return
+            t.screenshot = null
+          })
+      })
   }
 }
 

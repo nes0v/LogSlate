@@ -9,6 +9,7 @@
 import { useSyncExternalStore } from 'react'
 import { db } from '@/db/schema'
 import { getDriveState, subscribeDrive, type DriveStatus } from '@/lib/drive'
+import { drainPendingUploads } from '@/lib/drive-images'
 import { syncNow, type SyncResult } from '@/lib/sync'
 
 export type AutoSyncStatus = 'idle' | 'syncing' | 'error'
@@ -55,6 +56,10 @@ async function runSync(): Promise<SyncResult | null> {
   isSyncing = true
   update({ status: 'syncing', error: null })
   try {
+    // Drain any screenshots that were queued while offline before we push
+    // the sync file — the Drive ids land in trade records and go out with
+    // this same push.
+    await drainPendingUploads()
     const result = await syncNow()
     update({ status: 'idle', error: null })
     return result

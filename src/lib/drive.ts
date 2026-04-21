@@ -17,7 +17,11 @@ export interface DriveState {
   userEmail: string | null // best-effort (we don't request profile scope, so this stays null)
 }
 
-const SCOPE = 'https://www.googleapis.com/auth/drive.appdata'
+// Two scopes:
+// - drive.appdata lets us keep the sync file in a hidden per-app folder.
+// - drive.file lets us create a user-visible "LogSlate screenshots" folder
+//   where trade screenshots live, so the user can browse them in Drive.
+const SCOPE = 'https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/drive.file'
 const GIS_SRC = 'https://accounts.google.com/gsi/client'
 const TOKEN_KEY = 'logslate:drive:token'
 
@@ -207,6 +211,24 @@ async function getValidTokenForBackground(): Promise<string> {
   return refreshTokenSilently()
 }
 
+// On app boot, if a stored token exists but has expired, try once to silently
+// refresh it — the user's Google session + prior consent are usually still
+// valid for days, so we shouldn't force them to click "Connect" every time
+// they reopen the tab. On success: status flips to 'signed-in' and auto-sync
+// picks it up. On failure: the token is cleared so we don't keep retrying.
+export async function tryRestoreSession(): Promise<void> {
+  const t = loadToken()
+  if (!t) return
+  if (t.expiresAt > Date.now() + 30_000) return // already valid, nothing to do
+  try {
+    await refreshTokenSilently()
+    update({ status: 'signed-in', error: null })
+  } catch {
+    saveToken(null)
+    update({ status: 'signed-out', error: null })
+  }
+}
+
 async function authFetch(url: string, init?: RequestInit): Promise<Response> {
   const token = await getValidTokenForBackground()
   const headers = new Headers(init?.headers)
@@ -246,6 +268,94 @@ export async function downloadAppDataFile(id: string): Promise<string> {
   const resp = await authFetch(url)
   if (!resp.ok) throw new Error(`Drive download failed: ${resp.status}`)
   return resp.text()
+}
+
+// ---------- Generic Drive helpers (scope: drive.file) ----------
+//
+// These operate on files/folders the app created in the user's main Drive.
+// Screenshots live here so the user can browse them manually.
+
+export async function findDriveFolder(name: string): Promise<string | null> {
+  const url = new URL('https://www.googleapis.com/drive/v3/files')
+  const q =
+    `mimeType = 'application/vnd.google-apps.folder' and ` +
+    `name = '${name.replace(/'/g, "\\'")}' and trashed = false`
+  url.searchParams.set('q', q)
+  url.searchParams.set('fields', 'files(id)')
+  const resp = await authFetch(url.toString())
+  if (!resp.ok) throw new Error(`Drive folder search failed: ${resp.status}`)
+  const body = (await resp.json()) as { files?: Array<{ id: string }> }
+  return body.files?.[0]?.id ?? null
+}
+
+export async function createDriveFolder(name: string): Promise<string> {
+  const resp = await authFetch('https://www.googleapis.com/drive/v3/files?fields=id', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name,
+      mimeType: 'application/vnd.google-apps.folder',
+    }),
+  })
+  if (!resp.ok) throw new Error(`Drive folder create failed: ${resp.status}`)
+  const body = (await resp.json()) as { id: string }
+  return body.id
+}
+
+export async function driveFileExists(id: string): Promise<boolean> {
+  const resp = await authFetch(
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}?fields=id,trashed`,
+  )
+  if (resp.status === 404) return false
+  if (!resp.ok) throw new Error(`Drive file check failed: ${resp.status}`)
+  const body = (await resp.json()) as { trashed?: boolean }
+  return body.trashed !== true
+}
+
+export async function uploadDriveFile(opts: {
+  name: string
+  body: Blob
+  parentId?: string
+}): Promise<{ id: string }> {
+  // Multipart upload with metadata + binary body in one request.
+  const boundary = `-------logslate-${crypto.randomUUID()}`
+  const metadata: Record<string, unknown> = { name: opts.name }
+  if (opts.parentId) metadata.parents = [opts.parentId]
+  const bodyBytes = new Uint8Array(await opts.body.arrayBuffer())
+  const enc = new TextEncoder()
+  const head = enc.encode(
+    `--${boundary}\r\n` +
+      `Content-Type: application/json; charset=UTF-8\r\n\r\n` +
+      `${JSON.stringify(metadata)}\r\n` +
+      `--${boundary}\r\n` +
+      `Content-Type: ${opts.body.type || 'application/octet-stream'}\r\n\r\n`,
+  )
+  const tail = enc.encode(`\r\n--${boundary}--`)
+  const combined = new Uint8Array(head.length + bodyBytes.length + tail.length)
+  combined.set(head, 0)
+  combined.set(bodyBytes, head.length)
+  combined.set(tail, head.length + bodyBytes.length)
+  const resp = await authFetch(
+    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': `multipart/related; boundary=${boundary}` },
+      body: combined,
+    },
+  )
+  if (!resp.ok) throw new Error(`Drive upload failed: ${resp.status} ${await resp.text()}`)
+  return (await resp.json()) as { id: string }
+}
+
+export async function downloadDriveFile(id: string): Promise<Blob> {
+  const url = `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}?alt=media`
+  const resp = await authFetch(url)
+  if (!resp.ok) throw new Error(`Drive download failed: ${resp.status}`)
+  return resp.blob()
+}
+
+export function driveViewLink(fileId: string): string {
+  return `https://drive.google.com/file/d/${encodeURIComponent(fileId)}/view`
 }
 
 export async function uploadAppDataFile(opts: {

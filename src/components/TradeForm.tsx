@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { Controller, useFieldArray, useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Plus, Trash2, Upload, X } from 'lucide-react'
+import { Plus, Trash2 } from 'lucide-react'
 import { emptyForm, formToDraft, tradeFormSchema, type TradeFormValues } from '@/lib/form-schema'
 import type { TradeDraft } from '@/db/types'
 import {
@@ -17,6 +17,7 @@ import {
 } from '@/lib/trade-math'
 import { Pills } from '@/components/form/Pills'
 import { Field, inputClass } from '@/components/form/Field'
+import { ScreenshotField } from '@/components/ScreenshotField'
 import { formatUsd } from '@/lib/money'
 import { cn } from '@/lib/utils'
 
@@ -102,18 +103,6 @@ export function TradeForm({ initialValues, initialDate, onSubmit, onCancel, subm
   const effPnl = effectivePnl(synthetic)
   const ahpc = computeAhpc(synthetic)
   const realRr = computeRealizedRr(synthetic)
-
-  const screenshotPreview = values.screenshot ?? null
-
-  async function handleScreenshot(file: File | null) {
-    if (!file) {
-      setValue('screenshot', null, { shouldDirty: true })
-      return
-    }
-    const reader = new FileReader()
-    reader.onload = () => setValue('screenshot', String(reader.result), { shouldDirty: true })
-    reader.readAsDataURL(file)
-  }
 
   async function submit(v: TradeFormValues) {
     await onSubmit(formToDraft(v))
@@ -325,35 +314,10 @@ export function TradeForm({ initialValues, initialDate, onSubmit, onCancel, subm
 
         <section>
           <Field label="Screenshot">
-            <div className="flex items-start gap-3">
-              <label className="inline-flex items-center gap-2 px-3 py-1.5 text-sm rounded-md border border-(--color-border) bg-(--color-panel) hover:bg-(--color-panel-2) cursor-pointer">
-                <Upload className="size-4" />
-                <span>Upload</span>
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={e => handleScreenshot(e.target.files?.[0] ?? null)}
-                />
-              </label>
-              {screenshotPreview && (
-                <div className="relative">
-                  <img
-                    src={screenshotPreview}
-                    alt=""
-                    className="max-h-32 rounded-md border border-(--color-border)"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => handleScreenshot(null)}
-                    className="absolute -top-2 -right-2 size-6 rounded-full bg-(--color-panel-2) border border-(--color-border) flex items-center justify-center text-(--color-text-dim) hover:text-(--color-text)"
-                    aria-label="Remove screenshot"
-                  >
-                    <X className="size-3" />
-                  </button>
-                </div>
-              )}
-            </div>
+            <ScreenshotField
+              value={values.screenshot ?? null}
+              onChange={ref => setValue('screenshot', ref, { shouldDirty: true })}
+            />
           </Field>
         </section>
 
