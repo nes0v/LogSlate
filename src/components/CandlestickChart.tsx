@@ -14,9 +14,10 @@ import { format } from 'date-fns'
 import { ChartHoverCursor } from '@/components/ChartHoverCursor'
 import { chartDayLabel } from '@/lib/buckets'
 import type { CandlePoint } from '@/lib/trade-stats'
-import { niceDomain } from '@/lib/chart'
+import { EQUITY_Y_PAD, niceDomain } from '@/lib/chart'
 import { setHoverLabel, useHoverLabel } from '@/lib/hover-cursor'
 import { formatUsd } from '@/lib/money'
+import { useIsNarrowScreen } from '@/lib/use-media-query'
 import { cn } from '@/lib/utils'
 
 interface CandlestickChartProps {
@@ -41,12 +42,13 @@ const LEFT_AXIS_W = 60
 
 export function CandlestickChart({
   points,
-  height = 360,
+  height = 420,
   xTicks,
   headerRight,
   adjustments,
   onPointClick,
 }: CandlestickChartProps) {
+  const isNarrow = useIsNarrowScreen()
   const data: Row[] = useMemo(
     () =>
       points.map(p => ({
@@ -65,7 +67,7 @@ export function CandlestickChart({
       if (p.low < min) min = p.low
       if (p.high > max) max = p.high
     }
-    return niceDomain(min, max)
+    return niceDomain(min - EQUITY_Y_PAD, max + EQUITY_Y_PAD)
   }, [points])
 
   const hasData = points.length > 0 && points.some(p => p.count > 0)
@@ -125,6 +127,7 @@ export function CandlestickChart({
                 {...(xTicks ? { ticks: xTicks, interval: 0 as const } : {})}
               />
               <YAxis
+                hide={isNarrow}
                 width={LEFT_AXIS_W}
                 tick={{ fill: 'var(--color-text-dim)', fontSize: 11 }}
                 tickLine={false}

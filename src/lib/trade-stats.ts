@@ -1,6 +1,12 @@
 import type { EquityAdjustment, TradeRecord } from '@/db/types'
 import type { Bucket } from '@/lib/buckets'
-import { computeFees, computeGrossPnl, computeRealizedRr, effectivePnl } from '@/lib/trade-math'
+import {
+  computeDuration,
+  computeFees,
+  computeGrossPnl,
+  computeRealizedRr,
+  effectivePnl,
+} from '@/lib/trade-math'
 
 export function signedAdjustment(a: EquityAdjustment): number {
   return a.kind === 'deposit' ? a.amount : -a.amount
@@ -19,6 +25,9 @@ export interface AggregateStats {
   worst: number | null
   avg_planned_rr: number | null
   avg_realized_rr: number | null
+  avg_win: number | null // average net PnL of winning trades (positive)
+  avg_loss: number | null // average net PnL of losing trades (negative)
+  avg_duration_ms: number | null // average total duration across trades with timing data
 }
 
 export function aggregate(trades: TradeRecord[]): AggregateStats {
@@ -35,12 +44,19 @@ export function aggregate(trades: TradeRecord[]): AggregateStats {
     worst: null,
     avg_planned_rr: null,
     avg_realized_rr: null,
+    avg_win: null,
+    avg_loss: null,
+    avg_duration_ms: null,
   }
   if (trades.length === 0) return result
 
   let plannedSum = 0
   let realizedSum = 0
   let realizedCount = 0
+  let winSum = 0
+  let lossSum = 0
+  let durationSum = 0
+  let durationCount = 0
 
   for (const t of trades) {
     const net = effectivePnl(t) ?? 0
@@ -49,9 +65,15 @@ export function aggregate(trades: TradeRecord[]): AggregateStats {
     result.gross_pnl += gross
     result.fees += computeFees(t)
 
-    if (net > 0) result.wins++
-    else if (net < 0) result.losses++
-    else result.breakevens++
+    if (net > 0) {
+      result.wins++
+      winSum += net
+    } else if (net < 0) {
+      result.losses++
+      lossSum += net
+    } else {
+      result.breakevens++
+    }
 
     if (result.best === null || net > result.best) result.best = net
     if (result.worst === null || net < result.worst) result.worst = net
@@ -62,12 +84,21 @@ export function aggregate(trades: TradeRecord[]): AggregateStats {
       realizedSum += realized
       realizedCount++
     }
+
+    const dur = computeDuration(t).total_ms
+    if (dur !== null) {
+      durationSum += dur
+      durationCount++
+    }
   }
 
   const decided = result.wins + result.losses
   result.win_rate = decided === 0 ? null : result.wins / decided
   result.avg_planned_rr = trades.length > 0 ? plannedSum / trades.length : null
   result.avg_realized_rr = realizedCount > 0 ? realizedSum / realizedCount : null
+  result.avg_win = result.wins > 0 ? winSum / result.wins : null
+  result.avg_loss = result.losses > 0 ? lossSum / result.losses : null
+  result.avg_duration_ms = durationCount > 0 ? durationSum / durationCount : null
 
   return result
 }

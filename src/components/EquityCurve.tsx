@@ -11,8 +11,10 @@ import {
 } from 'recharts'
 import { format } from 'date-fns'
 import { chartDayLabel } from '@/lib/buckets'
+import { EQUITY_Y_PAD, niceDomain } from '@/lib/chart'
 import { setHoverLabel, useHoverLabel } from '@/lib/hover-cursor'
 import { formatUsd } from '@/lib/money'
+import { useIsNarrowScreen } from '@/lib/use-media-query'
 
 export interface EquityPoint {
   key: string // bucket id, used on X axis
@@ -36,6 +38,11 @@ interface EquityCurveProps {
    * PnL (bar-chart-like line).
    */
   cumulative?: boolean
+  /**
+   * Seed value for the cumulative running total (e.g. account equity before
+   * the first point in the series). Ignored when `cumulative` is false.
+   */
+  startEquity?: number
   height?: number
   /** Explicit X-axis tick values (must match point labels). */
   xTicks?: string[]
@@ -50,20 +57,33 @@ interface EquityCurveProps {
 export function EquityCurve({
   points,
   cumulative = true,
-  height = 360,
+  startEquity = 0,
+  height = 420,
   xTicks,
   headerRight,
   adjustments,
   onPointClick,
 }: EquityCurveProps) {
+  const isNarrow = useIsNarrowScreen()
   const data = useMemo(() => {
     if (!cumulative) return points.map(p => ({ ...p, y: p.pnl }))
-    let running = 0
+    let running = startEquity
     return points.map(p => {
       running += p.pnl
       return { ...p, y: running }
     })
-  }, [points, cumulative])
+  }, [points, cumulative, startEquity])
+
+  const domain = useMemo<[number, number]>(() => {
+    if (data.length === 0) return [0, 1]
+    let min = Infinity
+    let max = -Infinity
+    for (const p of data) {
+      if (p.y < min) min = p.y
+      if (p.y > max) max = p.y
+    }
+    return niceDomain(min - EQUITY_Y_PAD, max + EQUITY_Y_PAD)
+  }, [data])
 
   const hasData = data.length > 0 && data.some(p => (p.count ?? 0) > 0)
 
@@ -113,11 +133,13 @@ export function EquityCurve({
               {...(xTicks ? { ticks: xTicks, interval: 0 as const } : {})}
             />
             <YAxis
+              hide={isNarrow}
               tick={{ fill: 'var(--color-text-dim)', fontSize: 11 }}
               tickLine={false}
               axisLine={false}
               width={60}
               tickMargin={10}
+              domain={domain}
               tickFormatter={v => formatUsd(v)}
             />
             <Tooltip

@@ -14,6 +14,7 @@ import type { CandlePoint } from '@/lib/trade-stats'
 import { niceDomain } from '@/lib/chart'
 import { setHoverLabel, useHoverLabel } from '@/lib/hover-cursor'
 import { formatUsd } from '@/lib/money'
+import { useIsNarrowScreen } from '@/lib/use-media-query'
 
 interface FeesChartProps {
   points: CandlePoint[]
@@ -25,6 +26,7 @@ interface FeesChartProps {
 const LEFT_AXIS_W = 60
 
 export function FeesChart({ points, height = 180, xTicks }: FeesChartProps) {
+  const isNarrow = useIsNarrowScreen()
   const data = useMemo(
     () => points.map(p => ({ key: p.key, label: p.label, fees: p.fees, count: p.count })),
     [points],
@@ -67,6 +69,7 @@ export function FeesChart({ points, height = 180, xTicks }: FeesChartProps) {
               {...(xTicks ? { ticks: xTicks, interval: 0 as const } : {})}
             />
             <YAxis
+              hide={isNarrow}
               width={LEFT_AXIS_W}
               tick={{ fill: 'var(--color-text-dim)', fontSize: 11 }}
               tickLine={false}

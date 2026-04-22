@@ -1,12 +1,18 @@
 import type { AggregateStats } from '@/lib/trade-stats'
 import { formatUsd } from '@/lib/money'
+import { formatDuration } from '@/lib/duration'
 import { cn } from '@/lib/utils'
 
 interface StatsGridProps {
   stats: AggregateStats
+  /**
+   * Fractional return on the period (e.g. 0.05 = 5%). Omit to hide the tile;
+   * pass null to show a placeholder when a baseline isn't available.
+   */
+  roi?: number | null
 }
 
-export function StatsGrid({ stats }: StatsGridProps) {
+export function StatsGrid({ stats, roi }: StatsGridProps) {
   const s = stats
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -54,6 +60,34 @@ export function StatsGrid({ stats }: StatsGridProps) {
                 : 'neutral'
         }
       />
+      <Stat
+        label="Avg win"
+        value={s.avg_win === null ? '—' : formatUsd(s.avg_win)}
+        tone={s.avg_win !== null && s.avg_win > 0 ? 'win' : 'neutral'}
+      />
+      <Stat
+        label="Avg loss"
+        value={s.avg_loss === null ? '—' : formatUsd(s.avg_loss)}
+        tone={s.avg_loss !== null && s.avg_loss < 0 ? 'loss' : 'neutral'}
+      />
+      <Stat
+        label="Avg duration"
+        value={formatDuration(s.avg_duration_ms)}
+      />
+      {roi !== undefined && (
+        <Stat
+          label={
+            <>
+              ROI{' '}
+              <span className="normal-case tracking-normal text-[11px] opacity-70">
+                (excluding equity adjustments)
+              </span>
+            </>
+          }
+          value={roi === null ? '—' : `${(roi * 100).toFixed(2)}%`}
+          tone={roi === null ? 'neutral' : roi > 0 ? 'win' : roi < 0 ? 'loss' : 'neutral'}
+        />
+      )}
     </div>
   )
 }
@@ -65,7 +99,7 @@ function Stat({
   tone = 'neutral',
   big,
 }: {
-  label: string
+  label: React.ReactNode
   value: string
   sub?: string
   tone?: 'win' | 'loss' | 'neutral'

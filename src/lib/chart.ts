@@ -10,6 +10,10 @@ function niceStep(span: number): number {
   return mult * mag
 }
 
+/** Vertical breathing room (USD) applied above/below the equity-chart data
+ *  range so candles/lines never touch the edge of the plotting area. */
+export const EQUITY_Y_PAD = 300
+
 /**
  * Rounds a [min, max] data range to nice round bounds that Recharts can use
  * directly as a `domain`. For example, [0, 511.6] → [0, 600].

@@ -14,6 +14,7 @@ import {
   type TradeFilters,
 } from '@/lib/filters'
 import { adjustmentsByDate, aggregate, computeCandles } from '@/lib/trade-stats'
+import { useStartingEquity } from '@/lib/use-starting-equity'
 import { bucketByDay, bucketByWeek } from '@/lib/buckets'
 import { StatsGrid } from '@/components/StatsGrid'
 import { EquityCurve } from '@/components/EquityCurve'
@@ -129,6 +130,9 @@ export function StatsRoute() {
     return bucketByDay(filtered, new Date(rangeStart + 'T00:00:00'), endPlusOne)
   }, [filtered, rangeStart, rangeEnd])
 
+  const startingEquity = useStartingEquity(rangeStart)
+  const roi = startingEquity > 0 ? stats.net_pnl / startingEquity : null
+
   // Every day is a tick. XAxis now uses the unique bucket KEY (YYYY-MM-DD)
   // as the category value — day-only labels like "15" would collide between
   // months in a multi-month range.
@@ -159,8 +163,9 @@ export function StatsRoute() {
       computeCandles(
         days.map(b => ({ ...b, label: b.key })),
         adjByDate,
+        startingEquity,
       ),
-    [days, adjByDate],
+    [days, adjByDate, startingEquity],
   )
 
   const adjustmentMarkers = useMemo(
@@ -286,7 +291,7 @@ export function StatsRoute() {
         </div>
       </section>
 
-      <StatsGrid stats={stats} />
+      <StatsGrid stats={stats} roi={roi} />
 
       {filtered.length > 0 ? (
         <>
@@ -294,6 +299,7 @@ export function StatsRoute() {
             <EquityCurve
               points={equityPoints}
               cumulative
+              startEquity={startingEquity}
               xTicks={xTicks}
               adjustments={adjustmentMarkers}
               onPointClick={key => navigate(`/day/${key}`)}

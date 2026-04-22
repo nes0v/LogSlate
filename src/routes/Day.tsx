@@ -6,6 +6,7 @@ import { Plus, ChevronLeft } from 'lucide-react'
 import { db } from '@/db/schema'
 import { useActiveAccountId } from '@/lib/active-account'
 import { aggregate } from '@/lib/trade-stats'
+import { useStartingEquity } from '@/lib/use-starting-equity'
 import { useArrowNavigation } from '@/lib/use-arrow-navigation'
 import { DayScreenshotSection } from '@/components/DayScreenshotSection'
 import { DayTradeCard } from '@/components/DayTradeCard'
@@ -63,6 +64,8 @@ export function DayRoute() {
   })
 
   const stats = aggregate(trades ?? [])
+  const startingEquity = useStartingEquity(date || null)
+  const roi = startingEquity > 0 ? stats.net_pnl / startingEquity : null
 
   return (
     <div className="space-y-6">
@@ -97,7 +100,7 @@ export function DayRoute() {
         </Link>
       </div>
 
-      <StatsGrid stats={stats} />
+      <StatsGrid stats={stats} roi={roi} />
 
       <DayScreenshotSection accountId={accountId} date={date} />
 

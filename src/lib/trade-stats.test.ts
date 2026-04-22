@@ -88,6 +88,46 @@ describe('aggregate', () => {
     expect(s.avg_planned_rr).toBeCloseTo(2.5, 5)
     expect(s.avg_realized_rr).not.toBeNull()
   })
+
+  it('averages win and loss PnL separately (breakevens excluded)', () => {
+    // winner: +$195.5 net, loser: -$204.5 net
+    const trades = [winningTrade(), winningTrade(), losingTrade(), breakevenTrade()]
+    const s = aggregate(trades)
+    expect(s.avg_win).toBeCloseTo(195.5, 5)
+    expect(s.avg_loss).toBeCloseTo(-204.5, 5)
+  })
+
+  it('returns null averages when no wins or losses exist', () => {
+    expect(aggregate([breakevenTrade()]).avg_win).toBeNull()
+    expect(aggregate([breakevenTrade()]).avg_loss).toBeNull()
+    expect(aggregate([winningTrade()]).avg_loss).toBeNull()
+    expect(aggregate([losingTrade()]).avg_win).toBeNull()
+  })
+
+  it('averages total duration across trades with timing data', () => {
+    const t1 = tradeRecord({
+      executions: [
+        execution({ kind: 'buy', time: '2026-04-20T10:00:00Z' }),
+        execution({ kind: 'sell', time: '2026-04-20T10:10:00Z' }),
+      ],
+    })
+    const t2 = tradeRecord({
+      executions: [
+        execution({ kind: 'buy', time: '2026-04-20T11:00:00Z' }),
+        execution({ kind: 'sell', time: '2026-04-20T11:30:00Z' }),
+      ],
+    })
+    const s = aggregate([t1, t2])
+    // avg of 10min and 30min = 20min = 1_200_000 ms
+    expect(s.avg_duration_ms).toBe(1_200_000)
+  })
+
+  it('ignores trades with unparseable timing when averaging duration', () => {
+    const t = tradeRecord({
+      executions: [execution({ kind: 'buy', time: 'not-a-date' })],
+    })
+    expect(aggregate([t]).avg_duration_ms).toBeNull()
+  })
 })
 
 describe('signedAdjustment', () => {

@@ -20,6 +20,7 @@ import { effectivePnl } from '@/lib/trade-math'
 import { formatUsd } from '@/lib/money'
 import { bucketByDay, parseYearMonth, WEEK_OPTS } from '@/lib/buckets'
 import { adjustmentsByDate, aggregate, computeCandles } from '@/lib/trade-stats'
+import { useStartingEquity } from '@/lib/use-starting-equity'
 import { CandlestickChart } from '@/components/CandlestickChart'
 import { EquityChartToggle, type EquityView } from '@/components/EquityChartToggle'
 import { EquityCurve } from '@/components/EquityCurve'
@@ -133,13 +134,15 @@ export function CalendarRoute() {
       })),
     [dayBuckets, adjByDate],
   )
+  const startingEquity = useStartingEquity(monthStartKey)
   const candles = useMemo(
     () =>
       computeCandles(
         dayBuckets.map(b => ({ ...b, label: b.key })),
         adjByDate,
+        startingEquity,
       ),
-    [dayBuckets, adjByDate],
+    [dayBuckets, adjByDate, startingEquity],
   )
 
   const adjustmentMarkers = useMemo(
@@ -247,6 +250,7 @@ export function CalendarRoute() {
         <EquityCurve
           points={equityPoints}
           cumulative
+          startEquity={startingEquity}
           xTicks={xTicks}
           adjustments={adjustmentMarkers}
           onPointClick={key => navigate(`/day/${key}`)}

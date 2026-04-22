@@ -12,6 +12,7 @@ import {
   WEEK_OPTS,
 } from '@/lib/buckets'
 import { adjustmentsByDate, aggregate, computeCandles } from '@/lib/trade-stats'
+import { useStartingEquity } from '@/lib/use-starting-equity'
 import { StatsGrid } from '@/components/StatsGrid'
 import { EquityCurve } from '@/components/EquityCurve'
 import { CandlestickChart } from '@/components/CandlestickChart'
@@ -52,6 +53,8 @@ export function WeekRoute() {
   )
 
   const stats = aggregate(trades ?? [])
+  const startingEquity = useStartingEquity(wsKey)
+  const roi = startingEquity > 0 ? stats.net_pnl / startingEquity : null
   const days = useMemo(() => bucketByDay(trades ?? [], ws, we), [trades, ws, we])
   const adjByDate = useMemo(() => adjustmentsByDate(adjustments ?? []), [adjustments])
   const xTicks = useMemo(() => days.map(b => b.key), [days])
@@ -66,8 +69,8 @@ export function WeekRoute() {
     [days, adjByDate],
   )
   const candles = useMemo(
-    () => computeCandles(days.map(b => ({ ...b, label: b.key })), adjByDate),
-    [days, adjByDate],
+    () => computeCandles(days.map(b => ({ ...b, label: b.key })), adjByDate, startingEquity),
+    [days, adjByDate, startingEquity],
   )
   const adjustmentMarkers = useMemo(
     () =>
@@ -107,7 +110,7 @@ export function WeekRoute() {
         onNext={() => go(addWeek(weekStart, 1))}
         onToday={() => go(new Date())}
       />
-      <StatsGrid stats={stats} />
+      <StatsGrid stats={stats} roi={roi} />
 
       {hasTrades ? (
         <>
@@ -115,6 +118,7 @@ export function WeekRoute() {
             <EquityCurve
               points={equityPoints}
               cumulative
+              startEquity={startingEquity}
               xTicks={xTicks}
               adjustments={adjustmentMarkers}
               onPointClick={key => navigate(`/day/${key}`)}
