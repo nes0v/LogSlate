@@ -11,8 +11,11 @@ node_modules
 dist
 dist-ssr
 *.local
-.env
-.env.local
+.env*
+!.env.example
+
+# Local trade-data exports from src/lib/backup.ts
+logslate-backup-*.json
 
 # Editor directories and files
 .vscode/*
