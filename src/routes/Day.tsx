@@ -102,7 +102,12 @@ export function DayRoute() {
       <DayScreenshotSection accountId={accountId} date={date} />
 
       <section className="space-y-2">
-        <h2 className="text-sm font-medium">Trades</h2>
+        <h2 className="text-sm font-medium">
+          Trades{' '}
+          <span className="text-(--color-text-dim) font-normal">
+            ({trades?.length ?? 0})
+          </span>
+        </h2>
         {trades && trades.length > 0 ? (
           <div className="flex flex-col gap-3">
             {trades.map((t, i) => (

@@ -31,7 +31,7 @@ export function DayScreenshotSection({ accountId, date }: DayScreenshotSectionPr
 
   return (
     <section className="space-y-2">
-      <h2 className="text-sm font-medium">Day screenshots</h2>
+      <h2 className="text-sm font-medium">Screenshots</h2>
       <div className="bg-(--color-panel) border border-(--color-border) rounded-md p-3">
         <div className="flex flex-wrap items-start gap-3">
           {rows.map(r =>
