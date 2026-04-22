@@ -52,8 +52,8 @@ export function SettingsRoute() {
   const lastAt = lastSyncAt()
 
   return (
-    <div className="space-y-8 max-w-2xl">
-      <div>
+    <div className="pt-2 space-y-8 max-w-2xl">
+      <div className="mb-9">
         <h1 className="text-lg font-semibold">Settings</h1>
       </div>
 

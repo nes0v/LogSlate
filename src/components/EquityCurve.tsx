@@ -15,6 +15,7 @@ import { EQUITY_Y_PAD, niceDomain } from '@/lib/chart'
 import { setHoverLabel, useHoverLabel } from '@/lib/hover-cursor'
 import { formatUsd } from '@/lib/money'
 import { useIsNarrowScreen } from '@/lib/use-media-query'
+import { cn } from '@/lib/utils'
 
 export interface EquityPoint {
   key: string // bucket id, used on X axis
@@ -226,6 +227,7 @@ function EquityTooltip({ active, payload, cumulative }: EquityTooltipProps) {
   const p = payload[0].payload
   const dateLabel = p.key ? format(new Date(p.key + 'T00:00:00'), 'MMM d') : p.label ?? ''
   const value = p.y ?? p.pnl ?? 0
+  const delta = p.pnl ?? 0
   return (
     <div className="bg-(--color-panel-2) border border-(--color-border) rounded-md p-2 text-xs font-mono">
       <div className="text-(--color-text-dim) mb-2">{dateLabel}</div>
@@ -233,6 +235,20 @@ function EquityTooltip({ active, payload, cumulative }: EquityTooltipProps) {
         <span className="text-(--color-text-dim)">{cumulative ? 'equity' : 'pnl'}</span>
         <span>{formatUsd(value)}</span>
       </div>
+      {cumulative && (
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-(--color-text-dim)">Δ</span>
+          <span
+            className={cn(
+              delta > 0 && 'text-(--color-win)',
+              delta < 0 && 'text-(--color-loss)',
+              delta === 0 && 'text-(--color-text-dim)',
+            )}
+          >
+            {formatUsd(delta)}
+          </span>
+        </div>
+      )}
       <div className="flex items-center justify-between gap-3">
         <span className="text-(--color-text-dim)">trades</span>
         <span>{p.count ?? 0}</span>

@@ -26,7 +26,7 @@ import { EquityChartToggle, type EquityView } from '@/components/EquityChartTogg
 import { EquityCurve } from '@/components/EquityCurve'
 import { FeesChart } from '@/components/FeesChart'
 import { ForexFactoryNews } from '@/components/ForexFactoryNews'
-import { PeriodNav } from '@/components/PeriodNav'
+import { PageHeader } from '@/components/PageHeader'
 import { cn } from '@/lib/utils'
 
 const DATE_KEY = 'yyyy-MM-dd'
@@ -106,10 +106,6 @@ export function CalendarRoute() {
     return total
   }, [trades, month])
 
-  function go(d: Date) {
-    navigate(`/month/${format(d, 'yyyy-MM')}`)
-  }
-
   // Day buckets across the month, extended by 1 so charts show the first of
   // the next month as the right edge.
   const dayBuckets = useMemo(() => {
@@ -163,109 +159,113 @@ export function CalendarRoute() {
   }, [gridStart])
 
   return (
-    <div className="space-y-8">
-      <div className="flex items-center justify-between">
-        <PeriodNav
-          title={format(month, 'MMMM yyyy')}
-          onPrev={() => go(subMonths(month, 1))}
-          onNext={() => go(addMonths(month, 1))}
-          onToday={() => go(new Date())}
-        />
-        <div className="flex items-baseline gap-2">
-          <span className="text-sm text-(--color-text-dim)">Month net</span>
-          <span
-            className={cn(
-              'text-base font-mono',
-              monthNet > 0 && 'text-(--color-win)',
-              monthNet < 0 && 'text-(--color-loss)',
-              monthNet === 0 && 'text-(--color-text-dim)',
-            )}
-          >
-            {formatUsd(monthNet)}
-          </span>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-7 gap-px bg-(--color-border) border border-(--color-border) rounded-md overflow-hidden mb-20">
-        {weekdayLabels.map(lbl => (
-          <div
-            key={lbl}
-            className="bg-(--color-panel) text-xs text-(--color-text-dim) text-center py-2"
-          >
-            {lbl}
-          </div>
-        ))}
-        {days.map(d => {
-          const key = format(d, DATE_KEY)
-          const cell = perDay.get(key)
-          const inMonth = isSameMonth(d, month)
-          const today = isToday(d)
-          return (
-            <Link
-              key={key}
-              to={`/day/${key}`}
+    <div>
+      <PageHeader
+        title={format(month, 'MMMM yyyy')}
+        prev={`/month/${format(subMonths(month, 1), 'yyyy-MM')}`}
+        next={`/month/${format(addMonths(month, 1), 'yyyy-MM')}`}
+        prevLabel="Previous month"
+        nextLabel="Next month"
+        todayTo={`/month/${format(new Date(), 'yyyy-MM')}`}
+        rightSlot={
+          <div className="flex items-baseline gap-2">
+            <span className="text-sm text-(--color-text-dim)">Month net</span>
+            <span
               className={cn(
-                'bg-(--color-panel) hover:bg-(--color-panel-2) transition-colors',
-                'min-h-20 sm:min-h-24 p-2 flex flex-col gap-1',
-                !inMonth && 'opacity-40',
+                'text-base font-mono',
+                monthNet > 0 && 'text-(--color-win)',
+                monthNet < 0 && 'text-(--color-loss)',
+                monthNet === 0 && 'text-(--color-text-dim)',
               )}
             >
-              <div className="flex items-center">
-                <span
-                  className={cn(
-                    'text-xs',
-                    today
-                      ? 'bg-(--color-accent) text-white rounded-sm size-5 flex items-center justify-center font-semibold'
-                      : 'text-(--color-text-dim)',
-                  )}
-                >
-                  {format(d, 'd')}
-                </span>
-              </div>
-              {cell ? (
-                <div className="mt-auto">
-                  <div
+              {formatUsd(monthNet)}
+            </span>
+          </div>
+        }
+      />
+
+      <div className="mt-6 space-y-8">
+        <div className="grid grid-cols-7 gap-px bg-(--color-border) border border-(--color-border) rounded-md overflow-hidden mb-20">
+          {weekdayLabels.map(lbl => (
+            <div
+              key={lbl}
+              className="bg-(--color-panel) text-xs text-(--color-text-dim) text-center py-2"
+            >
+              {lbl}
+            </div>
+          ))}
+          {days.map(d => {
+            const key = format(d, DATE_KEY)
+            const cell = perDay.get(key)
+            const inMonth = isSameMonth(d, month)
+            const today = isToday(d)
+            return (
+              <Link
+                key={key}
+                to={`/day/${key}`}
+                className={cn(
+                  'bg-(--color-panel) hover:bg-(--color-panel-2) transition-colors',
+                  'min-h-20 sm:min-h-24 p-2 flex flex-col gap-1',
+                  !inMonth && 'opacity-40',
+                )}
+              >
+                <div className="flex items-center">
+                  <span
                     className={cn(
-                      'text-base font-mono font-medium',
-                      cell.pnl > 0 && 'text-(--color-win)',
-                      cell.pnl < 0 && 'text-(--color-loss)',
-                      cell.pnl === 0 && 'text-(--color-text-dim)',
+                      'text-xs',
+                      today
+                        ? 'bg-(--color-accent) text-white rounded-sm size-5 flex items-center justify-center font-semibold'
+                        : 'text-(--color-text-dim)',
                     )}
                   >
-                    {formatUsd(cell.pnl)}
-                  </div>
-                  <div className="text-xs text-(--color-text-dim) font-normal">
-                    {cell.count} trade{cell.count === 1 ? '' : 's'}
-                  </div>
+                    {format(d, 'd')}
+                  </span>
                 </div>
-              ) : null}
-            </Link>
-          )
-        })}
+                {cell ? (
+                  <div className="mt-auto">
+                    <div
+                      className={cn(
+                        'text-base font-mono font-medium',
+                        cell.pnl > 0 && 'text-(--color-win)',
+                        cell.pnl < 0 && 'text-(--color-loss)',
+                        cell.pnl === 0 && 'text-(--color-text-dim)',
+                      )}
+                    >
+                      {formatUsd(cell.pnl)}
+                    </div>
+                    <div className="text-xs text-(--color-text-dim) font-normal">
+                      {cell.count} trade{cell.count === 1 ? '' : 's'}
+                    </div>
+                  </div>
+                ) : null}
+              </Link>
+            )
+          })}
+        </div>
+
+        <ForexFactoryNews />
+
+        {equityView === 'curve' ? (
+          <EquityCurve
+            points={equityPoints}
+            cumulative
+            startEquity={startingEquity}
+            xTicks={xTicks}
+            adjustments={adjustmentMarkers}
+            onPointClick={key => navigate(`/day/${key}`)}
+            headerRight={<EquityChartToggle value={equityView} onChange={setEquityView} />}
+          />
+        ) : (
+          <CandlestickChart
+            points={candles}
+            xTicks={xTicks}
+            adjustments={adjustmentMarkers}
+            onPointClick={key => navigate(`/day/${key}`)}
+            headerRight={<EquityChartToggle value={equityView} onChange={setEquityView} />}
+          />
+        )}
+        <FeesChart points={candles} xTicks={xTicks} />
       </div>
-
-      <ForexFactoryNews />
-
-      {equityView === 'curve' ? (
-        <EquityCurve
-          points={equityPoints}
-          cumulative
-          startEquity={startingEquity}
-          xTicks={xTicks}
-          adjustments={adjustmentMarkers}
-          onPointClick={key => navigate(`/day/${key}`)}
-          headerRight={<EquityChartToggle value={equityView} onChange={setEquityView} />}
-        />
-      ) : (
-        <CandlestickChart
-          points={candles}
-          xTicks={xTicks}
-          adjustments={adjustmentMarkers}
-          onPointClick={key => navigate(`/day/${key}`)}
-          headerRight={<EquityChartToggle value={equityView} onChange={setEquityView} />}
-        />
-      )}
-      <FeesChart points={candles} xTicks={xTicks} />
     </div>
   )
 }

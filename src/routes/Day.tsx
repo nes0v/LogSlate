@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { format, parseISO } from 'date-fns'
-import { Plus, ChevronLeft } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { db } from '@/db/schema'
 import { useActiveAccountId } from '@/lib/active-account'
 import { aggregate } from '@/lib/trade-stats'
@@ -10,7 +10,7 @@ import { useStartingEquity } from '@/lib/use-starting-equity'
 import { useArrowNavigation } from '@/lib/use-arrow-navigation'
 import { DayScreenshotSection } from '@/components/DayScreenshotSection'
 import { DayTradeCard } from '@/components/DayTradeCard'
-import { NavArrow } from '@/components/NavArrow'
+import { PageHeader } from '@/components/PageHeader'
 import { StatsGrid } from '@/components/StatsGrid'
 
 export function DayRoute() {
@@ -69,36 +69,21 @@ export function DayRoute() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-2">
+      <PageHeader
+        title={pretty}
+        prev={prevDate ? `/day/${prevDate}` : null}
+        next={nextDate ? `/day/${nextDate}` : null}
+        prevLabel="Previous day with trades"
+        nextLabel="Next day with trades"
+        rightSlot={
           <Link
-            to="/"
-            className="p-1.5 rounded-md text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)"
-            aria-label="Back to calendar"
+            to={`/trade/new?date=${date}`}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md bg-(--color-accent) text-white hover:opacity-90"
           >
-            <ChevronLeft className="size-4" />
+            <Plus className="size-4" /> New trade
           </Link>
-          <h1 className="text-lg font-semibold">{pretty}</h1>
-          <div className="flex items-center gap-1 ml-2">
-            <NavArrow
-              to={prevDate ? `/day/${prevDate}` : null}
-              direction="prev"
-              label="Previous day with trades"
-            />
-            <NavArrow
-              to={nextDate ? `/day/${nextDate}` : null}
-              direction="next"
-              label="Next day with trades"
-            />
-          </div>
-        </div>
-        <Link
-          to={`/trade/new?date=${date}`}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md bg-(--color-accent) text-white hover:opacity-90"
-        >
-          <Plus className="size-4" /> New trade
-        </Link>
-      </div>
+        }
+      />
 
       <StatsGrid stats={stats} roi={roi} />
 

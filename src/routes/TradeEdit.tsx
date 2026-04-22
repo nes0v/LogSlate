@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { ChevronLeft } from 'lucide-react'
 import { TradeForm } from '@/components/TradeForm'
-import { NavArrow } from '@/components/NavArrow'
+import { PageHeader } from '@/components/PageHeader'
 import { db } from '@/db/schema'
 import { deleteTrade, getTrade, updateTrade } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
@@ -99,37 +98,22 @@ export function TradeEditRoute() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-2">
-          <Link
-            to={`/day/${state.record.trade_date}`}
-            className="p-1.5 rounded-md text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)"
-            aria-label="Back to day"
+      <PageHeader
+        title="Edit trade"
+        prev={prevId ? `/trade/${prevId}/edit` : null}
+        next={nextId ? `/trade/${nextId}/edit` : null}
+        prevLabel="Previous trade"
+        nextLabel="Next trade"
+        rightSlot={
+          <button
+            type="button"
+            onClick={handleDelete}
+            className="px-3 py-1.5 text-sm rounded-md border border-(--color-border) text-(--color-loss) hover:bg-(--color-panel-2)"
           >
-            <ChevronLeft className="size-4" />
-          </Link>
-          <h1 className="text-lg font-semibold">Edit trade</h1>
-          <div className="flex items-center gap-1 ml-2">
-            <NavArrow
-              to={prevId ? `/trade/${prevId}/edit` : null}
-              direction="prev"
-              label="Previous trade"
-            />
-            <NavArrow
-              to={nextId ? `/trade/${nextId}/edit` : null}
-              direction="next"
-              label="Next trade"
-            />
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={handleDelete}
-          className="px-3 py-1.5 text-sm rounded-md border border-(--color-border) text-(--color-loss) hover:bg-(--color-panel-2)"
-        >
-          Delete
-        </button>
-      </div>
+            Delete
+          </button>
+        }
+      />
       <TradeForm
         key={id}
         initialValues={state.values}

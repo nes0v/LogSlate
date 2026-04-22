@@ -18,18 +18,24 @@ import { EquityCurve } from '@/components/EquityCurve'
 import { CandlestickChart } from '@/components/CandlestickChart'
 import { FeesChart } from '@/components/FeesChart'
 import { EquityChartToggle, type EquityView } from '@/components/EquityChartToggle'
+import { PageHeader } from '@/components/PageHeader'
 import { PeriodBreakdown } from '@/components/PeriodBreakdown'
-import { PeriodNav } from '@/components/PeriodNav'
 import { TradeRow, TRADE_ROW_COLS } from '@/components/TradeRow'
 import { cn } from '@/lib/utils'
 
 export function WeekRoute() {
   const { start } = useParams()
   const navigate = useNavigate()
-  const weekStart = parseWeekStart(start)
-  const { start: ws, end: we } = weekBounds(weekStart)
-  const wsKey = format(ws, 'yyyy-MM-dd')
-  const weKey = format(we, 'yyyy-MM-dd')
+  const weekStart = useMemo(() => parseWeekStart(start), [start])
+  const { ws, we, wsKey, weKey } = useMemo(() => {
+    const b = weekBounds(weekStart)
+    return {
+      ws: b.start,
+      we: b.end,
+      wsKey: format(b.start, 'yyyy-MM-dd'),
+      weKey: format(b.end, 'yyyy-MM-dd'),
+    }
+  }, [weekStart])
   const accountId = useActiveAccountId()
   const [equityView, setEquityView] = useState<EquityView>('curve')
 
@@ -96,61 +102,65 @@ export function WeekRoute() {
     })
   }, [trades])
 
-  function go(date: Date) {
-    navigate(`/week/${format(startOfWeek(date, WEEK_OPTS), 'yyyy-MM-dd')}`)
+  function weekPath(date: Date) {
+    return `/week/${format(startOfWeek(date, WEEK_OPTS), 'yyyy-MM-dd')}`
   }
 
   const hasTrades = (trades?.length ?? 0) > 0
 
   return (
-    <div className="space-y-8">
-      <PeriodNav
+    <div>
+      <PageHeader
         title={`${format(ws, 'MMM d')} – ${format(we, 'MMM d, yyyy')}`}
-        onPrev={() => go(addWeek(weekStart, -1))}
-        onNext={() => go(addWeek(weekStart, 1))}
-        onToday={() => go(new Date())}
+        prev={weekPath(addWeek(weekStart, -1))}
+        next={weekPath(addWeek(weekStart, 1))}
+        prevLabel="Previous week"
+        nextLabel="Next week"
+        todayTo={weekPath(new Date())}
       />
-      <StatsGrid stats={stats} roi={roi} />
+      <div className="mt-6 space-y-8">
+        <StatsGrid stats={stats} roi={roi} />
 
-      {hasTrades ? (
-        <>
-          {equityView === 'curve' ? (
-            <EquityCurve
-              points={equityPoints}
-              cumulative
-              startEquity={startingEquity}
-              xTicks={xTicks}
-              adjustments={adjustmentMarkers}
-              onPointClick={key => navigate(`/day/${key}`)}
-              headerRight={<EquityChartToggle value={equityView} onChange={setEquityView} />}
-            />
-          ) : (
-            <CandlestickChart
-              points={candles}
-              xTicks={xTicks}
-              adjustments={adjustmentMarkers}
-              onPointClick={key => navigate(`/day/${key}`)}
-              headerRight={<EquityChartToggle value={equityView} onChange={setEquityView} />}
-            />
-          )}
-          <FeesChart points={candles} xTicks={xTicks} />
-          <PeriodBreakdown title="Days" buckets={days} />
-          <section>
-            <h2 className="text-sm font-medium mb-2">
-              Trades <span className="text-(--color-text-dim) font-normal">({tradesAsc.length})</span>
-            </h2>
-            <div className={cn('grid gap-x-5 gap-y-1.5', TRADE_ROW_COLS)}>
-              {tradesAsc.map((t, i) => (
-                <TradeRow key={t.id} trade={t} index={i + 1} />
-              ))}
-            </div>
-          </section>
-        </>
-      ) : (
-        <div className="text-sm text-(--color-text-dim) text-center py-12 border border-dashed border-(--color-border) rounded-md">
-          No trades this week.
-        </div>
-      )}
+        {hasTrades ? (
+          <>
+            {equityView === 'curve' ? (
+              <EquityCurve
+                points={equityPoints}
+                cumulative
+                startEquity={startingEquity}
+                xTicks={xTicks}
+                adjustments={adjustmentMarkers}
+                onPointClick={key => navigate(`/day/${key}`)}
+                headerRight={<EquityChartToggle value={equityView} onChange={setEquityView} />}
+              />
+            ) : (
+              <CandlestickChart
+                points={candles}
+                xTicks={xTicks}
+                adjustments={adjustmentMarkers}
+                onPointClick={key => navigate(`/day/${key}`)}
+                headerRight={<EquityChartToggle value={equityView} onChange={setEquityView} />}
+              />
+            )}
+            <FeesChart points={candles} xTicks={xTicks} />
+            <PeriodBreakdown title="Days" buckets={days} />
+            <section>
+              <h2 className="text-sm font-medium mb-2">
+                Trades <span className="text-(--color-text-dim) font-normal">({tradesAsc.length})</span>
+              </h2>
+              <div className={cn('grid gap-x-5 gap-y-1.5', TRADE_ROW_COLS)}>
+                {tradesAsc.map((t, i) => (
+                  <TradeRow key={t.id} trade={t} index={i + 1} />
+                ))}
+              </div>
+            </section>
+          </>
+        ) : (
+          <div className="text-sm text-(--color-text-dim) text-center py-12 border border-dashed border-(--color-border) rounded-md">
+            No trades this week.
+          </div>
+        )}
+      </div>
     </div>
   )
 }

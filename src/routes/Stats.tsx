@@ -243,8 +243,8 @@ export function StatsRoute() {
   const isDefault = params.toString() === ''
 
   return (
-    <div className="space-y-8">
-      <div className="flex items-center justify-between">
+    <div className="pt-2 space-y-8">
+      <div className="flex items-center justify-between mb-9">
         <h1 className="text-lg font-semibold">Stats</h1>
         {!isDefault && (
           <button
