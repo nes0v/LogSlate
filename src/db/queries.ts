@@ -61,24 +61,6 @@ export async function getTrade(id: string): Promise<TradeRecord | undefined> {
   return db.trades.get(id)
 }
 
-export async function listTradesByDate(date: string, accountId: string): Promise<TradeRecord[]> {
-  return db.trades
-    .where('[account_id+trade_date]')
-    .equals([accountId, date])
-    .sortBy('created_at')
-}
-
-export async function listTradesInRange(
-  startDate: string,
-  endDate: string,
-  accountId: string,
-): Promise<TradeRecord[]> {
-  return db.trades
-    .where('[account_id+trade_date]')
-    .between([accountId, startDate], [accountId, endDate], true, true)
-    .sortBy('trade_date')
-}
-
 export async function listAllTrades(accountId: string): Promise<TradeRecord[]> {
   return db.trades
     .where('[account_id+trade_date]')
@@ -227,6 +209,3 @@ export async function deleteDayScreenshot(id: string): Promise<void> {
   await db.day_screenshots.delete(id)
 }
 
-export async function listAllDayScreenshots(accountId: string): Promise<DayScreenshot[]> {
-  return db.day_screenshots.where('account_id').equals(accountId).sortBy('date')
-}

@@ -1,11 +1,19 @@
-export type SymbolKey = 'NQ' | 'ES'
-export type ContractType = 'micro' | 'mini'
-export type Session = 'pre' | 'AM' | 'LT' | 'PM' | 'aft'
-export type Rating = 'good' | 'excellent' | 'egg'
-export type PlannedRR = 1 | 2 | 3 | 4 | 5 | 6 | 7
-export type Side = 'long' | 'short'
+// Runtime-authoritative enum values. Types are derived from these so adding
+// a new session/symbol/etc. is a one-line change.
+export const SYMBOLS = ['NQ', 'ES'] as const
+export const CONTRACT_TYPES = ['micro', 'mini'] as const
+export const SESSIONS = ['pre', 'AM', 'LT', 'PM', 'aft'] as const
+export const RATINGS = ['good', 'excellent', 'egg'] as const
+export const EXECUTION_KINDS = ['buy', 'sell'] as const
+export const SIDES = ['long', 'short'] as const
 
-export type ExecutionKind = 'buy' | 'sell'
+export type SymbolKey = (typeof SYMBOLS)[number]
+export type ContractType = (typeof CONTRACT_TYPES)[number]
+export type Session = (typeof SESSIONS)[number]
+export type Rating = (typeof RATINGS)[number]
+export type ExecutionKind = (typeof EXECUTION_KINDS)[number]
+export type Side = (typeof SIDES)[number]
+export type PlannedRR = 1 | 2 | 3 | 4 | 5 | 6 | 7
 
 export interface Execution {
   kind: ExecutionKind

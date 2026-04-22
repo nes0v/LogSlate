@@ -12,8 +12,6 @@ import {
   listAccounts,
   listAdjustments,
   listAllTrades,
-  listTradesByDate,
-  listTradesInRange,
   renameAccount,
   slugifyAccountName,
   updateAdjustment,
@@ -62,29 +60,6 @@ describe('trade queries', () => {
     const t = await createTrade(tradeDraft())
     await deleteTrade(t.id)
     expect(await getTrade(t.id)).toBeUndefined()
-  })
-
-  it('listTradesByDate filters to a single day', async () => {
-    await createTrade(tradeDraft({ trade_date: '2026-04-10' }))
-    await createTrade(tradeDraft({ trade_date: '2026-04-10' }))
-    await createTrade(tradeDraft({ trade_date: '2026-04-11' }))
-    expect(await listTradesByDate('2026-04-10', MAIN_ACCOUNT_ID)).toHaveLength(2)
-  })
-
-  it('listTradesByDate scopes to the given account', async () => {
-    await createTrade(tradeDraft({ trade_date: '2026-04-10' }), MAIN_ACCOUNT_ID)
-    await createTrade(tradeDraft({ trade_date: '2026-04-10' }), 'other-account')
-    expect(await listTradesByDate('2026-04-10', MAIN_ACCOUNT_ID)).toHaveLength(1)
-    expect(await listTradesByDate('2026-04-10', 'other-account')).toHaveLength(1)
-  })
-
-  it('listTradesInRange is inclusive on both ends', async () => {
-    await createTrade(tradeDraft({ trade_date: '2026-04-01' }))
-    await createTrade(tradeDraft({ trade_date: '2026-04-15' }))
-    await createTrade(tradeDraft({ trade_date: '2026-04-30' }))
-    await createTrade(tradeDraft({ trade_date: '2026-05-01' }))
-    const out = await listTradesInRange('2026-04-01', '2026-04-30', MAIN_ACCOUNT_ID)
-    expect(out).toHaveLength(3)
   })
 
   it('listAllTrades returns every stored trade for the account', async () => {

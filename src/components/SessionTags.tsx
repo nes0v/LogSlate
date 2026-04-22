@@ -1,8 +1,6 @@
-import type { Session, TradeRecord } from '@/db/types'
+import { SESSIONS, type TradeRecord } from '@/db/types'
 import { SESSION_BADGE, SESSION_BADGE_CLASS } from '@/lib/session-badge'
 import { cn } from '@/lib/utils'
-
-const SESSIONS: Session[] = ['pre', 'AM', 'LT', 'PM', 'aft']
 
 interface SessionTagsProps {
   trades: TradeRecord[]

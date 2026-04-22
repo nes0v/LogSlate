@@ -1,9 +1,17 @@
 import { z } from 'zod'
 import { format, parseISO } from 'date-fns'
-import type { TradeDraft, TradeRecord } from '@/db/types'
+import {
+  CONTRACT_TYPES,
+  EXECUTION_KINDS,
+  RATINGS,
+  SESSIONS,
+  SYMBOLS,
+  type TradeDraft,
+  type TradeRecord,
+} from '@/db/types'
 
 const executionSchema = z.object({
-  kind: z.enum(['buy', 'sell']),
+  kind: z.enum(EXECUTION_KINDS),
   price: z.number().positive('price must be > 0'),
   time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'time must be HH:MM (24h)'),
   contracts: z.number().int().positive('contracts must be a positive integer'),
@@ -12,16 +20,16 @@ const executionSchema = z.object({
 export const tradeFormSchema = z
   .object({
     trade_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'invalid date'),
-    symbol: z.enum(['NQ', 'ES']),
-    contract_type: z.enum(['micro', 'mini']),
-    session: z.enum(['pre', 'AM', 'LT', 'PM', 'aft']),
+    symbol: z.enum(SYMBOLS),
+    contract_type: z.enum(CONTRACT_TYPES),
+    session: z.enum(SESSIONS),
     idea: z.string(),
     executions: z.array(executionSchema).min(2, 'at least one buy and one sell'),
     stop_loss: z.number().positive('stop loss must be > 0'),
     drawdown: z.number().min(0, 'must be ≥ 0'),
     buildup: z.number().min(0, 'must be ≥ 0').nullable(),
     planned_rr: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7)]),
-    rating: z.enum(['good', 'excellent', 'egg']),
+    rating: z.enum(RATINGS),
     pnl_override: z.number().nullable(),
     screenshot: z.string().nullable(),
   })

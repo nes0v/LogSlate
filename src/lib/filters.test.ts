@@ -3,21 +3,9 @@ import {
   EMPTY_FILTERS,
   applyFilters,
   filtersFromParams,
-  hasAnyFilter,
   paramsFromFilters,
 } from './filters'
 import { tradeRecord } from '@/test/fixtures'
-
-describe('hasAnyFilter', () => {
-  it('is false for the empty object', () => {
-    expect(hasAnyFilter(EMPTY_FILTERS)).toBe(false)
-  })
-
-  it('is true when any single field is set', () => {
-    expect(hasAnyFilter({ ...EMPTY_FILTERS, symbol: 'NQ' })).toBe(true)
-    expect(hasAnyFilter({ ...EMPTY_FILTERS, from: '2026-04-01' })).toBe(true)
-  })
-})
 
 describe('applyFilters', () => {
   const trades = [

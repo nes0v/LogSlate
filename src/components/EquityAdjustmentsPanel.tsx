@@ -6,11 +6,9 @@ import { db } from '@/db/schema'
 import { createAdjustment, deleteAdjustment } from '@/db/queries'
 import type { AdjustmentKind } from '@/db/types'
 import { useActiveAccountId } from '@/lib/active-account'
+import { inputClassCompact as inputClass } from '@/components/form/Field'
 import { formatUsd } from '@/lib/money'
 import { cn } from '@/lib/utils'
-
-const inputClass =
-  'w-full rounded-md border border-(--color-border) bg-(--color-panel) px-2 py-1.5 text-sm outline-none focus:border-(--color-accent)'
 
 export function EquityAdjustmentsPanel() {
   const accountId = useActiveAccountId()

@@ -60,7 +60,7 @@ interface SyncItem {
   updated_at: string
 }
 
-function mergeById<T extends SyncItem>(
+export function mergeById<T extends SyncItem>(
   local: T[],
   remote: T[],
   lastSynced: Set<string>,
@@ -84,38 +84,6 @@ function mergeById<T extends SyncItem>(
     }
   }
   return out
-}
-
-export function mergeTrades(
-  local: TradeRecord[],
-  remote: TradeRecord[],
-  lastSynced: Set<string>,
-): TradeRecord[] {
-  return mergeById(local, remote, lastSynced)
-}
-
-export function mergeAdjustments(
-  local: EquityAdjustment[],
-  remote: EquityAdjustment[],
-  lastSynced: Set<string>,
-): EquityAdjustment[] {
-  return mergeById(local, remote, lastSynced)
-}
-
-export function mergeAccounts(
-  local: Account[],
-  remote: Account[],
-  lastSynced: Set<string>,
-): Account[] {
-  return mergeById(local, remote, lastSynced)
-}
-
-export function mergeDayScreenshots(
-  local: DayScreenshot[],
-  remote: DayScreenshot[],
-  lastSynced: Set<string>,
-): DayScreenshot[] {
-  return mergeById(local, remote, lastSynced)
 }
 
 export interface SyncResult {
@@ -189,10 +157,10 @@ export async function syncNow(): Promise<SyncResult> {
     }
   }
 
-  const mergedTrades = mergeTrades(localTrades, remoteTrades, lastSyncedTrades)
-  const mergedAdj = mergeAdjustments(localAdj, remoteAdj, lastSyncedAdj)
-  const mergedAccounts = mergeAccounts(localAccounts, remoteAccounts, lastSyncedAccounts)
-  const mergedDayScreenshots = mergeDayScreenshots(
+  const mergedTrades = mergeById(localTrades, remoteTrades, lastSyncedTrades)
+  const mergedAdj = mergeById(localAdj, remoteAdj, lastSyncedAdj)
+  const mergedAccounts = mergeById(localAccounts, remoteAccounts, lastSyncedAccounts)
+  const mergedDayScreenshots = mergeById(
     localDayScreenshots,
     remoteDayScreenshots,
     lastSyncedDayScreenshots,

@@ -1,4 +1,14 @@
-import type { ContractType, Rating, Session, SymbolKey, TradeRecord } from '@/db/types'
+import {
+  CONTRACT_TYPES,
+  RATINGS,
+  SESSIONS,
+  SYMBOLS,
+  type ContractType,
+  type Rating,
+  type Session,
+  type SymbolKey,
+  type TradeRecord,
+} from '@/db/types'
 
 export interface TradeFilters {
   from: string | null // YYYY-MM-DD, inclusive
@@ -16,17 +26,6 @@ export const EMPTY_FILTERS: TradeFilters = {
   contract: null,
   session: null,
   rating: null,
-}
-
-export function hasAnyFilter(f: TradeFilters): boolean {
-  return (
-    f.from !== null ||
-    f.to !== null ||
-    f.symbol !== null ||
-    f.contract !== null ||
-    f.session !== null ||
-    f.rating !== null
-  )
 }
 
 export function applyFilters(trades: TradeRecord[], f: TradeFilters): TradeRecord[] {
@@ -49,10 +48,10 @@ export function filtersFromParams(p: URLSearchParams): TradeFilters {
   return {
     from: p.get('from'),
     to: p.get('to'),
-    symbol: get<SymbolKey>('symbol', ['NQ', 'ES']),
-    contract: get<ContractType>('contract', ['micro', 'mini']),
-    session: get<Session>('session', ['pre', 'AM', 'LT', 'PM', 'aft']),
-    rating: get<Rating>('rating', ['good', 'excellent', 'egg']),
+    symbol: get<SymbolKey>('symbol', SYMBOLS),
+    contract: get<ContractType>('contract', CONTRACT_TYPES),
+    session: get<Session>('session', SESSIONS),
+    rating: get<Rating>('rating', RATINGS),
   }
 }
 

@@ -30,6 +30,17 @@ function notify(): void {
 }
 
 function update(patch: Partial<AutoSyncState>): void {
+  // Skip when the patch changes no field — every subscriber would otherwise
+  // re-render for an identical state (the sync loop flips status/error to
+  // the same values multiple times under normal operation).
+  let changed = false
+  for (const k of Object.keys(patch) as Array<keyof AutoSyncState>) {
+    if (state[k] !== patch[k]) {
+      changed = true
+      break
+    }
+  }
+  if (!changed) return
   state = { ...state, ...patch }
   notify()
 }

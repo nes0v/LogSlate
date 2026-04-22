@@ -10,10 +10,8 @@ import {
 } from '@/db/queries'
 import { MAIN_ACCOUNT_ID } from '@/db/types'
 import { setActiveAccountId, useActiveAccountId } from '@/lib/active-account'
+import { inputClassCompact as inputClass } from '@/components/form/Field'
 import { cn } from '@/lib/utils'
-
-const inputClass =
-  'w-full rounded-md border border-(--color-border) bg-(--color-panel) px-2 py-1.5 text-sm outline-none focus:border-(--color-accent)'
 
 export function AccountsPanel() {
   const accounts = useLiveQuery(() => listAccounts(), [], [])
