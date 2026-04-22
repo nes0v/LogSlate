@@ -65,7 +65,7 @@ export function EquityCurve({
     })
   }, [points, cumulative])
 
-  const hasData = data.length > 0
+  const hasData = data.length > 0 && data.some(p => (p.count ?? 0) > 0)
 
   return (
     <section className="space-y-2">

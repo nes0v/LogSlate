@@ -167,7 +167,7 @@ export function AccountsPanel() {
 
       <form
         onSubmit={handleCreate}
-        className="bg-(--color-panel) border border-(--color-border) rounded-md p-3 grid grid-cols-[1fr_auto] gap-2 items-end"
+        className="bg-(--color-panel) border border-(--color-border) rounded-md p-3 grid grid-cols-[1fr_auto] gap-3 items-end"
       >
         <label className="text-xs text-(--color-text-dim) space-y-2">
           <div>New account name</div>
@@ -181,7 +181,7 @@ export function AccountsPanel() {
         </label>
         <button
           type="submit"
-          className="inline-flex items-center justify-center px-3 py-1.5 text-sm rounded-md bg-(--color-accent) text-white hover:opacity-90"
+          className="inline-flex items-center justify-center px-3 py-1.5 text-sm rounded-md border border-transparent bg-(--color-accent) text-white hover:opacity-90"
         >
           Add
         </button>

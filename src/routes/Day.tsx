@@ -101,17 +101,20 @@ export function DayRoute() {
 
       <DayScreenshotSection accountId={accountId} date={date} />
 
-      {trades && trades.length > 0 ? (
-        <div className="flex flex-col gap-3">
-          {trades.map((t, i) => (
-            <DayTradeCard key={t.id} trade={t} index={i + 1} />
-          ))}
-        </div>
-      ) : (
-        <div className="text-sm text-(--color-text-dim) text-center py-12 border border-dashed border-(--color-border) rounded-md">
-          No trades on this day yet.
-        </div>
-      )}
+      <section className="space-y-2">
+        <h2 className="text-sm font-medium">Trades</h2>
+        {trades && trades.length > 0 ? (
+          <div className="flex flex-col gap-3">
+            {trades.map((t, i) => (
+              <DayTradeCard key={t.id} trade={t} index={i + 1} />
+            ))}
+          </div>
+        ) : (
+          <div className="text-sm text-(--color-text-dim) text-center py-12 border border-dashed border-(--color-border) rounded-md">
+            No trades on this day yet.
+          </div>
+        )}
+      </section>
     </div>
   )
 }

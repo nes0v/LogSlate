@@ -49,8 +49,23 @@ function saveToken(t: StoredToken | null) {
 
 // ---------- external store ----------
 
+// Boot: drop any expired stored token and derive the initial status from
+// what's left. We used to silently refresh here, but GIS's `prompt: 'none'`
+// flow flashes a cross-origin popup in modern Chrome (COOP blocks
+// `window.closed`, refresh then fails with "no access token") — worse UX
+// than asking the user to reconnect.
+function initStatus(): DriveStatus {
+  const stored = loadToken()
+  if (!stored) return 'signed-out'
+  if (stored.expiresAt <= Date.now() + 30_000) {
+    saveToken(null)
+    return 'signed-out'
+  }
+  return 'signed-in'
+}
+
 let state: DriveState = {
-  status: loadToken() && loadToken()!.expiresAt > Date.now() + 30_000 ? 'signed-in' : 'signed-out',
+  status: initStatus(),
   error: null,
   userEmail: null,
 }
@@ -124,14 +139,7 @@ export function parseExpiresIn(raw: unknown): number {
   return Math.min(Math.max(n, MIN_EXPIRES_SEC), MAX_EXPIRES_SEC)
 }
 
-interface RequestTokenOpts {
-  prompt: '' | 'none' | 'consent'
-  // When true, drive state is left alone on failure — the caller wants to
-  // refresh in the background without visibly disconnecting the user.
-  silent: boolean
-}
-
-function requestToken(opts: RequestTokenOpts): Promise<string> {
+function requestToken(prompt: '' | 'none' | 'consent'): Promise<string> {
   return new Promise<string>((resolve, reject) => {
     const clientId = getClientId()
     if (!clientId) {
@@ -147,29 +155,22 @@ function requestToken(opts: RequestTokenOpts): Promise<string> {
       scope: SCOPE,
       callback: resp => {
         if (resp.error || !resp.access_token) {
-          if (!opts.silent) {
-            update({ status: 'error', error: resp.error ?? 'no access token' })
-          }
+          update({ status: 'error', error: resp.error ?? 'no access token' })
           reject(new Error(resp.error ?? 'auth failed'))
           return
         }
         const expiresInSec = parseExpiresIn(resp.expires_in)
         saveToken({ value: resp.access_token, expiresAt: Date.now() + expiresInSec * 1000 })
-        if (!opts.silent) {
-          update({ status: 'signed-in', error: null })
-        }
+        update({ status: 'signed-in', error: null })
         resolve(resp.access_token)
       },
       error_callback: err => {
         const type = String((err as { type?: string })?.type ?? 'auth error')
-        if (!opts.silent) {
-          update({ status: 'error', error: type })
-        }
-        // Reject the promise so callers can recover instead of hanging.
+        update({ status: 'error', error: type })
         reject(new Error(type))
       },
     })
-    client.requestAccessToken({ prompt: opts.prompt })
+    client.requestAccessToken({ prompt })
   })
 }
 
@@ -179,7 +180,7 @@ export async function signIn(): Promise<void> {
   update({ status: 'signing-in', error: null })
   try {
     await loadGis()
-    await requestToken({ prompt: '', silent: false })
+    await requestToken('')
   } catch (e) {
     // requestToken already updated state to 'error'; rethrow for callers.
     throw e instanceof Error ? e : new Error(String(e))
@@ -195,67 +196,23 @@ export function signOut(): void {
   }
 }
 
-// Silent token refresh for background sync. Keeps drive.status at 'signed-in'
-// throughout so the UI doesn't flash "disconnected" on every hourly refresh.
-// If GIS can't refresh without user interaction (cookies blocked, session
-// lost, consent needed), this rejects and the caller surfaces a sync error
-// — the user can re-connect manually via Settings.
-//
-// Concurrent callers share a single in-flight refresh — otherwise when two
-// parallel API calls hit an expired token they each fire their own GIS
-// refresh, and Google will reject one, leaving that caller with a spurious
-// "Couldn't load" error even though nothing's wrong with the resource.
-let inFlightRefresh: Promise<string> | null = null
-
-async function refreshTokenSilently(): Promise<string> {
-  if (inFlightRefresh) return inFlightRefresh
-  inFlightRefresh = (async () => {
-    await loadGis()
-    return requestToken({ prompt: 'none', silent: true })
-  })()
-  try {
-    return await inFlightRefresh
-  } finally {
-    inFlightRefresh = null
-  }
-}
-
-async function getValidTokenForBackground(): Promise<string> {
+function getValidToken(): string {
   const t = loadToken()
   if (t && t.expiresAt > Date.now() + 30_000) return t.value
-  return refreshTokenSilently()
-}
-
-// On app boot, if a stored token exists but has expired, try once to silently
-// refresh it — the user's Google session + prior consent are usually still
-// valid for days, so we shouldn't force them to click "Connect" every time
-// they reopen the tab. On success: status flips to 'signed-in' and auto-sync
-// picks it up. On failure: the token is cleared so we don't keep retrying.
-export async function tryRestoreSession(): Promise<void> {
-  const t = loadToken()
-  if (!t) return
-  if (t.expiresAt > Date.now() + 30_000) return // already valid, nothing to do
-  try {
-    await refreshTokenSilently()
-    update({ status: 'signed-in', error: null })
-  } catch {
-    saveToken(null)
-    update({ status: 'signed-out', error: null })
-  }
+  throw new Error('Not connected to Google Drive')
 }
 
 async function authFetch(url: string, init?: RequestInit): Promise<Response> {
-  const token = await getValidTokenForBackground()
+  const token = getValidToken()
   const headers = new Headers(init?.headers)
   headers.set('Authorization', `Bearer ${token}`)
   const resp = await fetch(url, { ...init, headers })
-  if (resp.status !== 401) return resp
-  // Token rejected — drop and try one silent refresh.
-  saveToken(null)
-  const token2 = await refreshTokenSilently()
-  const headers2 = new Headers(init?.headers)
-  headers2.set('Authorization', `Bearer ${token2}`)
-  return fetch(url, { ...init, headers: headers2 })
+  // 401 → token invalid; drop it and flip to signed-out.
+  if (resp.status === 401) {
+    saveToken(null)
+    update({ status: 'signed-out', error: null })
+  }
+  return resp
 }
 
 // ---------- Drive API helpers (appDataFolder scoped) ----------

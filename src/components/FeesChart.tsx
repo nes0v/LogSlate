@@ -85,7 +85,7 @@ export function FeesChart({ points, height = 180, xTicks }: FeesChartProps) {
           </ComposedChart>
         </ResponsiveContainer>
       ) : (
-        <div className="text-sm text-(--color-text-dim) text-center py-8">No fees in this period.</div>
+        <div className="text-sm text-(--color-text-dim) text-center py-8">No data in this period.</div>
       )}
       </div>
     </section>

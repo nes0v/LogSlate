@@ -78,7 +78,7 @@ export function SettingsRoute() {
         )}
 
         {configured && (
-          <div className="rounded-md border border-(--color-border) bg-(--color-panel) p-4 space-y-3">
+          <div className="rounded-md border border-(--color-border) bg-(--color-panel) p-3 space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 {drive.status === 'signed-in' ? (
@@ -108,7 +108,7 @@ export function SettingsRoute() {
                 <button
                   onClick={signIn}
                   disabled={drive.status === 'signing-in'}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md bg-(--color-accent) text-white hover:opacity-90 disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md border border-transparent bg-(--color-accent) text-white hover:opacity-90 disabled:opacity-50"
                 >
                   <LogIn className="size-4" /> Connect Google Drive
                 </button>
