@@ -58,11 +58,12 @@ export function FeesChart({ points, height = 180, xTicks }: FeesChartProps) {
             <ChartHoverCursor />
             <XAxis
               dataKey="label"
+              scale="point"
               tick={{ fill: 'var(--color-text-dim)', fontSize: 11 }}
               tickLine={false}
               axisLine={false}
               tickFormatter={v => chartDayLabel(String(v))}
-              padding={{ left: 0, right: 0 }}
+              padding={{ left: 18, right: 18 }}
               {...(xTicks ? { ticks: xTicks, interval: 0 as const } : {})}
             />
             <YAxis
