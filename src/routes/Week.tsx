@@ -18,6 +18,7 @@ import { EquityCurve } from '@/components/EquityCurve'
 import { CandlestickChart } from '@/components/CandlestickChart'
 import { FeesChart } from '@/components/FeesChart'
 import { EquityChartToggle, type EquityView } from '@/components/EquityChartToggle'
+import { getDefaultEquityView } from '@/lib/equity-view-preference'
 import { PageHeader } from '@/components/PageHeader'
 import { PeriodBreakdown } from '@/components/PeriodBreakdown'
 import { TradeRow, TRADE_ROW_COLS } from '@/components/TradeRow'
@@ -37,7 +38,7 @@ export function WeekRoute() {
     }
   }, [weekStart])
   const accountId = useActiveAccountId()
-  const [equityView, setEquityView] = useState<EquityView>('curve')
+  const [equityView, setEquityView] = useState<EquityView>(getDefaultEquityView)
 
   const trades = useLiveQuery(
     () =>

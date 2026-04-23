@@ -83,6 +83,7 @@ export type AdjustmentDraft = Omit<EquityAdjustment, 'id' | 'account_id' | 'crea
 // changed between enqueue and drain).
 export interface PendingUpload {
   id: string
+  account_id: string
   blob: Blob
   filename: string
   month_key: string

@@ -136,7 +136,7 @@ export function EquityAdjustmentsPanel() {
                 </span>
                 <span
                   className={cn(
-                    'text-xs font-mono px-2 py-0.5 rounded-sm',
+                    'inline-block w-[4.5rem] text-center text-xs font-mono px-2 py-0.5 rounded-sm',
                     a.kind === 'deposit'
                       ? 'bg-(--color-win)/20 text-(--color-win)'
                       : 'bg-(--color-loss)/20 text-(--color-loss)',

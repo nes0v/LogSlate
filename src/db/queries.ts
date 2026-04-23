@@ -141,24 +141,32 @@ export async function renameAccount(id: string, name: string): Promise<void> {
   await db.accounts.update(id, { name: trimmed, updated_at: now() })
 }
 
-// Cascading delete: the account's trades and adjustments go with it. Refuses
-// to delete the Main account (UI also disables this, but we guard server-side
-// too).
+// Cascading delete: the account's trades, adjustments, day screenshots and
+// queued uploads go with it, plus any per-account localStorage preferences /
+// Drive folder caches. Refuses to delete the Main account (UI also disables
+// this, but we guard server-side too).
 export async function deleteAccount(id: string): Promise<void> {
   if (id === MAIN_ACCOUNT_ID) throw new Error('The Main account cannot be deleted.')
   await db.transaction(
     'rw',
-    db.accounts,
-    db.trades,
-    db.adjustments,
-    db.day_screenshots,
+    [db.accounts, db.trades, db.adjustments, db.day_screenshots, db.pending_uploads],
     async () => {
       await db.trades.where('account_id').equals(id).delete()
       await db.adjustments.where('account_id').equals(id).delete()
       await db.day_screenshots.where('account_id').equals(id).delete()
+      await db.pending_uploads.where('account_id').equals(id).delete()
       await db.accounts.delete(id)
     },
   )
+  // Clear per-account preferences and Drive folder caches so a later account
+  // that happens to reuse this id doesn't inherit the old state.
+  try {
+    localStorage.removeItem(`logslate:equity_view_default:${id}`)
+    localStorage.removeItem(`logslate:drive:screenshots_folder:${id}`)
+    localStorage.removeItem(`logslate:drive:month_folders:${id}`)
+  } catch {
+    // localStorage unavailable — keys will linger but are harmless.
+  }
 }
 
 // Counts the data an account owns — used by the UI confirm dialog before a

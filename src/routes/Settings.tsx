@@ -7,6 +7,8 @@ import { clearSyncState, lastSyncAt, type SyncResult } from '@/lib/sync'
 import { exportBackup, importBackup } from '@/lib/backup'
 import { AccountsPanel } from '@/components/AccountsPanel'
 import { EquityAdjustmentsPanel } from '@/components/EquityAdjustmentsPanel'
+import { EquityChartToggle } from '@/components/EquityChartToggle'
+import { setDefaultEquityView, useDefaultEquityView } from '@/lib/equity-view-preference'
 
 export function SettingsRoute() {
   const drive = useDriveState()
@@ -15,6 +17,7 @@ export function SettingsRoute() {
   const [lastResult, setLastResult] = useState<SyncResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const defaultEquityView = useDefaultEquityView()
 
   async function handleSync() {
     setSyncing(true)
@@ -161,6 +164,19 @@ export function SettingsRoute() {
       <AccountsPanel />
 
       <EquityAdjustmentsPanel />
+
+      <section className="space-y-3">
+        <h2 className="text-sm font-medium">Equity chart</h2>
+        <div className="rounded-md border border-(--color-border) bg-(--color-panel) p-3 flex items-center justify-between gap-4">
+          <div className="text-sm space-y-1.5">
+            <div>Default view</div>
+            <div className="text-xs text-(--color-text-dim)">
+              You can still switch on each page for that session.
+            </div>
+          </div>
+          <EquityChartToggle value={defaultEquityView} onChange={setDefaultEquityView} />
+        </div>
+      </section>
 
       <section className="space-y-3">
         <h2 className="text-sm font-medium">Backup &amp; restore</h2>

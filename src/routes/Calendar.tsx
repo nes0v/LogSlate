@@ -23,6 +23,7 @@ import { adjustmentsByDate, aggregate, computeCandles } from '@/lib/trade-stats'
 import { useStartingEquity } from '@/lib/use-starting-equity'
 import { CandlestickChart } from '@/components/CandlestickChart'
 import { EquityChartToggle, type EquityView } from '@/components/EquityChartToggle'
+import { getDefaultEquityView } from '@/lib/equity-view-preference'
 import { EquityCurve } from '@/components/EquityCurve'
 import { FeesChart } from '@/components/FeesChart'
 import { ForexFactoryNews } from '@/components/ForexFactoryNews'
@@ -34,7 +35,7 @@ const DATE_KEY = 'yyyy-MM-dd'
 export function CalendarRoute() {
   const { ym } = useParams()
   const navigate = useNavigate()
-  const [equityView, setEquityView] = useState<EquityView>('curve')
+  const [equityView, setEquityView] = useState<EquityView>(getDefaultEquityView)
 
   // Memoize date derivations so `useMemo` deps compare by stable reference.
   const { month, ms, me, gridStart, gridEnd, days } = useMemo(() => {

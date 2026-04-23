@@ -24,12 +24,16 @@ beforeEach(async () => {
   await db.trades.clear()
   await db.adjustments.clear()
   await db.accounts.clear()
+  await db.day_screenshots.clear()
+  await db.pending_uploads.clear()
   await ensureMainAccount()
 })
 afterEach(async () => {
   await db.trades.clear()
   await db.adjustments.clear()
   await db.accounts.clear()
+  await db.day_screenshots.clear()
+  await db.pending_uploads.clear()
 })
 
 describe('trade queries', () => {
@@ -190,6 +194,66 @@ describe('account queries', () => {
     expect(await listAllTrades(a.id)).toHaveLength(0)
     expect(await listAdjustments(a.id)).toHaveLength(0)
     expect(await listAllTrades(MAIN_ACCOUNT_ID)).toHaveLength(1) // other account untouched
+  })
+
+  it('deleteAccount cascades to day_screenshots and pending_uploads', async () => {
+    const a = await createAccount({ name: 'Alpha' })
+    const now = new Date().toISOString()
+    await db.day_screenshots.put({
+      id: `${a.id}:2026-04-20`,
+      account_id: a.id,
+      date: '2026-04-20',
+      screenshot: 'drive:fake',
+      created_at: now,
+      updated_at: now,
+    })
+    await db.day_screenshots.put({
+      id: `${MAIN_ACCOUNT_ID}:2026-04-20`,
+      account_id: MAIN_ACCOUNT_ID,
+      date: '2026-04-20',
+      screenshot: 'drive:other',
+      created_at: now,
+      updated_at: now,
+    })
+    await db.pending_uploads.put({
+      id: 'p1',
+      account_id: a.id,
+      blob: new Blob(['x']),
+      filename: '20-apr-2026-x.png',
+      month_key: '2026-04',
+      created_at: now,
+    })
+    await db.pending_uploads.put({
+      id: 'p2',
+      account_id: MAIN_ACCOUNT_ID,
+      blob: new Blob(['y']),
+      filename: '20-apr-2026-y.png',
+      month_key: '2026-04',
+      created_at: now,
+    })
+
+    await deleteAccount(a.id)
+
+    expect(await db.day_screenshots.where('account_id').equals(a.id).count()).toBe(0)
+    expect(await db.day_screenshots.where('account_id').equals(MAIN_ACCOUNT_ID).count()).toBe(1)
+    expect(await db.pending_uploads.where('account_id').equals(a.id).count()).toBe(0)
+    expect(await db.pending_uploads.where('account_id').equals(MAIN_ACCOUNT_ID).count()).toBe(1)
+  })
+
+  it('deleteAccount clears the account-scoped localStorage keys', async () => {
+    const a = await createAccount({ name: 'Alpha' })
+    localStorage.setItem(`logslate:equity_view_default:${a.id}`, 'candles')
+    localStorage.setItem(`logslate:drive:screenshots_folder:${a.id}`, 'folder123')
+    localStorage.setItem(`logslate:drive:month_folders:${a.id}`, '{"2026-04":"m1"}')
+    // Main account's keys should survive.
+    localStorage.setItem(`logslate:equity_view_default:${MAIN_ACCOUNT_ID}`, 'curve')
+
+    await deleteAccount(a.id)
+
+    expect(localStorage.getItem(`logslate:equity_view_default:${a.id}`)).toBeNull()
+    expect(localStorage.getItem(`logslate:drive:screenshots_folder:${a.id}`)).toBeNull()
+    expect(localStorage.getItem(`logslate:drive:month_folders:${a.id}`)).toBeNull()
+    expect(localStorage.getItem(`logslate:equity_view_default:${MAIN_ACCOUNT_ID}`)).toBe('curve')
   })
 
   it('countAccountData reports trade + adjustment counts for the given account', async () => {

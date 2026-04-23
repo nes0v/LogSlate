@@ -5,18 +5,26 @@
 //   'drive:{id}'     — lives in the user's Drive, fileId = {id}
 //   'pending:{id}'   — local-only blob waiting to be uploaded on next online sync
 //
-// Files are organized by month: LogSlate screenshots/YYYY-MM/filename.ext.
+// Files are organised per account, by month:
+//
+//   LogSlate/
+//     {accountName}/           ← cached by account id, not name (safe on rename)
+//       YYYY-MM/
+//         17-apr-2026-trade-3.png
+//
 // Filenames are built at enqueue time from a caller-supplied date and suffix
-// (e.g. "17-apr-2026-trade-3.png"), so they're human-readable when the user
-// browses the folder in Drive.
+// so they're human-readable when the user browses the folder in Drive.
 //
 // Uploads happen immediately when online; when offline, the blob is stashed in
-// the `pending_uploads` IndexedDB table along with its precomputed filename
-// and month_key, and the record's screenshot field is set to `pending:{id}`.
-// A separate drain pass (wired into auto-sync) uploads pending blobs and
-// rewrites the reference to `drive:{id}`.
+// the `pending_uploads` IndexedDB table along with its account, precomputed
+// filename and month_key, and the record's screenshot field is set to
+// `pending:{id}`. A separate drain pass (wired into auto-sync) uploads pending
+// blobs into their owning account's folder and rewrites the reference to
+// `drive:{id}`.
 
 import { db } from '@/db/schema'
+import { MAIN_ACCOUNT_ID } from '@/db/types'
+import { getActiveAccountId } from '@/lib/active-account'
 import {
   createDriveFolder,
   deleteDriveFile,
@@ -30,32 +38,39 @@ import {
 } from '@/lib/drive'
 import { pushError } from '@/lib/notifications'
 
-const ROOT_FOLDER_NAME = 'LogSlate screenshots'
-const ROOT_FOLDER_ID_KEY = 'logslate:drive:screenshots_folder'
-const MONTH_FOLDER_CACHE_KEY = 'logslate:drive:month_folders'
+const TOP_FOLDER_NAME = 'LogSlate'
 
-// --- folder caches ---
+// Per-account cache keys. The old global keys
+// `logslate:drive:screenshots_folder` / `logslate:drive:month_folders` are
+// intentionally abandoned — they mapped to the flat pre-per-account layout
+// and would be wrong under the new structure.
+function accountFolderKey(accountId: string): string {
+  return `logslate:drive:screenshots_folder:${accountId}`
+}
+function monthFolderMapKey(accountId: string): string {
+  return `logslate:drive:month_folders:${accountId}`
+}
 
-function loadCachedRootFolderId(): string | null {
+function loadCachedAccountFolderId(accountId: string): string | null {
   try {
-    return localStorage.getItem(ROOT_FOLDER_ID_KEY)
+    return localStorage.getItem(accountFolderKey(accountId))
   } catch {
     return null
   }
 }
 
-function saveCachedRootFolderId(id: string | null): void {
+function saveCachedAccountFolderId(accountId: string, id: string | null): void {
   try {
-    if (id) localStorage.setItem(ROOT_FOLDER_ID_KEY, id)
-    else localStorage.removeItem(ROOT_FOLDER_ID_KEY)
+    if (id) localStorage.setItem(accountFolderKey(accountId), id)
+    else localStorage.removeItem(accountFolderKey(accountId))
   } catch {
     // localStorage unavailable — we'll find the folder again next time.
   }
 }
 
-function loadMonthFolderMap(): Record<string, string> {
+function loadMonthFolderMap(accountId: string): Record<string, string> {
   try {
-    const raw = localStorage.getItem(MONTH_FOLDER_CACHE_KEY)
+    const raw = localStorage.getItem(monthFolderMapKey(accountId))
     if (!raw) return {}
     const parsed = JSON.parse(raw) as unknown
     if (!parsed || typeof parsed !== 'object') return {}
@@ -69,52 +84,85 @@ function loadMonthFolderMap(): Record<string, string> {
   }
 }
 
-function saveMonthFolderMap(map: Record<string, string>): void {
+function saveMonthFolderMap(accountId: string, map: Record<string, string>): void {
   try {
-    localStorage.setItem(MONTH_FOLDER_CACHE_KEY, JSON.stringify(map))
+    localStorage.setItem(monthFolderMapKey(accountId), JSON.stringify(map))
   } catch {
     // localStorage unavailable — we'll re-resolve on each session.
   }
 }
 
-let rootFolderPromise: Promise<string> | null = null
+// Top-level "LogSlate" folder — same for every account, so we memoise it at
+// module scope for the session (no localStorage; a single findDriveFolder
+// call per page load is cheap).
+let topFolderPromise: Promise<string> | null = null
+// In-flight per-account and per-(account+month) resolutions, deduped so
+// parallel callers don't each create a folder.
+const accountFolderPromises = new Map<string, Promise<string>>()
 const monthFolderPromises = new Map<string, Promise<string>>()
 
-export async function getOrCreateScreenshotsFolder(): Promise<string> {
-  if (rootFolderPromise) return rootFolderPromise
-  rootFolderPromise = (async () => {
-    const cached = loadCachedRootFolderId()
+async function getOrCreateTopFolder(): Promise<string> {
+  if (topFolderPromise) return topFolderPromise
+  topFolderPromise = (async () => {
+    const existing = await findDriveFolder(TOP_FOLDER_NAME)
+    if (existing) return existing
+    return createDriveFolder(TOP_FOLDER_NAME)
+  })()
+  try {
+    return await topFolderPromise
+  } catch (e) {
+    topFolderPromise = null
+    throw e
+  }
+}
+
+async function accountFolderName(accountId: string): Promise<string> {
+  const rec = await db.accounts.get(accountId)
+  // Fall back to the account id so uploads still land somewhere predictable
+  // if the account row is missing (shouldn't happen under normal use).
+  return rec?.name?.trim() || accountId
+}
+
+async function getOrCreateAccountScreenshotsFolder(accountId: string): Promise<string> {
+  const inFlight = accountFolderPromises.get(accountId)
+  if (inFlight) return inFlight
+  const p = (async () => {
+    const cached = loadCachedAccountFolderId(accountId)
     if (cached) {
       try {
         if (await driveFileExists(cached)) return cached
       } catch {
         // Treat any error as "cache is stale"; fall through to re-find.
       }
-      saveCachedRootFolderId(null)
+      saveCachedAccountFolderId(accountId, null)
     }
-    const existing = await findDriveFolder(ROOT_FOLDER_NAME)
+    const topId = await getOrCreateTopFolder()
+    const name = await accountFolderName(accountId)
+    const existing = await findDriveFolder(name, topId)
     if (existing) {
-      saveCachedRootFolderId(existing)
+      saveCachedAccountFolderId(accountId, existing)
       return existing
     }
-    const created = await createDriveFolder(ROOT_FOLDER_NAME)
-    saveCachedRootFolderId(created)
+    const created = await createDriveFolder(name, topId)
+    saveCachedAccountFolderId(accountId, created)
     return created
   })()
+  accountFolderPromises.set(accountId, p)
   try {
-    return await rootFolderPromise
+    return await p
   } catch (e) {
-    rootFolderPromise = null
+    accountFolderPromises.delete(accountId)
     throw e
   }
 }
 
-async function getOrCreateMonthFolder(monthKey: string): Promise<string> {
-  const cached = monthFolderPromises.get(monthKey)
-  if (cached) return cached
+async function getOrCreateMonthFolder(accountId: string, monthKey: string): Promise<string> {
+  const cacheKey = `${accountId}:${monthKey}`
+  const inFlight = monthFolderPromises.get(cacheKey)
+  if (inFlight) return inFlight
   const p = (async () => {
-    const rootId = await getOrCreateScreenshotsFolder()
-    const map = loadMonthFolderMap()
+    const accountFolder = await getOrCreateAccountScreenshotsFolder(accountId)
+    const map = loadMonthFolderMap(accountId)
     const hit = map[monthKey]
     if (hit) {
       try {
@@ -123,24 +171,24 @@ async function getOrCreateMonthFolder(monthKey: string): Promise<string> {
         // Treat any error as "cache is stale"; fall through to re-find.
       }
       delete map[monthKey]
-      saveMonthFolderMap(map)
+      saveMonthFolderMap(accountId, map)
     }
-    const found = await findDriveFolder(monthKey, rootId)
+    const found = await findDriveFolder(monthKey, accountFolder)
     if (found) {
       map[monthKey] = found
-      saveMonthFolderMap(map)
+      saveMonthFolderMap(accountId, map)
       return found
     }
-    const created = await createDriveFolder(monthKey, rootId)
+    const created = await createDriveFolder(monthKey, accountFolder)
     map[monthKey] = created
-    saveMonthFolderMap(map)
+    saveMonthFolderMap(accountId, map)
     return created
   })()
-  monthFolderPromises.set(monthKey, p)
+  monthFolderPromises.set(cacheKey, p)
   try {
     return await p
   } catch (e) {
-    monthFolderPromises.delete(monthKey)
+    monthFolderPromises.delete(cacheKey)
     throw e
   }
 }
@@ -227,8 +275,12 @@ function resolveFilename(blob: Blob, ctx: ScreenshotContext): ResolvedFilename {
   }
 }
 
-async function uploadDirectly(blob: Blob, resolved: ResolvedFilename): Promise<string> {
-  const folderId = await getOrCreateMonthFolder(resolved.month_key)
+async function uploadDirectly(
+  blob: Blob,
+  resolved: ResolvedFilename,
+  accountId: string,
+): Promise<string> {
+  const folderId = await getOrCreateMonthFolder(accountId, resolved.month_key)
   const { id } = await uploadDriveFile({
     name: resolved.filename,
     body: blob,
@@ -243,11 +295,16 @@ async function uploadDirectly(blob: Blob, resolved: ResolvedFilename): Promise<s
   return ref
 }
 
-async function enqueuePending(blob: Blob, resolved: ResolvedFilename): Promise<string> {
+async function enqueuePending(
+  blob: Blob,
+  resolved: ResolvedFilename,
+  accountId: string,
+): Promise<string> {
   const id = newId()
   const now = new Date().toISOString()
   await db.pending_uploads.add({
     id,
+    account_id: accountId,
     blob,
     filename: resolved.filename,
     month_key: resolved.month_key,
@@ -260,19 +317,22 @@ async function enqueuePending(blob: Blob, resolved: ResolvedFilename): Promise<s
 
 // Called by the trade form / day page when the user picks a screenshot.
 // Returns the reference string to store on the record. Uploads immediately
-// when possible; falls back to the pending queue otherwise.
+// when possible; falls back to the pending queue otherwise. The upload is
+// tagged with the currently active account so it lands in that account's
+// Drive folder even if the user switches accounts before the queue drains.
 export async function storeScreenshot(blob: Blob, ctx: ScreenshotContext): Promise<string> {
   const resolved = resolveFilename(blob, ctx)
-  if (!canUploadToDrive()) return enqueuePending(blob, resolved)
+  const accountId = getActiveAccountId()
+  if (!canUploadToDrive()) return enqueuePending(blob, resolved, accountId)
   try {
-    return await uploadDirectly(blob, resolved)
+    return await uploadDirectly(blob, resolved, accountId)
   } catch (e) {
     // Keep the image either way — the drainer will retry. Scope errors need
     // user action, so surface them to the notification banner too.
     if (e instanceof DriveScopeError) {
       pushError(e.message, { label: 'Reconnect', to: '/settings' })
     }
-    return enqueuePending(blob, resolved)
+    return enqueuePending(blob, resolved, accountId)
   }
 }
 
@@ -369,7 +429,11 @@ export async function drainPendingUploads(): Promise<void> {
   const pending = await db.pending_uploads.toArray()
   for (const p of pending) {
     try {
-      const folderId = await getOrCreateMonthFolder(p.month_key)
+      // Back-compat: rows queued before the per-account refactor were stamped
+      // with MAIN_ACCOUNT_ID by the v9 migration, so they still resolve to a
+      // concrete folder here.
+      const accountId = p.account_id || MAIN_ACCOUNT_ID
+      const folderId = await getOrCreateMonthFolder(accountId, p.month_key)
       const { id: driveId } = await uploadDriveFile({
         name: p.filename,
         body: p.blob,

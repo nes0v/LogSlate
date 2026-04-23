@@ -22,6 +22,7 @@ import { CandlestickChart } from '@/components/CandlestickChart'
 import { FeesChart } from '@/components/FeesChart'
 import { WeeklyCards } from '@/components/WeeklyCards'
 import { EquityChartToggle, type EquityView } from '@/components/EquityChartToggle'
+import { getDefaultEquityView } from '@/lib/equity-view-preference'
 import { PeriodBreakdown } from '@/components/PeriodBreakdown'
 import { FacetBreakdown } from '@/components/FacetBreakdown'
 import { TradeRow, TRADE_ROW_COLS } from '@/components/TradeRow'
@@ -61,7 +62,7 @@ export function StatsRoute() {
   const [params, setParams] = useSearchParams()
   const navigate = useNavigate()
   const urlFilters = filtersFromParams(params)
-  const [equityView, setEquityView] = useState<EquityView>('curve')
+  const [equityView, setEquityView] = useState<EquityView>(getDefaultEquityView)
 
   // Effective filters = URL filters with current month as the default date
   // range when none is specified. The URL stays clean (no params) for the

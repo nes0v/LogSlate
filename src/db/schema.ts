@@ -176,6 +176,24 @@ class LogslateDB extends Dexie {
           }
         })
     })
+
+    // v9: per-account Drive screenshot organisation. Each account gets its
+    // own `LogSlate/{accountName}/YYYY-MM/` tree, so uploads queued while
+    // offline need to remember which account they belong to. Existing rows
+    // get stamped with MAIN_ACCOUNT_ID so the drainer routes them into the
+    // Main account's folder.
+    this.version(9)
+      .stores({
+        pending_uploads: '&id, account_id, month_key, created_at',
+      })
+      .upgrade(async tx => {
+        await tx
+          .table('pending_uploads')
+          .toCollection()
+          .modify((p: PendingUpload) => {
+            if (!p.account_id) p.account_id = MAIN_ACCOUNT_ID
+          })
+      })
   }
 }
 
