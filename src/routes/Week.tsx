@@ -143,7 +143,11 @@ export function WeekRoute() {
                 headerRight={<EquityChartToggle value={equityView} onChange={setEquityView} />}
               />
             )}
-            <FeesChart points={candles} xTicks={xTicks} />
+            <FeesChart
+              points={candles}
+              xTicks={xTicks}
+              onPointClick={key => navigate(`/day/${key}`)}
+            />
             <PeriodBreakdown title="Days" buckets={days} />
             <section>
               <h2 className="text-sm font-medium mb-2">

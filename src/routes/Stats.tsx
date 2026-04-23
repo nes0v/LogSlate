@@ -315,7 +315,11 @@ export function StatsRoute() {
               headerRight={<EquityChartToggle value={equityView} onChange={setEquityView} />}
             />
           )}
-          <FeesChart points={candles} xTicks={xTicks} />
+          <FeesChart
+            points={candles}
+            xTicks={xTicks}
+            onPointClick={key => navigate(`/day/${key}`)}
+          />
           <div className="grid md:grid-cols-2 gap-x-4 gap-y-8">
             <FacetBreakdown title="By Symbol" items={bySymbol} />
             <FacetBreakdown title="By Contract" items={byContract} />

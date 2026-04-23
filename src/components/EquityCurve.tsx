@@ -55,6 +55,8 @@ interface EquityCurveProps {
   onPointClick?: (key: string) => void
 }
 
+type EquityRow = EquityPoint & { y: number }
+
 export function EquityCurve({
   points,
   cumulative = true,
@@ -66,7 +68,7 @@ export function EquityCurve({
   onPointClick,
 }: EquityCurveProps) {
   const isNarrow = useIsNarrowScreen()
-  const data = useMemo(() => {
+  const data = useMemo<EquityRow[]>(() => {
     if (!cumulative) return points.map(p => ({ ...p, y: p.pnl }))
     let running = startEquity
     return points.map(p => {
@@ -90,8 +92,9 @@ export function EquityCurve({
 
   return (
     <section className="space-y-2">
-      <div className="flex items-center justify-between">
+      <div className="relative flex items-end justify-between">
         <h2 className="text-sm font-medium">{cumulative ? 'Equity' : 'PnL by period'}</h2>
+        {hasData && <EquityInfoRow data={data} cumulative={cumulative} />}
         {headerRight}
       </div>
       <div className="bg-(--color-panel) border border-(--color-border) rounded-md p-3">
@@ -111,7 +114,7 @@ export function EquityCurve({
               <CartesianGrid
                 horizontal={false}
                 stroke="#374151"
-                strokeDasharray="3 3"
+                strokeDasharray="1 3"
                 shapeRendering="crispEdges"
                 verticalCoordinatesGenerator={({ xAxis }) => {
                   if (!xAxis?.scale) return []
@@ -144,9 +147,9 @@ export function EquityCurve({
               tickFormatter={v => formatUsd(v)}
             />
             <Tooltip
-              cursor={{ stroke: 'var(--color-text-dim)', strokeWidth: 1, strokeDasharray: '3 3', shapeRendering: 'crispEdges' }}
-              content={<EquityTooltip cumulative={cumulative} />}
-              position={{ x: 76, y: 8 }}
+              cursor={{ stroke: 'var(--color-text-dim)', strokeWidth: 1, strokeDasharray: '1 3', shapeRendering: 'crispEdges' }}
+              content={() => null}
+              isAnimationActive={false}
             />
             {/* Labels only — the visible line is drawn by the CartesianGrid
                 above so it renders beneath the curve. */}
@@ -208,53 +211,51 @@ export function EquityCurve({
   )
 }
 
-interface TooltipPayload {
-  key?: string
-  label?: string
-  count?: number
-  y?: number
-  pnl?: number
-}
-
-interface EquityTooltipProps {
-  active?: boolean
-  payload?: Array<{ payload: TooltipPayload }>
-  cumulative: boolean
-}
-
-function EquityTooltip({ active, payload, cumulative }: EquityTooltipProps) {
+function EquityInfoRow({ data, cumulative }: { data: EquityRow[]; cumulative: boolean }) {
   const hoverLabel = useHoverLabel()
-  if (!hoverLabel) return null
-  if (!active || !payload || payload.length === 0) return null
-  const p = payload[0].payload
-  const dateLabel = p.key ? format(new Date(p.key + 'T00:00:00'), 'MMM d') : p.label ?? ''
-  const value = p.y ?? p.pnl ?? 0
-  const delta = p.pnl ?? 0
+  const row = hoverLabel ? data.find(d => d.label === hoverLabel) : null
+  if (!row) return null
+  const dateLabel = row.key ? format(new Date(row.key + 'T00:00:00'), 'MMM d') : row.label
+  const value = row.y
+  const delta = row.pnl ?? 0
   return (
-    <div className="bg-(--color-panel-2) border border-(--color-border) rounded-md p-2 text-xs font-mono">
-      <div className="text-(--color-text-dim) mb-2">{dateLabel}</div>
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-(--color-text-dim)">{cumulative ? 'equity' : 'pnl'}</span>
-        <span>{formatUsd(value)}</span>
-      </div>
+    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 flex items-center gap-x-4 text-xs font-mono bg-(--color-panel-2) border border-(--color-border) rounded-md px-2 py-1 pointer-events-none whitespace-nowrap">
+      <span className="text-(--color-text-dim)">{dateLabel}</span>
+      <InfoCell label={cumulative ? 'equity' : 'pnl'} value={formatUsd(value)} />
       {cumulative && (
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-(--color-text-dim)">Δ</span>
-          <span
-            className={cn(
-              delta > 0 && 'text-(--color-win)',
-              delta < 0 && 'text-(--color-loss)',
-              delta === 0 && 'text-(--color-text-dim)',
-            )}
-          >
-            {formatUsd(delta)}
-          </span>
-        </div>
+        <InfoCell
+          label="Δ"
+          value={formatUsd(delta)}
+          tone={delta > 0 ? 'win' : delta < 0 ? 'loss' : 'dim'}
+        />
       )}
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-(--color-text-dim)">trades</span>
-        <span>{p.count ?? 0}</span>
-      </div>
+      <InfoCell label="trades" value={String(row.count ?? 0)} />
     </div>
   )
 }
+
+function InfoCell({
+  label,
+  value,
+  tone,
+}: {
+  label: string
+  value: string
+  tone?: 'win' | 'loss' | 'dim'
+}) {
+  return (
+    <span className="inline-flex items-center gap-1">
+      <span className="text-(--color-text-dim)">{label}</span>
+      <span
+        className={cn(
+          tone === 'win' && 'text-(--color-win)',
+          tone === 'loss' && 'text-(--color-loss)',
+          tone === 'dim' && 'text-(--color-text-dim)',
+        )}
+      >
+        {value}
+      </span>
+    </span>
+  )
+}
+

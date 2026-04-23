@@ -265,7 +265,11 @@ export function CalendarRoute() {
             headerRight={<EquityChartToggle value={equityView} onChange={setEquityView} />}
           />
         )}
-        <FeesChart points={candles} xTicks={xTicks} />
+        <FeesChart
+          points={candles}
+          xTicks={xTicks}
+          onPointClick={key => navigate(`/day/${key}`)}
+        />
       </div>
     </div>
   )

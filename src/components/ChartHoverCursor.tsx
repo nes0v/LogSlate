@@ -18,7 +18,7 @@ export function ChartHoverCursor() {
     <CartesianGrid
       horizontal={false}
       stroke="var(--color-text-dim)"
-      strokeDasharray="3 3"
+      strokeDasharray="1 3"
       shapeRendering="crispEdges"
       verticalCoordinatesGenerator={({ xAxis }) => {
         if (hoverLabel === null || !xAxis?.scale) return []

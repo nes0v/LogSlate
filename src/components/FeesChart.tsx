@@ -20,11 +20,13 @@ interface FeesChartProps {
   height?: number
   /** Explicit X-axis tick values (must match point labels). */
   xTicks?: string[]
+  /** Fired when a bar is clicked — gets the bucket key. */
+  onPointClick?: (key: string) => void
 }
 
 const LEFT_AXIS_W = 60
 
-export function FeesChart({ points, height = 180, xTicks }: FeesChartProps) {
+export function FeesChart({ points, height = 180, xTicks, onPointClick }: FeesChartProps) {
   const isNarrow = useIsNarrowScreen()
   const data = useMemo(
     () => points.map(p => ({ key: p.key, label: p.label, fees: p.fees, count: p.count })),
@@ -45,7 +47,10 @@ export function FeesChart({ points, height = 180, xTicks }: FeesChartProps) {
 
   return (
     <section className="space-y-2">
-      <h2 className="text-sm font-medium">Fees</h2>
+      <div className="relative flex items-end min-h-[26px]">
+        <h2 className="text-sm font-medium">Fees</h2>
+        {hasFees && <FeesInfoRow data={data} />}
+      </div>
       <div className="bg-(--color-panel) border border-(--color-border) rounded-md p-3">
       {hasFees ? (
         <ResponsiveContainer width="100%" height={height} minWidth={0} minHeight={0}>
@@ -81,13 +86,15 @@ export function FeesChart({ points, height = 180, xTicks }: FeesChartProps) {
               ticks={yTicks}
               tickFormatter={v => formatUsd(v)}
             />
-            <Tooltip cursor={false} content={<FeesTooltip />} position={{ x: 76, y: 8 }} />
+            <Tooltip content={() => null} cursor={false} isAnimationActive={false} />
             <Bar
               dataKey="fees"
               maxBarSize={18}
               fill="var(--color-fee)"
+              shapeRendering="crispEdges"
               isAnimationActive={false}
-              activeBar={{ stroke: '#fff', strokeWidth: 1 }}
+              shape={props => <FeesBar {...props} onPointClick={onPointClick} />}
+              activeBar={props => <FeesBar {...props} onPointClick={onPointClick} active />}
             />
           </ComposedChart>
         </ResponsiveContainer>
@@ -99,35 +106,78 @@ export function FeesChart({ points, height = 180, xTicks }: FeesChartProps) {
   )
 }
 
-interface TooltipPayload {
-  key?: string
-  label?: string
-  fees?: number
-  count?: number
-}
+type FeesRow = Pick<CandlePoint, 'key' | 'label' | 'fees' | 'count'>
 
-interface FeesTooltipProps {
-  active?: boolean
-  payload?: Array<{ payload: TooltipPayload }>
-}
-
-function FeesTooltip({ active, payload }: FeesTooltipProps) {
+function FeesInfoRow({ data }: { data: FeesRow[] }) {
   const hoverLabel = useHoverLabel()
-  if (!hoverLabel) return null
-  if (!active || !payload || payload.length === 0) return null
-  const p = payload[0].payload
-  const dateLabel = p.key ? format(new Date(p.key + 'T00:00:00'), 'MMM d') : p.label ?? ''
+  const row = hoverLabel ? data.find(d => d.label === hoverLabel) : null
+  if (!row) return null
+  const dateLabel = row.key ? format(new Date(row.key + 'T00:00:00'), 'MMM d') : row.label
   return (
-    <div className="bg-(--color-panel-2) border border-(--color-border) rounded-md p-2 text-xs font-mono">
-      <div className="text-(--color-text-dim) mb-2">{dateLabel}</div>
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-(--color-text-dim)">fees</span>
-        <span>{formatUsd(p.fees ?? 0)}</span>
-      </div>
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-(--color-text-dim)">trades</span>
-        <span>{p.count ?? 0}</span>
-      </div>
+    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 flex items-center gap-x-4 text-xs font-mono bg-(--color-panel-2) border border-(--color-border) rounded-md px-2 py-1 pointer-events-none whitespace-nowrap">
+      <span className="text-(--color-text-dim)">{dateLabel}</span>
+      {row.count > 0 ? (
+        <>
+          <span className="inline-flex items-center gap-1">
+            <span className="text-(--color-text-dim)">fees</span>
+            <span>{formatUsd(row.fees)}</span>
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <span className="text-(--color-text-dim)">trades</span>
+            <span>{row.count}</span>
+          </span>
+        </>
+      ) : (
+        <span className="text-(--color-text-dim)">no trades</span>
+      )}
     </div>
   )
 }
+
+interface FeesBarProps {
+  x?: number
+  y?: number
+  width?: number
+  height?: number
+  fill?: string
+  payload?: { key?: string; fees?: number }
+  onPointClick?: (key: string) => void
+  active?: boolean
+}
+
+function FeesBar(props: FeesBarProps) {
+  const { x = 0, y = 0, width = 0, height = 0, fill, payload, onPointClick, active } = props
+  const rx = Math.round(x)
+  const ry = Math.round(y)
+  const rw = Math.round(width)
+  const rh = Math.round(height)
+  if (rw <= 0 || rh <= 0) return null
+  const key = payload?.key
+  const handleClick = key && onPointClick ? () => onPointClick(key) : undefined
+  return (
+    <g shapeRendering="crispEdges">
+      <rect
+        x={rx}
+        y={ry}
+        width={rw}
+        height={rh}
+        fill={fill}
+        onClick={handleClick}
+        style={handleClick ? { cursor: 'pointer' } : undefined}
+      />
+      {active && (
+        <rect
+          x={rx + 0.5}
+          y={ry + 0.5}
+          width={Math.max(rw - 1, 0)}
+          height={Math.max(rh - 1, 0)}
+          fill="none"
+          stroke="#fff"
+          strokeWidth={1}
+          pointerEvents="none"
+        />
+      )}
+    </g>
+  )
+}
+

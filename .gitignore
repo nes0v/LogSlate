@@ -33,3 +33,6 @@ logslate-backup-*.json
 
 # PWA generated assets
 dev-dist/
+
+# Test coverage output
+coverage/

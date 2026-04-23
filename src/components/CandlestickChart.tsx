@@ -74,8 +74,9 @@ export function CandlestickChart({
 
   return (
     <section className="space-y-2">
-      <div className="flex items-center justify-between">
+      <div className="relative flex items-end justify-between">
         <h2 className="text-sm font-medium">Equity</h2>
+        {hasData && <CandleInfoRow data={data} />}
         {headerRight}
       </div>
       <div className="bg-(--color-panel) border border-(--color-border) rounded-md p-3">
@@ -102,7 +103,7 @@ export function CandlestickChart({
                 <CartesianGrid
                   horizontal={false}
                   stroke="#374151"
-                  strokeDasharray="3 3"
+                  strokeDasharray="1 3"
                   shapeRendering="crispEdges"
                   verticalCoordinatesGenerator={({ xAxis }) => {
                     if (!xAxis?.scale) return []
@@ -136,7 +137,7 @@ export function CandlestickChart({
                 domain={domain}
                 tickFormatter={v => formatUsd(v)}
               />
-              <Tooltip content={<CandleTooltip />} cursor={false} position={{ x: 76, y: 8 }} />
+              <Tooltip content={() => null} cursor={false} isAnimationActive={false} />
               {/* Labels only — the visible line is drawn by the CartesianGrid
                   above so it renders beneath the candles. */}
               {adjustments?.map(a => {
@@ -174,6 +175,64 @@ export function CandlestickChart({
   )
 }
 
+function CandleInfoRow({ data }: { data: Row[] }) {
+  const hoverLabel = useHoverLabel()
+  const row = hoverLabel ? data.find(d => d.label === hoverLabel) : null
+  if (!row) return null
+  const dateLabel = row.key ? format(new Date(row.key + 'T00:00:00'), 'MMM d') : row.label
+  const delta = row.close - row.open
+  return (
+    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 flex items-center gap-x-4 text-xs font-mono bg-(--color-panel-2) border border-(--color-border) rounded-md px-2 py-1 pointer-events-none whitespace-nowrap">
+      <span className="text-(--color-text-dim)">{dateLabel}</span>
+      {row.count > 0 ? (
+        <>
+          <CandleCell label="O" value={formatUsd(row.open)} />
+          <CandleCell label="H" value={formatUsd(row.high)} />
+          <CandleCell label="L" value={formatUsd(row.low)} />
+          <CandleCell label="C" value={formatUsd(row.close)} />
+          <CandleCell
+            label="Δ"
+            value={formatUsd(delta)}
+            tone={delta > 0 ? 'win' : delta < 0 ? 'loss' : 'dim'}
+          />
+          <CandleCell label="trades" value={String(row.count)} />
+        </>
+      ) : (
+        <>
+          <CandleCell label="O" value={formatUsd(row.open)} />
+          <CandleCell label="C" value={formatUsd(row.close)} />
+          <span className="text-(--color-text-dim)">no trades</span>
+        </>
+      )}
+    </div>
+  )
+}
+
+function CandleCell({
+  label,
+  value,
+  tone,
+}: {
+  label: string
+  value: string
+  tone?: 'win' | 'loss' | 'dim'
+}) {
+  return (
+    <span className="inline-flex items-center gap-1">
+      <span className="text-(--color-text-dim)">{label}</span>
+      <span
+        className={cn(
+          tone === 'win' && 'text-(--color-win)',
+          tone === 'loss' && 'text-(--color-loss)',
+          tone === 'dim' && 'text-(--color-text-dim)',
+        )}
+      >
+        {value}
+      </span>
+    </span>
+  )
+}
+
 interface CandleShapeProps {
   x?: number
   y?: number
@@ -203,7 +262,6 @@ function CandleShape(props: CandleShapeProps) {
   // Snap the wick to half-pixel x so a 1px stroke lands on a whole pixel.
   const wickX = Math.round(cx) + 0.5
   const handleClick = onPointClick ? () => onPointClick(key) : undefined
-  const bandW = Math.max(width, 2)
   // Only render wick segments that actually extend beyond the body. Compare
   // at the pixel level so float noise doesn't produce phantom 1px wicks
   // when high === max(open, close) or low === min(open, close).
@@ -211,16 +269,11 @@ function CandleShape(props: CandleShapeProps) {
   const wickBotY = Math.round(y + height)
   const hasUpperWick = wickTopY < bodyTopY
   const hasLowerWick = wickBotY > bodyBotY
+  const rectX = Math.round(cx - bodyW / 2)
+  const rectW = Math.round(bodyW)
+  const bodyStyle = handleClick ? { cursor: 'pointer' as const } : undefined
   return (
-    <g
-      shapeRendering="crispEdges"
-      onClick={handleClick}
-      style={handleClick ? { cursor: 'pointer' } : undefined}
-    >
-      {/* Invisible click-target covers the full band so the whole column is clickable. */}
-      {handleClick && (
-        <rect x={x} y={y} width={bandW} height={height} fill="transparent" />
-      )}
+    <g shapeRendering="crispEdges">
       {hasUpperWick && (
         <line
           x1={wickX}
@@ -242,60 +295,27 @@ function CandleShape(props: CandleShapeProps) {
         />
       )}
       <rect
-        x={Math.round(cx - bodyW / 2)}
+        x={rectX}
         y={bodyTopY}
-        width={Math.round(bodyW)}
+        width={rectW}
         height={bodyH}
         fill={color}
-        stroke={active ? '#fff' : 'none'}
-        strokeWidth={active ? 1 : 0}
+        onClick={handleClick}
+        style={bodyStyle}
       />
+      {active && (
+        <rect
+          x={rectX + 0.5}
+          y={bodyTopY + 0.5}
+          width={Math.max(rectW - 1, 0)}
+          height={Math.max(bodyH - 1, 0)}
+          fill="none"
+          stroke="#fff"
+          strokeWidth={1}
+          pointerEvents="none"
+        />
+      )}
     </g>
   )
 }
 
-interface TooltipProps {
-  active?: boolean
-  label?: string
-  payload?: Array<{ payload: Row }>
-}
-
-function CandleTooltip({ active, payload }: TooltipProps) {
-  const hoverLabel = useHoverLabel()
-  if (!hoverLabel) return null
-  if (!active || !payload || payload.length === 0) return null
-  const p = payload[0].payload
-  const labelText = p.key ? format(new Date(p.key + 'T00:00:00'), 'MMM d') : p.label
-  return (
-    <div className="bg-(--color-panel-2) border border-(--color-border) rounded-md p-2 text-xs font-mono">
-      <div className="text-(--color-text-dim) mb-2">{labelText}</div>
-      <TooltipRow k="O" v={formatUsd(p.open)} />
-      <TooltipRow k="H" v={formatUsd(p.high)} />
-      <TooltipRow k="L" v={formatUsd(p.low)} />
-      <TooltipRow k="C" v={formatUsd(p.close)} />
-      <TooltipRow
-        k="Δ"
-        v={formatUsd(p.close - p.open)}
-        tone={p.close > p.open ? 'win' : p.close < p.open ? 'loss' : 'dim'}
-      />
-      <TooltipRow k="trades" v={String(p.count)} />
-    </div>
-  )
-}
-
-function TooltipRow({ k, v, tone }: { k: string; v: string; tone?: 'win' | 'loss' | 'dim' }) {
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <span className="text-(--color-text-dim)">{k}</span>
-      <span
-        className={cn(
-          tone === 'win' && 'text-(--color-win)',
-          tone === 'loss' && 'text-(--color-loss)',
-          tone === 'dim' && 'text-(--color-text-dim)',
-        )}
-      >
-        {v}
-      </span>
-    </div>
-  )
-}
