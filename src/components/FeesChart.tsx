@@ -11,7 +11,6 @@ import { format } from 'date-fns'
 import { ChartHoverCursor } from '@/components/ChartHoverCursor'
 import { chartDayLabel } from '@/lib/buckets'
 import type { CandlePoint } from '@/lib/trade-stats'
-import { niceDomain } from '@/lib/chart'
 import { setHoverLabel, useHoverLabel } from '@/lib/hover-cursor'
 import { formatUsd } from '@/lib/money'
 import { useIsNarrowScreen } from '@/lib/use-media-query'
@@ -32,13 +31,16 @@ export function FeesChart({ points, height = 180, xTicks }: FeesChartProps) {
     [points],
   )
   const hasFees = points.some(p => p.fees > 0)
-  const domain = useMemo<[number, number]>(() => {
-    if (points.length === 0) return [0, 1]
+  const { domain, yTicks } = useMemo<{ domain: [number, number]; yTicks: number[] }>(() => {
+    if (points.length === 0) return { domain: [0, 5], yTicks: [0, 5] }
     let max = 0
     for (const p of points) {
       if (p.fees > max) max = p.fees
     }
-    return niceDomain(0, max)
+    const top = Math.ceil((max + 3) / 5) * 5
+    const ticks: number[] = []
+    for (let v = 0; v <= top; v += 5) ticks.push(v)
+    return { domain: [0, top], yTicks: ticks }
   }, [points])
 
   return (
@@ -76,6 +78,7 @@ export function FeesChart({ points, height = 180, xTicks }: FeesChartProps) {
               axisLine={false}
               tickMargin={10}
               domain={domain}
+              ticks={yTicks}
               tickFormatter={v => formatUsd(v)}
             />
             <Tooltip cursor={false} content={<FeesTooltip />} position={{ x: 76, y: 8 }} />
@@ -84,7 +87,7 @@ export function FeesChart({ points, height = 180, xTicks }: FeesChartProps) {
               maxBarSize={18}
               fill="var(--color-fee)"
               isAnimationActive={false}
-              activeBar={{ stroke: '#fff', strokeWidth: 2 }}
+              activeBar={{ stroke: '#fff', strokeWidth: 1 }}
             />
           </ComposedChart>
         </ResponsiveContainer>

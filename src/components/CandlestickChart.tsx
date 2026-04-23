@@ -212,7 +212,11 @@ function CandleShape(props: CandleShapeProps) {
   const hasUpperWick = wickTopY < bodyTopY
   const hasLowerWick = wickBotY > bodyBotY
   return (
-    <g shapeRendering="crispEdges" onClick={handleClick}>
+    <g
+      shapeRendering="crispEdges"
+      onClick={handleClick}
+      style={handleClick ? { cursor: 'pointer' } : undefined}
+    >
       {/* Invisible click-target covers the full band so the whole column is clickable. */}
       {handleClick && (
         <rect x={x} y={y} width={bandW} height={height} fill="transparent" />
@@ -224,7 +228,7 @@ function CandleShape(props: CandleShapeProps) {
           y1={wickTopY}
           y2={bodyTopY}
           stroke={active ? '#fff' : color}
-          strokeWidth={active ? 3 : 2}
+          strokeWidth={1}
         />
       )}
       {hasLowerWick && (
@@ -234,7 +238,7 @@ function CandleShape(props: CandleShapeProps) {
           y1={bodyBotY}
           y2={wickBotY}
           stroke={active ? '#fff' : color}
-          strokeWidth={active ? 3 : 2}
+          strokeWidth={1}
         />
       )}
       <rect
@@ -244,7 +248,7 @@ function CandleShape(props: CandleShapeProps) {
         height={bodyH}
         fill={color}
         stroke={active ? '#fff' : 'none'}
-        strokeWidth={active ? 2 : 0}
+        strokeWidth={active ? 1 : 0}
       />
     </g>
   )

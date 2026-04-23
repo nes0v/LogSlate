@@ -179,6 +179,8 @@ export function EquityCurve({
               activeDot={(dotProps: { cx?: number; cy?: number; payload?: { key?: string } }) => {
                 const { cx, cy, payload } = dotProps
                 if (typeof cx !== 'number' || typeof cy !== 'number') return <></>
+                const key = payload?.key
+                const clickable = Boolean(key && onPointClick)
                 return (
                   <circle
                     cx={cx}
@@ -187,8 +189,8 @@ export function EquityCurve({
                     fill="var(--color-line)"
                     stroke="#fff"
                     strokeWidth={2}
+                    style={clickable ? { cursor: 'pointer' } : undefined}
                     onClick={() => {
-                      const key = payload?.key
                       if (key && onPointClick) onPointClick(key)
                     }}
                   />
