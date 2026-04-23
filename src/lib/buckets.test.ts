@@ -3,6 +3,7 @@ import {
   addWeek,
   bucketByDay,
   bucketByWeek,
+  bucketKeyToTs,
   chartDayLabel,
   parseWeekStart,
   parseYearMonth,
@@ -129,5 +130,38 @@ describe('bucketByWeek', () => {
 describe('WEEK_OPTS', () => {
   it('is Sunday-based', () => {
     expect(WEEK_OPTS.weekStartsOn).toBe(0)
+  })
+})
+
+describe('bucketKeyToTs', () => {
+  // Helper — re-derives Date.UTC for the test expectation so we don't
+  // hardcode magic numbers that go stale with every TZ change.
+  const utcSec = (y: number, m: number, d = 1) => Math.floor(Date.UTC(y, m, d) / 1000)
+
+  it('parses YYYY-MM-DD (D/W key)', () => {
+    expect(bucketKeyToTs('2026-04-15')).toBe(utcSec(2026, 3, 15))
+  })
+
+  it('parses YYYY-MM (M key)', () => {
+    expect(bucketKeyToTs('2026-04')).toBe(utcSec(2026, 3, 1))
+  })
+
+  it('parses YYYY-Qn (Q key) — Q1..Q4 map to Jan/Apr/Jul/Oct', () => {
+    expect(bucketKeyToTs('2026-Q1')).toBe(utcSec(2026, 0, 1))
+    expect(bucketKeyToTs('2026-Q2')).toBe(utcSec(2026, 3, 1))
+    expect(bucketKeyToTs('2026-Q3')).toBe(utcSec(2026, 6, 1))
+    expect(bucketKeyToTs('2026-Q4')).toBe(utcSec(2026, 9, 1))
+  })
+
+  it('parses YYYY (Y key)', () => {
+    expect(bucketKeyToTs('2026')).toBe(utcSec(2026, 0, 1))
+  })
+
+  it('returns 0 for unparseable input', () => {
+    expect(bucketKeyToTs('garbage')).toBe(0)
+    expect(bucketKeyToTs('')).toBe(0)
+    // Malformed shapes (not one of the 4 accepted patterns) always 0.
+    expect(bucketKeyToTs('2026/04')).toBe(0)
+    expect(bucketKeyToTs('26-04')).toBe(0)
   })
 })

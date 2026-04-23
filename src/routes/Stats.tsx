@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { addDays, endOfMonth, format, startOfMonth } from 'date-fns'
+import { addDays, differenceInCalendarDays, format } from 'date-fns'
 import { X } from 'lucide-react'
 import type { ContractType, Rating, Session, SymbolKey } from '@/db/types'
 import { db } from '@/db/schema'
@@ -15,10 +15,12 @@ import {
 } from '@/lib/filters'
 import { adjustmentsByDate, aggregate, computeCandles } from '@/lib/trade-stats'
 import { useStartingEquity } from '@/lib/use-starting-equity'
-import { bucketByDay, bucketByWeek } from '@/lib/buckets'
+import { bucketByDay, bucketByTimeframe, bucketByWeek, dateToBucketKey, type Timeframe } from '@/lib/buckets'
 import { StatsGrid } from '@/components/StatsGrid'
 import { EquityCurve } from '@/components/EquityCurve'
 import { CandlestickChart } from '@/components/CandlestickChart'
+import { TradingViewChart } from '@/components/TradingViewChart'
+import { ChartTimeframeToggle } from '@/components/ChartTimeframeToggle'
 import { FeesChart } from '@/components/FeesChart'
 import { WeeklyCards } from '@/components/WeeklyCards'
 import { EquityChartToggle, type EquityView } from '@/components/EquityChartToggle'
@@ -58,21 +60,46 @@ const RATING_OPTS = [
   { value: 'egg' as const, label: '🥚' },
 ] satisfies Array<{ value: Rating | null; label: string }>
 
+/** Default date filter — the last 30 days (inclusive), up to today. */
+function defaultRange() {
+  const now = new Date()
+  return {
+    from: format(addDays(now, -29), 'yyyy-MM-dd'),
+    to: format(now, 'yyyy-MM-dd'),
+  }
+}
+
+function bucketNavTarget(key: string, tf: Timeframe): string {
+  switch (tf) {
+    case 'D': return `/day/${key}`
+    case 'W': return `/week/${key}`
+    case 'M': return `/calendar/${key}`
+    case 'Q': {
+      const m = /^(\d{4})-Q(\d)$/.exec(key)
+      if (!m) return '/calendar'
+      const firstMonth = (Number(m[2]) - 1) * 3 + 1
+      return `/calendar/${m[1]}-${String(firstMonth).padStart(2, '0')}`
+    }
+    case 'Y': return `/calendar/${key}-01`
+  }
+}
+
 export function StatsRoute() {
   const [params, setParams] = useSearchParams()
   const navigate = useNavigate()
   const urlFilters = filtersFromParams(params)
   const [equityView, setEquityView] = useState<EquityView>(getDefaultEquityView)
+  const [timeframe, setTimeframe] = useState<Timeframe>('D')
 
   // Effective filters = URL filters with current month as the default date
   // range when none is specified. The URL stays clean (no params) for the
   // default view; params only appear when the user deviates from it.
   const filters = useMemo<TradeFilters>(() => {
-    const now = new Date()
+    const d = defaultRange()
     return {
       ...urlFilters,
-      from: urlFilters.from ?? format(startOfMonth(now), 'yyyy-MM-dd'),
-      to: urlFilters.to ?? format(endOfMonth(now), 'yyyy-MM-dd'),
+      from: urlFilters.from ?? d.from,
+      to: urlFilters.to ?? d.to,
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params])
@@ -181,6 +208,63 @@ export function StatsRoute() {
     [adjByDate, days],
   )
 
+  // Timeframe-bucketed data for the TradingView candle chart. Kept
+  // separate from the daily `candles`/`adjustmentMarkers` above so the
+  // existing Recharts charts (which always use daily buckets) are
+  // unaffected.
+  const tfBuckets = useMemo(() => {
+    if (!rangeStart || !rangeEnd) return []
+    const endPlusOne = addDays(new Date(rangeEnd + 'T00:00:00'), 1)
+    return bucketByTimeframe(
+      timeframe,
+      filtered,
+      new Date(rangeStart + 'T00:00:00'),
+      endPlusOne,
+    )
+  }, [filtered, rangeStart, rangeEnd, timeframe])
+
+  const tfAdjByBucket = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const [dateKey, amount] of adjByDate.entries()) {
+      const k = dateToBucketKey(dateKey, timeframe)
+      map.set(k, (map.get(k) ?? 0) + amount)
+    }
+    return map
+  }, [adjByDate, timeframe])
+
+  const tfCandles = useMemo(
+    () =>
+      computeCandles(
+        tfBuckets.map(b => ({ ...b, label: b.key })),
+        tfAdjByBucket,
+        startingEquity,
+      ),
+    [tfBuckets, tfAdjByBucket, startingEquity],
+  )
+
+  const tfAdjustmentMarkers = useMemo(
+    () =>
+      Array.from(tfAdjByBucket.entries())
+        .filter(([key]) => tfBuckets.some(b => b.key === key))
+        .map(([key, amount]) => ({ x: key, amount })),
+    [tfAdjByBucket, tfBuckets],
+  )
+
+  // Number of bars to show on the TradingView chart. Derived from the
+  // filter range in DAYS regardless of the active timeframe — so the
+  // default 30-day filter shows 30 candles on D, 30 weeks on W, 30
+  // months on M, etc. Candle width (chart width / bar count) stays the
+  // same when the user switches timeframes.
+  const filterVisibleBars = useMemo(() => {
+    if (!filters.from || !filters.to) return 30
+    const n =
+      differenceInCalendarDays(
+        new Date(filters.to + 'T00:00:00'),
+        new Date(filters.from + 'T00:00:00'),
+      ) + 1
+    return Math.max(10, n)
+  }, [filters.from, filters.to])
+
   const bySymbol = useMemo(
     () => [
       { label: 'NQ', trades: filtered.filter(t => t.symbol === 'NQ') },
@@ -229,14 +313,12 @@ export function StatsRoute() {
   }, [filtered])
 
   // Writes the user-facing change back to URL params. If a field matches the
-  // current-month default, we drop it so the URL stays clean on the default view.
+  // default range, we drop it so the URL stays clean on the default view.
   function update(next: Partial<TradeFilters>) {
-    const now = new Date()
-    const defaultFrom = format(startOfMonth(now), 'yyyy-MM-dd')
-    const defaultTo = format(endOfMonth(now), 'yyyy-MM-dd')
+    const d = defaultRange()
     const merged: TradeFilters = { ...urlFilters, ...next }
-    if (merged.from === defaultFrom) merged.from = null
-    if (merged.to === defaultTo) merged.to = null
+    if (merged.from === d.from) merged.from = null
+    if (merged.to === d.to) merged.to = null
     setParams(paramsFromFilters(merged))
   }
 
@@ -300,6 +382,23 @@ export function StatsRoute() {
 
       {filtered.length > 0 ? (
         <>
+          <TradingViewChart
+            points={tfCandles}
+            adjustments={tfAdjustmentMarkers}
+            timeframe={timeframe}
+            visibleBars={filterVisibleBars}
+            onPointClick={key => navigate(bucketNavTarget(key, timeframe))}
+            variant="dark"
+            title="Equity"
+            height={698}
+            view={equityView === 'curve' ? 'line' : 'candles'}
+            headerRight={
+              <div className="flex items-center gap-2">
+                <EquityChartToggle value={equityView} onChange={setEquityView} />
+                <ChartTimeframeToggle value={timeframe} onChange={setTimeframe} />
+              </div>
+            }
+          />
           {equityView === 'curve' ? (
             <EquityCurve
               points={equityPoints}
