@@ -180,7 +180,8 @@ function CandleInfoRow({ data }: { data: Row[] }) {
   const row = hoverLabel ? data.find(d => d.label === hoverLabel) : null
   if (!row) return null
   const dateLabel = row.key ? format(new Date(row.key + 'T00:00:00'), 'MMM d') : row.label
-  const delta = row.close - row.open
+  const tradingPnl = row.close - row.open
+  const delta = tradingPnl + row.adjustment
   return (
     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 flex items-center gap-x-4 text-xs font-mono bg-(--color-panel-2) border border-(--color-border) rounded-md px-2 py-1 pointer-events-none whitespace-nowrap">
       <span className="text-(--color-text-dim)">{dateLabel}</span>
@@ -190,18 +191,33 @@ function CandleInfoRow({ data }: { data: Row[] }) {
           <CandleCell label="H" value={formatUsd(row.high)} />
           <CandleCell label="L" value={formatUsd(row.low)} />
           <CandleCell label="C" value={formatUsd(row.close)} />
-          <CandleCell
-            label="Δ"
-            value={formatUsd(delta)}
-            tone={delta > 0 ? 'win' : delta < 0 ? 'loss' : 'dim'}
-          />
+          {tradingPnl !== 0 && (
+            <CandleCell
+              label="pnl"
+              value={formatUsd(tradingPnl)}
+              tone={tradingPnl > 0 ? 'win' : 'loss'}
+            />
+          )}
+          {delta !== 0 && delta !== tradingPnl && (
+            <CandleCell
+              label="Δ"
+              value={formatUsd(delta)}
+              tone={delta > 0 ? 'win' : 'loss'}
+            />
+          )}
           <CandleCell label="trades" value={String(row.count)} />
         </>
       ) : (
         <>
-          <CandleCell label="O" value={formatUsd(row.open)} />
-          <CandleCell label="C" value={formatUsd(row.close)} />
-          <span className="text-(--color-text-dim)">no trades</span>
+          <CandleCell label="equity" value={formatUsd(row.close)} />
+          {row.adjustment !== 0 && (
+            <CandleCell
+              label="Δ"
+              value={formatUsd(row.adjustment)}
+              tone={row.adjustment > 0 ? 'win' : 'loss'}
+            />
+          )}
+          <CandleCell label="trades" value="0" />
         </>
       )}
     </div>

@@ -116,20 +116,16 @@ function FeesInfoRow({ data }: { data: FeesRow[] }) {
   return (
     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 flex items-center gap-x-4 text-xs font-mono bg-(--color-panel-2) border border-(--color-border) rounded-md px-2 py-1 pointer-events-none whitespace-nowrap">
       <span className="text-(--color-text-dim)">{dateLabel}</span>
-      {row.count > 0 ? (
-        <>
-          <span className="inline-flex items-center gap-1">
-            <span className="text-(--color-text-dim)">fees</span>
-            <span>{formatUsd(row.fees)}</span>
-          </span>
-          <span className="inline-flex items-center gap-1">
-            <span className="text-(--color-text-dim)">trades</span>
-            <span>{row.count}</span>
-          </span>
-        </>
-      ) : (
-        <span className="text-(--color-text-dim)">no trades</span>
+      {row.fees > 0 && (
+        <span className="inline-flex items-center gap-1">
+          <span className="text-(--color-text-dim)">fees</span>
+          <span>{formatUsd(row.fees)}</span>
+        </span>
       )}
+      <span className="inline-flex items-center gap-1">
+        <span className="text-(--color-text-dim)">trades</span>
+        <span>{row.count}</span>
+      </span>
     </div>
   )
 }

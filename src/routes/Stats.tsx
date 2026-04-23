@@ -151,12 +151,16 @@ export function StatsRoute() {
 
   const equityPoints = useMemo(
     () =>
-      days.map(b => ({
-        key: b.key,
-        label: b.key, // axis category — XAxis renders a formatted tick instead
-        pnl: aggregate(b.trades).net_pnl + (adjByDate.get(b.key) ?? 0),
-        count: b.trades.length,
-      })),
+      days.map(b => {
+        const adjustment = adjByDate.get(b.key) ?? 0
+        return {
+          key: b.key,
+          label: b.key, // axis category — XAxis renders a formatted tick instead
+          pnl: aggregate(b.trades).net_pnl + adjustment,
+          count: b.trades.length,
+          adjustment,
+        }
+      }),
     [days, adjByDate],
   )
   const candles = useMemo(

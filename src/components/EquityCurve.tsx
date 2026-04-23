@@ -20,8 +20,9 @@ import { cn } from '@/lib/utils'
 export interface EquityPoint {
   key: string // bucket id, used on X axis
   label: string // display label for x-axis + tooltip
-  pnl: number // net PnL for the bucket
+  pnl: number // change in equity for the bucket (net trading PnL + adjustment)
   count?: number // number of trades in the bucket (for tooltip)
+  adjustment?: number // signed cash flow on this bucket (deposit+ / withdraw-)
 }
 
 export interface AdjustmentMarker {
@@ -218,15 +219,23 @@ function EquityInfoRow({ data, cumulative }: { data: EquityRow[]; cumulative: bo
   const dateLabel = row.key ? format(new Date(row.key + 'T00:00:00'), 'MMM d') : row.label
   const value = row.y
   const delta = row.pnl ?? 0
+  const tradingPnl = delta - (row.adjustment ?? 0)
   return (
     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 flex items-center gap-x-4 text-xs font-mono bg-(--color-panel-2) border border-(--color-border) rounded-md px-2 py-1 pointer-events-none whitespace-nowrap">
       <span className="text-(--color-text-dim)">{dateLabel}</span>
       <InfoCell label={cumulative ? 'equity' : 'pnl'} value={formatUsd(value)} />
-      {cumulative && (
+      {cumulative && tradingPnl !== 0 && (
+        <InfoCell
+          label="pnl"
+          value={formatUsd(tradingPnl)}
+          tone={tradingPnl > 0 ? 'win' : 'loss'}
+        />
+      )}
+      {cumulative && delta !== 0 && delta !== tradingPnl && (
         <InfoCell
           label="Δ"
           value={formatUsd(delta)}
-          tone={delta > 0 ? 'win' : delta < 0 ? 'loss' : 'dim'}
+          tone={delta > 0 ? 'win' : 'loss'}
         />
       )}
       <InfoCell label="trades" value={String(row.count ?? 0)} />

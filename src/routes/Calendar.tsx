@@ -123,12 +123,16 @@ export function CalendarRoute() {
 
   const equityPoints = useMemo(
     () =>
-      dayBuckets.map(b => ({
-        key: b.key,
-        label: b.key,
-        pnl: aggregate(b.trades).net_pnl + (adjByDate.get(b.key) ?? 0),
-        count: b.trades.length,
-      })),
+      dayBuckets.map(b => {
+        const adjustment = adjByDate.get(b.key) ?? 0
+        return {
+          key: b.key,
+          label: b.key,
+          pnl: aggregate(b.trades).net_pnl + adjustment,
+          count: b.trades.length,
+          adjustment,
+        }
+      }),
     [dayBuckets, adjByDate],
   )
   const startingEquity = useStartingEquity(monthStartKey)
