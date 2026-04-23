@@ -186,7 +186,7 @@ export function CalendarRoute() {
       />
 
       <div className="mt-6 space-y-8">
-        <div className="grid grid-cols-7 gap-px bg-(--color-border) border border-(--color-border) rounded-md overflow-hidden mb-20">
+        <div className="grid grid-cols-7 gap-px bg-(--color-border) border border-(--color-border) rounded-md overflow-hidden">
           {weekdayLabels.map(lbl => (
             <div
               key={lbl}
