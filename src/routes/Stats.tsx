@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { addDays, differenceInCalendarDays, format } from 'date-fns'
+import { addDays, endOfMonth, format } from 'date-fns'
 import { X } from 'lucide-react'
 import type { ContractType, Rating, Session, SymbolKey } from '@/db/types'
 import { db } from '@/db/schema'
@@ -17,11 +17,8 @@ import { adjustmentsByDate, aggregate, computeCandles } from '@/lib/trade-stats'
 import { useStartingEquity } from '@/lib/use-starting-equity'
 import { bucketByDay, bucketByTimeframe, bucketByWeek, dateToBucketKey, type Timeframe } from '@/lib/buckets'
 import { StatsGrid } from '@/components/StatsGrid'
-import { EquityCurve } from '@/components/EquityCurve'
-import { CandlestickChart } from '@/components/CandlestickChart'
 import { TradingViewChart } from '@/components/TradingViewChart'
 import { ChartTimeframeToggle } from '@/components/ChartTimeframeToggle'
-import { FeesChart } from '@/components/FeesChart'
 import { WeeklyCards } from '@/components/WeeklyCards'
 import { EquityChartToggle, type EquityView } from '@/components/EquityChartToggle'
 import { getDefaultEquityView } from '@/lib/equity-view-preference'
@@ -72,7 +69,7 @@ function defaultRange() {
 function bucketNavTarget(key: string, tf: Timeframe): string {
   switch (tf) {
     case 'D': return `/day/${key}`
-    case 'W': return `/week/${key}`
+    case 'W': return `/calendar/${key.slice(0, 7)}`
     case 'M': return `/calendar/${key}`
     case 'Q': {
       const m = /^(\d{4})-Q(\d)$/.exec(key)
@@ -84,12 +81,17 @@ function bucketNavTarget(key: string, tf: Timeframe): string {
   }
 }
 
+function timeframeFromParams(p: URLSearchParams): Timeframe {
+  const v = p.get('tf')
+  return v === 'D' || v === 'W' || v === 'M' || v === 'Q' || v === 'Y' ? v : 'D'
+}
+
 export function StatsRoute() {
   const [params, setParams] = useSearchParams()
   const navigate = useNavigate()
   const urlFilters = filtersFromParams(params)
   const [equityView, setEquityView] = useState<EquityView>(getDefaultEquityView)
-  const [timeframe, setTimeframe] = useState<Timeframe>('D')
+  const timeframe = timeframeFromParams(params)
 
   // Effective filters = URL filters with current month as the default date
   // range when none is specified. The URL stays clean (no params) for the
@@ -150,21 +152,8 @@ export function StatsRoute() {
     }
   }, [filtered, filters.from, filters.to])
 
-  const days = useMemo(() => {
-    if (!rangeStart || !rangeEnd) return []
-    // Include one extra day after the range so charts show the first of the
-    // following month as the right edge.
-    const endPlusOne = addDays(new Date(rangeEnd + 'T00:00:00'), 1)
-    return bucketByDay(filtered, new Date(rangeStart + 'T00:00:00'), endPlusOne)
-  }, [filtered, rangeStart, rangeEnd])
-
   const startingEquity = useStartingEquity(rangeStart)
   const roi = startingEquity > 0 ? stats.net_pnl / startingEquity : null
-
-  // Every day is a tick. XAxis now uses the unique bucket KEY (YYYY-MM-DD)
-  // as the category value — day-only labels like "15" would collide between
-  // months in a multi-month range.
-  const xTicks = useMemo(() => days.map(b => b.key), [days])
 
   const weeks = useMemo(() => {
     if (!rangeStart || !rangeEnd) return []
@@ -176,42 +165,7 @@ export function StatsRoute() {
     return bucketByDay(filtered, new Date(rangeStart + 'T00:00:00'), new Date(rangeEnd + 'T00:00:00'))
   }, [filtered, rangeStart, rangeEnd])
 
-  const equityPoints = useMemo(
-    () =>
-      days.map(b => {
-        const adjustment = adjByDate.get(b.key) ?? 0
-        return {
-          key: b.key,
-          label: b.key, // axis category — XAxis renders a formatted tick instead
-          pnl: aggregate(b.trades).net_pnl + adjustment,
-          count: b.trades.length,
-          adjustment,
-        }
-      }),
-    [days, adjByDate],
-  )
-  const candles = useMemo(
-    () =>
-      computeCandles(
-        days.map(b => ({ ...b, label: b.key })),
-        adjByDate,
-        startingEquity,
-      ),
-    [days, adjByDate, startingEquity],
-  )
-
-  const adjustmentMarkers = useMemo(
-    () =>
-      Array.from(adjByDate.entries())
-        .filter(([date]) => days.some(b => b.key === date))
-        .map(([date, amount]) => ({ x: date, amount })),
-    [adjByDate, days],
-  )
-
-  // Timeframe-bucketed data for the TradingView candle chart. Kept
-  // separate from the daily `candles`/`adjustmentMarkers` above so the
-  // existing Recharts charts (which always use daily buckets) are
-  // unaffected.
+  // Timeframe-bucketed data for the TradingView candle chart.
   const tfBuckets = useMemo(() => {
     if (!rangeStart || !rangeEnd) return []
     const endPlusOne = addDays(new Date(rangeEnd + 'T00:00:00'), 1)
@@ -250,20 +204,11 @@ export function StatsRoute() {
     [tfAdjByBucket, tfBuckets],
   )
 
-  // Number of bars to show on the TradingView chart. Derived from the
-  // filter range in DAYS regardless of the active timeframe — so the
-  // default 30-day filter shows 30 candles on D, 30 weeks on W, 30
-  // months on M, etc. Candle width (chart width / bar count) stays the
-  // same when the user switches timeframes.
-  const filterVisibleBars = useMemo(() => {
-    if (!filters.from || !filters.to) return 30
-    const n =
-      differenceInCalendarDays(
-        new Date(filters.to + 'T00:00:00'),
-        new Date(filters.from + 'T00:00:00'),
-      ) + 1
-    return Math.max(10, n)
-  }, [filters.from, filters.to])
+  // Show as many bars as the filter actually spans at the active
+  // timeframe — so a 1-year filter on W shows ~52 weekly candles, not
+  // 365. `tfBuckets` already covers the filter range in timeframe-native
+  // steps, so its length is the right count.
+  const filterVisibleBars = tfBuckets.length
 
   const bySymbol = useMemo(
     () => [
@@ -312,14 +257,23 @@ export function StatsRoute() {
     })
   }, [filtered])
 
-  // Writes the user-facing change back to URL params. If a field matches the
-  // default range, we drop it so the URL stays clean on the default view.
-  function update(next: Partial<TradeFilters>) {
+  // Writes the user-facing change back to URL params. If a field matches
+  // the default range, we drop it so the URL stays clean on the default
+  // view. `tf` is preserved when not in `next` (so filter edits don't
+  // reset the chart timeframe) and dropped when it equals the default D.
+  function update(next: Partial<TradeFilters> & { tf?: Timeframe }) {
     const d = defaultRange()
     const merged: TradeFilters = { ...urlFilters, ...next }
     if (merged.from === d.from) merged.from = null
     if (merged.to === d.to) merged.to = null
-    setParams(paramsFromFilters(merged))
+    const p = paramsFromFilters(merged)
+    const tf = 'tf' in next ? next.tf : timeframeFromParams(params)
+    if (tf && tf !== 'D') p.set('tf', tf)
+    setParams(p)
+  }
+
+  function setTimeframe(tf: Timeframe) {
+    update({ tf })
   }
 
   // "Clear" returns to the bare /stats URL — which resolves to the current month.
@@ -387,7 +341,53 @@ export function StatsRoute() {
             adjustments={tfAdjustmentMarkers}
             timeframe={timeframe}
             visibleBars={filterVisibleBars}
-            onPointClick={key => navigate(bucketNavTarget(key, timeframe))}
+            onPointClick={key => {
+              // Weekly / monthly candle click drills down into that
+              // bucket: set the from/to filter to the bucket's span and
+              // flip the chart to daily buckets. D still navigates to
+              // the day page; Q/Y fall through to `bucketNavTarget`.
+              if (timeframe === 'W') {
+                const ws = new Date(key + 'T00:00:00')
+                update({
+                  from: format(ws, 'yyyy-MM-dd'),
+                  to: format(addDays(ws, 6), 'yyyy-MM-dd'),
+                  tf: 'D',
+                })
+                return
+              }
+              if (timeframe === 'M') {
+                const ms = new Date(key + '-01T00:00:00')
+                update({
+                  from: format(ms, 'yyyy-MM-dd'),
+                  to: format(endOfMonth(ms), 'yyyy-MM-dd'),
+                  tf: 'D',
+                })
+                return
+              }
+              if (timeframe === 'Q') {
+                const m = /^(\d{4})-Q(\d)$/.exec(key)
+                if (m) {
+                  const firstMonth = (Number(m[2]) - 1) * 3 + 1
+                  const qs = new Date(`${m[1]}-${String(firstMonth).padStart(2, '0')}-01T00:00:00`)
+                  const qeStart = new Date(
+                    `${m[1]}-${String(firstMonth + 2).padStart(2, '0')}-01T00:00:00`,
+                  )
+                  update({
+                    from: format(qs, 'yyyy-MM-dd'),
+                    to: format(endOfMonth(qeStart), 'yyyy-MM-dd'),
+                    tf: 'D',
+                  })
+                }
+                return
+              }
+              if (timeframe === 'Y') {
+                if (/^\d{4}$/.test(key)) {
+                  update({ from: `${key}-01-01`, to: `${key}-12-31`, tf: 'W' })
+                }
+                return
+              }
+              navigate(bucketNavTarget(key, timeframe))
+            }}
             variant="dark"
             title="Equity"
             height={698}
@@ -398,30 +398,6 @@ export function StatsRoute() {
                 <ChartTimeframeToggle value={timeframe} onChange={setTimeframe} />
               </div>
             }
-          />
-          {equityView === 'curve' ? (
-            <EquityCurve
-              points={equityPoints}
-              cumulative
-              startEquity={startingEquity}
-              xTicks={xTicks}
-              adjustments={adjustmentMarkers}
-              onPointClick={key => navigate(`/day/${key}`)}
-              headerRight={<EquityChartToggle value={equityView} onChange={setEquityView} />}
-            />
-          ) : (
-            <CandlestickChart
-              points={candles}
-              xTicks={xTicks}
-              adjustments={adjustmentMarkers}
-              onPointClick={key => navigate(`/day/${key}`)}
-              headerRight={<EquityChartToggle value={equityView} onChange={setEquityView} />}
-            />
-          )}
-          <FeesChart
-            points={candles}
-            xTicks={xTicks}
-            onPointClick={key => navigate(`/day/${key}`)}
           />
           <div className="grid md:grid-cols-2 gap-x-4 gap-y-8">
             <FacetBreakdown title="By Symbol" items={bySymbol} />

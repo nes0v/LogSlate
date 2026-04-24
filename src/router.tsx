@@ -2,7 +2,6 @@ import { createBrowserRouter } from 'react-router-dom'
 import { Layout } from '@/components/Layout'
 import { CalendarRoute } from '@/routes/Calendar'
 import { DayRoute } from '@/routes/Day'
-import { WeekRoute } from '@/routes/Week'
 import { StatsRoute } from '@/routes/Stats'
 import { SettingsRoute } from '@/routes/Settings'
 import { TradeNewRoute } from '@/routes/TradeNew'
@@ -17,8 +16,6 @@ export const router = createBrowserRouter([
       { index: true, Component: CalendarRoute },
       { path: 'month/:ym', Component: CalendarRoute },
       { path: 'day/:date', Component: DayRoute },
-      { path: 'week', Component: WeekRoute },
-      { path: 'week/:start', Component: WeekRoute },
       { path: 'stats', Component: StatsRoute },
       { path: 'settings', Component: SettingsRoute },
       { path: 'trade/new', Component: TradeNewRoute },

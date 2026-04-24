@@ -19,13 +19,11 @@ import { useActiveAccountId } from '@/lib/active-account'
 import { effectivePnl } from '@/lib/trade-math'
 import { formatUsd } from '@/lib/money'
 import { bucketByDay, parseYearMonth, WEEK_OPTS } from '@/lib/buckets'
-import { adjustmentsByDate, aggregate, computeCandles } from '@/lib/trade-stats'
+import { adjustmentsByDate, computeCandles } from '@/lib/trade-stats'
 import { useStartingEquity } from '@/lib/use-starting-equity'
-import { CandlestickChart } from '@/components/CandlestickChart'
+import { TradingViewChart } from '@/components/TradingViewChart'
 import { EquityChartToggle, type EquityView } from '@/components/EquityChartToggle'
 import { getDefaultEquityView } from '@/lib/equity-view-preference'
-import { EquityCurve } from '@/components/EquityCurve'
-import { FeesChart } from '@/components/FeesChart'
 import { ForexFactoryNews } from '@/components/ForexFactoryNews'
 import { PageHeader } from '@/components/PageHeader'
 import { cn } from '@/lib/utils'
@@ -119,22 +117,6 @@ export function CalendarRoute() {
     [monthAdjustments],
   )
 
-  const xTicks = useMemo(() => dayBuckets.map(b => b.key), [dayBuckets])
-
-  const equityPoints = useMemo(
-    () =>
-      dayBuckets.map(b => {
-        const adjustment = adjByDate.get(b.key) ?? 0
-        return {
-          key: b.key,
-          label: b.key,
-          pnl: aggregate(b.trades).net_pnl + adjustment,
-          count: b.trades.length,
-          adjustment,
-        }
-      }),
-    [dayBuckets, adjByDate],
-  )
   const startingEquity = useStartingEquity(monthStartKey)
   const candles = useMemo(
     () =>
@@ -250,29 +232,17 @@ export function CalendarRoute() {
 
         <ForexFactoryNews />
 
-        {equityView === 'curve' ? (
-          <EquityCurve
-            points={equityPoints}
-            cumulative
-            startEquity={startingEquity}
-            xTicks={xTicks}
-            adjustments={adjustmentMarkers}
-            onPointClick={key => navigate(`/day/${key}`)}
-            headerRight={<EquityChartToggle value={equityView} onChange={setEquityView} />}
-          />
-        ) : (
-          <CandlestickChart
-            points={candles}
-            xTicks={xTicks}
-            adjustments={adjustmentMarkers}
-            onPointClick={key => navigate(`/day/${key}`)}
-            headerRight={<EquityChartToggle value={equityView} onChange={setEquityView} />}
-          />
-        )}
-        <FeesChart
+        <TradingViewChart
           points={candles}
-          xTicks={xTicks}
+          adjustments={adjustmentMarkers}
+          timeframe="D"
+          visibleBars={dayBuckets.length}
           onPointClick={key => navigate(`/day/${key}`)}
+          variant="dark"
+          title="Equity"
+          height={698}
+          view={equityView === 'curve' ? 'line' : 'candles'}
+          headerRight={<EquityChartToggle value={equityView} onChange={setEquityView} />}
         />
       </div>
     </div>

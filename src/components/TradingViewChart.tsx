@@ -82,6 +82,94 @@ interface CandleHoverPrimitive extends ISeriesPrimitive<Time> {
   setCandles(map: Map<number, CandlestickData<UTCTimestamp>>): void
 }
 
+interface CandleWicksPrimitive extends ISeriesPrimitive<Time> {
+  setCandles(map: Map<number, CandlestickData<UTCTimestamp>>): void
+  setColors(up: string, down: string): void
+}
+
+/**
+ * Draws 1-device-pixel wicks under the candles — half the width of the
+ * library's default `floor(pixelRatio)` on HiDPI displays, which makes
+ * them read as noticeably thinner without losing crispness. The series is
+ * mounted with `wickVisible: false` so the library's thicker wicks don't
+ * render underneath.
+ */
+function createCandleWicksPrimitive(): CandleWicksPrimitive {
+  let chart: IChartApi | null = null
+  let series: ISeriesApi<'Candlestick'> | null = null
+  let requestUpdate: (() => void) | null = null
+  let candles = new Map<number, CandlestickData<UTCTimestamp>>()
+  let upColor = '#22c55e'
+  let downColor = '#ef4444'
+
+  const renderer: IPrimitivePaneRenderer = {
+    // `drawBackground` paints BEFORE the series body, so the wick sits
+    // under the body — exactly like the library's own wick stacking.
+    drawBackground(target) {
+      if (!chart || !series) return
+      const timeScale = chart.timeScale()
+      target.useBitmapCoordinateSpace(scope => {
+        const ctx = scope.context
+        const { horizontalPixelRatio: hx, verticalPixelRatio: vy } = scope
+        const wickW = 1
+        for (const [ts, c] of candles) {
+          const xc = timeScale.timeToCoordinate(ts as UTCTimestamp)
+          if (xc === null) continue
+          const yHi = series!.priceToCoordinate(c.high)
+          const yLo = series!.priceToCoordinate(c.low)
+          if (yHi === null || yLo === null) continue
+          ctx.fillStyle = c.close >= c.open ? upColor : downColor
+          const px = Math.round(xc * hx)
+          const left = px - Math.floor(wickW / 2)
+          const top = Math.round(yHi * vy)
+          const bottom = Math.round(yLo * vy)
+          if (bottom > top) ctx.fillRect(left, top, wickW, bottom - top)
+        }
+      })
+    },
+    draw() {
+      /* nothing in the foreground layer */
+    },
+  }
+
+  const paneView: IPrimitivePaneView = {
+    zOrder(): PrimitivePaneViewZOrder {
+      return 'bottom'
+    },
+    renderer() {
+      return renderer
+    },
+  }
+
+  return {
+    attached(param: SeriesAttachedParameter<Time>) {
+      chart = param.chart
+      series = param.series as ISeriesApi<'Candlestick'>
+      requestUpdate = param.requestUpdate
+    },
+    detached() {
+      chart = null
+      series = null
+      requestUpdate = null
+    },
+    updateAllViews() {
+      /* renderer reads latest state */
+    },
+    paneViews() {
+      return [paneView]
+    },
+    setCandles(m) {
+      candles = m
+      requestUpdate?.()
+    },
+    setColors(u, d) {
+      upColor = u
+      downColor = d
+      requestUpdate?.()
+    },
+  }
+}
+
 /**
  * Paints a white 1px outline + wick on top of the currently-hovered candle.
  * Reads open/high/low/close from a caller-provided map and converts them to
@@ -147,9 +235,10 @@ function createCandleHoverPrimitive(): CandleHoverPrimitive {
         const high = Math.round(yHi * vy)
         const low = Math.round(yLo * vy)
 
-        // Wick — same 1-pixel column the renderer paints into.
-        let wickWidth = Math.min(Math.floor(hx), Math.floor(barSpacing * hx))
-        wickWidth = Math.max(Math.floor(hx), Math.min(wickWidth, barWidth))
+        // Wick hover overlay — 1 device pixel, matching the custom
+        // `CandleWicksPrimitive` so the hover outline sits exactly on
+        // top of the rendered wick instead of overhanging it.
+        const wickWidth = 1
         const wickLeft = scaledX - Math.floor(wickWidth * 0.5)
         if (top > high) ctx.fillRect(wickLeft, high, wickWidth, top - high)
         if (low > bottom) ctx.fillRect(wickLeft, bottom + 1, wickWidth, low - bottom)
@@ -457,6 +546,7 @@ export function TradingViewChart({
   const crosshairPrimRef = useRef<CrosshairPrimitive | null>(null)
   const feesCrosshairPrimRef = useRef<CrosshairPrimitive | null>(null)
   const candleHoverPrimRef = useRef<CandleHoverPrimitive | null>(null)
+  const wicksPrimRef = useRef<CandleWicksPrimitive | null>(null)
   const feesHoverPrimRef = useRef<CandleHoverPrimitive | null>(null)
   // Single source of truth for per-bucket state — all hit-tests, click
   // navigation, and the hover info row read from this map keyed by the
@@ -574,6 +664,9 @@ export function TradingViewChart({
             borderVisible: candleBorderVisible,
             borderUpColor: candleStroke,
             borderDownColor: candleStroke,
+            // Library wicks are disabled — our `CandleWicksPrimitive`
+            // paints thinner 1-device-pixel wicks instead.
+            wickVisible: false,
             wickUpColor: wickUp,
             wickDownColor: wickDown,
             priceLineVisible: false,
@@ -636,12 +729,24 @@ export function TradingViewChart({
       candleHoverPrimRef.current = hoverPrim
     }
 
+    // Custom thin wicks — only in candle view (line view has no wicks).
+    const wicksPrim = view === 'candles' ? createCandleWicksPrimitive() : null
+    if (wicksPrim) {
+      wicksPrim.setColors(wickUp, wickDown)
+      series.attachPrimitive(wicksPrim)
+      wicksPrimRef.current = wicksPrim
+    }
+
     // Same white-border hover treatment for the fees pane, minus the
     // pointer-cursor swap and click handling — fee bars aren't clickable.
     const feesHoverPrim = createCandleHoverPrimitive()
     feesSeries.attachPrimitive(feesHoverPrim)
     feesHoverPrimRef.current = feesHoverPrim
 
+    // Cursor flips to `grabbing` while the user is panning the chart, and
+    // stays pinned there until mouseup — the crosshair handler would
+    // otherwise overwrite it on every mousemove.
+    let isDragging = false
     const handleCrosshair = (param: {
       point?: { x: number; y: number }
       time?: Time
@@ -671,9 +776,24 @@ export function TradingViewChart({
       // Only equity candles are clickable, so only they swap the cursor
       // to pointer. Fee bars get the hover border but stay default-cursor.
       const el = containerRef.current
-      if (el) el.style.cursor = overCandle ? 'pointer' : ''
+      if (el && !isDragging) el.style.cursor = overCandle ? 'pointer' : ''
     }
     chart.subscribeCrosshairMove(handleCrosshair)
+
+    const handleMouseDown = () => {
+      isDragging = true
+      if (containerRef.current) containerRef.current.style.cursor = 'grabbing'
+    }
+    // Listen on window so releasing outside the chart still clears the
+    // grabbing cursor (lightweight-charts captures the drag, so mouseup
+    // often fires over other elements).
+    const handleMouseUp = () => {
+      if (!isDragging) return
+      isDragging = false
+      if (containerRef.current) containerRef.current.style.cursor = ''
+    }
+    container.addEventListener('mousedown', handleMouseDown)
+    window.addEventListener('mouseup', handleMouseUp)
 
     const handleClick = (param: { time?: Time; point?: { x: number; y: number } }) => {
       if (!isOverCandle(param)) return
@@ -768,6 +888,8 @@ export function TradingViewChart({
     return () => {
       chart.unsubscribeClick(handleClick)
       chart.unsubscribeCrosshairMove(handleCrosshair)
+      container.removeEventListener('mousedown', handleMouseDown)
+      window.removeEventListener('mouseup', handleMouseUp)
       if (adjLinesPrimRef.current) {
         series.detachPrimitive(adjLinesPrimRef.current)
         adjLinesPrimRef.current = null
@@ -783,6 +905,10 @@ export function TradingViewChart({
       if (candleHoverPrimRef.current) {
         series.detachPrimitive(candleHoverPrimRef.current)
         candleHoverPrimRef.current = null
+      }
+      if (wicksPrimRef.current) {
+        series.detachPrimitive(wicksPrimRef.current)
+        wicksPrimRef.current = null
       }
       if (feesHoverPrimRef.current) {
         feesSeries.detachPrimitive(feesHoverPrimRef.current)
@@ -851,6 +977,7 @@ export function TradingViewChart({
     }
     candleHoverPrimRef.current?.setCandles(candleByTime)
     candleHoverPrimRef.current?.setHoveredTime(null)
+    wicksPrimRef.current?.setCandles(candleByTime)
     feesHoverPrimRef.current?.setCandles(feesHoverCandles)
     feesHoverPrimRef.current?.setHoveredTime(null)
     if (view === 'line') {

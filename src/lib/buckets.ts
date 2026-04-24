@@ -76,7 +76,7 @@ export function bucketByWeek(trades: TradeRecord[], rangeStart: Date, rangeEnd: 
       label: `${format(ws, 'MMM d')}`,
       rangeStart: wsKey,
       rangeEnd: weKey,
-      navTarget: `/week/${wsKey}`,
+      navTarget: `/calendar/${wsKey.slice(0, 7)}`,
       trades: weekTrades,
     }
   })
