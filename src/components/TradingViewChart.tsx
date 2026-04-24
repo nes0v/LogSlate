@@ -531,7 +531,7 @@ export function TradingViewChart({
   height = 560,
   onPointClick,
   variant = 'slate',
-  title = 'Equity',
+  title = 'Equity and fees',
   adjustments,
   timeframe = 'D',
   headerRight,
@@ -693,6 +693,12 @@ export function TradingViewChart({
       1, // paneIndex 1 = new pane below main.
     )
     feesSeriesRef.current = feesSeries
+    // Anchor the 0 line to the pane's bottom edge — no blank padding
+    // between it and the time axis. `top` keeps a little headroom above
+    // the tallest bar so the top price label doesn't clip.
+    feesSeries.priceScale().applyOptions({
+      scaleMargins: { top: 0.1, bottom: 0 },
+    })
     // Fixed-height fees pane — the remainder goes to the equity candles,
     // so bumping `height` grows the equity pane without resizing fees.
     const panes = chart.panes()

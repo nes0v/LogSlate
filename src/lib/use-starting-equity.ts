@@ -14,6 +14,39 @@ import { effectivePnl } from '@/lib/trade-math'
  * Returns 0 until the underlying live queries resolve (or when `dateKey` is
  * falsy). A non-positive return value means ROI has no meaningful baseline.
  */
+/**
+ * Current account equity = all signed adjustments plus cumulative net PnL
+ * across every trade in the active account. Live-reactive to every
+ * trade/adjustment change so the header indicator stays in sync.
+ */
+export function useCurrentEquity(): number {
+  const accountId = useActiveAccountId()
+  const adjustments = useLiveQuery(
+    () =>
+      db.adjustments
+        .where('[account_id+date]')
+        .between([accountId, ''], [accountId, '￿'], true, true)
+        .toArray(),
+    [accountId],
+    [],
+  )
+  const trades = useLiveQuery(
+    () =>
+      db.trades
+        .where('[account_id+trade_date]')
+        .between([accountId, ''], [accountId, '￿'], true, true)
+        .toArray(),
+    [accountId],
+    [],
+  )
+  return useMemo(() => {
+    let eq = 0
+    for (const a of adjustments) eq += signedAdjustment(a)
+    for (const t of trades) eq += effectivePnl(t) ?? 0
+    return eq
+  }, [adjustments, trades])
+}
+
 export function useStartingEquity(dateKey: string | null | undefined): number {
   const accountId = useActiveAccountId()
   const priorAdjustments = useLiveQuery(

@@ -128,13 +128,14 @@ export function CalendarRoute() {
     [dayBuckets, adjByDate, startingEquity],
   )
 
-  const adjustmentMarkers = useMemo(
-    () =>
-      Array.from(adjByDate.entries())
-        .filter(([date]) => dayBuckets.some(b => b.key === date))
-        .map(([date, amount]) => ({ x: date, amount })),
-    [adjByDate, dayBuckets],
-  )
+  const adjustmentMarkers = useMemo(() => {
+    const keys = new Set(dayBuckets.map(b => b.key))
+    const out: Array<{ x: string; amount: number }> = []
+    for (const [date, amount] of adjByDate) {
+      if (keys.has(date)) out.push({ x: date, amount })
+    }
+    return out
+  }, [adjByDate, dayBuckets])
 
   const weekdayLabels = useMemo(() => {
     const first = gridStart
@@ -239,7 +240,7 @@ export function CalendarRoute() {
           visibleBars={dayBuckets.length}
           onPointClick={key => navigate(`/day/${key}`)}
           variant="dark"
-          title="Equity"
+          title="Equity and fees"
           height={698}
           view={equityView === 'curve' ? 'line' : 'candles'}
           headerRight={<EquityChartToggle value={equityView} onChange={setEquityView} />}

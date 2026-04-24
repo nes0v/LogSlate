@@ -76,7 +76,7 @@ export function bucketByWeek(trades: TradeRecord[], rangeStart: Date, rangeEnd: 
       label: `${format(ws, 'MMM d')}`,
       rangeStart: wsKey,
       rangeEnd: weKey,
-      navTarget: `/calendar/${wsKey.slice(0, 7)}`,
+      navTarget: `/month/${wsKey.slice(0, 7)}`,
       trades: weekTrades,
     }
   })
@@ -104,7 +104,7 @@ export function bucketByMonth(trades: TradeRecord[], rangeStart: Date, rangeEnd:
       label: key,
       rangeStart: format(ms, DATE_KEY),
       rangeEnd: format(me, DATE_KEY),
-      navTarget: `/calendar/${key}`,
+      navTarget: `/month/${key}`,
       trades: mTrades,
     }
   })
@@ -126,7 +126,7 @@ export function bucketByQuarter(trades: TradeRecord[], rangeStart: Date, rangeEn
       label: key,
       rangeStart: format(qs, DATE_KEY),
       rangeEnd: format(qe, DATE_KEY),
-      navTarget: `/calendar/${format(qs, 'yyyy-MM')}`,
+      navTarget: `/month/${format(qs, 'yyyy-MM')}`,
       trades: qTrades,
     }
   })
@@ -148,7 +148,7 @@ export function bucketByYear(trades: TradeRecord[], rangeStart: Date, rangeEnd: 
       label: key,
       rangeStart: format(ys, DATE_KEY),
       rangeEnd: format(ye, DATE_KEY),
-      navTarget: `/calendar/${format(ys, 'yyyy-MM')}`,
+      navTarget: `/month/${format(ys, 'yyyy-MM')}`,
       trades: yTrades,
     }
   })

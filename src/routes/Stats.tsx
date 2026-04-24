@@ -1,7 +1,19 @@
 import { useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { addDays, endOfMonth, format } from 'date-fns'
+import {
+  addDays,
+  endOfMonth,
+  endOfQuarter,
+  endOfWeek,
+  endOfYear,
+  format,
+  startOfMonth,
+  startOfQuarter,
+  startOfWeek,
+  startOfYear,
+} from 'date-fns'
+import { bucketNavTarget, drillDownRange, timeframeFromParams } from '@/lib/stats-nav'
 import { X } from 'lucide-react'
 import type { ContractType, Rating, Session, SymbolKey } from '@/db/types'
 import { db } from '@/db/schema'
@@ -15,7 +27,14 @@ import {
 } from '@/lib/filters'
 import { adjustmentsByDate, aggregate, computeCandles } from '@/lib/trade-stats'
 import { useStartingEquity } from '@/lib/use-starting-equity'
-import { bucketByDay, bucketByTimeframe, bucketByWeek, dateToBucketKey, type Timeframe } from '@/lib/buckets'
+import {
+  bucketByDay,
+  bucketByTimeframe,
+  bucketByWeek,
+  dateToBucketKey,
+  WEEK_OPTS,
+  type Timeframe,
+} from '@/lib/buckets'
 import { StatsGrid } from '@/components/StatsGrid'
 import { TradingViewChart } from '@/components/TradingViewChart'
 import { ChartTimeframeToggle } from '@/components/ChartTimeframeToggle'
@@ -66,26 +85,6 @@ function defaultRange() {
   }
 }
 
-function bucketNavTarget(key: string, tf: Timeframe): string {
-  switch (tf) {
-    case 'D': return `/day/${key}`
-    case 'W': return `/calendar/${key.slice(0, 7)}`
-    case 'M': return `/calendar/${key}`
-    case 'Q': {
-      const m = /^(\d{4})-Q(\d)$/.exec(key)
-      if (!m) return '/calendar'
-      const firstMonth = (Number(m[2]) - 1) * 3 + 1
-      return `/calendar/${m[1]}-${String(firstMonth).padStart(2, '0')}`
-    }
-    case 'Y': return `/calendar/${key}-01`
-  }
-}
-
-function timeframeFromParams(p: URLSearchParams): Timeframe {
-  const v = p.get('tf')
-  return v === 'D' || v === 'W' || v === 'M' || v === 'Q' || v === 'Y' ? v : 'D'
-}
-
 export function StatsRoute() {
   const [params, setParams] = useSearchParams()
   const navigate = useNavigate()
@@ -127,15 +126,6 @@ export function StatsRoute() {
   )
 
   const filtered = useMemo(() => applyFilters(allTrades ?? [], filters), [allTrades, filters])
-  const adjustmentsInRange = useMemo(() => {
-    const list = allAdjustments ?? []
-    return list.filter(a => {
-      if (filters.from && a.date < filters.from) return false
-      if (filters.to && a.date > filters.to) return false
-      return true
-    })
-  }, [allAdjustments, filters.from, filters.to])
-  const adjByDate = useMemo(() => adjustmentsByDate(adjustmentsInRange), [adjustmentsInRange])
 
   const stats = aggregate(filtered)
 
@@ -165,50 +155,85 @@ export function StatsRoute() {
     return bucketByDay(filtered, new Date(rangeStart + 'T00:00:00'), new Date(rangeEnd + 'T00:00:00'))
   }, [filtered, rangeStart, rangeEnd])
 
-  // Timeframe-bucketed data for the TradingView candle chart.
+  // Chart range aligned to the active timeframe's bucket boundaries, so
+  // each candle covers a whole period — a Feb candle spans Feb 1–28,
+  // not just the 2 days a 30-day default filter happened to include.
+  // Stats tiles keep the user's exact filter; only the chart expands.
+  const tfChartRange = useMemo(() => {
+    if (!rangeStart || !rangeEnd) return null
+    const s = new Date(rangeStart + 'T00:00:00')
+    const e = new Date(rangeEnd + 'T00:00:00')
+    switch (timeframe) {
+      case 'D': return { start: s, end: e }
+      case 'W': return { start: startOfWeek(s, WEEK_OPTS), end: endOfWeek(e, WEEK_OPTS) }
+      case 'M': return { start: startOfMonth(s), end: endOfMonth(e) }
+      case 'Q': return { start: startOfQuarter(s), end: endOfQuarter(e) }
+      case 'Y': return { start: startOfYear(s), end: endOfYear(e) }
+    }
+  }, [timeframe, rangeStart, rangeEnd])
+
+  // Chart-only filtered trades — the non-date filters still apply, but
+  // the date window widens to the bucket-aligned range above.
+  const chartFiltered = useMemo(() => {
+    if (!tfChartRange) return [] as typeof filtered
+    const from = format(tfChartRange.start, 'yyyy-MM-dd')
+    const to = format(tfChartRange.end, 'yyyy-MM-dd')
+    return applyFilters(allTrades ?? [], { ...filters, from, to })
+  }, [allTrades, filters, tfChartRange])
+
+  const chartAdjByDate = useMemo(() => {
+    const list = allAdjustments ?? []
+    if (!tfChartRange) return new Map<string, number>()
+    const fromKey = format(tfChartRange.start, 'yyyy-MM-dd')
+    const toKey = format(tfChartRange.end, 'yyyy-MM-dd')
+    return adjustmentsByDate(list.filter(a => a.date >= fromKey && a.date <= toKey))
+  }, [allAdjustments, tfChartRange])
+
+  const chartStartingEquity = useStartingEquity(
+    tfChartRange ? format(tfChartRange.start, 'yyyy-MM-dd') : null,
+  )
+
   const tfBuckets = useMemo(() => {
-    if (!rangeStart || !rangeEnd) return []
-    const endPlusOne = addDays(new Date(rangeEnd + 'T00:00:00'), 1)
-    return bucketByTimeframe(
-      timeframe,
-      filtered,
-      new Date(rangeStart + 'T00:00:00'),
-      endPlusOne,
-    )
-  }, [filtered, rangeStart, rangeEnd, timeframe])
+    if (!tfChartRange) return []
+    const endPlusOne = addDays(tfChartRange.end, 1)
+    return bucketByTimeframe(timeframe, chartFiltered, tfChartRange.start, endPlusOne)
+  }, [chartFiltered, tfChartRange, timeframe])
 
   const tfAdjByBucket = useMemo(() => {
     const map = new Map<string, number>()
-    for (const [dateKey, amount] of adjByDate.entries()) {
+    for (const [dateKey, amount] of chartAdjByDate.entries()) {
       const k = dateToBucketKey(dateKey, timeframe)
       map.set(k, (map.get(k) ?? 0) + amount)
     }
     return map
-  }, [adjByDate, timeframe])
+  }, [chartAdjByDate, timeframe])
 
   const tfCandles = useMemo(
     () =>
       computeCandles(
         tfBuckets.map(b => ({ ...b, label: b.key })),
         tfAdjByBucket,
-        startingEquity,
+        chartStartingEquity,
       ),
-    [tfBuckets, tfAdjByBucket, startingEquity],
+    [tfBuckets, tfAdjByBucket, chartStartingEquity],
   )
 
-  const tfAdjustmentMarkers = useMemo(
-    () =>
-      Array.from(tfAdjByBucket.entries())
-        .filter(([key]) => tfBuckets.some(b => b.key === key))
-        .map(([key, amount]) => ({ x: key, amount })),
-    [tfAdjByBucket, tfBuckets],
-  )
+  const tfAdjustmentMarkers = useMemo(() => {
+    const keys = new Set(tfBuckets.map(b => b.key))
+    const out: Array<{ x: string; amount: number }> = []
+    for (const [key, amount] of tfAdjByBucket) {
+      if (keys.has(key)) out.push({ x: key, amount })
+    }
+    return out
+  }, [tfAdjByBucket, tfBuckets])
 
-  // Show as many bars as the filter actually spans at the active
-  // timeframe — so a 1-year filter on W shows ~52 weekly candles, not
-  // 365. `tfBuckets` already covers the filter range in timeframe-native
-  // steps, so its length is the right count.
-  const filterVisibleBars = tfBuckets.length
+  // Show the larger of (a) 30 bars, so manual timeframe switches on a
+  // narrow filter still surface useful context (a 30-day filter on M
+  // shows the last 30 months, not just the one or two months the filter
+  // touches), and (b) the filter's own bucket count, so wide filters —
+  // e.g. Y→W drill-downs — span the exact filter range instead of being
+  // clamped to 30.
+  const filterVisibleBars = Math.max(30, tfBuckets.length)
 
   const bySymbol = useMemo(
     () => [
@@ -342,54 +367,14 @@ export function StatsRoute() {
             timeframe={timeframe}
             visibleBars={filterVisibleBars}
             onPointClick={key => {
-              // Weekly / monthly candle click drills down into that
-              // bucket: set the from/to filter to the bucket's span and
-              // flip the chart to daily buckets. D still navigates to
-              // the day page; Q/Y fall through to `bucketNavTarget`.
-              if (timeframe === 'W') {
-                const ws = new Date(key + 'T00:00:00')
-                update({
-                  from: format(ws, 'yyyy-MM-dd'),
-                  to: format(addDays(ws, 6), 'yyyy-MM-dd'),
-                  tf: 'D',
-                })
-                return
-              }
-              if (timeframe === 'M') {
-                const ms = new Date(key + '-01T00:00:00')
-                update({
-                  from: format(ms, 'yyyy-MM-dd'),
-                  to: format(endOfMonth(ms), 'yyyy-MM-dd'),
-                  tf: 'D',
-                })
-                return
-              }
-              if (timeframe === 'Q') {
-                const m = /^(\d{4})-Q(\d)$/.exec(key)
-                if (m) {
-                  const firstMonth = (Number(m[2]) - 1) * 3 + 1
-                  const qs = new Date(`${m[1]}-${String(firstMonth).padStart(2, '0')}-01T00:00:00`)
-                  const qeStart = new Date(
-                    `${m[1]}-${String(firstMonth + 2).padStart(2, '0')}-01T00:00:00`,
-                  )
-                  update({
-                    from: format(qs, 'yyyy-MM-dd'),
-                    to: format(endOfMonth(qeStart), 'yyyy-MM-dd'),
-                    tf: 'D',
-                  })
-                }
-                return
-              }
-              if (timeframe === 'Y') {
-                if (/^\d{4}$/.test(key)) {
-                  update({ from: `${key}-01-01`, to: `${key}-12-31`, tf: 'W' })
-                }
-                return
-              }
-              navigate(bucketNavTarget(key, timeframe))
+              // W/M/Q/Y clicks drill into the bucket on /stats;
+              // D clicks navigate to the day page.
+              const drill = drillDownRange(timeframe, key)
+              if (drill) update(drill)
+              else navigate(bucketNavTarget(key, timeframe))
             }}
             variant="dark"
-            title="Equity"
+            title="Equity and fees"
             height={698}
             view={equityView === 'curve' ? 'line' : 'candles'}
             headerRight={
