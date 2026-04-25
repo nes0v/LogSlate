@@ -9,6 +9,13 @@ import { AccountsPanel } from '@/components/AccountsPanel'
 import { EquityAdjustmentsPanel } from '@/components/EquityAdjustmentsPanel'
 import { EquityChartToggle } from '@/components/EquityChartToggle'
 import { setDefaultEquityView, useDefaultEquityView } from '@/lib/equity-view-preference'
+import {
+  COLOR_SCHEMES,
+  setColorScheme,
+  useColorScheme,
+  type ColorScheme,
+} from '@/lib/color-scheme-preference'
+import { cn } from '@/lib/utils'
 
 export function SettingsRoute() {
   const drive = useDriveState()
@@ -18,6 +25,7 @@ export function SettingsRoute() {
   const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const defaultEquityView = useDefaultEquityView()
+  const colorScheme = useColorScheme()
 
   async function handleSync() {
     setSyncing(true)
@@ -175,6 +183,49 @@ export function SettingsRoute() {
             </div>
           </div>
           <EquityChartToggle value={defaultEquityView} onChange={setDefaultEquityView} />
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-sm font-medium">Chart colors</h2>
+        <div className="rounded-md border border-(--color-border) bg-(--color-panel) p-3 space-y-2">
+          <div className="text-sm">Win / loss palette</div>
+          <div className="text-xs text-(--color-text-dim)">
+            Applies to candle bodies, equity tiles, win/loss text, and every other accent
+            on the page.
+          </div>
+          <div className="flex gap-2 pt-1">
+            {(Object.entries(COLOR_SCHEMES) as Array<[ColorScheme, typeof COLOR_SCHEMES[ColorScheme]]>).map(
+              ([key, palette]) => {
+                const active = colorScheme === key
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setColorScheme(key)}
+                    className={cn(
+                      'flex items-center gap-2 px-3 py-1.5 text-sm rounded-md border transition-colors',
+                      active
+                        ? 'border-(--color-text) bg-(--color-panel-2)'
+                        : 'border-(--color-border) text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)',
+                    )}
+                  >
+                    <span
+                      className="size-3 rounded-sm"
+                      style={{ backgroundColor: palette.win }}
+                      aria-hidden
+                    />
+                    <span
+                      className="size-3 rounded-sm"
+                      style={{ backgroundColor: palette.loss }}
+                      aria-hidden
+                    />
+                    <span className={active ? 'text-(--color-text)' : ''}>{palette.label}</span>
+                  </button>
+                )
+              },
+            )}
+          </div>
         </div>
       </section>
 

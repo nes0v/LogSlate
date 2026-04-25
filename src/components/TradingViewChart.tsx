@@ -23,6 +23,7 @@ import {
 import { format } from 'date-fns'
 import type { CandlePoint } from '@/lib/trade-stats'
 import { bucketKeyToTs, dateToBucketKey, type Timeframe } from '@/lib/buckets'
+import { useColorScheme } from '@/lib/color-scheme-preference'
 import { themeColor } from '@/lib/theme-colors'
 import { formatUsd } from '@/lib/money'
 import { cn } from '@/lib/utils'
@@ -648,6 +649,10 @@ export function TradingViewChart({
   onVisibleRangeChange,
   viewportEpoch,
 }: TradingViewChartProps) {
+  // Read the win/loss color scheme reactively. When it flips, the
+  // init + series effects below re-run and pick up the new CSS-var
+  // values via `themeColor()`, refreshing chart colors live.
+  const colorScheme = useColorScheme()
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | ISeriesApi<'Line'> | null>(null)
@@ -1036,7 +1041,7 @@ export function TradingViewChart({
       feesSeriesRef.current = null
       anchorSeriesRef.current = null
     }
-  }, [height, variant])
+  }, [height, variant, colorScheme])
 
   // Main equity series + main-pane primitives. Recreated on view
   // change (Line ↔ Candles) since the series type itself differs.
@@ -1159,7 +1164,7 @@ export function TradingViewChart({
       }
       seriesRef.current = null
     }
-  }, [view, variant])
+  }, [view, variant, colorScheme])
 
   // Tick-mark formatter follows the active timeframe.
   useEffect(() => {
