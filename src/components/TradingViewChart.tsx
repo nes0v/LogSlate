@@ -87,6 +87,86 @@ interface CandleWicksPrimitive extends ISeriesPrimitive<Time> {
   setColors(up: string, down: string): void
 }
 
+interface LineDotHoverPrimitive extends ISeriesPrimitive<Time> {
+  setHoveredTime(t: number | null): void
+  setPoints(map: Map<number, CandlePoint>): void
+}
+
+/**
+ * Paints a 2px white ring around the line series' crosshair-marker
+ * dot when the user is over a clickable point. Mirror of the
+ * candle-mode hover border, but a circle around (x, close) instead
+ * of a rectangle around the candle body.
+ */
+function createLineDotHoverPrimitive(): LineDotHoverPrimitive {
+  let chart: IChartApi | null = null
+  let series: ISeriesApi<'Line'> | null = null
+  let requestUpdate: (() => void) | null = null
+  let hoveredTime: number | null = null
+  let points = new Map<number, CandlePoint>()
+
+  const renderer: IPrimitivePaneRenderer = {
+    draw(target) {
+      if (hoveredTime === null || !chart || !series) return
+      const p = points.get(hoveredTime)
+      if (!p || p.count === 0) return
+      const xc = chart.timeScale().timeToCoordinate(hoveredTime as UTCTimestamp)
+      if (xc === null) return
+      const yc = series.priceToCoordinate(p.close)
+      if (yc === null) return
+      target.useMediaCoordinateSpace(scope => {
+        const ctx = scope.context
+        ctx.save()
+        ctx.strokeStyle = '#ffffff'
+        ctx.lineWidth = 2
+        // Marker radius is 4 (set via `crosshairMarkerRadius`); centre
+        // the 2px stroke on radius 5 so it sits flush outside the dot.
+        ctx.beginPath()
+        ctx.arc(xc, yc, 5, 0, Math.PI * 2)
+        ctx.stroke()
+        ctx.restore()
+      })
+    },
+  }
+
+  const paneView: IPrimitivePaneView = {
+    zOrder(): PrimitivePaneViewZOrder {
+      return 'top'
+    },
+    renderer() {
+      return renderer
+    },
+  }
+
+  return {
+    attached(param: SeriesAttachedParameter<Time>) {
+      chart = param.chart
+      series = param.series as ISeriesApi<'Line'>
+      requestUpdate = param.requestUpdate
+    },
+    detached() {
+      chart = null
+      series = null
+      requestUpdate = null
+    },
+    updateAllViews() {
+      /* renderer reads latest state */
+    },
+    paneViews() {
+      return [paneView]
+    },
+    setHoveredTime(t) {
+      if (t === hoveredTime) return
+      hoveredTime = t
+      requestUpdate?.()
+    },
+    setPoints(m) {
+      points = m
+      requestUpdate?.()
+    },
+  }
+}
+
 /**
  * Draws 1-device-pixel wicks under the candles — half the width of the
  * library's default `floor(pixelRatio)` on HiDPI displays, which makes
@@ -576,6 +656,7 @@ export function TradingViewChart({
   const crosshairPrimRef = useRef<CrosshairPrimitive | null>(null)
   const feesCrosshairPrimRef = useRef<CrosshairPrimitive | null>(null)
   const candleHoverPrimRef = useRef<CandleHoverPrimitive | null>(null)
+  const lineDotHoverPrimRef = useRef<LineDotHoverPrimitive | null>(null)
   const wicksPrimRef = useRef<CandleWicksPrimitive | null>(null)
   const feesHoverPrimRef = useRef<CandleHoverPrimitive | null>(null)
   // Single source of truth for per-bucket state — all hit-tests, click
@@ -800,6 +881,7 @@ export function TradingViewChart({
       // over its body or wick, not just in the same time column.
       const overCandle = isOverCandle(param)
       candleHoverPrimRef.current?.setHoveredTime(overCandle && typeof param.time === 'number' ? param.time : null)
+      lineDotHoverPrimRef.current?.setHoveredTime(overCandle && typeof param.time === 'number' ? param.time : null)
       const overFee = isOverFeeCandle(param)
       feesHoverPrim.setHoveredTime(overFee && typeof param.time === 'number' ? param.time : null)
       // Info row appears whenever the crosshair sits over a real bucket
@@ -858,10 +940,24 @@ export function TradingViewChart({
       // Only the equity pane (index 0) hosts the main series — hovering
       // the fees pane must never highlight or point-cursor anything here.
       if (param.paneIndex !== 0) return false
-      // In line mode, every bucket on the equity pane is clickable —
-      // there's no "body" to hit-test against, just a continuous line.
+      // Line mode — only the data point's "dot" (the crosshair
+      // marker that lightweight-charts draws on hover, radius ~4)
+      // is clickable. Hit-test against the rendered (x, close)
+      // pixel position with a small extra slack for easier clicking.
+      // Empty buckets (count === 0) — i.e. days the equity holds
+      // flat with no trades — get no clickable dot.
       if (viewRef.current === 'line') {
-        return pointByTimeRef.current.has(t as number)
+        const p = pointByTimeRef.current.get(t as number)
+        const activeSeries = seriesRef.current
+        if (!p || p.count === 0 || !activeSeries || !chartRef.current) return false
+        const xc = chartRef.current.timeScale().timeToCoordinate(t as UTCTimestamp)
+        if (xc === null) return false
+        const yc = activeSeries.priceToCoordinate(p.close)
+        if (yc === null) return false
+        const dx = pt.x - xc
+        const dy = pt.y - yc
+        const r = 7 // marker radius (4) + a couple px hit-test pad
+        return dx * dx + dy * dy <= r * r
       }
       const activeSeries = seriesRef.current
       const p = pointByTimeRef.current.get(t as number)
@@ -1025,6 +1121,12 @@ export function TradingViewChart({
       wicksPrimRef.current = wicksPrim
     }
 
+    const lineDotHoverPrim = view === 'line' ? createLineDotHoverPrimitive() : null
+    if (lineDotHoverPrim) {
+      series.attachPrimitive(lineDotHoverPrim)
+      lineDotHoverPrimRef.current = lineDotHoverPrim
+    }
+
     // Re-assert the fees pane height — pane 0 stayed alive thanks
     // to the anchor series, but lightweight-charts may still
     // re-distribute heights when the visible main series swaps.
@@ -1047,6 +1149,10 @@ export function TradingViewChart({
       if (wicksPrimRef.current) {
         series.detachPrimitive(wicksPrimRef.current)
         wicksPrimRef.current = null
+      }
+      if (lineDotHoverPrimRef.current) {
+        series.detachPrimitive(lineDotHoverPrimRef.current)
+        lineDotHoverPrimRef.current = null
       }
       if (chartRef.current) {
         chartRef.current.removeSeries(series)
@@ -1152,6 +1258,8 @@ export function TradingViewChart({
     candleHoverPrimRef.current?.setCandles(candleByTime)
     candleHoverPrimRef.current?.setHoveredTime(null)
     wicksPrimRef.current?.setCandles(candleByTime)
+    lineDotHoverPrimRef.current?.setPoints(pointByTime)
+    lineDotHoverPrimRef.current?.setHoveredTime(null)
     feesHoverPrimRef.current?.setCandles(feesHoverCandles)
     feesHoverPrimRef.current?.setHoveredTime(null)
     if (view === 'line') {
