@@ -76,12 +76,15 @@ const RATING_OPTS = [
   { value: 'egg' as const, label: '🥚' },
 ] satisfies Array<{ value: Rating | null; label: string }>
 
-/** Default date filter — the last 30 days (inclusive), up to today. */
-function defaultRange() {
-  const now = new Date()
+/** Default date filter — 30 days (inclusive) ending on `baseDate`.
+ *  `baseDate` is the most recent trade date when any exists, falling
+ *  back to today, so opening Stats lands you on your real trading
+ *  window instead of a probably-empty trailing 30 days. */
+function defaultRange(baseDate: string) {
+  const base = new Date(baseDate + 'T00:00:00')
   return {
-    from: format(addDays(now, -29), 'yyyy-MM-dd'),
-    to: format(now, 'yyyy-MM-dd'),
+    from: format(addDays(base, -29), 'yyyy-MM-dd'),
+    to: baseDate,
   }
 }
 
@@ -91,19 +94,14 @@ export function StatsRoute() {
   const urlFilters = filtersFromParams(params)
   const [equityView, setEquityView] = useState<EquityView>(getDefaultEquityView)
   const timeframe = timeframeFromParams(params)
-
-  // Effective filters = URL filters with current month as the default date
-  // range when none is specified. The URL stays clean (no params) for the
-  // default view; params only appear when the user deviates from it.
-  const filters = useMemo<TradeFilters>(() => {
-    const d = defaultRange()
-    return {
-      ...urlFilters,
-      from: urlFilters.from ?? d.from,
-      to: urlFilters.to ?? d.to,
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params])
+  // Latest visible bucket-key range reported by the chart. Compared
+  // against the filter's bucket keys to decide whether to surface a
+  // "Set date filter" button; null until the chart first emits.
+  const [visibleRange, setVisibleRange] = useState<{ from: string; to: string } | null>(null)
+  // Bumped by `clear()` to make the chart snap back to the default
+  // filter range — would otherwise stay bar-preserved if Clear also
+  // changed the timeframe (e.g. clearing while on W).
+  const [viewportEpoch, setViewportEpoch] = useState(0)
 
   const accountId = useActiveAccountId()
   const allTrades = useLiveQuery(
@@ -124,6 +122,31 @@ export function StatsRoute() {
     [accountId],
     [],
   )
+
+  // Most recent trade date — anchors the default filter so Stats lands
+  // on the user's actual trading window. Falls back to today before
+  // any trades exist.
+  const lastTradeDate = useMemo(() => {
+    const list = allTrades ?? []
+    if (list.length === 0) return format(new Date(), 'yyyy-MM-dd')
+    let max = list[0].trade_date
+    for (const t of list) if (t.trade_date > max) max = t.trade_date
+    return max
+  }, [allTrades])
+
+  // Effective filters = URL filters with the default 30-day window
+  // (ending on `lastTradeDate`) filled in for any unset bound. The URL
+  // stays clean (no params) for the default view; params only appear
+  // when the user deviates from it.
+  const filters = useMemo<TradeFilters>(() => {
+    const d = defaultRange(lastTradeDate)
+    return {
+      ...urlFilters,
+      from: urlFilters.from ?? d.from,
+      to: urlFilters.to ?? d.to,
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params, lastTradeDate])
 
   const filtered = useMemo(() => applyFilters(allTrades ?? [], filters), [allTrades, filters])
 
@@ -155,14 +178,26 @@ export function StatsRoute() {
     return bucketByDay(filtered, new Date(rangeStart + 'T00:00:00'), new Date(rangeEnd + 'T00:00:00'))
   }, [filtered, rangeStart, rangeEnd])
 
-  // Chart range aligned to the active timeframe's bucket boundaries, so
-  // each candle covers a whole period — a Feb candle spans Feb 1–28,
-  // not just the 2 days a 30-day default filter happened to include.
-  // Stats tiles keep the user's exact filter; only the chart expands.
+  // Chart trades = `allTrades` with non-date filters applied. The date
+  // filter only sets the initial viewport (`chartVisibleFrom/To` below),
+  // so the chart contains every trade ever recorded for this account
+  // and the user can pan/zoom outside the filter window to see the rest.
+  const chartFiltered = useMemo(
+    () => applyFilters(allTrades ?? [], { ...filters, from: null, to: null }),
+    [allTrades, filters],
+  )
+
+  // Bucket-aligned range that spans the earliest..latest dates across
+  // chart trades AND adjustments — picking up adjustments that fall
+  // outside the trades' window (e.g. a deposit before the first trade).
   const tfChartRange = useMemo(() => {
-    if (!rangeStart || !rangeEnd) return null
-    const s = new Date(rangeStart + 'T00:00:00')
-    const e = new Date(rangeEnd + 'T00:00:00')
+    const dates: string[] = []
+    for (const t of chartFiltered) dates.push(t.trade_date)
+    for (const a of allAdjustments ?? []) dates.push(a.date)
+    if (dates.length === 0) return null
+    dates.sort()
+    const s = new Date(dates[0] + 'T00:00:00')
+    const e = new Date(dates[dates.length - 1] + 'T00:00:00')
     switch (timeframe) {
       case 'D': return { start: s, end: e }
       case 'W': return { start: startOfWeek(s, WEEK_OPTS), end: endOfWeek(e, WEEK_OPTS) }
@@ -170,24 +205,12 @@ export function StatsRoute() {
       case 'Q': return { start: startOfQuarter(s), end: endOfQuarter(e) }
       case 'Y': return { start: startOfYear(s), end: endOfYear(e) }
     }
-  }, [timeframe, rangeStart, rangeEnd])
+  }, [chartFiltered, allAdjustments, timeframe])
 
-  // Chart-only filtered trades — the non-date filters still apply, but
-  // the date window widens to the bucket-aligned range above.
-  const chartFiltered = useMemo(() => {
-    if (!tfChartRange) return [] as typeof filtered
-    const from = format(tfChartRange.start, 'yyyy-MM-dd')
-    const to = format(tfChartRange.end, 'yyyy-MM-dd')
-    return applyFilters(allTrades ?? [], { ...filters, from, to })
-  }, [allTrades, filters, tfChartRange])
-
-  const chartAdjByDate = useMemo(() => {
-    const list = allAdjustments ?? []
-    if (!tfChartRange) return new Map<string, number>()
-    const fromKey = format(tfChartRange.start, 'yyyy-MM-dd')
-    const toKey = format(tfChartRange.end, 'yyyy-MM-dd')
-    return adjustmentsByDate(list.filter(a => a.date >= fromKey && a.date <= toKey))
-  }, [allAdjustments, tfChartRange])
+  const chartAdjByDate = useMemo(
+    () => adjustmentsByDate(allAdjustments ?? []),
+    [allAdjustments],
+  )
 
   const chartStartingEquity = useStartingEquity(
     tfChartRange ? format(tfChartRange.start, 'yyyy-MM-dd') : null,
@@ -227,13 +250,11 @@ export function StatsRoute() {
     return out
   }, [tfAdjByBucket, tfBuckets])
 
-  // Show the larger of (a) 30 bars, so manual timeframe switches on a
-  // narrow filter still surface useful context (a 30-day filter on M
-  // shows the last 30 months, not just the one or two months the filter
-  // touches), and (b) the filter's own bucket count, so wide filters —
-  // e.g. Y→W drill-downs — span the exact filter range instead of being
-  // clamped to 30.
-  const filterVisibleBars = Math.max(30, tfBuckets.length)
+  // Filter's bucket-aligned keys, used to compare against the chart's
+  // emitted visible-range keys (so the "Set date filter" button only
+  // shows when they actually differ).
+  const filterFromKey = rangeStart ? dateToBucketKey(rangeStart, timeframe) : undefined
+  const filterToKey = rangeEnd ? dateToBucketKey(rangeEnd, timeframe) : undefined
 
   const bySymbol = useMemo(
     () => [
@@ -287,7 +308,7 @@ export function StatsRoute() {
   // view. `tf` is preserved when not in `next` (so filter edits don't
   // reset the chart timeframe) and dropped when it equals the default D.
   function update(next: Partial<TradeFilters> & { tf?: Timeframe }) {
-    const d = defaultRange()
+    const d = defaultRange(lastTradeDate)
     const merged: TradeFilters = { ...urlFilters, ...next }
     if (merged.from === d.from) merged.from = null
     if (merged.to === d.to) merged.to = null
@@ -301,9 +322,33 @@ export function StatsRoute() {
     update({ tf })
   }
 
-  // "Clear" returns to the bare /stats URL — which resolves to the current month.
+  // Expand a single bucket key under the active timeframe to the full
+  // date range it represents — used when the user clicks "Set date
+  // filter" to translate the chart's visible bucket-key window back
+  // into the YYYY-MM-DD `from`/`to` shape the filter expects.
+  function bucketKeyToDateRange(key: string): { from: string; to: string } | null {
+    if (timeframe === 'D') return /^\d{4}-\d{2}-\d{2}$/.test(key) ? { from: key, to: key } : null
+    const drill = drillDownRange(timeframe, key)
+    return drill ? { from: drill.from, to: drill.to } : null
+  }
+
+  function setFilterToVisible() {
+    if (!visibleRange) return
+    const left = bucketKeyToDateRange(visibleRange.from)
+    const right = bucketKeyToDateRange(visibleRange.to)
+    if (!left || !right) return
+    update({ from: left.from, to: right.to })
+  }
+
+  // "Clear" returns to the bare /stats URL and restores the chart's
+  // default state: filter back to the last-30-days default, timeframe
+  // back to D (URL clear handles tf), Line/Candles back to the
+  // per-account stored preference, and viewport snapped to the new
+  // default range via an epoch bump.
   function clear() {
     setParams(paramsFromFilters(EMPTY_FILTERS))
+    setEquityView(getDefaultEquityView())
+    setViewportEpoch(e => e + 1)
   }
 
   const isDefault = params.toString() === ''
@@ -365,7 +410,14 @@ export function StatsRoute() {
             points={tfCandles}
             adjustments={tfAdjustmentMarkers}
             timeframe={timeframe}
-            visibleBars={filterVisibleBars}
+            viewportFrom={rangeStart ?? undefined}
+            viewportTo={rangeEnd ?? undefined}
+            viewportEpoch={viewportEpoch}
+            onVisibleRangeChange={(from, to) => {
+              setVisibleRange(prev =>
+                prev && prev.from === from && prev.to === to ? prev : { from, to },
+              )
+            }}
             onPointClick={key => {
               // W/M/Q/Y clicks drill into the bucket on /stats;
               // D clicks navigate to the day page.
@@ -379,6 +431,17 @@ export function StatsRoute() {
             view={equityView === 'curve' ? 'line' : 'candles'}
             headerRight={
               <div className="flex items-center gap-2">
+                {visibleRange &&
+                  (visibleRange.from !== filterFromKey ||
+                    visibleRange.to !== filterToKey) && (
+                    <button
+                      type="button"
+                      onClick={setFilterToVisible}
+                      className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono rounded-md border border-(--color-border) bg-(--color-panel) text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2) transition-colors"
+                    >
+                      Set date to range
+                    </button>
+                  )}
                 <EquityChartToggle value={equityView} onChange={setEquityView} />
                 <ChartTimeframeToggle value={timeframe} onChange={setTimeframe} />
               </div>

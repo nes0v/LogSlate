@@ -62,22 +62,25 @@ export function CalendarRoute() {
 
   const monthStartKey = format(ms, DATE_KEY)
   const monthEndKey = format(me, DATE_KEY)
-  const monthTrades = useLiveQuery(
+  // Chart needs every trade and adjustment so the user can pan past
+  // the displayed month. The calendar grid + month-net header still
+  // read from the month-scoped `trades` query above.
+  const allTrades = useLiveQuery(
     () =>
       db.trades
         .where('[account_id+trade_date]')
-        .between([accountId, monthStartKey], [accountId, monthEndKey], true, true)
+        .between([accountId, ''], [accountId, '￿'], true, true)
         .toArray(),
-    [monthStartKey, monthEndKey, accountId],
+    [accountId],
     [],
   )
-  const monthAdjustments = useLiveQuery(
+  const allAdjustments = useLiveQuery(
     () =>
       db.adjustments
         .where('[account_id+date]')
-        .between([accountId, monthStartKey], [accountId, monthEndKey], true, true)
+        .between([accountId, ''], [accountId, '￿'], true, true)
         .toArray(),
-    [monthStartKey, monthEndKey, accountId],
+    [accountId],
     [],
   )
 
@@ -105,19 +108,35 @@ export function CalendarRoute() {
     return total
   }, [trades, month])
 
-  // Day buckets across the month, extended by 1 so charts show the first of
-  // the next month as the right edge.
+  // Day buckets span every recorded day so the chart can be panned past
+  // the displayed month. Earliest trade-or-adjustment to today (or the
+  // displayed month-end if it's later — keeps the right edge sensible
+  // when scrolling future months).
+  const chartRange = useMemo(() => {
+    const dates: string[] = []
+    for (const t of allTrades ?? []) dates.push(t.trade_date)
+    for (const a of allAdjustments ?? []) dates.push(a.date)
+    if (dates.length === 0) return null
+    dates.sort()
+    const earliest = new Date(dates[0] + 'T00:00:00')
+    const latest = new Date(dates[dates.length - 1] + 'T00:00:00')
+    const end = latest > me ? latest : me
+    return { start: earliest, end }
+  }, [allTrades, allAdjustments, me])
+
   const dayBuckets = useMemo(() => {
-    return bucketByDay(monthTrades ?? [], ms, addDays(me, 1))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [monthTrades, monthStartKey, monthEndKey])
+    if (!chartRange) return []
+    return bucketByDay(allTrades ?? [], chartRange.start, addDays(chartRange.end, 1))
+  }, [allTrades, chartRange])
 
   const adjByDate = useMemo(
-    () => adjustmentsByDate(monthAdjustments ?? []),
-    [monthAdjustments],
+    () => adjustmentsByDate(allAdjustments ?? []),
+    [allAdjustments],
   )
 
-  const startingEquity = useStartingEquity(monthStartKey)
+  const startingEquity = useStartingEquity(
+    chartRange ? format(chartRange.start, DATE_KEY) : null,
+  )
   const candles = useMemo(
     () =>
       computeCandles(
@@ -237,7 +256,8 @@ export function CalendarRoute() {
           points={candles}
           adjustments={adjustmentMarkers}
           timeframe="D"
-          visibleBars={dayBuckets.length}
+          viewportFrom={monthStartKey}
+          viewportTo={monthEndKey}
           onPointClick={key => navigate(`/day/${key}`)}
           variant="dark"
           title="Equity and fees"

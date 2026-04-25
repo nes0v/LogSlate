@@ -22,7 +22,7 @@ import {
 } from 'lightweight-charts'
 import { format } from 'date-fns'
 import type { CandlePoint } from '@/lib/trade-stats'
-import { bucketKeyToTs, type Timeframe } from '@/lib/buckets'
+import { bucketKeyToTs, dateToBucketKey, type Timeframe } from '@/lib/buckets'
 import { themeColor } from '@/lib/theme-colors'
 import { formatUsd } from '@/lib/money'
 import { cn } from '@/lib/utils'
@@ -468,6 +468,17 @@ function createAdjustmentLinesPrimitive(): AdjustmentLinesPrimitive {
 
 const MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
+/** Converts a UTC-second timestamp to a YYYY-MM-DD string in UTC.
+ *  Used to map the chart's visible time range back to bucket keys via
+ *  `dateToBucketKey`. */
+function utcSecToDateKey(ts: number): string {
+  const d = new Date(ts * 1000)
+  const y = d.getUTCFullYear()
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(d.getUTCDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
 /**
  * Time-axis label formatter tuned per timeframe. For Q/Y we squelch the
  * defaults on non-boundary ticks and relabel the remaining ticks with
@@ -509,15 +520,31 @@ interface TradingViewChartProps {
   timeframe?: Timeframe
   /** Optional element rendered to the right of the chart title. */
   headerRight?: React.ReactNode
-  /** Number of bars to show on initial load / after data/timeframe change.
-   *  Keeping this constant across timeframes means candle size stays the
-   *  same — a higher timeframe just exposes a proportionally wider time
-   *  period. Clamped to a sensible minimum internally. */
-  visibleBars?: number
+  /** YYYY-MM-DD date inside the leftmost bucket of the initial
+   *  viewport. The chart's `points` array typically extends far beyond
+   *  this window so the user can pan/zoom into the rest of history;
+   *  these props just anchor where the camera starts. Dates are
+   *  bucket-agnostic — the chart converts them to the active timeframe
+   *  internally — so changing only `timeframe` (with these unchanged)
+   *  is treated as a "manual timeframe switch" and preserves the
+   *  current bar count + right edge instead of snapping to the dates. */
+  viewportFrom?: string
+  /** YYYY-MM-DD date inside the rightmost bucket of the initial viewport. */
+  viewportTo?: string
   /** `candles` (default) renders OHLC bars; `line` renders a single
    *  line series using each bucket's close value. Both views share the
    *  same fees pane, crosshair, info row, and click-to-navigate. */
   view?: 'candles' | 'line'
+  /** Fires whenever the visible time range changes (initial mount,
+   *  pan, zoom, resize). Receives bucket keys at the visible window's
+   *  edges in the active timeframe — matching `points[].key`. */
+  onVisibleRangeChange?: (fromKey: string, toKey: string) => void
+  /** Opaque token. Bumping it forces the chart to snap to the
+   *  current `viewportFrom`/`viewportTo` (skipping bar-count
+   *  preservation on a coincident timeframe change) — used by
+   *  callers to reset the chart on Clear filters and similar.
+   *  Without a bump, normal prop churn keeps the user's pan/zoom. */
+  viewportEpoch?: string | number
 }
 
 /**
@@ -535,8 +562,11 @@ export function TradingViewChart({
   adjustments,
   timeframe = 'D',
   headerRight,
-  visibleBars = 30,
+  viewportFrom,
+  viewportTo,
   view = 'candles',
+  onVisibleRangeChange,
+  viewportEpoch,
 }: TradingViewChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
@@ -552,6 +582,53 @@ export function TradingViewChart({
   // navigation, and the hover info row read from this map keyed by the
   // bucket's UTC-second timestamp.
   const pointByTimeRef = useRef<Map<number, CandlePoint>>(new Map())
+  // Tracks the timeframe used on the previous data-effect run so we can
+  // tell a "manual timeframe switch" (preserve bar count) from a
+  // "viewport changed" run (snap to viewportFrom/To).
+  const prevTimeframeRef = useRef<Timeframe>(timeframe)
+  // Mirror of the latest `data` array so the visible-range subscription
+  // can map logical indices → bucket timestamps without relying on
+  // `getVisibleRange`, whose `to` includes the chart's 3-bar right
+  // margin and would otherwise emit a viewport that's wider than the
+  // user's actual data window.
+  const dataTimesRef = useRef<number[]>([])
+  // Index of the last actual candle in the previous data-effect run.
+  // Used to translate the right-edge offset across timeframe switches
+  // — anchoring on the last candle (rather than on absolute time)
+  // keeps it pinned at the same on-screen spot when the user toggles
+  // D/W/M/Q/Y, even after they've panned away from the right edge.
+  const lastCandleIdxRef = useRef<number>(-1)
+  // Previous viewportEpoch — when it changes, the next data-effect
+  // run skips bar-count preservation and snaps to viewportFrom/To.
+  const prevEpochRef = useRef<string | number | undefined>(viewportEpoch)
+  // Previous viewport dates. Bar-count preservation only applies when
+  // the viewport dates DIDN'T change, otherwise (drill-down, Clear
+  // filters) we want the chart to snap to the new range instead.
+  const prevViewportFromRef = useRef<string | undefined>(viewportFrom)
+  const prevViewportToRef = useRef<string | undefined>(viewportTo)
+  // Latest visible logical range observed on any chart (live-updated
+  // from the visible-range subscription). Survives `view` switches —
+  // when the chart is recreated, the next data-effect run re-applies
+  // this so toggling Line ↔ Candles preserves pan/zoom state.
+  const lastKnownLrRef = useRef<{ from: number; to: number } | null>(null)
+  // Permanent invisible anchor series in pane 0 — keeps the pane
+  // alive when the main visualization series is removed during a
+  // Line ↔ Candles swap. Without it, lightweight-charts collapses
+  // the empty pane and our fees pane (pane 1) gets folded into
+  // pane 0, squishing the fee candles to thin lines.
+  const anchorSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
+  // Previous `view` value as observed by the data effect — distinct
+  // from `prevTimeframeRef` so we can tell a *real* view switch (user
+  // toggled Line/Candles) from StrictMode's mount-unmount-mount
+  // cycle (where `view` is unchanged across runs).
+  const prevViewActualRef = useRef(view)
+  // Live `view` value for the chart-level crosshair handler — that
+  // handler is set up in the init effect, which intentionally does
+  // NOT depend on `view` (so view switches don't recreate the chart).
+  const viewRef = useRef(view)
+  useEffect(() => {
+    viewRef.current = view
+  }, [view])
   const [hoveredPoint, setHoveredPoint] = useState<CandlePoint | null>(null)
   const [adjLabels, setAdjLabels] = useState<Array<{ x: number; amount: number }>>([])
   // Width of the right price-scale column — adjustment labels are clipped
@@ -562,6 +639,10 @@ export function TradingViewChart({
   useEffect(() => {
     onClickRef.current = onPointClick
   }, [onPointClick])
+  const onVisibleRangeChangeRef = useRef(onVisibleRangeChange)
+  useEffect(() => {
+    onVisibleRangeChangeRef.current = onVisibleRangeChange
+  }, [onVisibleRangeChange])
 
   // Create the chart once on mount; data flows through a separate effect.
   useEffect(() => {
@@ -583,16 +664,6 @@ export function TradingViewChart({
     const crosshairColor = isDark
       ? themeColor('--color-text-dim', '#8b91a1')
       : '#1f2937'
-    const bodyUp = isDark
-      ? themeColor('--color-win', '#22c55e')
-      : '#ffffff'
-    const bodyDown = isDark
-      ? themeColor('--color-loss', '#ef4444')
-      : '#000000'
-    const candleBorderVisible = !isDark
-    const candleStroke = '#000000'
-    const wickUp = isDark ? bodyUp : candleStroke
-    const wickDown = isDark ? bodyDown : candleStroke
     const crosshairStyle = isDark ? LineStyle.SparseDotted : LineStyle.LargeDashed
     // Slate variant uses a black chip (lightweight-charts auto-picks white
     // text); dark variant uses a light chip so the labels pop against the
@@ -621,7 +692,7 @@ export function TradingViewChart({
         timeVisible: false,
         secondsVisible: false,
         barSpacing: BAR_SPACING,
-        rightOffset: 5,
+        rightOffset: 3,
       },
       crosshair: {
         mode: CrosshairMode.Normal,
@@ -648,31 +719,21 @@ export function TradingViewChart({
     })
     chartRef.current = chart
 
-    const series: ISeriesApi<'Candlestick'> | ISeriesApi<'Line'> =
-      view === 'line'
-        ? chart.addSeries(LineSeries, {
-            color: themeColor('--color-line', '#2563eb'),
-            lineWidth: 2,
-            priceLineVisible: false,
-            lastValueVisible: false,
-            crosshairMarkerVisible: true,
-            crosshairMarkerRadius: 4,
-          })
-        : chart.addSeries(CandlestickSeries, {
-            upColor: bodyUp,
-            downColor: bodyDown,
-            borderVisible: candleBorderVisible,
-            borderUpColor: candleStroke,
-            borderDownColor: candleStroke,
-            // Library wicks are disabled — our `CandleWicksPrimitive`
-            // paints thinner 1-device-pixel wicks instead.
-            wickVisible: false,
-            wickUpColor: wickUp,
-            wickDownColor: wickDown,
-            priceLineVisible: false,
-            lastValueVisible: false,
-          })
-    seriesRef.current = series
+    // Permanent invisible anchor in pane 0. When the main series is
+    // later removed during a Line ↔ Candles swap, this anchor keeps
+    // pane 0 alive — without it lightweight-charts collapses the
+    // empty pane, folds the fees pane into pane 0, and the fee
+    // candles render as thin squished lines until reload.
+    const anchorSeries = chart.addSeries(
+      CandlestickSeries,
+      {
+        visible: false,
+        priceLineVisible: false,
+        lastValueVisible: false,
+      },
+      0,
+    )
+    anchorSeriesRef.current = anchorSeries
 
     // Fees pane — drawn as candlesticks (open=0, close=fee) so the bar
     // body width matches the equity candles exactly. A histogram would
@@ -704,44 +765,14 @@ export function TradingViewChart({
     const panes = chart.panes()
     if (panes.length >= 2) panes[1].setHeight(160)
 
-    const adjPrim = createAdjustmentLinesPrimitive()
-    // Darker, subtler gray than the crosshair — sits a step further back
-    // so the two annotation layers are distinguishable.
-    adjPrim.setColor(isDark ? '#374151' : '#1f2937')
-    series.attachPrimitive(adjPrim)
-    adjLinesPrimRef.current = adjPrim
-
-    const crossPrim = createCrosshairPrimitive({ ownPaneIndex: 0 })
-    // A darker gray than the theme's text-dim so the crosshair reads
-    // clearly without being bright.
-    const crossColor = isDark ? '#6b7280' : '#374151'
-    crossPrim.setColor(crossColor)
-    series.attachPrimitive(crossPrim)
-    crosshairPrimRef.current = crossPrim
-
     // Mirror the vertical cursor line into the fees pane. The horizontal
     // line is gated by `hoveredPaneIndex` so each pane only draws its own
     // horizontal cursor — no ghost line in the other pane.
+    const crossColor = isDark ? '#6b7280' : '#374151'
     const feesCrossPrim = createCrosshairPrimitive({ ownPaneIndex: 1 })
     feesCrossPrim.setColor(crossColor)
     feesSeries.attachPrimitive(feesCrossPrim)
     feesCrosshairPrimRef.current = feesCrossPrim
-
-    // White-border hover is a candle-specific visual — line mode relies
-    // on the crosshair marker dot that lightweight-charts draws natively.
-    const hoverPrim = view === 'candles' ? createCandleHoverPrimitive() : null
-    if (hoverPrim) {
-      series.attachPrimitive(hoverPrim)
-      candleHoverPrimRef.current = hoverPrim
-    }
-
-    // Custom thin wicks — only in candle view (line view has no wicks).
-    const wicksPrim = view === 'candles' ? createCandleWicksPrimitive() : null
-    if (wicksPrim) {
-      wicksPrim.setColors(wickUp, wickDown)
-      series.attachPrimitive(wicksPrim)
-      wicksPrimRef.current = wicksPrim
-    }
 
     // Same white-border hover treatment for the fees pane, minus the
     // pointer-cursor swap and click handling — fee bars aren't clickable.
@@ -760,15 +791,15 @@ export function TradingViewChart({
     }) => {
       const pos = param.point ? { x: param.point.x, y: param.point.y } : null
       const paneIdx = typeof param.paneIndex === 'number' ? param.paneIndex : null
-      crossPrim.setPosition(pos)
-      crossPrim.setHoveredPaneIndex(paneIdx)
+      crosshairPrimRef.current?.setPosition(pos)
+      crosshairPrimRef.current?.setHoveredPaneIndex(paneIdx)
       feesCrossPrim.setPosition(pos)
       feesCrossPrim.setHoveredPaneIndex(paneIdx)
       // Hover highlight is gated by the same hit-test as the pointer
       // cursor — the candle only lights up when the mouse is actually
       // over its body or wick, not just in the same time column.
       const overCandle = isOverCandle(param)
-      hoverPrim?.setHoveredTime(overCandle && typeof param.time === 'number' ? param.time : null)
+      candleHoverPrimRef.current?.setHoveredTime(overCandle && typeof param.time === 'number' ? param.time : null)
       const overFee = isOverFeeCandle(param)
       feesHoverPrim.setHoveredTime(overFee && typeof param.time === 'number' ? param.time : null)
       // Info row appears whenever the crosshair sits over a real bucket
@@ -829,7 +860,7 @@ export function TradingViewChart({
       if (param.paneIndex !== 0) return false
       // In line mode, every bucket on the equity pane is clickable —
       // there's no "body" to hit-test against, just a continuous line.
-      if (view === 'line') {
+      if (viewRef.current === 'line') {
         return pointByTimeRef.current.has(t as number)
       }
       const activeSeries = seriesRef.current
@@ -896,6 +927,111 @@ export function TradingViewChart({
       chart.unsubscribeCrosshairMove(handleCrosshair)
       container.removeEventListener('mousedown', handleMouseDown)
       window.removeEventListener('mouseup', handleMouseUp)
+      if (feesCrosshairPrimRef.current) {
+        feesSeries.detachPrimitive(feesCrosshairPrimRef.current)
+        feesCrosshairPrimRef.current = null
+      }
+      if (feesHoverPrimRef.current) {
+        feesSeries.detachPrimitive(feesHoverPrimRef.current)
+        feesHoverPrimRef.current = null
+      }
+      chart.remove()
+      chartRef.current = null
+      feesSeriesRef.current = null
+      anchorSeriesRef.current = null
+    }
+  }, [height, variant])
+
+  // Main equity series + main-pane primitives. Recreated on view
+  // change (Line ↔ Candles) since the series type itself differs.
+  // The chart instance, fees pane, and handlers all survive the
+  // swap; only the main series and its view-specific primitives
+  // are torn down and rebuilt.
+  useEffect(() => {
+    const chart = chartRef.current
+    if (!chart) return
+    const isDark = variant === 'dark'
+    const bodyUp = isDark
+      ? themeColor('--color-win', '#22c55e')
+      : '#ffffff'
+    const bodyDown = isDark
+      ? themeColor('--color-loss', '#ef4444')
+      : '#000000'
+    const candleBorderVisible = !isDark
+    const candleStroke = '#000000'
+    const wickUp = isDark ? bodyUp : candleStroke
+    const wickDown = isDark ? bodyDown : candleStroke
+    const crossColor = isDark ? '#6b7280' : '#374151'
+
+    const sharedPriceFormat = {
+      type: 'price' as const,
+      precision: 2,
+      minMove: 0.01,
+    }
+    const series: ISeriesApi<'Candlestick'> | ISeriesApi<'Line'> =
+      view === 'line'
+        ? chart.addSeries(
+            LineSeries,
+            {
+              color: themeColor('--color-line', '#2563eb'),
+              lineWidth: 2,
+              priceLineVisible: false,
+              lastValueVisible: false,
+              crosshairMarkerVisible: true,
+              crosshairMarkerRadius: 4,
+              priceFormat: sharedPriceFormat,
+            },
+            0,
+          )
+        : chart.addSeries(
+            CandlestickSeries,
+            {
+              upColor: bodyUp,
+              downColor: bodyDown,
+              borderVisible: candleBorderVisible,
+              borderUpColor: candleStroke,
+              borderDownColor: candleStroke,
+              wickVisible: false,
+              wickUpColor: wickUp,
+              wickDownColor: wickDown,
+              priceLineVisible: false,
+              lastValueVisible: false,
+              priceFormat: sharedPriceFormat,
+            },
+            0,
+          )
+    seriesRef.current = series
+
+    const adjPrim = createAdjustmentLinesPrimitive()
+    adjPrim.setColor(isDark ? '#374151' : '#1f2937')
+    series.attachPrimitive(adjPrim)
+    adjLinesPrimRef.current = adjPrim
+
+    const crossPrim = createCrosshairPrimitive({ ownPaneIndex: 0 })
+    crossPrim.setColor(crossColor)
+    series.attachPrimitive(crossPrim)
+    crosshairPrimRef.current = crossPrim
+
+    const hoverPrim = view === 'candles' ? createCandleHoverPrimitive() : null
+    if (hoverPrim) {
+      series.attachPrimitive(hoverPrim)
+      candleHoverPrimRef.current = hoverPrim
+    }
+
+    const wicksPrim = view === 'candles' ? createCandleWicksPrimitive() : null
+    if (wicksPrim) {
+      wicksPrim.setColors(wickUp, wickDown)
+      series.attachPrimitive(wicksPrim)
+      wicksPrimRef.current = wicksPrim
+    }
+
+    // Re-assert the fees pane height — pane 0 stayed alive thanks
+    // to the anchor series, but lightweight-charts may still
+    // re-distribute heights when the visible main series swaps.
+    const panes = chart.panes()
+    if (panes.length >= 2) panes[1].setHeight(160)
+
+    return () => {
       if (adjLinesPrimRef.current) {
         series.detachPrimitive(adjLinesPrimRef.current)
         adjLinesPrimRef.current = null
@@ -903,10 +1039,6 @@ export function TradingViewChart({
       if (crosshairPrimRef.current) {
         series.detachPrimitive(crosshairPrimRef.current)
         crosshairPrimRef.current = null
-      }
-      if (feesCrosshairPrimRef.current) {
-        feesSeries.detachPrimitive(feesCrosshairPrimRef.current)
-        feesCrosshairPrimRef.current = null
       }
       if (candleHoverPrimRef.current) {
         series.detachPrimitive(candleHoverPrimRef.current)
@@ -916,16 +1048,12 @@ export function TradingViewChart({
         series.detachPrimitive(wicksPrimRef.current)
         wicksPrimRef.current = null
       }
-      if (feesHoverPrimRef.current) {
-        feesSeries.detachPrimitive(feesHoverPrimRef.current)
-        feesHoverPrimRef.current = null
+      if (chartRef.current) {
+        chartRef.current.removeSeries(series)
       }
-      chart.remove()
-      chartRef.current = null
       seriesRef.current = null
-      feesSeriesRef.current = null
     }
-  }, [height, variant, view])
+  }, [view, variant])
 
   // Tick-mark formatter follows the active timeframe.
   useEffect(() => {
@@ -939,6 +1067,44 @@ export function TradingViewChart({
   useEffect(() => {
     const series = seriesRef.current
     if (!series) return
+    const chart = chartRef.current
+    // Capture pre-update viewport state so we can preserve the bar count
+    // AND the last candle's position-from-right across a manual
+    // timeframe switch (when only `timeframe` changed). Anchoring on
+    // the last candle keeps it at the same on-screen spot — including
+    // mid-viewport positions, when the user has panned away from the
+    // right edge.
+    const prevTimeframe = prevTimeframeRef.current
+    const timeframeChanged = prevTimeframe !== timeframe
+    const epochChanged = prevEpochRef.current !== viewportEpoch
+    const viewportChanged =
+      prevViewportFromRef.current !== viewportFrom ||
+      prevViewportToRef.current !== viewportTo
+    prevEpochRef.current = viewportEpoch
+    prevViewportFromRef.current = viewportFrom
+    prevViewportToRef.current = viewportTo
+    let preserveBars: number | null = null
+    let preserveLastOffset: number | null = null
+    // Only preserve bar count on a PURE timeframe switch — when
+    // viewport dates also changed (Clear filters, drill-down) or the
+    // epoch was bumped, we want the chart to snap to the new range
+    // instead. Without the viewport-changed gate, a non-batched
+    // render in the Clear flow could capture the old timeframe's bar
+    // count and apply it to D before the epoch render arrives.
+    if (timeframeChanged && !epochChanged && !viewportChanged && chart) {
+      const lr = chart.timeScale().getVisibleLogicalRange()
+      const oldLast = lastCandleIdxRef.current
+      if (lr && oldLast >= 0) {
+        // Keep these as floats — `getVisibleLogicalRange` reports
+        // sub-bar precision (e.g. 65.3), and rounding here would
+        // shift the right edge by up to ~half a bar width on every
+        // timeframe switch, which the user perceives as the chart
+        // "moving" even though the math is otherwise correct.
+        preserveBars = Math.max(1, lr.to - lr.from + 1)
+        preserveLastOffset = lr.to - oldLast
+      }
+    }
+    prevTimeframeRef.current = timeframe
     // Single pass over `points` — everything downstream (series data,
     // primitives, hit-tests) reads from `pointByTime`.
     const pointByTime = new Map<number, CandlePoint>()
@@ -981,14 +1147,14 @@ export function TradingViewChart({
       data.push(candle ?? { time: ts as UTCTimestamp })
       feesData.push(feesHoverCandles.get(ts) ?? { time: ts as UTCTimestamp })
     }
+    dataTimesRef.current = data.map(d => d.time as number)
+    lastCandleIdxRef.current = lastCandleIdx
     candleHoverPrimRef.current?.setCandles(candleByTime)
     candleHoverPrimRef.current?.setHoveredTime(null)
     wicksPrimRef.current?.setCandles(candleByTime)
     feesHoverPrimRef.current?.setCandles(feesHoverCandles)
     feesHoverPrimRef.current?.setHoveredTime(null)
     if (view === 'line') {
-      // Line view uses closes only — whitespace slots stay as-is so the
-      // x-axis keeps its date coverage outside the candle range.
       const lineData: (LineData<UTCTimestamp> | WhitespaceData<UTCTimestamp>)[] = []
       for (const d of data) {
         lineData.push(
@@ -1002,19 +1168,126 @@ export function TradingViewChart({
       ;(series as ISeriesApi<'Candlestick'>).setData(data)
     }
     feesSeriesRef.current?.setData(feesData)
-    // Anchor the visible range to the last candle — show `visibleBars`
-    // bars to its left plus a small right-edge buffer. Bar spacing
-    // auto-fits to the container width, so switching timeframes with
-    // the same `visibleBars` keeps each candle the same size and
-    // simply widens the time period covered.
-    if (lastCandleIdx >= 0) {
-      const bars = Math.max(10, visibleBars)
+    // Real view switch (Line ↔ Candles). Apply the latest visible
+    // logical range we observed before the chart was recreated so
+    // pan/zoom stays put. Detected by comparing prev `view` to the
+    // current one — distinct from the chart instance changing
+    // (StrictMode mount-unmount-mount in dev keeps `view` constant
+    // across the cycle, so this branch correctly stays out of it).
+    const viewActuallyChanged = prevViewActualRef.current !== view
+    prevViewActualRef.current = view
+    if (viewActuallyChanged && lastKnownLrRef.current) {
+      chartRef.current?.timeScale().setVisibleLogicalRange(lastKnownLrRef.current)
+    } else if (
+      preserveBars !== null &&
+      preserveLastOffset !== null &&
+      lastCandleIdx >= 0
+    ) {
+      const newTo = lastCandleIdx + preserveLastOffset
+      const newFrom = Math.max(0, newTo - preserveBars + 1)
       chartRef.current?.timeScale().setVisibleLogicalRange({
-        from: Math.max(0, lastCandleIdx - bars + 1),
-        to: lastCandleIdx + 3,
+        from: newFrom,
+        to: newTo,
       })
+    } else {
+      // Convert the caller's date-window to bucket-key timestamps for
+      // the active timeframe and snap to it. Uses setVisibleLogicalRange
+      // (not setVisibleRange) so we can append the same `+ 3` right
+      // margin the bar-preserve branch uses — the chart-level
+      // `rightOffset` only applies to auto-fit, not explicit time
+      // ranges. Falls back to the last candle + 30-bar window when no
+      // viewport is provided.
+      const fromKey = viewportFrom ? dateToBucketKey(viewportFrom, timeframe) : ''
+      const toKey = viewportTo ? dateToBucketKey(viewportTo, timeframe) : ''
+      const fromTs = fromKey ? bucketKeyToTs(fromKey) : 0
+      const toTs = toKey ? bucketKeyToTs(toKey) : 0
+      if (fromTs && toTs && fromTs <= toTs) {
+        let fromIdx = -1
+        let toIdx = -1
+        for (let i = 0; i < data.length; i++) {
+          const t = data[i].time as number
+          if (fromIdx === -1 && t >= fromTs) fromIdx = i
+          if (t <= toTs) toIdx = i
+        }
+        if (fromIdx === -1) fromIdx = 0
+        if (toIdx === -1) toIdx = data.length - 1
+        const targetFrom = fromIdx
+        const targetTo = toIdx + 3
+        // Skip the apply when the chart's current DATA viewport (the
+        // visible logical range, with the right edge clamped to the
+        // last candle) already matches the target — prevents the
+        // visible "snap" that happens when a button such as "Set
+        // date to range" writes the chart's own current viewport
+        // back into the filter. We compare data viewports, not
+        // visible-range floats, so a panned chart with no right
+        // margin still compares equal when the filter is updated to
+        // match it.
+        // Force the apply when the epoch bumped (Clear filters), even
+        // if the data viewport happens to coincide with the target —
+        // after a coincident timeframe change the chart's visible
+        // range read here can be stale/wrong post-setData and cause
+        // a false-positive `alreadyThere`.
+        const lr = chartRef.current?.timeScale().getVisibleLogicalRange()
+        let alreadyThere = false
+        if (!epochChanged && lr) {
+          const currentFromIdx = Math.round(lr.from)
+          const rawToIdx = Math.round(lr.to)
+          const currentToIdx =
+            lastCandleIdx >= 0 ? Math.min(rawToIdx, lastCandleIdx) : rawToIdx
+          alreadyThere =
+            Math.abs(currentFromIdx - fromIdx) <= 1 &&
+            Math.abs(currentToIdx - toIdx) <= 1
+        }
+        if (!alreadyThere) {
+          chartRef.current?.timeScale().setVisibleLogicalRange({
+            from: targetFrom,
+            to: targetTo,
+          })
+        }
+      } else if (lastCandleIdx >= 0) {
+        chartRef.current?.timeScale().setVisibleLogicalRange({
+          from: Math.max(0, lastCandleIdx - 29),
+          to: lastCandleIdx + 3,
+        })
+      }
     }
-  }, [points, timeframe, visibleBars, view])
+  }, [points, timeframe, viewportFrom, viewportTo, view, viewportEpoch])
+
+  // Emit visible bucket-key range whenever it changes. Uses logical
+  // indices (minus the 3-bar right margin) so the emitted window
+  // matches what the user PERCEIVES as the data viewport — not the
+  // wider time range that includes our right-margin whitespace.
+  useEffect(() => {
+    const chart = chartRef.current
+    if (!chart) return
+    const ts = chart.timeScale()
+    const emit = () => {
+      const lr = ts.getVisibleLogicalRange()
+      // Stash the live visible range so a `view` switch (which
+      // recreates the chart) can restore the user's pan/zoom on the
+      // new chart instance.
+      if (lr) lastKnownLrRef.current = { from: lr.from, to: lr.to }
+      const times = dataTimesRef.current
+      if (!lr || times.length === 0) return
+      const last = times.length - 1
+      const fromIdx = Math.max(0, Math.min(last, Math.round(lr.from)))
+      // Clamp the right edge to the last actual candle. A blanket
+      // `Math.round(lr.to) - 3` would correctly strip the default
+      // 3-bar right margin, but once the user pans the chart that
+      // 3-bar zone often contains real candles instead — stripping
+      // would silently drop them from the emitted range.
+      const lastCandle = lastCandleIdxRef.current
+      const rawToIdx = Math.max(0, Math.min(last, Math.round(lr.to)))
+      const toIdx = lastCandle >= 0 ? Math.min(rawToIdx, lastCandle) : rawToIdx
+      if (toIdx < fromIdx) return
+      const fromKey = dateToBucketKey(utcSecToDateKey(times[fromIdx]), timeframe)
+      const toKey = dateToBucketKey(utcSecToDateKey(times[toIdx]), timeframe)
+      onVisibleRangeChangeRef.current?.(fromKey, toKey)
+    }
+    emit()
+    ts.subscribeVisibleTimeRangeChange(emit)
+    return () => ts.unsubscribeVisibleTimeRangeChange(emit)
+  }, [timeframe, view])
 
   // Deposit/withdrawal annotations:
   //  - sparse-dotted vertical lines painted on the chart canvas UNDER the
