@@ -7,7 +7,7 @@ import { clearSyncState, lastSyncAt, type SyncResult } from '@/lib/sync'
 import { exportBackup, importBackup } from '@/lib/backup'
 import { AccountsPanel } from '@/components/AccountsPanel'
 import { EquityAdjustmentsPanel } from '@/components/EquityAdjustmentsPanel'
-import { EquityChartToggle } from '@/components/EquityChartToggle'
+import { CandleGlyph, LineGlyph } from '@/components/EquityChartToggle'
 import { Pills } from '@/components/form/Pills'
 import { setDefaultEquityView, useDefaultEquityView } from '@/lib/equity-view-preference'
 import {
@@ -181,47 +181,50 @@ export function SettingsRoute() {
 
       <section className="space-y-3">
         <h2 className="text-sm font-medium">Appearance</h2>
-        <div className="rounded-(--radius) bg-(--color-panel) shadow-(--shadow-xs) p-3 space-y-3">
-          <div className="space-y-1">
-            <div className="text-sm">Theme</div>
-            <div className="text-xs text-(--color-text-dim)">
-              <em>System</em> follows your OS preference and switches automatically.
+        <div className="rounded-(--radius) bg-(--color-panel) shadow-(--shadow-xs) p-3 space-y-5">
+          <div className="space-y-2">
+            <div className="space-y-1">
+              <div className="text-sm">Theme</div>
+              <div className="text-xs text-(--color-text-dim)">
+                <em>System</em> follows your OS preference and switches automatically.
+              </div>
             </div>
+            <Pills
+              value={themePref}
+              onChange={setTheme}
+              options={[
+                { value: 'system', label: 'System', prefix: <Monitor className="size-3.5" /> },
+                { value: 'light', label: 'Light', prefix: <Sun className="size-3.5" /> },
+                { value: 'dark', label: 'Dark', prefix: <Moon className="size-3.5" /> },
+              ] satisfies Array<{ value: ThemePreference; label: string; prefix: React.ReactNode }>}
+            />
           </div>
-          <Pills
-            value={themePref}
-            onChange={setTheme}
-            options={[
-              { value: 'system', label: 'System', prefix: <Monitor className="size-3.5" /> },
-              { value: 'light', label: 'Light', prefix: <Sun className="size-3.5" /> },
-              { value: 'dark', label: 'Dark', prefix: <Moon className="size-3.5" /> },
-            ] satisfies Array<{ value: ThemePreference; label: string; prefix: React.ReactNode }>}
-          />
-        </div>
-      </section>
 
-      <section className="space-y-3">
-        <h2 className="text-sm font-medium">Equity chart</h2>
-        <div className="rounded-(--radius) bg-(--color-panel) shadow-(--shadow-xs) p-3 flex items-center justify-between gap-4">
-          <div className="text-sm space-y-1.5">
-            <div>Default view</div>
-            <div className="text-xs text-(--color-text-dim)">
-              You can still switch on each page for that session.
+          <div className="space-y-2">
+            <div className="space-y-1">
+              <div className="text-sm">Equity chart default view</div>
+              <div className="text-xs text-(--color-text-dim)">
+                You can still switch on each page for that session.
+              </div>
             </div>
+            <Pills
+              value={defaultEquityView}
+              onChange={setDefaultEquityView}
+              options={[
+                { value: 'curve', label: 'Line', prefix: <LineGlyph className="size-3.5" /> },
+                { value: 'candles', label: 'Candles', prefix: <CandleGlyph className="size-3.5" /> },
+              ]}
+            />
           </div>
-          <EquityChartToggle value={defaultEquityView} onChange={setDefaultEquityView} />
-        </div>
-      </section>
 
-      <section className="space-y-3">
-        <h2 className="text-sm font-medium">Chart colors</h2>
-        <div className="rounded-(--radius) bg-(--color-panel) shadow-(--shadow-xs) p-3 space-y-2">
-          <div className="text-sm">Win / loss palette</div>
-          <div className="text-xs text-(--color-text-dim)">
-            Applies to candle bodies, equity tiles, win/loss text, and every other accent
-            on the page.
-          </div>
-          <div className="pt-1">
+          <div className="space-y-2">
+            <div className="space-y-1">
+              <div className="text-sm">Win / loss palette</div>
+              <div className="text-xs text-(--color-text-dim)">
+                Applies to candle bodies, equity tiles, win/loss text, and every other accent
+                on the page.
+              </div>
+            </div>
             <Pills
               value={colorScheme}
               onChange={setColorScheme}

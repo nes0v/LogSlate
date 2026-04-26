@@ -3,6 +3,7 @@ import { format, parseISO } from 'date-fns'
 import { ArrowDown, ArrowUp } from 'lucide-react'
 import type { TradeRecord } from '@/db/types'
 import {
+  computePlannedRr,
   computeRealizedRr,
   effectivePnl,
   inferSide,
@@ -33,6 +34,7 @@ export function TradeRow({ trade, index }: TradeRowProps) {
   const side = inferSide(trade)
   const pnl = effectivePnl(trade)
   const realRr = computeRealizedRr(trade)
+  const plannedRr = computePlannedRr(trade)
   const contracts = totalContracts(trade)
   const start = earliestTime(trade)
   const startHHmm = start ? format(parseISO(start), 'HH:mm') : '—'
@@ -84,7 +86,7 @@ export function TradeRow({ trade, index }: TradeRowProps) {
         <span className="truncate">{trade.idea}</span>
       </span>
       <span className="text-xs font-mono text-(--color-text-dim) tabular-nums whitespace-nowrap">
-        {trade.planned_rr}x → {realRr === null ? '—' : `${realRr.toFixed(2)}x`}
+        {plannedRr === null ? '—' : `${plannedRr.toFixed(2)}x`} → {realRr === null ? '—' : `${realRr.toFixed(2)}x`}
       </span>
       <span
         className={cn(

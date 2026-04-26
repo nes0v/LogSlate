@@ -13,7 +13,7 @@ import {
   type TradeFilters,
 } from '@/lib/filters'
 import { aggregate } from '@/lib/trade-stats'
-import { computeRealizedRr, effectivePnl, totalContracts } from '@/lib/trade-math'
+import { computePlannedRr, computeRealizedRr, effectivePnl, totalContracts } from '@/lib/trade-math'
 import {
   cohortStats,
   holdTimeBuckets,
@@ -147,9 +147,9 @@ export function ReportsRoute() {
   const isDefault = params.toString() === ''
 
   return (
-    <div className="pt-2 space-y-6">
-      <div className="flex items-center justify-between mb-3">
-        <h1 className="text-lg font-semibold">Reports</h1>
+    <div className="pt-1 space-y-8">
+      <div className="flex items-center justify-between mb-8">
+        <h1 className="h-8 flex items-center text-lg font-semibold">Reports</h1>
         {!isDefault && (
           <button
             onClick={clear}
@@ -429,7 +429,11 @@ function RiskReport({
   const plannedRows = useMemo(() => {
     const map = new Map<number, { count: number; wins: number; losses: number; pnl: number; realizedSum: number; realizedN: number }>()
     for (const t of trades) {
-      const cur = map.get(t.planned_rr) ?? {
+      const planned = computePlannedRr(t)
+      if (planned === null) continue
+      // Bucket by rounded R:R since exact ratios are continuous now.
+      const key = Math.max(1, Math.round(planned))
+      const cur = map.get(key) ?? {
         count: 0,
         wins: 0,
         losses: 0,
@@ -447,7 +451,7 @@ function RiskReport({
         cur.realizedSum += rr
         cur.realizedN++
       }
-      map.set(t.planned_rr, cur)
+      map.set(key, cur)
     }
     return Array.from(map.entries())
       .sort((a, b) => a[0] - b[0])
@@ -683,8 +687,11 @@ function splitByAxis(
     case 'planned': {
       const map = new Map<number, TradeRecord[]>()
       for (const t of trades) {
-        if (!map.has(t.planned_rr)) map.set(t.planned_rr, [])
-        map.get(t.planned_rr)!.push(t)
+        const planned = computePlannedRr(t)
+        if (planned === null) continue
+        const key = Math.max(1, Math.round(planned))
+        if (!map.has(key)) map.set(key, [])
+        map.get(key)!.push(t)
       }
       return Array.from(map.entries())
         .sort((a, b) => a[0] - b[0])

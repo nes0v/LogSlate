@@ -78,9 +78,9 @@ export function PlaybookRoute() {
   }
 
   return (
-    <div className="pt-2">
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-lg font-semibold">Playbooks</h1>
+    <div className="pt-1 space-y-8">
+      <div className="flex items-center justify-between mb-8">
+        <h1 className="h-8 flex items-center text-lg font-semibold">Playbooks</h1>
         <div className="flex items-center gap-2">
           <label className="text-xs text-(--color-text-dim) flex items-center gap-1">
             <input

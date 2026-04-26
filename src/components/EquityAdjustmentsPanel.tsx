@@ -7,6 +7,7 @@ import { createAdjustment, deleteAdjustment } from '@/db/queries'
 import type { AdjustmentKind } from '@/db/types'
 import { useActiveAccountId } from '@/lib/active-account'
 import { inputClassCompact as inputClass } from '@/components/form/Field'
+import { Select } from '@/components/form/Select'
 import { formatUsd } from '@/lib/money'
 import { cn } from '@/lib/utils'
 
@@ -83,14 +84,15 @@ export function EquityAdjustmentsPanel() {
         </label>
         <label className="text-xs text-(--color-text-dim) space-y-2">
           <div>Type</div>
-          <select
+          <Select
             value={kind}
-            onChange={e => setKind(e.target.value as AdjustmentKind)}
-            className={inputClass}
-          >
-            <option value="deposit">Deposit</option>
-            <option value="withdraw">Withdraw</option>
-          </select>
+            onChange={v => v && setKind(v as AdjustmentKind)}
+            options={[
+              { value: 'deposit', label: 'Deposit' },
+              { value: 'withdraw', label: 'Withdraw' },
+            ]}
+            ariaLabel="Adjustment type"
+          />
         </label>
         <label className="text-xs text-(--color-text-dim) space-y-2">
           <div>Amount (USD)</div>

@@ -12,6 +12,7 @@ function validForm(overrides: Partial<TradeFormValues> = {}): TradeFormValues {
   return {
     ...emptyForm('2026-04-15'),
     stop_loss: 100,
+    profit_target: 200,
     drawdown: 20,
     buildup: 200,
     executions: [
@@ -98,9 +99,9 @@ describe('recordToForm ↔ formToDraft round-trip', () => {
       contract_type: 'mini',
       session: 'AM',
       stop_loss: 100,
+      profit_target: 200,
       drawdown: 20,
       buildup: 200,
-      planned_rr: 2,
       rating: 'good',
     })
     const roundTrip = formToDraft(recordToForm(record))

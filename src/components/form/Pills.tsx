@@ -51,7 +51,7 @@ export function Pills<T extends string | number | null>({
             type="button"
             onClick={() => onChange(opt.value)}
             className={cn(
-              'inline-flex items-center gap-1.5 rounded-(--radius) transition-all whitespace-nowrap',
+              'inline-flex items-center gap-1.5 rounded-(--radius) cursor-pointer transition-colors whitespace-nowrap',
               size === 'sm' ? 'px-2.5 py-1 text-xs' : 'px-3 py-1 text-sm',
               active
                 ? 'bg-(--color-panel) text-(--color-text) shadow-(--shadow-xs)'

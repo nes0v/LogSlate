@@ -407,7 +407,7 @@ export function maeMfeStats(trades: TradeRecord[]): MaeMfeStats {
   let maeStopSum = 0
   let maeStopN = 0
   for (const t of trades) {
-    if (t.drawdown > 0) {
+    if (t.drawdown !== null && t.drawdown > 0) {
       mae += t.drawdown
       nMae++
     }
@@ -420,7 +420,7 @@ export function maeMfeStats(trades: TradeRecord[]): MaeMfeStats {
       effSum += pnl / t.buildup
       effN++
     }
-    if (pnl < 0 && t.drawdown > 0 && t.stop_loss > 0) {
+    if (pnl < 0 && t.drawdown !== null && t.drawdown > 0 && t.stop_loss > 0) {
       maeStopSum += t.drawdown / t.stop_loss
       maeStopN++
     }
@@ -448,6 +448,7 @@ export function maeScatter(trades: TradeRecord[]): ScatterPoint[] {
   for (const t of trades) {
     const p = effectivePnl(t)
     if (p === null) continue
+    if (t.drawdown === null) continue
     out.push({
       id: t.id,
       x: t.drawdown,
@@ -650,7 +651,7 @@ export function cohortStats(trades: TradeRecord[]): CohortCompare {
       dSum += Math.max(...ms) - Math.min(...ms)
       dN++
     }
-    if (t.drawdown > 0) {
+    if (t.drawdown !== null && t.drawdown > 0) {
       maeSum += t.drawdown
       maeN++
     }

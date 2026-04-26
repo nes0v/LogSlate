@@ -13,7 +13,6 @@ export type Session = (typeof SESSIONS)[number]
 export type Rating = (typeof RATINGS)[number]
 export type ExecutionKind = (typeof EXECUTION_KINDS)[number]
 export type Side = (typeof SIDES)[number]
-export type PlannedRR = 1 | 2 | 3 | 4 | 5 | 6 | 7
 
 export interface Execution {
   kind: ExecutionKind
@@ -69,14 +68,13 @@ export interface TradeRecord {
   idea: string
   executions: Execution[] // stored sorted by time ascending
   stop_loss: number // USD (positive number representing risk amount)
-  drawdown: number // USD, MAE — max adverse excursion
+  drawdown: number | null // USD, MAE — max adverse excursion (optional)
   buildup: number | null // USD, MFE — max favorable excursion (optional)
-  planned_rr: PlannedRR
   rating: Rating
   pnl_override: number | null // when set, overrides computed net PnL
   screenshot: string | null // base64 data URL
   // Reflection / playbook fields (all optional; empty/null on legacy rows).
-  profit_target?: number | null // USD planned profit target
+  profit_target: number // USD planned profit target
   notes?: string // post-trade notes (markdown)
   setup_tags?: string[] // ["breakout", "trend-cont", ...]
   mistake_tags?: string[] // ["FOMO", "moved stop", ...]

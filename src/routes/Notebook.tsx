@@ -100,9 +100,9 @@ export function NotebookRoute() {
   }, [notes])
 
   return (
-    <div className="pt-2">
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-lg font-semibold">Notebook</h1>
+    <div className="pt-1 space-y-8">
+      <div className="flex items-center justify-between mb-8">
+        <h1 className="h-8 flex items-center text-lg font-semibold">Notebook</h1>
         <div className="relative">
           <button
             type="button"

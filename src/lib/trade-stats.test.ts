@@ -17,8 +17,8 @@ function winningTrade() {
       execution({ kind: 'sell', price: 20010, contracts: 1 }),
     ],
     stop_loss: 100,
+    profit_target: 200,
     pnl_override: null,
-    planned_rr: 2,
   })
 }
 
@@ -31,8 +31,8 @@ function losingTrade() {
       execution({ kind: 'sell', price: 19990, contracts: 1 }),
     ],
     stop_loss: 200,
+    profit_target: 600,
     pnl_override: null,
-    planned_rr: 3,
   })
 }
 

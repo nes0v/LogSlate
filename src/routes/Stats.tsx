@@ -308,9 +308,9 @@ export function StatsRoute() {
   const isDefault = params.toString() === ''
 
   return (
-    <div className="pt-2 space-y-8">
-      <div className="flex items-center justify-between mb-9">
-        <h1 className="text-lg font-semibold">Stats</h1>
+    <div className="pt-1 space-y-8">
+      <div className="flex items-center justify-between mb-8">
+        <h1 className="h-8 flex items-center text-lg font-semibold">Stats</h1>
         {!isDefault && (
           <button
             onClick={clear}

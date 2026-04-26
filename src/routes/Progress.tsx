@@ -154,9 +154,9 @@ export function ProgressRoute() {
   const isToday = date === today
 
   return (
-    <div className="pt-2 space-y-6">
-      <div className="flex items-center justify-between mb-2">
-        <h1 className="text-lg font-semibold">Progress</h1>
+    <div className="pt-1 space-y-8">
+      <div className="flex items-center justify-between mb-8">
+        <h1 className="h-8 flex items-center text-lg font-semibold">Progress</h1>
         <div className="flex items-center gap-1 text-sm">
           <button
             type="button"

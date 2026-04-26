@@ -124,3 +124,14 @@ export function computeRealizedRr(
   if (pnl === null) return null
   return pnl / t.stop_loss
 }
+
+// Planned R:R is derived from the user's stop loss and profit target —
+// no longer a separately stored field. Returns null when stop loss is
+// missing/zero or profit target is missing.
+export function computePlannedRr(
+  t: Pick<TradeRecord, 'stop_loss' | 'profit_target'>,
+): number | null {
+  if (!t.stop_loss || t.stop_loss === 0) return null
+  if (t.profit_target == null) return null
+  return t.profit_target / t.stop_loss
+}

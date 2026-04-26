@@ -6,6 +6,7 @@ import { deleteTrade } from '@/db/queries'
 import {
   computeAhpc,
   computeDuration,
+  computePlannedRr,
   computeRealizedRr,
   effectivePnl,
   inferSide,
@@ -33,6 +34,7 @@ export function DayTradeCard({ trade, index }: DayTradeCardProps) {
   const side = inferSide(trade)
   const pnl = effectivePnl(trade)
   const realRr = computeRealizedRr(trade)
+  const plannedRr = computePlannedRr(trade)
   const contracts = totalContracts(trade)
   const dur = computeDuration(trade)
   const ahpc = computeAhpc(trade)
@@ -126,7 +128,7 @@ export function DayTradeCard({ trade, index }: DayTradeCardProps) {
         )}
         <StatColumn
           rows={[
-            ['Drawdown', formatUsd(trade.drawdown)],
+            ['Drawdown', trade.drawdown === null ? '—' : formatUsd(trade.drawdown)],
             [
               'Buildup',
               trade.buildup === null ? '—' : formatUsd(trade.buildup),
@@ -154,7 +156,7 @@ export function DayTradeCard({ trade, index }: DayTradeCardProps) {
             ['Duration', formatDuration(dur.total_ms)],
             [
               'RR',
-              `${trade.planned_rr}x → ${realRr === null ? '—' : `${realRr.toFixed(2)}x`}`,
+              `${plannedRr === null ? '—' : `${plannedRr.toFixed(2)}x`} → ${realRr === null ? '—' : `${realRr.toFixed(2)}x`}`,
             ],
           ]}
         />

@@ -4,6 +4,7 @@ import {
   computeDuration,
   computeFees,
   computeGrossPnl,
+  computePlannedRr,
   computeRealizedRr,
   effectivePnl,
 } from '@/lib/trade-math'
@@ -51,6 +52,7 @@ export function aggregate(trades: TradeRecord[]): AggregateStats {
   if (trades.length === 0) return result
 
   let plannedSum = 0
+  let plannedCount = 0
   let realizedSum = 0
   let realizedCount = 0
   let winSum = 0
@@ -78,7 +80,11 @@ export function aggregate(trades: TradeRecord[]): AggregateStats {
     if (result.best === null || net > result.best) result.best = net
     if (result.worst === null || net < result.worst) result.worst = net
 
-    plannedSum += t.planned_rr
+    const planned = computePlannedRr(t)
+    if (planned !== null) {
+      plannedSum += planned
+      plannedCount++
+    }
     const realized = computeRealizedRr(t)
     if (realized !== null) {
       realizedSum += realized
@@ -94,7 +100,7 @@ export function aggregate(trades: TradeRecord[]): AggregateStats {
 
   const decided = result.wins + result.losses
   result.win_rate = decided === 0 ? null : result.wins / decided
-  result.avg_planned_rr = trades.length > 0 ? plannedSum / trades.length : null
+  result.avg_planned_rr = plannedCount > 0 ? plannedSum / plannedCount : null
   result.avg_realized_rr = realizedCount > 0 ? realizedSum / realizedCount : null
   result.avg_win = result.wins > 0 ? winSum / result.wins : null
   result.avg_loss = result.losses > 0 ? lossSum / result.losses : null

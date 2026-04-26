@@ -12,11 +12,26 @@ import {
   type TradeRecord,
 } from '@/db/types'
 
+// `null` is used as the "blank" form state so number inputs render empty
+// rather than pre-filled with 0/1. `.refine` then enforces non-null +
+// positive on submit.
+const requiredPositive = (msg: string) =>
+  z
+    .number()
+    .nullable()
+    .refine((v): v is number => v !== null && v > 0, { message: msg })
+
+const requiredPositiveInt = (msg: string) =>
+  z
+    .number()
+    .nullable()
+    .refine((v): v is number => v !== null && Number.isInteger(v) && v > 0, { message: msg })
+
 const executionSchema = z.object({
   kind: z.enum(EXECUTION_KINDS),
-  price: z.number().positive('price must be > 0'),
+  price: requiredPositive('price must be > 0'),
   time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'time must be HH:MM (24h)'),
-  contracts: z.number().int().positive('contracts must be a positive integer'),
+  contracts: requiredPositiveInt('contracts must be a positive integer'),
 })
 
 export const tradeFormSchema = z
@@ -27,16 +42,15 @@ export const tradeFormSchema = z
     session: z.enum(SESSIONS),
     idea: z.string(),
     executions: z.array(executionSchema).min(2, 'at least one buy and one sell'),
-    stop_loss: z.number().positive('stop loss must be > 0'),
-    drawdown: z.number().min(0, 'must be ≥ 0'),
+    stop_loss: requiredPositive('stop loss must be > 0'),
+    drawdown: z.number().min(0, 'must be ≥ 0').nullable(),
     buildup: z.number().min(0, 'must be ≥ 0').nullable(),
-    planned_rr: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7)]),
     rating: z.enum(RATINGS),
     pnl_override: z.number().nullable(),
     screenshot: z.string().nullable(),
     // Optional reflection fields. The form supplies defaults so RHF resolves
     // them; downstream code treats them as optional / nullable.
-    profit_target: z.number().nullable(),
+    profit_target: requiredPositive('profit target must be > 0'),
     notes: z.string(),
     setup_tags: z.array(z.string()),
     mistake_tags: z.array(z.string()),
@@ -76,12 +90,15 @@ function toIso(date: string, time: string): string {
 }
 
 export function formToDraft(v: TradeFormValues): TradeDraft {
+  // After zod validation the required-positive fields are guaranteed
+  // non-null; refine's type guards don't propagate through zod's inferred
+  // type, so we narrow here at the boundary.
   const executions = v.executions
     .map(e => ({
       kind: e.kind,
-      price: e.price,
+      price: e.price as number,
       time: toIso(v.trade_date, e.time),
-      contracts: e.contracts,
+      contracts: e.contracts as number,
     }))
     .sort((a, b) => Date.parse(a.time) - Date.parse(b.time))
 
@@ -92,14 +109,13 @@ export function formToDraft(v: TradeFormValues): TradeDraft {
     session: v.session,
     idea: v.idea,
     executions,
-    stop_loss: v.stop_loss,
+    stop_loss: v.stop_loss as number,
     drawdown: v.drawdown,
     buildup: v.buildup,
-    planned_rr: v.planned_rr,
     rating: v.rating,
     pnl_override: v.pnl_override,
     screenshot: v.screenshot,
-    profit_target: v.profit_target,
+    profit_target: v.profit_target as number,
     notes: v.notes,
     setup_tags: v.setup_tags,
     mistake_tags: v.mistake_tags,
@@ -131,11 +147,10 @@ export function recordToForm(r: TradeRecord): TradeFormValues {
     stop_loss: r.stop_loss,
     drawdown: r.drawdown,
     buildup: r.buildup,
-    planned_rr: r.planned_rr,
     rating: r.rating,
     pnl_override: r.pnl_override,
     screenshot: r.screenshot,
-    profit_target: r.profit_target ?? null,
+    profit_target: r.profit_target ?? 0,
     notes: r.notes ?? '',
     setup_tags: r.setup_tags ?? [],
     mistake_tags: r.mistake_tags ?? [],
@@ -152,16 +167,15 @@ export function emptyForm(trade_date: string): TradeFormValues {
     trade_date,
     symbol: 'NQ',
     contract_type: 'micro',
-    session: 'AM',
+    session: 'pre',
     idea: '',
     executions: [
-      { kind: 'buy', price: 0, time: '', contracts: 1 },
-      { kind: 'sell', price: 0, time: '', contracts: 1 },
+      { kind: 'buy', price: null, time: '', contracts: 1 },
+      { kind: 'sell', price: null, time: '', contracts: 1 },
     ],
-    stop_loss: 0,
-    drawdown: 0,
+    stop_loss: null,
+    drawdown: null,
     buildup: null,
-    planned_rr: 2,
     rating: 'good',
     pnl_override: null,
     screenshot: null,

@@ -58,7 +58,7 @@ export function Dropdown<T extends string>({
         {selectedLabel}
       </button>
       {open && (
-        <div className="absolute right-0 top-full mt-1 z-20 min-w-max bg-(--color-panel) rounded-(--radius) shadow-(--shadow-md) overflow-hidden">
+        <div className="absolute right-0 top-full mt-1 z-20 min-w-max bg-(--color-panel) border border-(--color-border-strong) rounded-(--radius) shadow-(--shadow-md) overflow-hidden">
           {options.map(opt => (
             <button
               key={String(opt.value)}
@@ -68,7 +68,7 @@ export function Dropdown<T extends string>({
                 setOpen(false)
               }}
               className={cn(
-                'block w-full text-left px-3 py-1.5 text-xs font-mono whitespace-nowrap transition-colors',
+                'block w-full text-left px-3 py-1.5 text-sm whitespace-nowrap cursor-pointer transition-colors',
                 opt.value === value
                   ? 'bg-(--color-panel-2) text-(--color-text)'
                   : 'text-(--color-text-dim) hover:bg-(--color-panel-2) hover:text-(--color-text)',

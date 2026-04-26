@@ -10,13 +10,17 @@ interface FieldProps {
 }
 
 export function Field({ label, hint, error, children, className }: FieldProps) {
+  // `<div>` (not `<label>`) on purpose: when a label wraps multiple form
+  // controls (e.g. a group of pill-buttons), browsers forward `:hover`
+  // and click events to the *first* labeled control, which causes the
+  // first pill to spuriously appear hovered when any sibling is hovered.
   return (
-    <label className={cn('flex flex-col gap-2', className)}>
+    <div className={cn('flex flex-col gap-2', className)}>
       <span className="text-xs text-(--color-text-dim)">{label}</span>
       {children}
       {hint && !error && <span className="text-xs text-(--color-text-dim)">{hint}</span>}
       {error && <span className="text-xs text-(--color-loss)">{error}</span>}
-    </label>
+    </div>
   )
 }
 
@@ -27,7 +31,7 @@ export function Field({ label, hint, error, children, className }: FieldProps) {
 //   with real text once the user starts typing
 // - focus shows a 2px accent-soft ring as the only "active" affordance
 export const inputClass =
-  'bg-(--color-bg) rounded-(--radius) px-3 py-1.5 text-sm ' +
+  'bg-(--color-bg) rounded-(--radius) px-3 py-1.5 text-sm font-sans ' +
   'text-(--color-text) placeholder:text-(--color-text-faint) ' +
   'transition-colors ' +
   'focus:outline-none focus:ring-2 focus:ring-(--color-accent-soft)'
