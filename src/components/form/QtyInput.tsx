@@ -35,7 +35,7 @@ export function QtyInput({ value, onChange, min = 1, max, className }: QtyInputP
         onFocus={e => e.currentTarget.select()}
         className="flex-1 min-w-0 bg-transparent px-3 text-sm text-(--color-text) outline-none"
       />
-      <div className="flex flex-col w-6 border-l border-(--color-border)">
+      <div className="flex flex-col w-6 border-l border-(--color-panel)">
         <button
           type="button"
           tabIndex={-1}

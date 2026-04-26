@@ -18,15 +18,15 @@ const SYMBOLS = [
   { value: 'ES', label: 'ES' },
 ] as const
 const CONTRACT_TYPES = [
-  { value: 'micro', label: 'Micro' },
-  { value: 'mini', label: 'Mini' },
+  { value: 'micro', label: 'micro' },
+  { value: 'mini', label: 'mini' },
 ] as const
 const SESSIONS = [
-  { value: 'pre', label: 'Pre' },
+  { value: 'pre', label: 'pre' },
   { value: 'AM', label: 'AM' },
   { value: 'LT', label: 'LT' },
   { value: 'PM', label: 'PM' },
-  { value: 'aft', label: 'Aft' },
+  { value: 'aft', label: 'aft' },
 ] as const
 const RATINGS = [
   { value: 'good', label: '👍 good' },
@@ -97,9 +97,6 @@ export function TradeForm({
     <form onSubmit={handleSubmit(submit)}>
       <div className="space-y-4">
         <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-4 flex flex-wrap items-end gap-4">
-          <Field label="Date" className="w-36">
-            <input type="date" className={inputClass} {...register('trade_date')} />
-          </Field>
           <Field label="Symbol">
             <Controller
               control={control}
@@ -131,7 +128,8 @@ export function TradeForm({
         </section>
 
         <div className="grid lg:grid-cols-2 gap-4 items-start">
-          <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-4 space-y-4">
+          <div className="space-y-4">
+            <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-4 space-y-4">
           <Field label="Idea" error={errors.idea?.message}>
             <textarea
               className={cn(inputClass, 'min-h-[135px] resize-y')}
@@ -303,26 +301,56 @@ export function TradeForm({
           </Field>
         </section>
 
-        <ReflectionSection control={control} values={values} />
-        </div>
+            {/* Buttons live inside the left column on lg+ so growing the
+                Notes textarea (right column) doesn't push them down. */}
+            <div className="hidden lg:flex items-center gap-2">
+              <ActionButtons
+                isSubmitting={isSubmitting}
+                submitLabel={submitLabel}
+                onCancel={onCancel}
+              />
+            </div>
+          </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="px-4 py-1.5 text-sm rounded-(--radius) bg-(--color-accent) text-(--color-accent-fg) hover:opacity-90 disabled:opacity-50"
-          >
-            {submitLabel}
-          </button>
-          <button
-            type="button"
-            onClick={onCancel}
-            className="px-4 py-1.5 text-sm rounded-(--radius) border border-(--color-border) text-(--color-text-dim) hover:text-(--color-text)"
-          >
-            Cancel
-          </button>
+          <ReflectionSection control={control} values={values} />
+
+          {/* On smaller screens the grid collapses to a single column; the
+              buttons go last so they appear after Reflection. */}
+          <div className="flex lg:hidden items-center gap-2">
+            <ActionButtons
+              isSubmitting={isSubmitting}
+              submitLabel={submitLabel}
+              onCancel={onCancel}
+            />
+          </div>
         </div>
       </div>
     </form>
+  )
+}
+
+interface ActionButtonsProps {
+  isSubmitting: boolean
+  submitLabel: string
+  onCancel: () => void
+}
+function ActionButtons({ isSubmitting, submitLabel, onCancel }: ActionButtonsProps) {
+  return (
+    <>
+      <button
+        type="submit"
+        disabled={isSubmitting}
+        className="px-4 py-1.5 text-sm rounded-(--radius) bg-(--color-accent) text-(--color-accent-fg) hover:opacity-90 disabled:opacity-50"
+      >
+        {submitLabel}
+      </button>
+      <button
+        type="button"
+        onClick={onCancel}
+        className="px-4 py-1.5 text-sm rounded-(--radius) border border-(--color-border) text-(--color-text-dim) hover:text-(--color-text)"
+      >
+        Cancel
+      </button>
+    </>
   )
 }

@@ -51,17 +51,17 @@ const SYMBOL_OPTS = [
 
 const CONTRACT_OPTS = [
   { value: null, label: 'All' },
-  { value: 'micro' as const, label: 'Micro' },
-  { value: 'mini' as const, label: 'Mini' },
+  { value: 'micro' as const, label: 'micro' },
+  { value: 'mini' as const, label: 'mini' },
 ] satisfies Array<{ value: ContractType | null; label: string }>
 
 const SESSION_OPTS = [
   { value: null, label: 'All' },
-  { value: 'pre' as const, label: 'Pre' },
+  { value: 'pre' as const, label: 'pre' },
   { value: 'AM' as const, label: 'AM' },
   { value: 'LT' as const, label: 'LT' },
   { value: 'PM' as const, label: 'PM' },
-  { value: 'aft' as const, label: 'Aft' },
+  { value: 'aft' as const, label: 'aft' },
 ] satisfies Array<{ value: Session | null; label: string }>
 
 const RATING_OPTS = [

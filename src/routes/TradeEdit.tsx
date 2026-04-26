@@ -1,14 +1,19 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
+import { format, parseISO } from 'date-fns'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { TradeForm } from '@/components/TradeForm'
-import { PageHeader } from '@/components/PageHeader'
 import { db } from '@/db/schema'
 import { deleteTrade, getTrade, updateTrade } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
 import { useArrowNavigation } from '@/lib/use-arrow-navigation'
 import { recordToForm, type TradeFormValues } from '@/lib/form-schema'
 import type { TradeDraft, TradeRecord } from '@/db/types'
+import { cn } from '@/lib/utils'
+
+const NAV_BTN_CLASS =
+  'inline-flex items-center justify-center p-1.5 rounded-(--radius) text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)'
 
 export function TradeEditRoute() {
   const { id = '' } = useParams()
@@ -97,14 +102,17 @@ export function TradeEditRoute() {
   }
 
   return (
-    <div className="space-y-4">
-      <PageHeader
-        title="Edit trade"
-        prev={prevId ? `/trade/${prevId}/edit` : null}
-        next={nextId ? `/trade/${nextId}/edit` : null}
-        prevLabel="Previous trade"
-        nextLabel="Next trade"
-        rightSlot={
+    <div className="pt-1 space-y-8">
+      <div className="flex items-center justify-between mb-8 gap-4">
+        <div className="flex items-center gap-2">
+          <NavArrow to={prevId ? `/trade/${prevId}/edit` : null} direction="prev" label="Previous trade" />
+          <h1 className="h-8 flex items-center text-lg font-semibold">Edit trade</h1>
+          <NavArrow to={nextId ? `/trade/${nextId}/edit` : null} direction="next" label="Next trade" />
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-(--color-text-dim) font-mono">
+            {format(parseISO(state.record.trade_date), 'MMM d, yyyy')}
+          </span>
           <button
             type="button"
             onClick={handleDelete}
@@ -112,8 +120,8 @@ export function TradeEditRoute() {
           >
             Delete
           </button>
-        }
-      />
+        </div>
+      </div>
       <TradeForm
         key={id}
         initialValues={state.values}
@@ -132,5 +140,29 @@ export function TradeEditRoute() {
         onScreenshotPersist={ref => updateTrade(id, { screenshot: ref })}
       />
     </div>
+  )
+}
+
+function NavArrow({
+  to,
+  direction,
+  label,
+}: {
+  to: string | null
+  direction: 'prev' | 'next'
+  label: string
+}) {
+  const Icon = direction === 'prev' ? ChevronLeft : ChevronRight
+  if (!to) {
+    return (
+      <span aria-disabled className={cn(NAV_BTN_CLASS, 'opacity-30 pointer-events-none')}>
+        <Icon className="size-4" />
+      </span>
+    )
+  }
+  return (
+    <Link to={to} aria-label={label} title={label} className={NAV_BTN_CLASS}>
+      <Icon className="size-4" />
+    </Link>
   )
 }
