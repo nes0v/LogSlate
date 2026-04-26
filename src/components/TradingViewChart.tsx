@@ -1074,10 +1074,10 @@ export function TradingViewChart({
     if (!chart) return
     const isDark = variant === 'dark'
     const bodyUp = isDark
-      ? themeColor('--color-win', '#22c55e')
+      ? themeColor('--color-win', '#16a34a')
       : '#ffffff'
     const bodyDown = isDark
-      ? themeColor('--color-loss', '#ef4444')
+      ? themeColor('--color-loss', '#dc2626')
       : '#000000'
     const candleBorderVisible = !isDark
     const candleStroke = '#000000'

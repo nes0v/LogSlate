@@ -15,7 +15,8 @@ import {
 } from '@/lib/filters'
 import { aggregate } from '@/lib/trade-stats'
 import { formatUsd } from '@/lib/money'
-import { effectivePnl } from '@/lib/trade-math'
+import { classifyTrade, effectivePnl, inferSide } from '@/lib/trade-math'
+import { DonutChart } from '@/components/DonutChart'
 import {
   cohortStats,
   compositeScore,
@@ -194,6 +195,89 @@ export function Stats2Route() {
       }),
     [pf, payoff, stats.win_rate, ddStats.maxDdPct, ddStats.recoveryFactor, equitySeries, stats.net_pnl],
   )
+
+  // ---- Distribution donuts ----------------------------------------
+  const outcomeDonut = useMemo(() => {
+    let win = 0, loss = 0, be = 0
+    for (const t of filtered) {
+      const o = classifyTrade(t)
+      if (o === 'win') win++
+      else if (o === 'loss') loss++
+      else be++
+    }
+    return [
+      { label: 'Wins', value: win, color: 'var(--color-win)' },
+      { label: 'Losses', value: loss, color: 'var(--color-loss)' },
+      { label: 'Breakeven', value: be, color: 'var(--color-text-dim)' },
+    ]
+  }, [filtered])
+
+  const sessionDonut = useMemo(() => {
+    const counts = { pre: 0, AM: 0, LT: 0, PM: 0, aft: 0 } as Record<Session, number>
+    for (const t of filtered) counts[t.session]++
+    return [
+      { label: 'pre', value: counts.pre, color: '#c4b5fd' },
+      { label: 'AM', value: counts.AM, color: '#7dd3fc' },
+      { label: 'LT', value: counts.LT, color: '#fbbf24' },
+      { label: 'PM', value: counts.PM, color: '#2563eb' },
+      { label: 'aft', value: counts.aft, color: '#7e22ce' },
+    ]
+  }, [filtered])
+
+  const symbolDonut = useMemo(() => {
+    let nq = 0, es = 0
+    for (const t of filtered) {
+      if (t.symbol === 'NQ') nq++
+      else es++
+    }
+    return [
+      { label: 'NQ', value: nq, color: 'var(--color-accent)' },
+      { label: 'ES', value: es, color: 'var(--color-text-dim)' },
+    ]
+  }, [filtered])
+
+  const contractDonut = useMemo(() => {
+    let micro = 0, mini = 0
+    for (const t of filtered) {
+      if (t.contract_type === 'micro') micro++
+      else mini++
+    }
+    return [
+      { label: 'micro', value: micro, color: 'var(--color-accent)' },
+      { label: 'mini', value: mini, color: 'var(--color-text-dim)' },
+    ]
+  }, [filtered])
+
+  const sideDonut = useMemo(() => {
+    let longs = 0, shorts = 0, unknown = 0
+    for (const t of filtered) {
+      const s = inferSide(t)
+      if (s === 'long') longs++
+      else if (s === 'short') shorts++
+      else unknown++
+    }
+    return [
+      { label: 'Long', value: longs, color: 'var(--color-win)' },
+      { label: 'Short', value: shorts, color: 'var(--color-loss)' },
+      ...(unknown > 0
+        ? [{ label: 'Unknown', value: unknown, color: 'var(--color-text-dim)' }]
+        : []),
+    ]
+  }, [filtered])
+
+  const ratingDonut = useMemo(() => {
+    let good = 0, excellent = 0, egg = 0
+    for (const t of filtered) {
+      if (t.rating === 'good') good++
+      else if (t.rating === 'excellent') excellent++
+      else if (t.rating === 'egg') egg++
+    }
+    return [
+      { label: '👍 good', value: good, color: 'var(--color-accent)' },
+      { label: '🔥 excellent', value: excellent, color: 'var(--color-win)' },
+      { label: '🥚 egg', value: egg, color: 'var(--color-text-dim)' },
+    ]
+  }, [filtered])
 
   // Daily P&L heatmap
   const dailyPnl = useMemo(() => {
@@ -585,6 +669,19 @@ export function Stats2Route() {
                   )
                 })}
               </div>
+            </div>
+          </section>
+
+          {/* Distribution donuts */}
+          <section className="space-y-2">
+            <h2 className="text-sm font-medium">Distributions</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              <DonutChart title="Outcomes" segments={outcomeDonut} />
+              <DonutChart title="Sessions" segments={sessionDonut} />
+              <DonutChart title="Symbols" segments={symbolDonut} />
+              <DonutChart title="Contract type" segments={contractDonut} />
+              <DonutChart title="Side" segments={sideDonut} />
+              <DonutChart title="Ratings" segments={ratingDonut} />
             </div>
           </section>
 

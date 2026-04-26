@@ -13,7 +13,7 @@ import {
   type TradeFilters,
 } from '@/lib/filters'
 import { aggregate } from '@/lib/trade-stats'
-import { computePlannedRr, computeRealizedRr, effectivePnl, totalContracts } from '@/lib/trade-math'
+import { classifyTrade, computePlannedRr, computeRealizedRr, effectivePnl, totalContracts } from '@/lib/trade-math'
 import {
   cohortStats,
   holdTimeBuckets,
@@ -266,8 +266,9 @@ function DaysAndTimeReport({
       const p = effectivePnl(t) ?? 0
       cell.pnl += p
       cell.count++
-      if (p > 0) cell.wins++
-      else if (p < 0) cell.losses++
+      const outcome = classifyTrade(t)
+      if (outcome === 'win') cell.wins++
+      else if (outcome === 'loss') cell.losses++
     }
     return map
   }, [trades])
@@ -415,8 +416,9 @@ function RiskReport({
       const cur = map.get(c) ?? { count: 0, wins: 0, losses: 0, pnl: 0 }
       const p = effectivePnl(t) ?? 0
       cur.count++
-      if (p > 0) cur.wins++
-      else if (p < 0) cur.losses++
+      const outcome = classifyTrade(t)
+      if (outcome === 'win') cur.wins++
+      else if (outcome === 'loss') cur.losses++
       cur.pnl += p
       map.set(c, cur)
     }
@@ -443,8 +445,9 @@ function RiskReport({
       }
       const p = effectivePnl(t) ?? 0
       cur.count++
-      if (p > 0) cur.wins++
-      else if (p < 0) cur.losses++
+      const outcome = classifyTrade(t)
+      if (outcome === 'win') cur.wins++
+      else if (outcome === 'loss') cur.losses++
       cur.pnl += p
       const rr = computeRealizedRr(t)
       if (rr !== null) {
@@ -1083,9 +1086,21 @@ function Scatter({
           cx={x(p.x)}
           cy={y(p.y)}
           r={3.5}
-          fill={p.win ? 'var(--color-win)' : 'var(--color-loss)'}
+          fill={
+            p.outcome === 'win'
+              ? 'var(--color-win)'
+              : p.outcome === 'loss'
+                ? 'var(--color-loss)'
+                : 'var(--color-text-faint)'
+          }
           fillOpacity={0.7}
-          stroke={p.win ? 'var(--color-win)' : 'var(--color-loss)'}
+          stroke={
+            p.outcome === 'win'
+              ? 'var(--color-win)'
+              : p.outcome === 'loss'
+                ? 'var(--color-loss)'
+                : 'var(--color-text-faint)'
+          }
           style={{ cursor: onClick ? 'pointer' : 'default' }}
           onClick={() => onClick?.(p)}
         >

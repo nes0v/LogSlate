@@ -24,12 +24,16 @@ import {
 import { execution, tradeRecord } from '@/test/fixtures'
 
 // Helper: build a trade with a specific net P&L via pnl_override.
+// AHPC is set to match the PnL sign so `classifyTrade` agrees with the
+// override (otherwise the >|4| handles threshold would mark every trade
+// as scratch).
 function tradeWithPnl(pnl: number, overrides: Parameters<typeof tradeRecord>[0] = {}) {
+  const sellPrice = pnl > 0 ? 20010 : pnl < 0 ? 19990 : 20000
   return tradeRecord({
     pnl_override: pnl,
     executions: [
       execution({ kind: 'buy', price: 20000, time: '2026-04-15T14:30:00.000Z' }),
-      execution({ kind: 'sell', price: 20000, time: '2026-04-15T14:45:00.000Z' }),
+      execution({ kind: 'sell', price: sellPrice, time: '2026-04-15T14:45:00.000Z' }),
     ],
     ...overrides,
   })

@@ -1,6 +1,7 @@
 import type { EquityAdjustment, TradeRecord } from '@/db/types'
 import type { Bucket } from '@/lib/buckets'
 import {
+  classifyTrade,
   computeDuration,
   computeFees,
   computeGrossPnl,
@@ -67,10 +68,11 @@ export function aggregate(trades: TradeRecord[]): AggregateStats {
     result.gross_pnl += gross
     result.fees += computeFees(t)
 
-    if (net > 0) {
+    const outcome = classifyTrade(t)
+    if (outcome === 'win') {
       result.wins++
       winSum += net
-    } else if (net < 0) {
+    } else if (outcome === 'loss') {
       result.losses++
       lossSum += net
     } else {

@@ -60,11 +60,29 @@
   --color-accent:      light-dark(#6840ee, #8a6dff);
   --color-accent-fg:   #ffffff;
   --color-accent-soft: light-dark(rgba(104, 64, 238, 0.10), rgba(138, 109, 255, 0.16));
+  /* A deeper, more saturated purple — used for solid pills/chips that
+   * need to read as "dark purple" in both light and dark mode. */
+  --color-accent-deep: #2c2759;
 
   /* Trading colors — overridden at runtime by color-scheme-preference.ts.
    * Defaults are the "classic" green/red. */
   --color-win:  #22c55e;
   --color-loss: #ef4444;
+  /* Calendar win/loss-cell backgrounds + matching outline rings.
+   * Light mode uses the bright palette greens/reds (with a slightly
+   * darker shade for the border); dark mode uses deep pine/wine bgs
+   * with a lighter shade for the border. Independent of
+   * --color-win/loss so the win/loss palette picker doesn't drag the
+   * calendar along with it. */
+  --color-cal-win-bg:         light-dark(#22c55e, #073d29);
+  --color-cal-win-ring:       light-dark(#15803d, #155947);
+  --color-cal-loss-bg:        light-dark(#ef4444, #5c1f1d);
+  --color-cal-loss-ring:      light-dark(#b91c1c, #8b3d3a);
+  --color-cal-breakeven-bg:   light-dark(#9ca3af, #4d4d4d);
+  --color-cal-breakeven-ring: light-dark(#6b7280, #6b6b6b);
+  /* Weekly summary card outline. White in light mode (reads borderless
+   * against the page) and the standard dark-mode border otherwise. */
+  --color-cal-week-border:    light-dark(#ffffff, #2a2c37);
   /* Fee bars — light gray. In light mode it matches the page bg; in dark
    * we step it down a bit so it doesn't dominate the panel. */
   --color-fee:  light-dark(#e3e5ec, #9ca3af);

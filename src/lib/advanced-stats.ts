@@ -1,11 +1,12 @@
 // Deeper analytics on top of `aggregate` — profit factor, expectancy R,
 // drawdown timeseries, Sharpe/Sortino/Calmar, K-Ratio, Ulcer, SQN,
+// classifyTrade-aware win/loss aggregations.
 // streak math, R-multiple distribution, MAE/MFE summaries, and the
 // Zella-style composite score. Each function takes plain inputs so it
 // stays pure and testable.
 
 import type { TradeRecord } from '@/db/types'
-import { computeRealizedRr, effectivePnl } from '@/lib/trade-math'
+import { classifyTrade, computeRealizedRr, effectivePnl, type TradeOutcome } from '@/lib/trade-math'
 
 // ---------- profit factor / payoff / expectancy ---------------------
 
@@ -16,8 +17,9 @@ export function profitFactor(trades: TradeRecord[]): number | null {
   let losses = 0
   for (const t of trades) {
     const p = effectivePnl(t) ?? 0
-    if (p > 0) wins += p
-    else if (p < 0) losses += p
+    const outcome = classifyTrade(t)
+    if (outcome === 'win') wins += p
+    else if (outcome === 'loss') losses += p
   }
   if (wins === 0 && losses === 0) return null
   if (losses === 0) return Infinity
@@ -32,10 +34,11 @@ export function payoffRatio(trades: TradeRecord[]): number | null {
   let ls = 0
   for (const t of trades) {
     const p = effectivePnl(t) ?? 0
-    if (p > 0) {
+    const outcome = classifyTrade(t)
+    if (outcome === 'win') {
       ws += p
       wn++
-    } else if (p < 0) {
+    } else if (outcome === 'loss') {
       ls += p
       ln++
     }
@@ -65,10 +68,11 @@ export function expectancyDollars(trades: TradeRecord[]): number | null {
   let ls = 0
   for (const t of trades) {
     const p = effectivePnl(t) ?? 0
-    if (p > 0) {
+    const outcome = classifyTrade(t)
+    if (outcome === 'win') {
       ws += p
       wn++
-    } else if (p < 0) {
+    } else if (outcome === 'loss') {
       ls += p
       ln++
     }
@@ -89,9 +93,9 @@ export function kellyFraction(trades: TradeRecord[]): number | null {
   let wn = 0
   let ln = 0
   for (const t of trades) {
-    const p = effectivePnl(t) ?? 0
-    if (p > 0) wn++
-    else if (p < 0) ln++
+    const outcome = classifyTrade(t)
+    if (outcome === 'win') wn++
+    else if (outcome === 'loss') ln++
   }
   const decided = wn + ln
   if (decided === 0) return null
@@ -138,8 +142,8 @@ export function streakStats(trades: TradeRecord[]): StreakStats {
     return firstExecMs(a) - firstExecMs(b)
   })
   for (const t of sorted) {
-    const p = effectivePnl(t) ?? 0
-    const sign = p > 0 ? 1 : p < 0 ? -1 : 0
+    const outcome = classifyTrade(t)
+    const sign = outcome === 'win' ? 1 : outcome === 'loss' ? -1 : 0
     if (sign === 0) {
       // Scratch — break streak.
       curSign = 0
@@ -416,11 +420,12 @@ export function maeMfeStats(trades: TradeRecord[]): MaeMfeStats {
       nMfe++
     }
     const pnl = effectivePnl(t) ?? 0
-    if (pnl > 0 && t.buildup !== null && t.buildup > 0) {
+    const outcome = classifyTrade(t)
+    if (outcome === 'win' && t.buildup !== null && t.buildup > 0) {
       effSum += pnl / t.buildup
       effN++
     }
-    if (pnl < 0 && t.drawdown !== null && t.drawdown > 0 && t.stop_loss > 0) {
+    if (outcome === 'loss' && t.drawdown !== null && t.drawdown > 0 && t.stop_loss > 0) {
       maeStopSum += t.drawdown / t.stop_loss
       maeStopN++
     }
@@ -439,7 +444,10 @@ export interface ScatterPoint {
   id: string
   x: number
   y: number
+  /** Kept for back-compat — true only for trades classified as a win
+   *  (i.e. above the AHPC threshold and with positive PnL). */
   win: boolean
+  outcome: TradeOutcome
   date: string
 }
 
@@ -449,11 +457,13 @@ export function maeScatter(trades: TradeRecord[]): ScatterPoint[] {
     const p = effectivePnl(t)
     if (p === null) continue
     if (t.drawdown === null) continue
+    const outcome = classifyTrade(t)
     out.push({
       id: t.id,
       x: t.drawdown,
       y: p,
-      win: p > 0,
+      win: outcome === 'win',
+      outcome,
       date: t.trade_date,
     })
   }
@@ -466,11 +476,13 @@ export function mfeScatter(trades: TradeRecord[]): ScatterPoint[] {
     const p = effectivePnl(t)
     if (p === null) continue
     if (t.buildup === null) continue
+    const outcome = classifyTrade(t)
     out.push({
       id: t.id,
       x: t.buildup,
       y: p,
-      win: p > 0,
+      win: outcome === 'win',
+      outcome,
       date: t.trade_date,
     })
   }
@@ -501,8 +513,9 @@ export function pnlByWeekday(trades: TradeRecord[]): Array<{ name: string; pnl: 
     const p = effectivePnl(t) ?? 0
     arr[day].pnl += p
     arr[day].count++
-    if (p > 0) arr[day].wins++
-    else if (p < 0) arr[day].losses++
+    const outcome = classifyTrade(t)
+    if (outcome === 'win') arr[day].wins++
+    else if (outcome === 'loss') arr[day].losses++
   }
   return arr
 }
@@ -542,9 +555,9 @@ export function holdTimeBuckets(trades: TradeRecord[]): Array<{ label: string; w
     const minutes = (Math.max(...times) - Math.min(...times)) / 60000
     const idx = HOLD_EDGES_MIN.findIndex(([lo, hi]) => minutes >= lo && minutes < hi)
     if (idx < 0) continue
-    const p = effectivePnl(t) ?? 0
-    if (p > 0) out[idx].wins++
-    else if (p < 0) out[idx].losses++
+    const outcome = classifyTrade(t)
+    if (outcome === 'win') out[idx].wins++
+    else if (outcome === 'loss') out[idx].losses++
   }
   return out
 }

@@ -135,3 +135,30 @@ export function computePlannedRr(
   if (t.profit_target == null) return null
   return t.profit_target / t.stop_loss
 }
+
+// Trades that didn't move the market by at least this many handles in
+// either direction count as "scratch" — neither a winner nor a loser.
+export const BREAKEVEN_HANDLES = 4
+
+export type TradeOutcome = 'win' | 'loss' | 'breakeven'
+
+// Win/loss/breakeven classifier that respects the BREAKEVEN_HANDLES
+// band: a trade whose absolute AHPC sits below the threshold is a
+// scratch even if its PnL is non-zero. Above the threshold, the PnL
+// sign decides. A manual `pnl_override` takes precedence over the AHPC
+// rule — it's an explicit user signal that the trade outcome should be
+// read straight off that number.
+export function classifyTrade(
+  t: Pick<TradeRecord, 'executions' | 'symbol' | 'contract_type' | 'pnl_override'>,
+): TradeOutcome {
+  if (t.pnl_override !== null && t.pnl_override !== undefined) {
+    if (t.pnl_override > 0) return 'win'
+    if (t.pnl_override < 0) return 'loss'
+    return 'breakeven'
+  }
+  const ahpc = computeAhpc(t)
+  if (ahpc !== null && Math.abs(ahpc) < BREAKEVEN_HANDLES) return 'breakeven'
+  const pnl = effectivePnl(t)
+  if (pnl === null || pnl === 0) return 'breakeven'
+  return pnl > 0 ? 'win' : 'loss'
+}
