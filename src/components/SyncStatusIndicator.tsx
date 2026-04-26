@@ -18,7 +18,7 @@ export function SyncStatusIndicator() {
         to="/settings"
         aria-label="Syncing…"
         title="Syncing…"
-        className="p-1 rounded-md text-(--color-text-dim) hover:text-(--color-text)"
+        className="p-1 rounded-(--radius) text-(--color-text-dim) hover:text-(--color-text)"
       >
         <RefreshCw className="size-4 animate-spin" />
       </Link>
@@ -31,7 +31,7 @@ export function SyncStatusIndicator() {
         to="/settings"
         aria-label="Sync error"
         title={auto.error ?? 'Sync error'}
-        className="p-1 rounded-md text-(--color-loss) hover:opacity-80"
+        className="p-1 rounded-(--radius) text-(--color-loss) hover:opacity-80"
       >
         <AlertCircle className="size-4" />
       </Link>

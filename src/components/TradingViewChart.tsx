@@ -24,6 +24,7 @@ import { format } from 'date-fns'
 import type { CandlePoint } from '@/lib/trade-stats'
 import { bucketKeyToTs, dateToBucketKey, type Timeframe } from '@/lib/buckets'
 import { useColorScheme } from '@/lib/color-scheme-preference'
+import { useResolvedTheme } from '@/lib/theme-preference'
 import { themeColor } from '@/lib/theme-colors'
 import { formatUsd } from '@/lib/money'
 import { cn } from '@/lib/utils'
@@ -81,6 +82,7 @@ interface CrosshairPrimitive extends ISeriesPrimitive<Time> {
 interface CandleHoverPrimitive extends ISeriesPrimitive<Time> {
   setHoveredTime(t: number | null): void
   setCandles(map: Map<number, CandlestickData<UTCTimestamp>>): void
+  setColor(color: string): void
 }
 
 interface CandleWicksPrimitive extends ISeriesPrimitive<Time> {
@@ -280,6 +282,7 @@ function createCandleHoverPrimitive(): CandleHoverPrimitive {
   let requestUpdate: (() => void) | null = null
   let hoveredTime: number | null = null
   let candles = new Map<number, CandlestickData<UTCTimestamp>>()
+  let color = '#ffffff'
 
   const renderer: IPrimitivePaneRenderer = {
     draw(target) {
@@ -300,7 +303,7 @@ function createCandleHoverPrimitive(): CandleHoverPrimitive {
         const ctx = scope.context
         const { horizontalPixelRatio: hx, verticalPixelRatio: vy } = scope
         ctx.save()
-        ctx.fillStyle = '#ffffff'
+        ctx.fillStyle = color
 
         // Match lightweight-charts's internal candle geometry exactly.
         let barWidth = optimalCandlestickWidth(barSpacing, hx)
@@ -373,6 +376,11 @@ function createCandleHoverPrimitive(): CandleHoverPrimitive {
     },
     setCandles(m) {
       candles = m
+      requestUpdate?.()
+    },
+    setColor(c) {
+      if (c === color) return
+      color = c
       requestUpdate?.()
     },
   }
@@ -653,6 +661,11 @@ export function TradingViewChart({
   // init + series effects below re-run and pick up the new CSS-var
   // values via `themeColor()`, refreshing chart colors live.
   const colorScheme = useColorScheme()
+  // Resolved light/dark — drives whether candles get a black border
+  // outline (light theme: yes; dark: no) so they remain readable on
+  // a white panel background. Re-runs the series + init effects when
+  // the user flips themes.
+  const resolvedTheme = useResolvedTheme()
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | ISeriesApi<'Line'> | null>(null)
@@ -761,7 +774,11 @@ export function TradingViewChart({
       layout: {
         background: { type: ColorType.Solid, color: bg },
         textColor: text,
-        fontSize: 11,
+        fontSize: 12,
+        // Inherit the app font (Segoe UI). Default would be lightweight-
+        // charts' own monospace stack, which clashes with the rest of the UI.
+        fontFamily:
+          '"Segoe UI Variable", "Segoe UI", -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif',
         attributionLogo: false,
         // Pane separator matches the price / time scale border exactly —
         // same color in idle state and on hover so there's no highlight.
@@ -860,9 +877,13 @@ export function TradingViewChart({
     feesSeries.attachPrimitive(feesCrossPrim)
     feesCrosshairPrimRef.current = feesCrossPrim
 
-    // Same white-border hover treatment for the fees pane, minus the
+    // Same hover-border treatment for the fees pane, minus the
     // pointer-cursor swap and click handling — fee bars aren't clickable.
+    // Border color flips to black in light theme so it reads on the
+    // bright fee bars; stays white in dark for contrast on dark bars.
+    const hoverBorderColor = resolvedTheme === 'light' ? '#000000' : '#ffffff'
     const feesHoverPrim = createCandleHoverPrimitive()
+    feesHoverPrim.setColor(hoverBorderColor)
     feesSeries.attachPrimitive(feesHoverPrim)
     feesHoverPrimRef.current = feesHoverPrim
 
@@ -1041,7 +1062,7 @@ export function TradingViewChart({
       feesSeriesRef.current = null
       anchorSeriesRef.current = null
     }
-  }, [height, variant, colorScheme])
+  }, [height, variant, colorScheme, resolvedTheme])
 
   // Main equity series + main-pane primitives. Recreated on view
   // change (Line ↔ Candles) since the series type itself differs.
@@ -1104,7 +1125,9 @@ export function TradingViewChart({
     seriesRef.current = series
 
     const adjPrim = createAdjustmentLinesPrimitive()
-    adjPrim.setColor(isDark ? '#374151' : '#1f2937')
+    // Dashed adjustment lines — lighter gray in light theme so they sit
+    // back against the white panel; mid-gray in dark for contrast.
+    adjPrim.setColor(resolvedTheme === 'light' ? '#c4c7d0' : '#374151')
     series.attachPrimitive(adjPrim)
     adjLinesPrimRef.current = adjPrim
 
@@ -1115,6 +1138,10 @@ export function TradingViewChart({
 
     const hoverPrim = view === 'candles' ? createCandleHoverPrimitive() : null
     if (hoverPrim) {
+      // Hover-border color flips per theme so it stays high-contrast on
+      // both colored candle bodies (dark bg → white border) and pale
+      // bordered candles (light bg → black border).
+      hoverPrim.setColor(resolvedTheme === 'light' ? '#000000' : '#ffffff')
       series.attachPrimitive(hoverPrim)
       candleHoverPrimRef.current = hoverPrim
     }
@@ -1164,7 +1191,7 @@ export function TradingViewChart({
       }
       seriesRef.current = null
     }
-  }, [view, variant, colorScheme])
+  }, [view, variant, colorScheme, resolvedTheme])
 
   // Tick-mark formatter follows the active timeframe.
   useEffect(() => {
@@ -1445,9 +1472,6 @@ export function TradingViewChart({
     // primitive never receives its data and the dashed lines vanish.
   }, [adjustments, points, view])
 
-  const winColor = themeColor('--color-win', '#22c55e')
-  const lossColor = themeColor('--color-loss', '#ef4444')
-
   return (
     <section className="space-y-2">
       {/* `items-center` + fixed min-height keep the title anchored when the
@@ -1461,7 +1485,7 @@ export function TradingViewChart({
         {headerRight}
       </div>
       <div
-        className="relative border border-(--color-border) rounded-md overflow-hidden"
+        className="relative rounded-(--radius) overflow-hidden shadow-(--shadow-xs)"
         style={{ width: '100%', height }}
       >
         <div ref={containerRef} style={{ position: 'absolute', inset: 0 }} />
@@ -1484,17 +1508,18 @@ export function TradingViewChart({
           }}
         >
           {adjLabels.map((line, i) => {
-            const color = line.amount >= 0 ? winColor : lossColor
             const label = `${line.amount >= 0 ? '+' : '−'}$${Math.round(Math.abs(line.amount)).toLocaleString()}`
             return (
               <div
                 key={`${line.x}-${i}`}
-                className="absolute"
+                className={cn(
+                  'absolute',
+                  line.amount >= 0 ? 'text-(--color-win)' : 'text-(--color-loss)',
+                )}
                 style={{
                   left: Math.round(line.x),
                   top: 4,
                   transform: 'translateX(-50%)',
-                  color,
                   fontSize: 12,
                   fontFamily: 'var(--font-mono)',
                   whiteSpace: 'nowrap',
@@ -1522,7 +1547,7 @@ function CandleInfoRow({
   const tradingPnl = point.close - point.open
   const delta = tradingPnl + point.adjustment
   return (
-    <div className="flex items-center gap-x-4 text-xs font-mono bg-(--color-panel-2) border border-(--color-border) rounded-md px-2 py-1 pointer-events-none whitespace-nowrap">
+    <div className="flex items-center gap-x-4 text-xs font-mono bg-(--color-panel-2) shadow-(--shadow-xs) rounded-(--radius) px-2 py-1 pointer-events-none whitespace-nowrap">
       <span className="text-(--color-text-dim)">{dateLabel}</span>
       {point.count > 0 ? (
         <>

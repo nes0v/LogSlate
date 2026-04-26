@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils'
 // same in every browser — inline-flex centers the SVG identically regardless
 // of whether the URL is navigable or disabled.
 const NAV_BTN_CLASS =
-  'inline-flex items-center justify-center p-1.5 rounded-md text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)'
+  'inline-flex items-center justify-center p-1.5 rounded-(--radius) text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)'
 
 interface PageHeaderProps {
   title: string
@@ -40,7 +40,7 @@ export function PageHeader({
         {todayTo && (
           <Link
             to={todayTo}
-            className="ml-2 px-2 py-1 text-xs rounded-md border border-(--color-border) text-(--color-text-dim) hover:text-(--color-text)"
+            className="ml-2 px-2 py-1 text-xs rounded-(--radius) border border-(--color-border) text-(--color-text-dim) hover:text-(--color-text)"
           >
             Today
           </Link>

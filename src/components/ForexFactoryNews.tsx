@@ -172,7 +172,7 @@ export function ForexFactoryNews() {
             type="button"
             onClick={() => setDayKey(shiftDayKey(dayKey, -1))}
             aria-label="Previous day"
-            className="p-1 rounded-md text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)"
+            className="p-1 rounded-(--radius) text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)"
           >
             <ChevronLeft className="size-4" />
           </button>
@@ -183,7 +183,7 @@ export function ForexFactoryNews() {
             type="button"
             onClick={() => setDayKey(shiftDayKey(dayKey, 1))}
             aria-label="Next day"
-            className="p-1 rounded-md text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)"
+            className="p-1 rounded-(--radius) text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)"
           >
             <ChevronRight className="size-4" />
           </button>
@@ -191,7 +191,7 @@ export function ForexFactoryNews() {
             <button
               type="button"
               onClick={() => setDayKey(todayKey)}
-              className="ml-1 px-2 py-1 text-xs rounded-md border border-(--color-border) text-(--color-text-dim) hover:text-(--color-text)"
+              className="ml-1 px-2 py-1 text-xs rounded-(--radius) border border-(--color-border) text-(--color-text-dim) hover:text-(--color-text)"
             >
               Today
             </button>
@@ -217,13 +217,13 @@ export function ForexFactoryNews() {
             onClick={() => void refresh()}
             disabled={refreshing}
             aria-label="Refresh"
-            className="p-1.5 rounded-md text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2) disabled:opacity-50"
+            className="p-1.5 rounded-(--radius) text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2) disabled:opacity-50"
           >
             <RefreshCw className={cn('size-3.5', (refreshing || loading) && 'animate-spin')} />
           </button>
         </div>
       </div>
-      <div className="bg-(--color-panel) border border-(--color-border) rounded-md">
+      <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs)">
         {error ? (
           <div className="p-3 text-xs text-(--color-loss)">Failed to load news: {error}</div>
         ) : loading ? (
@@ -256,7 +256,7 @@ function CurrencyPill({
       type="button"
       onClick={onClick}
       className={cn(
-        'px-2 py-1 rounded-md border transition-colors',
+        'px-2 py-1 rounded-(--radius) border transition-colors',
         active
           ? 'border-(--color-border) bg-(--color-panel-2) text-(--color-text)'
           : 'border-transparent text-(--color-text-dim) hover:text-(--color-text)',
@@ -276,7 +276,7 @@ function EventRow({ event, nowMs }: { event: FFEvent; nowMs: number }) {
       <span
         className={cn(
           'font-mono tabular-nums',
-          isPast ? 'text-gray-700' : 'text-(--color-text-dim)',
+          isPast ? 'text-(--color-text-faint)' : 'text-(--color-text-dim)',
         )}
       >
         {time}

@@ -28,9 +28,7 @@ import {
 import { adjustmentsByDate, aggregate, computeCandles } from '@/lib/trade-stats'
 import { useStartingEquity } from '@/lib/use-starting-equity'
 import {
-  bucketByDay,
   bucketByTimeframe,
-  bucketByWeek,
   dateToBucketKey,
   WEEK_OPTS,
   type Timeframe,
@@ -38,11 +36,8 @@ import {
 import { StatsGrid } from '@/components/StatsGrid'
 import { TradingViewChart } from '@/components/TradingViewChart'
 import { ChartTimeframeToggle } from '@/components/ChartTimeframeToggle'
-import { WeeklyCards } from '@/components/WeeklyCards'
 import { EquityChartToggle, type EquityView } from '@/components/EquityChartToggle'
 import { getDefaultEquityView } from '@/lib/equity-view-preference'
-import { PeriodBreakdown } from '@/components/PeriodBreakdown'
-import { FacetBreakdown } from '@/components/FacetBreakdown'
 import { TradeRow, TRADE_ROW_COLS } from '@/components/TradeRow'
 import { Pills } from '@/components/form/Pills'
 import { Field, inputClass } from '@/components/form/Field'
@@ -168,16 +163,6 @@ export function StatsRoute() {
   const startingEquity = useStartingEquity(rangeStart)
   const roi = startingEquity > 0 ? stats.net_pnl / startingEquity : null
 
-  const weeks = useMemo(() => {
-    if (!rangeStart || !rangeEnd) return []
-    return bucketByWeek(filtered, new Date(rangeStart + 'T00:00:00'), new Date(rangeEnd + 'T00:00:00'))
-  }, [filtered, rangeStart, rangeEnd])
-
-  const dayBuckets = useMemo(() => {
-    if (!rangeStart || !rangeEnd) return []
-    return bucketByDay(filtered, new Date(rangeStart + 'T00:00:00'), new Date(rangeEnd + 'T00:00:00'))
-  }, [filtered, rangeStart, rangeEnd])
-
   // Chart trades = `allTrades` with non-date filters applied. The date
   // filter only sets the initial viewport (`chartVisibleFrom/To` below),
   // so the chart contains every trade ever recorded for this account
@@ -256,37 +241,6 @@ export function StatsRoute() {
   const filterFromKey = rangeStart ? dateToBucketKey(rangeStart, timeframe) : undefined
   const filterToKey = rangeEnd ? dateToBucketKey(rangeEnd, timeframe) : undefined
 
-  const bySymbol = useMemo(
-    () => [
-      { label: 'NQ', trades: filtered.filter(t => t.symbol === 'NQ') },
-      { label: 'ES', trades: filtered.filter(t => t.symbol === 'ES') },
-    ],
-    [filtered],
-  )
-  const byContract = useMemo(
-    () => [
-      { label: 'Micro', trades: filtered.filter(t => t.contract_type === 'micro') },
-      { label: 'Mini', trades: filtered.filter(t => t.contract_type === 'mini') },
-    ],
-    [filtered],
-  )
-  const bySession = useMemo(
-    () =>
-      (['pre', 'AM', 'LT', 'PM', 'aft'] as const).map(s => ({
-        label: s,
-        trades: filtered.filter(t => t.session === s),
-      })),
-    [filtered],
-  )
-  const byRating = useMemo(
-    () => [
-      { label: '👍 good', trades: filtered.filter(t => t.rating === 'good') },
-      { label: '🔥 excellent', trades: filtered.filter(t => t.rating === 'excellent') },
-      { label: '🥚 egg', trades: filtered.filter(t => t.rating === 'egg') },
-    ],
-    [filtered],
-  )
-
   // Chronological order — oldest trade at the top, newest at the bottom.
   const tradesDesc = useMemo(() => {
     function firstExec(t: typeof filtered[number]): number {
@@ -360,14 +314,14 @@ export function StatsRoute() {
         {!isDefault && (
           <button
             onClick={clear}
-            className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md border border-(--color-border) text-(--color-text-dim) hover:text-(--color-text)"
+            className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-(--radius) border border-(--color-border) text-(--color-text-dim) hover:text-(--color-text)"
           >
             <X className="size-3" /> Clear filters
           </button>
         )}
       </div>
 
-      <section className="bg-(--color-panel) border border-(--color-border) rounded-md p-3 space-y-3">
+      <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3 space-y-3">
         <div className="flex flex-wrap items-end gap-3">
           <Field label="From" className="w-40">
             <input
@@ -437,7 +391,7 @@ export function StatsRoute() {
                     <button
                       type="button"
                       onClick={setFilterToVisible}
-                      className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono rounded-md border border-(--color-border) bg-(--color-panel) text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2) transition-colors"
+                      className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono rounded-(--radius) bg-(--color-panel) shadow-(--shadow-xs) text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2) transition-colors"
                     >
                       Set date to range
                     </button>
@@ -447,14 +401,6 @@ export function StatsRoute() {
               </div>
             }
           />
-          <div className="grid md:grid-cols-2 gap-x-4 gap-y-8">
-            <FacetBreakdown title="By Symbol" items={bySymbol} />
-            <FacetBreakdown title="By Contract" items={byContract} />
-            <FacetBreakdown title="By Session" items={bySession} />
-            <FacetBreakdown title="By Rating" items={byRating} />
-          </div>
-          <WeeklyCards buckets={weeks} />
-          <PeriodBreakdown title="Days" buckets={dayBuckets} />
           <section>
             <h2 className="text-sm font-medium mb-2">
               Trades <span className="text-(--color-text-dim) font-normal">({filtered.length})</span>
@@ -467,7 +413,7 @@ export function StatsRoute() {
           </section>
         </>
       ) : (
-        <div className={cn('text-sm text-(--color-text-dim) text-center py-12 border border-dashed border-(--color-border) rounded-md')}>
+        <div className={cn('text-sm text-(--color-text-dim) text-center py-12 border border-dashed border-(--color-border) rounded-(--radius)')}>
           {allTrades && allTrades.length === 0
             ? 'No trades yet.'
             : 'No trades match the current filters.'}

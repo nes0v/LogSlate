@@ -79,7 +79,7 @@ export function StatsGrid({ stats, roi }: StatsGridProps) {
           label={
             <>
               ROI{' '}
-              <span className="normal-case tracking-normal text-[11px] opacity-70">
+              <span className="normal-case tracking-normal text-xs opacity-70">
                 (excluding equity adjustments)
               </span>
             </>
@@ -106,7 +106,7 @@ function Stat({
   big?: boolean
 }) {
   return (
-    <div className="bg-(--color-panel) border border-(--color-border) rounded-md p-3">
+    <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3">
       <div className="text-xs text-(--color-text-dim) uppercase tracking-wider">{label}</div>
       <div
         className={cn(

@@ -41,7 +41,7 @@ export function TradeRow({ trade, index }: TradeRowProps) {
     <Link
       to={`/trade/${trade.id}/edit`}
       title={trade.idea}
-      className="col-span-9 grid grid-cols-subgrid items-center bg-(--color-panel) border border-(--color-border) rounded-md px-3 py-2 hover:bg-(--color-panel-2) transition-colors"
+      className="col-span-9 grid grid-cols-subgrid items-center bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) px-3 py-2 hover:bg-(--color-panel-2) transition-colors"
     >
       <span className="text-xs font-mono text-(--color-text-dim) tabular-nums">
         {index !== undefined ? `#${index}` : ''}

@@ -3,6 +3,11 @@ import { Layout } from '@/components/Layout'
 import { CalendarRoute } from '@/routes/Calendar'
 import { DayRoute } from '@/routes/Day'
 import { StatsRoute } from '@/routes/Stats'
+import { Stats2Route } from '@/routes/Stats2'
+import { ReportsRoute } from '@/routes/Reports'
+import { NotebookRoute } from '@/routes/Notebook'
+import { PlaybookRoute } from '@/routes/Playbook'
+import { ProgressRoute } from '@/routes/Progress'
 import { SettingsRoute } from '@/routes/Settings'
 import { TradeNewRoute } from '@/routes/TradeNew'
 import { TradeEditRoute } from '@/routes/TradeEdit'
@@ -17,6 +22,11 @@ export const router = createBrowserRouter([
       { path: 'month/:ym', Component: CalendarRoute },
       { path: 'day/:date', Component: DayRoute },
       { path: 'stats', Component: StatsRoute },
+      { path: 'stats2', Component: Stats2Route },
+      { path: 'reports', Component: ReportsRoute },
+      { path: 'notebook', Component: NotebookRoute },
+      { path: 'playbook', Component: PlaybookRoute },
+      { path: 'progress', Component: ProgressRoute },
       { path: 'settings', Component: SettingsRoute },
       { path: 'trade/new', Component: TradeNewRoute },
       { path: 'trade/:id/edit', Component: TradeEditRoute },

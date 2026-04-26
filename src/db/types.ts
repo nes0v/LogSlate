@@ -35,6 +35,30 @@ export const MAIN_ACCOUNT_ID = 'main'
 
 export type AccountDraft = Pick<Account, 'name'>
 
+// Optional reflection / journaling fields. All nullable / empty by default
+// so existing trades work without migration. The form surfaces these in a
+// collapsible "Reflection" panel.
+export const EMOTIONS = [
+  'calm',
+  'focused',
+  'anxious',
+  'fearful',
+  'greedy',
+  'frustrated',
+  'tired',
+  'confident',
+] as const
+export type Emotion = (typeof EMOTIONS)[number]
+export const MARKET_CONDITIONS = [
+  'trending',
+  'ranging',
+  'choppy',
+  'volatile',
+  'thin',
+  'news-driven',
+] as const
+export type MarketCondition = (typeof MARKET_CONDITIONS)[number]
+
 export interface TradeRecord {
   id: string
   account_id: string
@@ -51,6 +75,16 @@ export interface TradeRecord {
   rating: Rating
   pnl_override: number | null // when set, overrides computed net PnL
   screenshot: string | null // base64 data URL
+  // Reflection / playbook fields (all optional; empty/null on legacy rows).
+  profit_target?: number | null // USD planned profit target
+  notes?: string // post-trade notes (markdown)
+  setup_tags?: string[] // ["breakout", "trend-cont", ...]
+  mistake_tags?: string[] // ["FOMO", "moved stop", ...]
+  emotion?: Emotion | null
+  market_condition?: MarketCondition | null
+  conviction?: number | null // 1..5 (how strong was the conviction at entry?)
+  playbook_id?: string | null
+  playbook_rules_followed?: string[] // rule strings that were honoured
   created_at: string // ISO
   updated_at: string // ISO
 }
@@ -100,6 +134,66 @@ export interface DayScreenshot {
   account_id: string
   date: string // YYYY-MM-DD
   screenshot: string | null
+  created_at: string
+  updated_at: string
+}
+
+// Free-form note in the trader's notebook. Folders are just a free-text
+// `folder` field — empty string means "root". Templates are stored verbatim
+// in `body`; `template_kind` is a tag for filtering / re-applying.
+export const NOTE_TEMPLATES = ['plan', 'watchlist', 'review', 'lesson', 'free'] as const
+export type NoteTemplateKind = (typeof NOTE_TEMPLATES)[number]
+export interface Note {
+  id: string
+  account_id: string
+  folder: string // free text, '' means root
+  title: string
+  body: string // markdown
+  template_kind: NoteTemplateKind
+  pinned: boolean
+  created_at: string
+  updated_at: string
+}
+
+// A named strategy / setup. `groups` holds rule groups (e.g. Entry, Exit,
+// Risk Management) each with a list of rules. Rules are simple strings to
+// keep the schema flexible; the UI surfaces them as a checklist on the
+// trade form.
+export interface PlaybookRuleGroup {
+  id: string
+  name: string
+  rules: string[]
+}
+export interface Playbook {
+  id: string
+  account_id: string
+  name: string
+  description: string
+  symbols: SymbolKey[] // optional symbol filter ("works for NQ only", etc.)
+  groups: PlaybookRuleGroup[]
+  archived: boolean
+  created_at: string
+  updated_at: string
+}
+
+// Daily routine rules ("review yesterday's trades", "no trading on red news",
+// etc.). The user defines a rule list once; each day they tick boxes. The
+// adherence score is just (checked / total) per day.
+export interface ProgressRule {
+  id: string
+  account_id: string
+  text: string
+  active: boolean
+  sort: number
+  created_at: string
+  updated_at: string
+}
+export interface ProgressCheck {
+  id: string // `${account_id}:${date}:${rule_id}`
+  account_id: string
+  date: string // YYYY-MM-DD
+  rule_id: string
+  checked: boolean
   created_at: string
   updated_at: string
 }

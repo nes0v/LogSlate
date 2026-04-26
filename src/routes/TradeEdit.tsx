@@ -108,7 +108,7 @@ export function TradeEditRoute() {
           <button
             type="button"
             onClick={handleDelete}
-            className="px-3 py-1.5 text-sm rounded-md border border-(--color-border) text-(--color-loss) hover:bg-(--color-panel-2)"
+            className="px-3 py-1.5 text-sm rounded-(--radius) border border-(--color-border) text-(--color-loss) hover:bg-(--color-panel-2)"
           >
             Delete
           </button>

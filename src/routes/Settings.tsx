@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { formatDistanceToNow } from 'date-fns'
-import { CheckCircle2, CloudDownload, CloudUpload, LogIn, LogOut, RefreshCw } from 'lucide-react'
+import { CheckCircle2, CloudDownload, CloudUpload, LogIn, LogOut, Monitor, Moon, RefreshCw, Sun } from 'lucide-react'
 import { requestManualSync } from '@/lib/auto-sync'
 import { isConfigured, signIn, signOut, useDriveState } from '@/lib/drive'
 import { clearSyncState, lastSyncAt, type SyncResult } from '@/lib/sync'
@@ -8,6 +8,7 @@ import { exportBackup, importBackup } from '@/lib/backup'
 import { AccountsPanel } from '@/components/AccountsPanel'
 import { EquityAdjustmentsPanel } from '@/components/EquityAdjustmentsPanel'
 import { EquityChartToggle } from '@/components/EquityChartToggle'
+import { Pills } from '@/components/form/Pills'
 import { setDefaultEquityView, useDefaultEquityView } from '@/lib/equity-view-preference'
 import {
   COLOR_SCHEMES,
@@ -15,7 +16,11 @@ import {
   useColorScheme,
   type ColorScheme,
 } from '@/lib/color-scheme-preference'
-import { cn } from '@/lib/utils'
+import {
+  setTheme,
+  useThemePreference,
+  type ThemePreference,
+} from '@/lib/theme-preference'
 
 export function SettingsRoute() {
   const drive = useDriveState()
@@ -26,6 +31,7 @@ export function SettingsRoute() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const defaultEquityView = useDefaultEquityView()
   const colorScheme = useColorScheme()
+  const themePref = useThemePreference()
 
   async function handleSync() {
     setSyncing(true)
@@ -76,7 +82,7 @@ export function SettingsRoute() {
         </p>
 
         {!configured && (
-          <div className="rounded-md border border-(--color-border) bg-(--color-panel) p-3 text-sm space-y-2">
+          <div className="rounded-(--radius) bg-(--color-panel) shadow-(--shadow-xs) p-3 text-sm space-y-2">
             <p className="text-(--color-loss)">Google OAuth client ID is not configured.</p>
             <ol className="list-decimal list-inside space-y-1 text-(--color-text-dim)">
               <li>Go to Google Cloud Console → <em>APIs & Services → Credentials</em></li>
@@ -89,7 +95,7 @@ export function SettingsRoute() {
         )}
 
         {configured && (
-          <div className="rounded-md border border-(--color-border) bg-(--color-panel) p-3 space-y-3">
+          <div className="rounded-(--radius) bg-(--color-panel) shadow-(--shadow-xs) p-3 space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 {drive.status === 'signed-in' ? (
@@ -111,7 +117,7 @@ export function SettingsRoute() {
               {drive.status === 'signed-in' ? (
                 <button
                   onClick={handleSignOut}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md border border-(--color-border) text-(--color-text-dim) hover:text-(--color-text)"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-(--radius) border border-(--color-border) text-(--color-text-dim) hover:text-(--color-text)"
                 >
                   <LogOut className="size-4" /> Disconnect
                 </button>
@@ -119,7 +125,7 @@ export function SettingsRoute() {
                 <button
                   onClick={signIn}
                   disabled={drive.status === 'signing-in'}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md border border-transparent bg-(--color-accent) text-white hover:opacity-90 disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-(--radius) border border-transparent bg-(--color-accent) text-(--color-accent-fg) hover:opacity-90 disabled:opacity-50"
                 >
                   <LogIn className="size-4" /> Connect Google Drive
                 </button>
@@ -139,7 +145,7 @@ export function SettingsRoute() {
                   <button
                     onClick={handleSync}
                     disabled={syncing}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md border border-(--color-border) text-(--color-text) hover:bg-(--color-panel-2) disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-(--radius) border border-(--color-border) text-(--color-text) hover:bg-(--color-panel-2) disabled:opacity-50"
                   >
                     <RefreshCw className={'size-4 ' + (syncing ? 'animate-spin' : '')} />
                     {syncing ? 'Syncing…' : 'Sync now'}
@@ -174,8 +180,29 @@ export function SettingsRoute() {
       <EquityAdjustmentsPanel />
 
       <section className="space-y-3">
+        <h2 className="text-sm font-medium">Appearance</h2>
+        <div className="rounded-(--radius) bg-(--color-panel) shadow-(--shadow-xs) p-3 space-y-3">
+          <div className="space-y-1">
+            <div className="text-sm">Theme</div>
+            <div className="text-xs text-(--color-text-dim)">
+              <em>System</em> follows your OS preference and switches automatically.
+            </div>
+          </div>
+          <Pills
+            value={themePref}
+            onChange={setTheme}
+            options={[
+              { value: 'system', label: 'System', prefix: <Monitor className="size-3.5" /> },
+              { value: 'light', label: 'Light', prefix: <Sun className="size-3.5" /> },
+              { value: 'dark', label: 'Dark', prefix: <Moon className="size-3.5" /> },
+            ] satisfies Array<{ value: ThemePreference; label: string; prefix: React.ReactNode }>}
+          />
+        </div>
+      </section>
+
+      <section className="space-y-3">
         <h2 className="text-sm font-medium">Equity chart</h2>
-        <div className="rounded-md border border-(--color-border) bg-(--color-panel) p-3 flex items-center justify-between gap-4">
+        <div className="rounded-(--radius) bg-(--color-panel) shadow-(--shadow-xs) p-3 flex items-center justify-between gap-4">
           <div className="text-sm space-y-1.5">
             <div>Default view</div>
             <div className="text-xs text-(--color-text-dim)">
@@ -188,43 +215,35 @@ export function SettingsRoute() {
 
       <section className="space-y-3">
         <h2 className="text-sm font-medium">Chart colors</h2>
-        <div className="rounded-md border border-(--color-border) bg-(--color-panel) p-3 space-y-2">
+        <div className="rounded-(--radius) bg-(--color-panel) shadow-(--shadow-xs) p-3 space-y-2">
           <div className="text-sm">Win / loss palette</div>
           <div className="text-xs text-(--color-text-dim)">
             Applies to candle bodies, equity tiles, win/loss text, and every other accent
             on the page.
           </div>
-          <div className="flex gap-2 pt-1">
-            {(Object.entries(COLOR_SCHEMES) as Array<[ColorScheme, typeof COLOR_SCHEMES[ColorScheme]]>).map(
-              ([key, palette]) => {
-                const active = colorScheme === key
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => setColorScheme(key)}
-                    className={cn(
-                      'flex items-center gap-2 px-3 py-1.5 text-sm rounded-md border transition-colors',
-                      active
-                        ? 'border-(--color-text) bg-(--color-panel-2)'
-                        : 'border-(--color-border) text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)',
-                    )}
-                  >
+          <div className="pt-1">
+            <Pills
+              value={colorScheme}
+              onChange={setColorScheme}
+              options={(Object.entries(COLOR_SCHEMES) as Array<
+                [ColorScheme, typeof COLOR_SCHEMES[ColorScheme]]
+              >).map(([key, palette]) => ({
+                value: key,
+                label: palette.label,
+                prefix: (
+                  <span className="inline-flex gap-0.5" aria-hidden>
                     <span
                       className="size-3 rounded-sm"
                       style={{ backgroundColor: palette.win }}
-                      aria-hidden
                     />
                     <span
                       className="size-3 rounded-sm"
                       style={{ backgroundColor: palette.loss }}
-                      aria-hidden
                     />
-                    <span className={active ? 'text-(--color-text)' : ''}>{palette.label}</span>
-                  </button>
-                )
-              },
-            )}
+                  </span>
+                ),
+              }))}
+            />
           </div>
         </div>
       </section>
@@ -238,13 +257,13 @@ export function SettingsRoute() {
         <div className="flex items-center gap-2">
           <button
             onClick={exportBackup}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md border border-(--color-border) text-(--color-text) hover:bg-(--color-panel-2)"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-(--radius) border border-(--color-border) text-(--color-text) hover:bg-(--color-panel-2)"
           >
             <CloudDownload className="size-4" /> Export JSON
           </button>
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md border border-(--color-border) text-(--color-text) hover:bg-(--color-panel-2)"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-(--radius) border border-(--color-border) text-(--color-text) hover:bg-(--color-panel-2)"
           >
             <CloudUpload className="size-4" /> Import JSON
           </button>

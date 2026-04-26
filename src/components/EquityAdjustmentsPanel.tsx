@@ -70,7 +70,7 @@ export function EquityAdjustmentsPanel() {
 
       <form
         onSubmit={handleSubmit}
-        className="bg-(--color-panel) border border-(--color-border) rounded-md p-3 grid grid-cols-[auto_auto_1fr_1fr_auto] gap-3 items-end"
+        className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3 grid grid-cols-[auto_auto_1fr_1fr_auto] gap-3 items-end"
       >
         <label className="text-xs text-(--color-text-dim) space-y-2">
           <div>Date</div>
@@ -116,7 +116,7 @@ export function EquityAdjustmentsPanel() {
         </label>
         <button
           type="submit"
-          className="inline-flex items-center justify-center px-3 py-1.5 text-sm rounded-md border border-transparent bg-(--color-accent) text-white hover:opacity-90"
+          className="inline-flex items-center justify-center px-3 py-1.5 text-sm rounded-(--radius) border border-transparent bg-(--color-accent) text-(--color-accent-fg) hover:opacity-90"
         >
           Add
         </button>
@@ -125,7 +125,7 @@ export function EquityAdjustmentsPanel() {
 
       {list.length > 0 && (
         <>
-          <div className="bg-(--color-panel) border border-(--color-border) rounded-md divide-y divide-(--color-border)">
+          <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) divide-y divide-(--color-border)">
             {list.map(a => (
               <div
                 key={a.id}
@@ -160,7 +160,7 @@ export function EquityAdjustmentsPanel() {
                   type="button"
                   onClick={() => handleDelete(a.id)}
                   aria-label="Delete adjustment"
-                  className="p-1 rounded-md text-(--color-text-dim) hover:text-(--color-loss) hover:bg-(--color-panel-2)"
+                  className="p-1 rounded-(--radius) text-(--color-text-dim) hover:text-(--color-loss) hover:bg-(--color-panel-2)"
                 >
                   <Trash2 className="size-3.5" />
                 </button>

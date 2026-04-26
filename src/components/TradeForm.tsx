@@ -17,6 +17,7 @@ import {
 import { Pills } from '@/components/form/Pills'
 import { Field, inputClass } from '@/components/form/Field'
 import { ScreenshotField } from '@/components/ScreenshotField'
+import { ReflectionSection } from '@/components/ReflectionSection'
 import { formatDuration } from '@/lib/duration'
 import { formatUsd } from '@/lib/money'
 import { cn } from '@/lib/utils'
@@ -135,8 +136,8 @@ export function TradeForm({
 
   return (
     <form onSubmit={handleSubmit(submit)} className="grid lg:grid-cols-[1fr_280px] gap-6">
-      <div className="space-y-6">
-        <section className="flex flex-wrap items-end gap-4">
+      <div className="space-y-4">
+        <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-4 flex flex-wrap items-end gap-4">
           <Field label="Date" className="w-36">
             <input type="date" className={inputClass} {...register('trade_date')} />
           </Field>
@@ -163,21 +164,23 @@ export function TradeForm({
           </Field>
         </section>
 
-        <Field label="Idea" error={errors.idea?.message}>
-          <textarea
-            className={cn(inputClass, 'min-h-40 resize-y')}
-            placeholder="Trade thesis, setup, context…"
-            {...register('idea')}
-          />
-        </Field>
+        <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-4">
+          <Field label="Idea" error={errors.idea?.message}>
+            <textarea
+              className={cn(inputClass, 'min-h-40 resize-y')}
+              placeholder="Trade thesis, setup, context…"
+              {...register('idea')}
+            />
+          </Field>
+        </section>
 
-        <section className="space-y-2">
+        <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-4 space-y-2">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-medium">Executions</h2>
             <button
               type="button"
               onClick={addExecution}
-              className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md border border-(--color-border) text-(--color-text-dim) hover:text-(--color-text)"
+              className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-(--radius) bg-(--color-bg) text-(--color-text-dim) hover:text-(--color-text)"
             >
               <Plus className="size-3" /> Add execution
             </button>
@@ -237,7 +240,7 @@ export function TradeForm({
                   onClick={() => executions.remove(i)}
                   disabled={executions.fields.length <= 2}
                   aria-label="Remove execution"
-                  className="size-8 rounded-md text-(--color-text-dim) hover:text-(--color-loss) disabled:opacity-30 flex items-center justify-center"
+                  className="size-8 rounded-(--radius) text-(--color-text-dim) hover:text-(--color-loss) disabled:opacity-30 flex items-center justify-center"
                 >
                   <Trash2 className="size-4" />
                 </button>
@@ -246,7 +249,7 @@ export function TradeForm({
           </div>
         </section>
 
-        <section className="grid grid-cols-3 gap-4">
+        <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-4 grid grid-cols-3 gap-4">
           <Field label="Stop loss ($)" error={errors.stop_loss?.message}>
             <input
               type="number"
@@ -286,7 +289,7 @@ export function TradeForm({
           </Field>
         </section>
 
-        <section className="flex flex-wrap gap-6">
+        <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-4 flex flex-wrap gap-6">
           <Field label="Planned R:R">
             <Controller
               control={control}
@@ -303,7 +306,9 @@ export function TradeForm({
           </Field>
         </section>
 
-        <section>
+        <ReflectionSection control={control} values={values} />
+
+        <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-4">
           <Field label="Screenshot">
             <ScreenshotField
               value={values.screenshot ?? null}
@@ -321,21 +326,21 @@ export function TradeForm({
           <button
             type="submit"
             disabled={isSubmitting}
-            className="px-4 py-1.5 text-sm rounded-md bg-(--color-accent) text-white hover:opacity-90 disabled:opacity-50"
+            className="px-4 py-1.5 text-sm rounded-(--radius) bg-(--color-accent) text-(--color-accent-fg) hover:opacity-90 disabled:opacity-50"
           >
             {submitLabel}
           </button>
           <button
             type="button"
             onClick={onCancel}
-            className="px-4 py-1.5 text-sm rounded-md border border-(--color-border) text-(--color-text-dim) hover:text-(--color-text)"
+            className="px-4 py-1.5 text-sm rounded-(--radius) border border-(--color-border) text-(--color-text-dim) hover:text-(--color-text)"
           >
             Cancel
           </button>
         </div>
       </div>
 
-      <aside className="space-y-4 lg:sticky lg:top-6 self-start bg-(--color-panel) border border-(--color-border) rounded-md p-4">
+      <aside className="space-y-4 lg:sticky lg:top-6 self-start bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-4">
         <div className="text-xs text-(--color-text-dim) uppercase tracking-wider">Live preview</div>
         <PreviewRow label="Side" value={side === 'long' ? 'buy' : side === 'short' ? 'sell' : '—'} accent={side === 'long' ? 'win' : side === 'short' ? 'loss' : undefined} />
         <PreviewRow label="Contracts" value={contracts || '—'} />

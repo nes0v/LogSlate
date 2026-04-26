@@ -5,7 +5,7 @@ Personal trading journal for index futures (NQ, ES). Replaces a Google Sheets wo
 ## Stack
 
 - **Vite 7 + React 19 + TypeScript**
-- **Tailwind CSS v4** via `@tailwindcss/vite` (theme via `@theme` block in `src/index.css`, CSS variables, dark-only)
+- **Tailwind CSS v4** via `@tailwindcss/vite` (theme via `@theme` block in `src/index.css`, CSS variables, light + dark via `light-dark()`)
 - **React Router 7** (data router via `createBrowserRouter` in `src/router.tsx`)
 - **Dexie.js** over IndexedDB — the source of truth on every device
 - **react-hook-form + zod** for form state and validation
@@ -67,8 +67,9 @@ Sessions: `pre | AM | LT | PM | aft` (pre-market, morning, lunch, evening, after
 ## Conventions
 
 - Path alias: `@/` → `src/`
-- Tailwind v4: theme tokens live in `@theme` in `src/index.css`. Use the CSS-variable arbitrary-value syntax: `text-(--color-accent)`, `bg-(--color-panel)`.
-- Dark-only UI (no light theme). Color tokens are the only source of truth for colors.
+- Tailwind v4: theme tokens live in `:root` (and a small `@theme` for fonts) in `src/index.css`. Use the CSS-variable arbitrary-value syntax: `text-(--color-accent)`, `bg-(--color-panel)`, `shadow-(--shadow-sm)`.
+- Both light and dark themes via the modern `light-dark()` CSS function — the same tokens resolve differently based on `color-scheme`. The user's preference (`system` | `light` | `dark`) lives in `src/lib/theme-preference.ts` and is applied as `data-theme="…"` on `<html>` to lock a mode (or removed for system). Color tokens are the only source of truth — never hard-code hex values in components.
+- Standard tokens: `--color-bg`, `--color-panel`, `--color-panel-2`, `--color-panel-3`, `--color-border`, `--color-border-strong`, `--color-text`, `--color-text-dim`, `--color-text-faint`, `--color-accent`, `--color-accent-fg`, `--color-accent-soft`, `--color-win`, `--color-loss`, `--color-fee`, `--color-line`. Shadows: `--shadow-xs/sm/md/lg`. Motion: `--duration-fast`, `--duration-base`, `--ease`. Focus ring: `--focus-ring`.
 - `verbatimModuleSyntax: true` → use `import type { ... }` for type-only imports.
 - Keep stored-vs-computed boundary crisp: computed fields are derived on read from `src/lib/trade-math.ts`, never persisted.
 - Numbers: store `number` (JS floats). Money values are USD; format at the edge with `Intl.NumberFormat`.

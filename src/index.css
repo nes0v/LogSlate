@@ -1,29 +1,116 @@
 @import "tailwindcss";
 
-@theme {
-  --color-bg: #0b0d12;
-  --color-panel: #12151c;
-  --color-panel-2: #181c25;
-  --color-border: #232836;
-  --color-text: #e6e8ee;
-  --color-text-dim: #8b91a1;
-  --color-accent: #7c5cff;
-  --color-win: #22c55e;
-  --color-loss: #ef4444;
-  --color-fee: #6b7280;
-  --color-line: #2563eb;
+/* ============================================================================
+ * Theme tokens
+ * ============================================================================
+ * Colors use the modern `light-dark()` CSS function so the same `:root`
+ * resolves automatically based on `color-scheme`. The theme switcher writes
+ * `data-theme="light" | "dark"` onto <html> to lock a specific mode; without
+ * that attribute the browser follows OS preference. See
+ * `src/lib/theme-preference.ts`.
+ *
+ * The win/loss pair is set at runtime by the color-scheme picker
+ * (src/lib/color-scheme-preference.ts) — those inline styles take precedence
+ * over these defaults.
+ */
 
-  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+@theme {
+  /* Font stacks — system-first, with refined feature defaults applied on
+   * <body> below. Modern OS UI fonts (SF Pro on Apple, Segoe UI Variable on
+   * Windows 11, Roboto on Android) all give a polished look without an
+   * external font dependency. */
+  /* User asked for Segoe UI everywhere — sans AND mono. Segoe UI is
+   * proportional, not monospace, so we lean on `tabular-nums` (set on
+   * `.font-mono` in body styles below) to keep numbers aligned in tiles
+   * and tables. Fallback chain: Segoe UI Variable (Win 11) → Segoe UI
+   * (Win 7+) → Apple/Helvetica/Roboto/system-ui for non-Windows. */
+  --font-sans:
+    "Segoe UI Variable", "Segoe UI", -apple-system, BlinkMacSystemFont,
+    system-ui, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono:
+    "Segoe UI Variable", "Segoe UI", -apple-system, BlinkMacSystemFont,
+    system-ui, Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
 :root {
-  color-scheme: dark;
+  color-scheme: light dark;
+
+  /* Surfaces — page bg is intentionally a shade darker than panels in
+   * both modes so borderless cards/sections/pills read as elevated
+   * surfaces. The shadow `0 0 0 1px` ring adds a hairline so they still
+   * have crisp edges. Panel-2 is the recessed/hover step; panel-3 is
+   * the deepest surface (used for inputs-on-panel etc.). */
+  --color-bg:        light-dark(#e3e5ec, #0f1117);
+  --color-panel:     light-dark(#ffffff, #181a23);
+  --color-panel-2:   light-dark(#f4f5f8, #21232e);
+  --color-panel-3:   light-dark(#e8eaef, #2a2d3a);
+
+  /* Borders — `border` is the everyday subtle line; `border-strong` is for
+   * emphasis (focus, the active edge of a control). */
+  --color-border:        light-dark(#e7e8ed, #2a2c37);
+  --color-border-strong: light-dark(#d0d3db, #3a3d4a);
+
+  /* Text — three steps so headings, body, and captions can each pick the
+   * right amount of contrast. */
+  --color-text:       light-dark(#16181d, #edeef2);
+  --color-text-dim:   light-dark(#5e6271, #9ea2b1);
+  --color-text-faint: light-dark(#9197a4, #6a6f7d);
+
+  /* Accent — slightly darker in light for AA contrast on white surfaces. */
+  --color-accent:      light-dark(#6840ee, #8a6dff);
+  --color-accent-fg:   #ffffff;
+  --color-accent-soft: light-dark(rgba(104, 64, 238, 0.10), rgba(138, 109, 255, 0.16));
+
+  /* Trading colors — overridden at runtime by color-scheme-preference.ts.
+   * Defaults are the "classic" green/red. */
+  --color-win:  #22c55e;
+  --color-loss: #ef4444;
+  /* Fee bars — light gray. In light mode it matches the page bg; in dark
+   * we step it down a bit so it doesn't dominate the panel. */
+  --color-fee:  light-dark(#e3e5ec, #9ca3af);
+  --color-line: light-dark(#3b82f6, #6892ff);
+
+  /* Elevation — with the borderless design these need to do the heavy
+   * lifting of making panels read as separate from the page bg. Light
+   * uses gentle layered shadows; dark uses a tinted ring (subtle inset
+   * highlight at the top) plus a deeper drop shadow. */
+  --shadow-xs: light-dark(
+    0 0 0 1px rgba(15, 18, 28, 0.04), 0 1px 2px rgba(15, 18, 28, 0.05),
+    0 0 0 1px rgba(255, 255, 255, 0.02), 0 1px 2px rgba(0, 0, 0, 0.35)
+  );
+  --shadow-sm: light-dark(
+    0 0 0 1px rgba(15, 18, 28, 0.05), 0 1px 2px rgba(15, 18, 28, 0.04), 0 4px 8px rgba(15, 18, 28, 0.06),
+    0 0 0 1px rgba(255, 255, 255, 0.025), 0 1px 2px rgba(0, 0, 0, 0.30), 0 4px 12px rgba(0, 0, 0, 0.32)
+  );
+  --shadow-md: light-dark(
+    0 0 0 1px rgba(15, 18, 28, 0.05), 0 4px 8px rgba(15, 18, 28, 0.06), 0 8px 24px rgba(15, 18, 28, 0.10),
+    0 0 0 1px rgba(255, 255, 255, 0.03), 0 4px 8px rgba(0, 0, 0, 0.30), 0 8px 24px rgba(0, 0, 0, 0.40)
+  );
+  --shadow-lg: light-dark(
+    0 0 0 1px rgba(15, 18, 28, 0.06), 0 8px 16px rgba(15, 18, 28, 0.08), 0 16px 40px rgba(15, 18, 28, 0.14),
+    0 0 0 1px rgba(255, 255, 255, 0.04), 0 8px 16px rgba(0, 0, 0, 0.35), 0 16px 40px rgba(0, 0, 0, 0.50)
+  );
+
+  /* Focus ring — two-stop layered offset that reads on any surface. */
+  --focus-ring: 0 0 0 2px var(--color-bg), 0 0 0 4px var(--color-accent);
+
+  /* Single global radius for cards, panels, buttons, inputs, pills.
+   * Components that intentionally need a different shape (pill chips =
+   * `rounded-full`, tiny heatmap cells = `rounded-sm`) opt out by
+   * ignoring this token. Change one number to retune the whole UI. */
+  --radius: 8px;
+
+  /* Motion — kept short and consistent. Use `var(--ease)` for non-trivial
+   * transitions so they all share the same curve. */
+  --duration-fast: 120ms;
+  --duration-base: 180ms;
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"]  { color-scheme: dark; }
+
 html {
-  /* Reserve room for the scrollbar even when content fits, so navigating
-     between short and long pages doesn't cause the layout to shift. */
   scrollbar-gutter: stable;
 }
 
@@ -40,15 +127,75 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Slightly tightened tracking for UI density without sacrificing
+   * readability; tabular-nums everywhere helps numbers line up.
+   * `cv11` and `ss01` enable Inter's curly-l and single-storey-a if Inter
+   * is present, otherwise no-op. */
+  letter-spacing: -0.006em;
+  font-feature-settings: "cv11", "ss01";
+  text-rendering: optimizeLegibility;
 }
 
+/* Number tabular alignment whenever font-mono is used — keeps figures
+ * stacked across rows even at small sizes. */
+.font-mono { font-variant-numeric: tabular-nums; }
+
+/* Heading rhythm — modest size step, tighter tracking for visual polish. */
+h1, h2, h3, h4 {
+  letter-spacing: -0.012em;
+}
+
+* { box-sizing: border-box; }
+
+::selection {
+  background: var(--color-accent-soft);
+  color: var(--color-text);
+}
+
+/* Refined scrollbar — slim, theme-aware, no thumb in light idle. */
 * {
-  box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) transparent;
+}
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-border-strong);
+  background-clip: padding-box;
+  border: 2px solid transparent;
 }
 
-/* Recharts adds focus outlines on clicked SVG paths / surfaces. They show up
-   as thick white borders on click which looks broken in our dark theme. */
-.recharts-wrapper *:focus,
-.recharts-wrapper *:focus-visible {
-  outline: none;
+/* Interactive defaults */
+button:not(:disabled), [role="button"]:not([aria-disabled="true"]) {
+  cursor: pointer;
 }
+
+input, textarea, select, button {
+  font-family: inherit;
+  font-feature-settings: inherit;
+  letter-spacing: inherit;
+}
+
+/* date inputs in dark mode get a light icon via color-scheme; that's enough.
+ * Some browsers still tint the picker icon to match the page bg, which can
+ * make it disappear on white inputs in light. Force a visible color via the
+ * standard pseudo-element. */
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator {
+  opacity: 0.6;
+  cursor: pointer;
+}
+input[type="date"]::-webkit-calendar-picker-indicator:hover,
+input[type="time"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
+
+/* Recharts focus — clicking SVG paths leaves a thick outline by default. */
+.recharts-wrapper *:focus,
+.recharts-wrapper *:focus-visible { outline: none; }

@@ -50,14 +50,14 @@ export function AccountSwitcher() {
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
-        className="inline-flex items-center gap-1.5 px-2 py-1 text-sm rounded-md border border-(--color-border) text-(--color-text) hover:bg-(--color-panel-2)"
+        className="inline-flex items-center gap-1.5 px-2 py-1 text-sm rounded-(--radius) border border-(--color-border) text-(--color-text) hover:bg-(--color-panel-2)"
       >
         <User className="size-4 text-(--color-text-dim)" />
         <span className="max-w-40 truncate">{activeName}</span>
         <ChevronDown className="size-3.5 text-(--color-text-dim)" />
       </button>
       {open && accounts && (
-        <div className="absolute right-0 top-full mt-1 min-w-52 rounded-md border border-(--color-border) bg-(--color-panel) shadow-lg z-20 py-1">
+        <div className="absolute right-0 top-full mt-1 min-w-52 rounded-(--radius) bg-(--color-panel) shadow-(--shadow-md) z-20 py-1">
           {accounts.map(a => (
             <button
               key={a.id}

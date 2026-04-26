@@ -78,7 +78,7 @@ export function DayRoute() {
         rightSlot={
           <Link
             to={`/trade/new?date=${date}`}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md bg-(--color-accent) text-white hover:opacity-90"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-(--radius) bg-(--color-accent) text-(--color-accent-fg) hover:opacity-90"
           >
             <Plus className="size-4" /> New trade
           </Link>
@@ -103,7 +103,7 @@ export function DayRoute() {
             ))}
           </div>
         ) : (
-          <div className="text-sm text-(--color-text-dim) text-center py-12 border border-dashed border-(--color-border) rounded-md">
+          <div className="text-sm text-(--color-text-dim) text-center py-12 border border-dashed border-(--color-border) rounded-(--radius)">
             No trades on this day yet.
           </div>
         )}

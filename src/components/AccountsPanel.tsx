@@ -73,7 +73,7 @@ export function AccountsPanel() {
       </p>
 
       {list.length > 0 && (
-        <div className="bg-(--color-panel) border border-(--color-border) rounded-md divide-y divide-(--color-border)">
+        <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) divide-y divide-(--color-border)">
           {list.map(a => {
             const isEditing = editingId === a.id
             return (
@@ -100,7 +100,7 @@ export function AccountsPanel() {
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="text-sm truncate">{a.name}</span>
                     {a.id === activeId && (
-                      <span className="text-[10px] uppercase tracking-wide text-(--color-accent)">
+                      <span className="text-xs uppercase tracking-wide text-(--color-accent)">
                         active
                       </span>
                     )}
@@ -113,7 +113,7 @@ export function AccountsPanel() {
                         type="button"
                         onClick={() => void handleRenameSave()}
                         aria-label="Save"
-                        className="p-1 rounded-md text-(--color-text-dim) hover:text-(--color-win) hover:bg-(--color-panel-2)"
+                        className="p-1 rounded-(--radius) text-(--color-text-dim) hover:text-(--color-win) hover:bg-(--color-panel-2)"
                       >
                         <Check className="size-3.5" />
                       </button>
@@ -124,7 +124,7 @@ export function AccountsPanel() {
                           setEditingName('')
                         }}
                         aria-label="Cancel"
-                        className="p-1 rounded-md text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)"
+                        className="p-1 rounded-(--radius) text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)"
                       >
                         <X className="size-3.5" />
                       </button>
@@ -137,7 +137,7 @@ export function AccountsPanel() {
                         setEditingName(a.name)
                       }}
                       aria-label="Rename"
-                      className="p-1 rounded-md text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)"
+                      className="p-1 rounded-(--radius) text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)"
                     >
                       <Pencil className="size-3.5" />
                     </button>
@@ -149,7 +149,7 @@ export function AccountsPanel() {
                   onClick={() => void handleDelete(a.id, a.name)}
                   aria-label="Delete account"
                   className={cn(
-                    'p-1 rounded-md',
+                    'p-1 rounded-(--radius)',
                     a.is_main
                       ? 'text-(--color-text-dim)/40 cursor-not-allowed'
                       : 'text-(--color-text-dim) hover:text-(--color-loss) hover:bg-(--color-panel-2)',
@@ -165,7 +165,7 @@ export function AccountsPanel() {
 
       <form
         onSubmit={handleCreate}
-        className="bg-(--color-panel) border border-(--color-border) rounded-md p-3 grid grid-cols-[1fr_auto] gap-3 items-end"
+        className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3 grid grid-cols-[1fr_auto] gap-3 items-end"
       >
         <label className="text-xs text-(--color-text-dim) space-y-2">
           <div>New account name</div>
@@ -179,7 +179,7 @@ export function AccountsPanel() {
         </label>
         <button
           type="submit"
-          className="inline-flex items-center justify-center px-3 py-1.5 text-sm rounded-md border border-transparent bg-(--color-accent) text-white hover:opacity-90"
+          className="inline-flex items-center justify-center px-3 py-1.5 text-sm rounded-(--radius) border border-transparent bg-(--color-accent) text-(--color-accent-fg) hover:opacity-90"
         >
           Add
         </button>

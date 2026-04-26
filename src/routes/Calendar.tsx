@@ -248,7 +248,7 @@ export function CalendarRoute() {
       />
 
       <div className="mt-6 space-y-8">
-        <div className="grid grid-cols-7 gap-px bg-(--color-border) border border-(--color-border) rounded-md overflow-hidden">
+        <div className="grid grid-cols-7 gap-px bg-(--color-border) rounded-(--radius) overflow-hidden shadow-(--shadow-xs)">
           {weekdayLabels.map(lbl => (
             <div
               key={lbl}
@@ -277,7 +277,7 @@ export function CalendarRoute() {
                     className={cn(
                       'text-xs',
                       today
-                        ? 'bg-(--color-accent) text-white rounded-sm size-5 flex items-center justify-center font-semibold'
+                        ? 'bg-(--color-accent) text-(--color-accent-fg) rounded-sm size-5 flex items-center justify-center font-semibold'
                         : 'text-(--color-text-dim)',
                     )}
                   >

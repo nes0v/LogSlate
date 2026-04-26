@@ -20,12 +20,21 @@ export function Field({ label, hint, error, children, className }: FieldProps) {
   )
 }
 
+// Inputs share a single look across the app, matching the Pills track:
+// - recessed `bg` color (the page bg) so they look inset on a panel parent
+// - no border anywhere (consistent with the borderless section design)
+// - placeholder uses `text-faint` (the lightest tier) so it doesn't compete
+//   with real text once the user starts typing
+// - focus shows a 2px accent-soft ring as the only "active" affordance
 export const inputClass =
-  'bg-(--color-panel) border border-(--color-border) rounded-md px-3 py-1.5 text-sm ' +
-  'text-(--color-text) placeholder:text-(--color-text-dim) ' +
-  'focus:outline-none focus:border-(--color-accent) focus:ring-1 focus:ring-(--color-accent)'
+  'bg-(--color-bg) rounded-(--radius) px-3 py-1.5 text-sm ' +
+  'text-(--color-text) placeholder:text-(--color-text-faint) ' +
+  'transition-colors ' +
+  'focus:outline-none focus:ring-2 focus:ring-(--color-accent-soft)'
 
-// Compact variant for dense settings panels (less padding, no focus ring).
+// Compact variant for dense settings panels (less padding, same look).
 // Includes `w-full` since it's designed to fill grid cells.
 export const inputClassCompact =
-  'w-full rounded-md border border-(--color-border) bg-(--color-panel) px-2 py-1.5 text-sm outline-none focus:border-(--color-accent)'
+  'w-full rounded-(--radius) bg-(--color-bg) px-2 py-1.5 text-sm ' +
+  'text-(--color-text) placeholder:text-(--color-text-faint) transition-colors ' +
+  'outline-none focus:ring-2 focus:ring-(--color-accent-soft)'

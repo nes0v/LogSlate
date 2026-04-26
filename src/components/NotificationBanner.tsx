@@ -25,7 +25,7 @@ function NotificationRow({ notification }: { notification: Notification }) {
     <div
       role={notification.kind === 'error' ? 'alert' : 'status'}
       className={cn(
-        'flex items-start gap-3 px-3 py-2 rounded-md border',
+        'flex items-start gap-3 px-3 py-2 rounded-(--radius) border',
         notification.kind === 'error'
           ? 'bg-(--color-panel) border-(--color-loss)/40 text-(--color-text)'
           : 'bg-(--color-panel) border-(--color-border) text-(--color-text)',
@@ -63,7 +63,7 @@ function NotificationRow({ notification }: { notification: Notification }) {
         type="button"
         onClick={() => dismissNotification(notification.id)}
         aria-label="Dismiss"
-        className="p-1 rounded-md text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)"
+        className="p-1 rounded-(--radius) text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)"
       >
         <X className="size-3.5" />
       </button>

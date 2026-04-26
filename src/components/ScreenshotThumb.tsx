@@ -96,7 +96,7 @@ function ScreenshotBody({ load, viewUrl, onRetry, sizes }: ScreenshotBodyProps) 
       <img
         src={load.url}
         alt=""
-        className={`${sizes.img} rounded-md border border-(--color-border)`}
+        className={`${sizes.img} rounded-(--radius) border border-(--color-border)`}
       />
     )
     if (viewUrl) {
@@ -118,10 +118,10 @@ function ScreenshotBody({ load, viewUrl, onRetry, sizes }: ScreenshotBodyProps) 
     return (
       <div
         title={load.error}
-        className={`${sizes.failed} rounded-md border border-dashed border-(--color-loss)/40 flex flex-col items-center justify-center gap-1 text-xs text-(--color-text-dim) text-center p-2`}
+        className={`${sizes.failed} rounded-(--radius) border border-dashed border-(--color-loss)/40 flex flex-col items-center justify-center gap-1 text-xs text-(--color-text-dim) text-center p-2`}
       >
         <span className="text-(--color-loss)">Couldn&rsquo;t load</span>
-        <span className="text-[10px] break-words">{load.error}</span>
+        <span className="text-xs break-words">{load.error}</span>
         <div className="flex items-center gap-2 mt-1">
           <button
             type="button"
@@ -145,7 +145,7 @@ function ScreenshotBody({ load, viewUrl, onRetry, sizes }: ScreenshotBodyProps) 
     )
   }
   return (
-    <div className={`${sizes.placeholder} rounded-md border border-dashed border-(--color-border) flex items-center justify-center text-xs text-(--color-text-dim)`}>
+    <div className={`${sizes.placeholder} rounded-(--radius) border border-dashed border-(--color-border) flex items-center justify-center text-xs text-(--color-text-dim)`}>
       loading…
     </div>
   )

@@ -2,7 +2,9 @@ import { z } from 'zod'
 import { format, parseISO } from 'date-fns'
 import {
   CONTRACT_TYPES,
+  EMOTIONS,
   EXECUTION_KINDS,
+  MARKET_CONDITIONS,
   RATINGS,
   SESSIONS,
   SYMBOLS,
@@ -32,6 +34,17 @@ export const tradeFormSchema = z
     rating: z.enum(RATINGS),
     pnl_override: z.number().nullable(),
     screenshot: z.string().nullable(),
+    // Optional reflection fields. The form supplies defaults so RHF resolves
+    // them; downstream code treats them as optional / nullable.
+    profit_target: z.number().nullable(),
+    notes: z.string(),
+    setup_tags: z.array(z.string()),
+    mistake_tags: z.array(z.string()),
+    emotion: z.enum(EMOTIONS).nullable(),
+    market_condition: z.enum(MARKET_CONDITIONS).nullable(),
+    conviction: z.number().int().min(1).max(5).nullable(),
+    playbook_id: z.string().nullable(),
+    playbook_rules_followed: z.array(z.string()),
   })
   .superRefine((v, ctx) => {
     const buys = v.executions.filter(e => e.kind === 'buy')
@@ -86,6 +99,15 @@ export function formToDraft(v: TradeFormValues): TradeDraft {
     rating: v.rating,
     pnl_override: v.pnl_override,
     screenshot: v.screenshot,
+    profit_target: v.profit_target,
+    notes: v.notes,
+    setup_tags: v.setup_tags,
+    mistake_tags: v.mistake_tags,
+    emotion: v.emotion,
+    market_condition: v.market_condition,
+    conviction: v.conviction,
+    playbook_id: v.playbook_id,
+    playbook_rules_followed: v.playbook_rules_followed,
   }
 }
 
@@ -113,6 +135,15 @@ export function recordToForm(r: TradeRecord): TradeFormValues {
     rating: r.rating,
     pnl_override: r.pnl_override,
     screenshot: r.screenshot,
+    profit_target: r.profit_target ?? null,
+    notes: r.notes ?? '',
+    setup_tags: r.setup_tags ?? [],
+    mistake_tags: r.mistake_tags ?? [],
+    emotion: r.emotion ?? null,
+    market_condition: r.market_condition ?? null,
+    conviction: r.conviction ?? null,
+    playbook_id: r.playbook_id ?? null,
+    playbook_rules_followed: r.playbook_rules_followed ?? [],
   }
 }
 
@@ -134,5 +165,14 @@ export function emptyForm(trade_date: string): TradeFormValues {
     rating: 'good',
     pnl_override: null,
     screenshot: null,
+    profit_target: null,
+    notes: '',
+    setup_tags: [],
+    mistake_tags: [],
+    emotion: null,
+    market_condition: null,
+    conviction: null,
+    playbook_id: null,
+    playbook_rules_followed: [],
   }
 }

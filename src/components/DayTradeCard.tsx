@@ -25,7 +25,7 @@ interface DayTradeCardProps {
 }
 
 const ACTION_BTN_CLASS =
-  'inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md border border-(--color-border) hover:bg-(--color-panel-2)'
+  'inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-(--radius) border border-(--color-border) hover:bg-(--color-panel-2)'
 
 // Rich per-trade card for the Day page: everything in one glance so the user
 // doesn't have to open each trade individually.
@@ -49,7 +49,7 @@ export function DayTradeCard({ trade, index }: DayTradeCardProps) {
   }
 
   return (
-    <div className="bg-(--color-panel) border border-(--color-border) rounded-md px-4 py-4 space-y-3 min-w-0">
+    <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) px-4 py-4 space-y-3 min-w-0">
       <div className="flex items-center gap-3 flex-wrap">
         {index !== undefined && (
           <span className="text-xs font-mono text-(--color-text-dim) tabular-nums">

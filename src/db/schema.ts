@@ -4,7 +4,11 @@ import type {
   DayScreenshot,
   EquityAdjustment,
   Execution,
+  Note,
   PendingUpload,
+  Playbook,
+  ProgressCheck,
+  ProgressRule,
   TradeRecord,
 } from '@/db/types'
 import { MAIN_ACCOUNT_ID } from '@/db/types'
@@ -20,6 +24,10 @@ class LogslateDB extends Dexie {
   accounts!: EntityTable<Account, 'id'>
   pending_uploads!: EntityTable<PendingUpload, 'id'>
   day_screenshots!: EntityTable<DayScreenshot, 'id'>
+  notes!: EntityTable<Note, 'id'>
+  playbooks!: EntityTable<Playbook, 'id'>
+  progress_rules!: EntityTable<ProgressRule, 'id'>
+  progress_checks!: EntityTable<ProgressCheck, 'id'>
 
   constructor() {
     super('logslate')
@@ -194,6 +202,19 @@ class LogslateDB extends Dexie {
             if (!p.account_id) p.account_id = MAIN_ACCOUNT_ID
           })
       })
+
+    // v10: notebook + playbook + progress tracker. Four new tables, no
+    // migration of existing data needed (they're brand new).
+    this.version(10).stores({
+      notes:
+        '&id, [account_id+folder], [account_id+template_kind], account_id, folder, template_kind, updated_at, created_at',
+      playbooks:
+        '&id, [account_id+archived], account_id, archived, updated_at, created_at',
+      progress_rules:
+        '&id, [account_id+active], account_id, active, sort, updated_at',
+      progress_checks:
+        '&id, [account_id+date], account_id, date, rule_id, updated_at',
+    })
   }
 }
 
