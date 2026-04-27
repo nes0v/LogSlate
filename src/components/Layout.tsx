@@ -8,7 +8,6 @@ import { cn } from '@/lib/utils'
 
 const links = [
   { to: '/stats', label: 'Stats' },
-  { to: '/stats2', label: 'Stats v2' },
   { to: '/reports', label: 'Reports' },
   { to: '/notebook', label: 'Notebook' },
   { to: '/playbook', label: 'Playbook' },

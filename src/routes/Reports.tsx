@@ -161,9 +161,9 @@ export function ReportsRoute() {
       </div>
 
       {/* Filter bar */}
-      <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3 space-y-3">
-        <div className="flex flex-wrap items-end gap-3">
-          <Field label="From" className="w-40">
+      <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3">
+        <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
+          <Field label="From" className="w-[135px]">
             <input
               type="date"
               className={inputClass}
@@ -171,7 +171,7 @@ export function ReportsRoute() {
               onChange={e => update({ from: e.target.value || null })}
             />
           </Field>
-          <Field label="To" className="w-40">
+          <Field label="To" className="w-[135px]">
             <input
               type="date"
               className={inputClass}
@@ -179,8 +179,6 @@ export function ReportsRoute() {
               onChange={e => update({ to: e.target.value || null })}
             />
           </Field>
-        </div>
-        <div className="flex flex-wrap gap-6">
           <Field label="Symbol">
             <Pills value={filters.symbol} onChange={v => update({ symbol: v })} options={SYMBOL_OPTS} />
           </Field>
@@ -569,7 +567,7 @@ function CohortReport({ trades }: { trades: TradeRecord[] }) {
           {rows.map(r => (
             <div
               key={r.label}
-              className="grid grid-cols-[1fr_120px_120px] gap-2 py-1.5 border-b border-(--color-border)/40 last:border-b-0"
+              className="grid grid-cols-[1fr_120px_120px] gap-2 py-1.5"
             >
               <div className="text-(--color-text-dim)">{r.label}</div>
               <div className="text-right font-mono tabular-nums">{r.w}</div>
@@ -728,7 +726,7 @@ function CompareTable({ groups }: { groups: Array<{ label: string; trades: Trade
         return (
           <div
             key={g.label}
-            className="grid grid-cols-[100px_repeat(6,1fr)] gap-2 py-1.5 border-b border-(--color-border)/40 last:border-b-0 font-mono tabular-nums"
+            className="grid grid-cols-[100px_repeat(6,1fr)] gap-2 py-1.5 font-mono tabular-nums"
           >
             <div className="text-(--color-text-dim) font-sans">{g.label}</div>
             <div className="text-right">{s.count}</div>
@@ -887,7 +885,7 @@ function ReportTable({ title, rows }: { title?: string; rows: ReportRow[] }) {
           return (
             <div
               key={r.label}
-              className="grid grid-cols-[80px_60px_80px_1fr_80px] gap-2 py-1.5 border-b border-(--color-border)/40 last:border-b-0 items-center"
+              className="grid grid-cols-[80px_60px_80px_1fr_80px] gap-2 py-1.5 items-center"
             >
               <div className="text-(--color-text-dim) font-mono">{r.label}</div>
               <div className="text-right font-mono">{r.count}</div>
@@ -948,7 +946,7 @@ function PlannedRRTable({
         return (
           <div
             key={r.label}
-            className="grid grid-cols-[60px_60px_80px_80px_1fr] gap-2 py-1.5 border-b border-(--color-border)/40 last:border-b-0 font-mono tabular-nums"
+            className="grid grid-cols-[60px_60px_80px_80px_1fr] gap-2 py-1.5 font-mono tabular-nums"
           >
             <div className="text-(--color-text-dim)">{r.label}</div>
             <div className="text-right">{r.count}</div>

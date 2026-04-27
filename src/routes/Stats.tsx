@@ -14,7 +14,7 @@ import {
   startOfYear,
 } from 'date-fns'
 import { bucketNavTarget, drillDownRange, timeframeFromParams } from '@/lib/stats-nav'
-import { X } from 'lucide-react'
+import { ChevronRight, X } from 'lucide-react'
 import type { ContractType, Rating, Session, SymbolKey } from '@/db/types'
 import { db } from '@/db/schema'
 import { useActiveAccountId } from '@/lib/active-account'
@@ -25,7 +25,7 @@ import {
   paramsFromFilters,
   type TradeFilters,
 } from '@/lib/filters'
-import { adjustmentsByDate, aggregate, computeCandles } from '@/lib/trade-stats'
+import { adjustmentsByDate, computeCandles } from '@/lib/trade-stats'
 import { useStartingEquity } from '@/lib/use-starting-equity'
 import {
   bucketByTimeframe,
@@ -33,12 +33,17 @@ import {
   WEEK_OPTS,
   type Timeframe,
 } from '@/lib/buckets'
-import { StatsGrid } from '@/components/StatsGrid'
 import { TradingViewChart } from '@/components/TradingViewChart'
 import { ChartTimeframeToggle } from '@/components/ChartTimeframeToggle'
 import { EquityChartToggle, type EquityView } from '@/components/EquityChartToggle'
 import { getDefaultEquityView } from '@/lib/equity-view-preference'
 import { TradeRow, TRADE_ROW_COLS } from '@/components/TradeRow'
+import {
+  AdvancedMetricsSections,
+  CompositeScoreSection,
+  DistributionDonuts,
+  HeroNetPnl,
+} from '@/components/AdvancedStats'
 import { Pills } from '@/components/form/Pills'
 import { Field, inputClass } from '@/components/form/Field'
 import { cn } from '@/lib/utils'
@@ -88,6 +93,7 @@ export function StatsRoute() {
   const navigate = useNavigate()
   const urlFilters = filtersFromParams(params)
   const [equityView, setEquityView] = useState<EquityView>(getDefaultEquityView)
+  const [tradesOpen, setTradesOpen] = useState(false)
   const timeframe = timeframeFromParams(params)
   // Latest visible bucket-key range reported by the chart. Compared
   // against the filter's bucket keys to decide whether to surface a
@@ -145,8 +151,6 @@ export function StatsRoute() {
 
   const filtered = useMemo(() => applyFilters(allTrades ?? [], filters), [allTrades, filters])
 
-  const stats = aggregate(filtered)
-
   // Bucket trades by day across the filter range (falling back to first/last
   // traded day when no explicit from/to). Using the filter bounds makes charts
   // show every day in the period, not just days that had trades.
@@ -159,9 +163,6 @@ export function StatsRoute() {
       rangeEnd: filters.to ?? dates[dates.length - 1],
     }
   }, [filtered, filters.from, filters.to])
-
-  const startingEquity = useStartingEquity(rangeStart)
-  const roi = startingEquity > 0 ? stats.net_pnl / startingEquity : null
 
   // Chart trades = `allTrades` with non-date filters applied. The date
   // filter only sets the initial viewport (`chartVisibleFrom/To` below),
@@ -321,9 +322,9 @@ export function StatsRoute() {
         )}
       </div>
 
-      <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3 space-y-3">
-        <div className="flex flex-wrap items-end gap-3">
-          <Field label="From" className="w-40">
+      <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3">
+        <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
+          <Field label="From" className="w-[135px]">
             <input
               type="date"
               className={inputClass}
@@ -331,7 +332,7 @@ export function StatsRoute() {
               onChange={e => update({ from: e.target.value || null })}
             />
           </Field>
-          <Field label="To" className="w-40">
+          <Field label="To" className="w-[135px]">
             <input
               type="date"
               className={inputClass}
@@ -339,8 +340,6 @@ export function StatsRoute() {
               onChange={e => update({ to: e.target.value || null })}
             />
           </Field>
-        </div>
-        <div className="flex flex-wrap gap-6">
           <Field label="Symbol">
             <Pills value={filters.symbol} onChange={v => update({ symbol: v })} options={SYMBOL_OPTS} />
           </Field>
@@ -356,7 +355,19 @@ export function StatsRoute() {
         </div>
       </section>
 
-      <StatsGrid stats={stats} roi={roi} />
+      {filtered.length > 0 && (
+        <>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            <HeroNetPnl filtered={filtered} rangeStart={rangeStart} rangeEnd={rangeEnd} />
+            <CompositeScoreSection
+              filtered={filtered}
+              rangeStart={rangeStart}
+              rangeEnd={rangeEnd}
+            />
+          </div>
+          <DistributionDonuts filtered={filtered} />
+        </>
+      )}
 
       {filtered.length > 0 ? (
         <>
@@ -401,15 +412,33 @@ export function StatsRoute() {
               </div>
             }
           />
+          <AdvancedMetricsSections
+            filtered={filtered}
+            rangeStart={rangeStart}
+            rangeEnd={rangeEnd}
+            onDayClick={d => navigate(`/day/${d}`)}
+          />
           <section>
-            <h2 className="text-sm font-medium mb-2">
+            <button
+              type="button"
+              onClick={() => setTradesOpen(o => !o)}
+              className="flex items-center gap-1 text-sm font-medium mb-2 text-(--color-text) hover:text-(--color-accent) transition-colors"
+            >
+              <ChevronRight
+                className={cn(
+                  'size-4 transition-transform',
+                  tradesOpen && 'rotate-90',
+                )}
+              />
               Trades <span className="text-(--color-text-dim) font-normal">({filtered.length})</span>
-            </h2>
-            <div className={cn('grid gap-x-5 gap-y-1.5', TRADE_ROW_COLS)}>
-              {tradesDesc.map((t, i) => (
-                <TradeRow key={t.id} trade={t} index={i + 1} />
-              ))}
-            </div>
+            </button>
+            {tradesOpen && (
+              <div className={cn('grid gap-x-5 gap-y-1.5', TRADE_ROW_COLS)}>
+                {tradesDesc.map((t, i) => (
+                  <TradeRow key={t.id} trade={t} index={i + 1} />
+                ))}
+              </div>
+            )}
           </section>
         </>
       ) : (

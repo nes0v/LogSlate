@@ -147,7 +147,7 @@ export function CalendarRoute() {
           {weekdayLabels.map(lbl => (
             <div
               key={lbl}
-              className="bg-(--color-panel) rounded-(--radius) text-xs text-(--color-text-dim) text-center py-2 shadow-(--shadow-xs)"
+              className="rounded-(--radius) border border-(--color-cal-week-border) bg-transparent text-xs font-bold text-(--color-text) text-center py-2"
             >
               {lbl}
             </div>
@@ -223,7 +223,7 @@ export function CalendarRoute() {
           </span>
         </div>
         {cell ? (
-          <div className="mt-auto space-y-0.5">
+          <div className="space-y-0.5">
             <div className="text-base font-mono text-white">
               {formatUsd(cell.pnl)}
             </div>
