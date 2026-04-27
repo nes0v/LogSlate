@@ -100,8 +100,8 @@ export function PlaybookRoute() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-4 min-h-[60vh]">
-        <aside className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-2 max-h-[80vh] overflow-y-auto">
+      <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-3 min-h-[60vh]">
+        <aside className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3 max-h-[80vh] overflow-y-auto">
           {visible.length === 0 ? (
             <div className="text-xs text-(--color-text-dim) text-center py-6">
               No playbooks yet — start with "New playbook".

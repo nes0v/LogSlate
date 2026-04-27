@@ -151,9 +151,9 @@ export function DistributionDonuts({ filtered }: { filtered: TradeRecord[] }) {
       else if (t.rating === 'egg') egg++
     }
     return [
-      { label: '👍 good', value: good, color: 'var(--color-accent)' },
-      { label: '🔥 excellent', value: excellent, color: 'var(--color-win)' },
-      { label: '🥚 egg', value: egg, color: 'var(--color-text-dim)' },
+      { label: 'A', value: excellent, color: 'var(--color-win)' },
+      { label: 'B', value: good, color: 'var(--color-accent)' },
+      { label: 'C', value: egg, color: 'var(--color-text-dim)' },
     ]
   }, [filtered])
 
@@ -250,6 +250,9 @@ export function AdvancedMetricsSections({
 
   return (
     <>
+      {/* KPI strip + risk strip share a tighter vertical rhythm so they read
+          as a single block of metrics, separate from the rows below. */}
+      <div className="space-y-2">
       <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
         <KpiTile
           label="Win rate"
@@ -328,8 +331,10 @@ export function AdvancedMetricsSections({
           tooltip="Theoretical optimal % of capital to risk per trade given your win rate and payoff. Use ¼ to ½ Kelly in practice — full Kelly is too volatile."
         />
       </section>
+      </div>
 
-      <section className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+      <div className="space-y-3">
+      <section className="grid grid-cols-1 sm:grid-cols-4 gap-3">
         <KpiTile
           label="Avg MAE"
           value={maeMfe.avgMae === null ? '—' : formatUsd(-maeMfe.avgMae)}
@@ -362,7 +367,7 @@ export function AdvancedMetricsSections({
         />
       </section>
 
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <KpiTile
           label="Longest win streak"
           value={`${streaks.longestWin}`}
@@ -391,6 +396,7 @@ export function AdvancedMetricsSections({
           tooltip="Pain index. Squared average of percentage drawdowns over the period — higher = deeper or longer underwater stretches. 0 = no drawdowns."
         />
       </section>
+      </div>
 
       <section className="space-y-2">
         <h2 className="text-sm font-medium">Daily P&amp;L</h2>
@@ -438,7 +444,7 @@ function KpiTile({ label, value, caption, tone, tooltip }: KpiTileProps) {
   return (
     <div
       className={cn(
-        'bg-(--color-panel) rounded-(--radius) p-3.5 shadow-(--shadow-xs)',
+        'bg-(--color-panel) rounded-(--radius) p-3 shadow-(--shadow-xs)',
         'transition-colors hover:border-(--color-border-strong)',
         tooltip && 'cursor-help',
       )}

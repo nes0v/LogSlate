@@ -84,6 +84,15 @@ describe('expectancyR', () => {
   it('returns null when no trade has a stop', () => {
     expect(expectancyR([tradeWithPnl(100, { stop_loss: 0 })])).toBeNull()
   })
+
+  it('skips breakeven (scratch) trades', () => {
+    const trades = [
+      tradeWithPnl(100, { stop_loss: 100 }), // 1R
+      tradeWithPnl(-50, { stop_loss: 100 }), // -0.5R
+      tradeWithPnl(0, { stop_loss: 100 }), // scratch — excluded
+    ]
+    expect(expectancyR(trades)).toBeCloseTo(0.25, 5)
+  })
 })
 
 describe('expectancyDollars', () => {
@@ -139,6 +148,19 @@ describe('sqn', () => {
 
   it('returns null with too few stop-defined trades', () => {
     expect(sqn([tradeWithPnl(100, { stop_loss: 100 })])).toBeNull()
+  })
+
+  it('skips breakeven (scratch) trades when computing R', () => {
+    const trades = [
+      tradeWithPnl(100, { stop_loss: 100 }),
+      tradeWithPnl(200, { stop_loss: 100 }),
+      tradeWithPnl(-50, { stop_loss: 100 }),
+      tradeWithPnl(-50, { stop_loss: 100 }),
+      // scratches that would otherwise add zeros to the R distribution
+      tradeWithPnl(0, { stop_loss: 100 }),
+      tradeWithPnl(0, { stop_loss: 100 }),
+    ]
+    expect(sqn(trades)).toBeCloseTo(0.8165, 3)
   })
 })
 
@@ -308,6 +330,15 @@ describe('rDistribution', () => {
   it('skips trades without a stop', () => {
     const buckets = rDistribution([tradeWithPnl(100, { stop_loss: 0 })])
     expect(buckets.every(b => b.count === 0)).toBe(true)
+  })
+
+  it('skips breakeven (scratch) trades', () => {
+    const buckets = rDistribution([
+      tradeWithPnl(50, { stop_loss: 100 }),
+      tradeWithPnl(0, { stop_loss: 100 }), // scratch — excluded from buckets
+    ])
+    const total = buckets.reduce((n, b) => n + b.count, 0)
+    expect(total).toBe(1)
   })
 })
 

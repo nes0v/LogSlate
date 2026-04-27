@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
@@ -25,6 +25,11 @@ import {
   paramsFromFilters,
   type TradeFilters,
 } from '@/lib/filters'
+import {
+  hasAnyFilter,
+  loadSharedFilters,
+  saveSharedFilters,
+} from '@/lib/shared-filters'
 import { adjustmentsByDate, computeCandles } from '@/lib/trade-stats'
 import { useStartingEquity } from '@/lib/use-starting-equity'
 import {
@@ -71,9 +76,9 @@ const SESSION_OPTS = [
 
 const RATING_OPTS = [
   { value: null, label: 'All' },
-  { value: 'good' as const, label: '👍' },
-  { value: 'excellent' as const, label: '🔥' },
-  { value: 'egg' as const, label: '🥚' },
+  { value: 'excellent' as const, label: 'A' },
+  { value: 'good' as const, label: 'B' },
+  { value: 'egg' as const, label: 'C' },
 ] satisfies Array<{ value: Rating | null; label: string }>
 
 /** Default date filter — 30 days (inclusive) ending on `baseDate`.
@@ -94,6 +99,18 @@ export function StatsRoute() {
   const urlFilters = filtersFromParams(params)
   const [equityView, setEquityView] = useState<EquityView>(getDefaultEquityView)
   const [tradesOpen, setTradesOpen] = useState(false)
+
+  // First-mount hydration: if the URL is bare and Reports/Stats has saved a
+  // filter to the shared slot, replay it into the URL so this page picks it
+  // up without surfacing a transient unfiltered state.
+  useEffect(() => {
+    if (params.toString() !== '') return
+    const stored = loadSharedFilters()
+    if (stored && hasAnyFilter(stored)) {
+      setParams(paramsFromFilters(stored), { replace: true })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const timeframe = timeframeFromParams(params)
   // Latest visible bucket-key range reported by the chart. Compared
   // against the filter's bucket keys to decide whether to surface a
@@ -267,6 +284,7 @@ export function StatsRoute() {
     const merged: TradeFilters = { ...urlFilters, ...next }
     if (merged.from === d.from) merged.from = null
     if (merged.to === d.to) merged.to = null
+    saveSharedFilters(hasAnyFilter(merged) ? merged : null)
     const p = paramsFromFilters(merged)
     const tf = 'tf' in next ? next.tf : timeframeFromParams(params)
     if (tf && tf !== 'D') p.set('tf', tf)
@@ -301,6 +319,7 @@ export function StatsRoute() {
   // per-account stored preference, and viewport snapped to the new
   // default range via an epoch bump.
   function clear() {
+    saveSharedFilters(null)
     setParams(paramsFromFilters(EMPTY_FILTERS))
     setEquityView(getDefaultEquityView())
     setViewportEpoch(e => e + 1)

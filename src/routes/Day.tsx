@@ -68,7 +68,7 @@ export function DayRoute() {
   const roi = startingEquity > 0 ? stats.net_pnl / startingEquity : null
 
   return (
-    <div className="space-y-6">
+    <div className="pt-1 space-y-8">
       <PageHeader
         title={pretty}
         prev={prevDate ? `/day/${prevDate}` : null}

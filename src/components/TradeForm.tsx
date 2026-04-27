@@ -29,9 +29,9 @@ const SESSIONS = [
   { value: 'aft', label: 'aft' },
 ] as const
 const RATINGS = [
-  { value: 'good', label: '👍 good' },
-  { value: 'excellent', label: '🔥 excellent' },
-  { value: 'egg', label: '🥚 egg' },
+  { value: 'excellent', label: 'A' },
+  { value: 'good', label: 'B' },
+  { value: 'egg', label: 'C' },
 ] as const
 const EXECUTION_KINDS = [
   { value: 'buy', label: 'Buy' },

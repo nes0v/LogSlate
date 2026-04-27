@@ -260,7 +260,7 @@ export function ProgressRoute() {
       </section>
 
       {/* Rule list / today's checklist */}
-      <section className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4">
+      <section className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-3">
         <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3 space-y-2">
           <div className="text-sm font-medium mb-1">Today's checklist</div>
           {activeRules.length === 0 ? (

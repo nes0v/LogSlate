@@ -69,9 +69,9 @@ export function SettingsRoute() {
   const lastAt = lastSyncAt()
 
   return (
-    <div className="pt-2 space-y-8 max-w-2xl">
-      <div className="mb-9">
-        <h1 className="text-lg font-semibold">Settings</h1>
+    <div className="pt-1 space-y-8 max-w-2xl">
+      <div className="flex items-center justify-between mb-8">
+        <h1 className="h-8 flex items-center text-lg font-semibold">Settings</h1>
       </div>
 
       <section className="space-y-3">

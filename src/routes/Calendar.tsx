@@ -113,7 +113,7 @@ export function CalendarRoute() {
   }, [days, perDay, month])
 
   return (
-    <div>
+    <div className="pt-1 space-y-8">
       <PageHeader
         title={format(month, 'MMMM yyyy')}
         prev={`/month/${format(subMonths(month, 1), 'yyyy-MM')}`}
@@ -138,7 +138,7 @@ export function CalendarRoute() {
         }
       />
 
-      <div className="mt-6 space-y-8">
+      <div className="space-y-8">
         {/* The 4px spacer column + the surrounding 6px column-gaps give a
             16px aisle between the day grid and the weekly summary
             column, matching the gap-4 spacing used between sections on
@@ -214,9 +214,9 @@ export function CalendarRoute() {
         <div className="flex items-center justify-end">
           <span
             className={cn(
-              'text-xs',
+              'text-xs size-[26px] inline-flex items-center justify-center leading-none rounded-full -mt-1 -mr-1',
               isColoured ? 'text-white/80' : 'text-(--color-text-dim)',
-              today && 'text-(--color-text) border border-(--color-text) rounded-sm size-5 flex items-center justify-center',
+              today && 'text-(--color-accent-fg) bg-(--color-accent-deep)',
             )}
           >
             {format(d, 'd')}

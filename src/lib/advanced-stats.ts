@@ -47,12 +47,14 @@ export function payoffRatio(trades: TradeRecord[]): number | null {
   return ws / wn / Math.abs(ls / ln)
 }
 
-/** Mean R-multiple. R = pnl / stop_loss. */
+/** Mean R-multiple. R = pnl / stop_loss. Breakeven (scratch) trades
+ *  are excluded so the metric reflects decisive trades only. */
 export function expectancyR(trades: TradeRecord[]): number | null {
   let n = 0
   let s = 0
   for (const t of trades) {
     if (t.stop_loss <= 0) continue
+    if (classifyTrade(t) === 'breakeven') continue
     s += (effectivePnl(t) ?? 0) / t.stop_loss
     n++
   }
@@ -107,11 +109,13 @@ export function kellyFraction(trades: TradeRecord[]): number | null {
 
 // ---------- Van Tharp SQN ------------------------------------------
 
-/** System Quality Number = √n × (mean_R / stdev_R). */
+/** System Quality Number = √n × (mean_R / stdev_R). Breakeven (scratch)
+ *  trades are excluded so they don't dilute the magnitude. */
 export function sqn(trades: TradeRecord[]): number | null {
   const rs: number[] = []
   for (const t of trades) {
     if (t.stop_loss <= 0) continue
+    if (classifyTrade(t) === 'breakeven') continue
     rs.push((effectivePnl(t) ?? 0) / t.stop_loss)
   }
   if (rs.length < 2) return null
@@ -372,6 +376,7 @@ export function rDistribution(trades: TradeRecord[]): RBucket[] {
   }))
   for (const t of trades) {
     if (t.stop_loss <= 0) continue
+    if (classifyTrade(t) === 'breakeven') continue
     const r = (effectivePnl(t) ?? 0) / t.stop_loss
     for (const b of buckets) {
       if (r > b.range[0] && r <= b.range[1]) {

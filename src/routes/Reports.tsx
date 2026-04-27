@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { addDays, format, startOfMonth } from 'date-fns'
+import { addDays, format } from 'date-fns'
 import { X } from 'lucide-react'
 import type { ContractType, Rating, Session, SymbolKey, TradeRecord } from '@/db/types'
 import { db } from '@/db/schema'
@@ -12,6 +12,11 @@ import {
   paramsFromFilters,
   type TradeFilters,
 } from '@/lib/filters'
+import {
+  hasAnyFilter,
+  loadSharedFilters,
+  saveSharedFilters,
+} from '@/lib/shared-filters'
 import { aggregate } from '@/lib/trade-stats'
 import { classifyTrade, computePlannedRr, computeRealizedRr, effectivePnl, totalContracts } from '@/lib/trade-math'
 import {
@@ -52,9 +57,9 @@ const SESSION_OPTS = [
 ] satisfies Array<{ value: Session | null; label: string }>
 const RATING_OPTS = [
   { value: null, label: 'All' },
-  { value: 'good' as const, label: '👍' },
-  { value: 'excellent' as const, label: '🔥' },
-  { value: 'egg' as const, label: '🥚' },
+  { value: 'excellent' as const, label: 'A' },
+  { value: 'good' as const, label: 'B' },
+  { value: 'egg' as const, label: 'C' },
 ] satisfies Array<{ value: Rating | null; label: string }>
 
 type ReportTab = 'days' | 'symbol' | 'risk' | 'cohort' | 'compare'
@@ -71,7 +76,7 @@ type CompareAxis = 'symbol' | 'contract' | 'session' | 'rating' | 'side' | 'plan
 function defaultRange(baseDate: string) {
   const base = new Date(baseDate + 'T00:00:00')
   return {
-    from: format(startOfMonth(addDays(base, -89)), 'yyyy-MM-dd'),
+    from: format(addDays(base, -29), 'yyyy-MM-dd'),
     to: baseDate,
   }
 }
@@ -82,6 +87,28 @@ export function ReportsRoute() {
   const urlFilters = filtersFromParams(params)
   const tab = (params.get('tab') as ReportTab) || 'days'
   const compareAxis = (params.get('axis') as CompareAxis) || 'symbol'
+
+  // Hydrate filters from the shared slot on first mount when the URL is bare
+  // (excluding the tab/axis params which are page-local). Lets the user
+  // arrive on /reports with the filter they last set on /stats.
+  useEffect(() => {
+    const hasFilterParam =
+      params.has('from') ||
+      params.has('to') ||
+      params.has('symbol') ||
+      params.has('contract') ||
+      params.has('session') ||
+      params.has('rating')
+    if (hasFilterParam) return
+    const stored = loadSharedFilters()
+    if (stored && hasAnyFilter(stored)) {
+      const p = paramsFromFilters(stored)
+      if (tab !== 'days') p.set('tab', tab)
+      if (tab === 'compare' && compareAxis !== 'symbol') p.set('axis', compareAxis)
+      setParams(p, { replace: true })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const accountId = useActiveAccountId()
   const allTrades = useLiveQuery(
@@ -123,16 +150,18 @@ export function ReportsRoute() {
     const merged: TradeFilters = { ...urlFilters, ...next }
     if (merged.from === d.from) merged.from = null
     if (merged.to === d.to) merged.to = null
+    saveSharedFilters(hasAnyFilter(merged) ? merged : null)
     const p = paramsFromFilters(merged)
     if (tab !== 'days') p.set('tab', tab)
     if (tab === 'compare' && compareAxis !== 'symbol') p.set('axis', compareAxis)
     setParams(p)
   }
-  function setTab(t: ReportTab) {
+  function tabSearch(t: ReportTab): string {
     const p = paramsFromFilters(urlFilters)
     if (t !== 'days') p.set('tab', t)
     if (t === 'compare' && compareAxis !== 'symbol') p.set('axis', compareAxis)
-    setParams(p)
+    const qs = p.toString()
+    return qs ? `?${qs}` : ''
   }
   function setCompareAxis(a: CompareAxis) {
     const p = paramsFromFilters(urlFilters)
@@ -141,6 +170,7 @@ export function ReportsRoute() {
     setParams(p)
   }
   function clear() {
+    saveSharedFilters(null)
     setParams(new URLSearchParams())
   }
 
@@ -155,7 +185,7 @@ export function ReportsRoute() {
             onClick={clear}
             className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-(--radius) border border-(--color-border) text-(--color-text-dim) hover:text-(--color-text)"
           >
-            <X className="size-3" /> Clear
+            <X className="size-3" /> Clear filters
           </button>
         )}
       </div>
@@ -194,33 +224,32 @@ export function ReportsRoute() {
         </div>
       </section>
 
-      {/* Tab bar */}
-      <section className="flex flex-wrap items-center gap-1 text-xs font-mono border-b border-(--color-border)">
+      {/* Tab bar — same style as the main app nav for visual consistency. */}
+      <nav className="flex items-center gap-1 text-sm overflow-x-auto">
         {TABS.map(t => (
-          <button
+          <Link
             key={t.value}
-            type="button"
-            onClick={() => setTab(t.value)}
+            to={{ search: tabSearch(t.value) }}
             className={cn(
-              'px-3 py-2 -mb-px border-b-2 transition-colors',
+              'px-2.5 py-1.5 rounded-(--radius) transition-colors whitespace-nowrap',
               tab === t.value
-                ? 'border-(--color-accent) text-(--color-text)'
-                : 'border-transparent text-(--color-text-dim) hover:text-(--color-text)',
+                ? 'text-(--color-text) bg-(--color-panel-2)'
+                : 'text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)/60',
             )}
           >
             {t.label}
-          </button>
+          </Link>
         ))}
-      </section>
+      </nav>
 
       {filtered.length === 0 ? (
-        <div className="text-sm text-(--color-text-dim) text-center py-12 border border-dashed border-(--color-border) rounded-(--radius)">
+        <EmptyState>
           {(allTrades ?? []).length === 0
             ? 'No trades yet.'
             : 'No trades match the current filters.'}
-        </div>
+        </EmptyState>
       ) : tab === 'days' ? (
-        <DaysAndTimeReport trades={filtered} onTradeClick={id => navigate(`/trade/${id}/edit`)} />
+        <DaysAndTimeReport trades={filtered} />
       ) : tab === 'symbol' ? (
         <SymbolReport trades={filtered} />
       ) : tab === 'risk' ? (
@@ -234,16 +263,19 @@ export function ReportsRoute() {
   )
 }
 
+function EmptyState({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="text-sm text-(--color-text-dim) text-center py-12 border border-dashed border-(--color-border) rounded-(--radius)">
+      {children}
+    </div>
+  )
+}
+
 // =====================================================================
 // Tab: Days & Time
 // =====================================================================
 
-function DaysAndTimeReport({
-  trades,
-}: {
-  trades: TradeRecord[]
-  onTradeClick?: (id: string) => void
-}) {
+function DaysAndTimeReport({ trades }: { trades: TradeRecord[] }) {
   const weekday = useMemo(() => pnlByWeekday(trades), [trades])
   const hour = useMemo(() => pnlByHour(trades), [trades])
   const month = useMemo(() => pnlByMonth(trades), [trades])
@@ -345,13 +377,13 @@ function SymbolReport({ trades }: { trades: TradeRecord[] }) {
     return <div className="text-sm text-(--color-text-dim) text-center py-12">No data.</div>
   }
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {groups.map(([key, list]) => {
         const stats = aggregate(list)
         const cohort = cohortStats(list)
         return (
           <Card key={key} title={key} caption={`${stats.count} trades`}>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
               <Stat
                 label="Net P&L"
                 value={formatUsd(stats.net_pnl)}
@@ -480,14 +512,15 @@ function RiskReport({
               : 'how much heat each trade took'
           }
           right={
-            <div className="flex gap-1 text-xs font-mono">
-              <ToggleBtn active={scatter === 'mfe'} onClick={() => setScatter('mfe')}>
-                MFE
-              </ToggleBtn>
-              <ToggleBtn active={scatter === 'mae'} onClick={() => setScatter('mae')}>
-                MAE
-              </ToggleBtn>
-            </div>
+            <Pills
+              size="sm"
+              value={scatter}
+              onChange={setScatter}
+              options={[
+                { value: 'mfe' as const, label: 'MFE' },
+                { value: 'mae' as const, label: 'MAE' },
+              ]}
+            />
           }
         >
           <Scatter
@@ -514,12 +547,14 @@ function RiskReport({
 // =====================================================================
 
 function CohortReport({ trades }: { trades: TradeRecord[] }) {
+  // Use classifyTrade so scratches (small AHPC trades whose PnL signs are
+  // dominated by fees/slippage) don't get bucketed as winners or losers.
   const winners = useMemo(
-    () => trades.filter(t => (effectivePnl(t) ?? 0) > 0),
+    () => trades.filter(t => classifyTrade(t) === 'win'),
     [trades],
   )
   const losers = useMemo(
-    () => trades.filter(t => (effectivePnl(t) ?? 0) < 0),
+    () => trades.filter(t => classifyTrade(t) === 'loss'),
     [trades],
   )
   const w = useMemo(() => cohortStats(winners), [winners])
@@ -559,7 +594,7 @@ function CohortReport({ trades }: { trades: TradeRecord[] }) {
     <div className="space-y-6">
       <Card title="Winners vs Losers">
         <div className="text-sm">
-          <div className="grid grid-cols-[1fr_120px_120px] gap-2 py-1 border-b border-(--color-border) text-(--color-text-dim) text-xs">
+          <div className="grid grid-cols-[1fr_120px_120px] gap-2 py-1 mb-2 border-b border-(--color-border) text-(--color-text-dim) text-xs">
             <div></div>
             <div className="text-right text-(--color-win)">Winners</div>
             <div className="text-right text-(--color-loss)">Losers</div>
@@ -567,7 +602,7 @@ function CohortReport({ trades }: { trades: TradeRecord[] }) {
           {rows.map(r => (
             <div
               key={r.label}
-              className="grid grid-cols-[1fr_120px_120px] gap-2 py-1.5"
+              className="grid grid-cols-[1fr_120px_120px] gap-2 py-1"
             >
               <div className="text-(--color-text-dim)">{r.label}</div>
               <div className="text-right font-mono tabular-nums">{r.w}</div>
@@ -613,28 +648,10 @@ function CompareReport({
 }) {
   const groups = useMemo(() => splitByAxis(trades, axis), [trades, axis])
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-1 text-xs font-mono">
-        {COMPARE_AXES.map(a => (
-          <button
-            key={a.value}
-            type="button"
-            onClick={() => onAxisChange(a.value)}
-            className={cn(
-              'px-2 py-1 rounded-(--radius) border transition-colors',
-              axis === a.value
-                ? 'border-(--color-border) bg-(--color-panel-2) text-(--color-text)'
-                : 'border-transparent text-(--color-text-dim) hover:text-(--color-text)',
-            )}
-          >
-            {a.label}
-          </button>
-        ))}
-      </div>
+    <div className="space-y-6">
+      <Pills size="sm" value={axis} onChange={onAxisChange} options={COMPARE_AXES} />
       {groups.length === 0 ? (
-        <div className="text-sm text-(--color-text-dim) text-center py-6">
-          Nothing to compare on this axis.
-        </div>
+        <EmptyState>Nothing to compare on this axis.</EmptyState>
       ) : (
         <Card title={`Split by ${axis}`}>
           <CompareTable groups={groups} />
@@ -665,9 +682,9 @@ function splitByAxis(
         .filter(g => g.trades.length > 0)
     case 'rating':
       return [
-        { label: '👍 good', trades: trades.filter(t => t.rating === 'good') },
-        { label: '🔥 excellent', trades: trades.filter(t => t.rating === 'excellent') },
-        { label: '🥚 egg', trades: trades.filter(t => t.rating === 'egg') },
+        { label: 'A', trades: trades.filter(t => t.rating === 'excellent') },
+        { label: 'B', trades: trades.filter(t => t.rating === 'good') },
+        { label: 'C', trades: trades.filter(t => t.rating === 'egg') },
       ].filter(g => g.trades.length > 0)
     case 'side': {
       const longs: TradeRecord[] = []
@@ -704,7 +721,7 @@ function splitByAxis(
 function CompareTable({ groups }: { groups: Array<{ label: string; trades: TradeRecord[] }> }) {
   return (
     <div className="text-xs">
-      <div className="grid grid-cols-[100px_repeat(6,1fr)] gap-2 py-1 border-b border-(--color-border) text-(--color-text-dim)">
+      <div className="grid grid-cols-[100px_repeat(6,1fr)] gap-2 py-1 mb-2 border-b border-(--color-border) text-(--color-text-dim)">
         <div></div>
         <div className="text-right">Trades</div>
         <div className="text-right">Win %</div>
@@ -715,18 +732,21 @@ function CompareTable({ groups }: { groups: Array<{ label: string; trades: Trade
       </div>
       {groups.map(g => {
         const s = aggregate(g.trades)
+        // PF uses the classifyTrade-aware buckets so scratches don't pollute
+        // the gross-wins / gross-losses sums.
         let wins = 0
         let losses = 0
         for (const t of g.trades) {
+          const outcome = classifyTrade(t)
           const p = effectivePnl(t) ?? 0
-          if (p > 0) wins += p
-          else if (p < 0) losses += p
+          if (outcome === 'win') wins += p
+          else if (outcome === 'loss') losses += p
         }
         const pf = losses === 0 ? (wins > 0 ? Infinity : null) : wins / Math.abs(losses)
         return (
           <div
             key={g.label}
-            className="grid grid-cols-[100px_repeat(6,1fr)] gap-2 py-1.5 font-mono tabular-nums"
+            className="grid grid-cols-[100px_repeat(6,1fr)] gap-2 py-1 font-mono tabular-nums"
           >
             <div className="text-(--color-text-dim) font-sans">{g.label}</div>
             <div className="text-right">{s.count}</div>
@@ -781,7 +801,7 @@ function Card({
     <div className="bg-(--color-panel) rounded-(--radius) p-4 shadow-(--shadow-xs)">
       <div className="flex items-baseline justify-between mb-3 gap-2">
         <div>
-          <h3 className="text-sm font-medium tracking-tight">{title}</h3>
+          <h3 className="text-sm font-medium">{title}</h3>
           {caption ? <div className="text-xs text-(--color-text-dim) mt-0.5">{caption}</div> : null}
         </div>
         {right}
@@ -824,31 +844,6 @@ function Stat({
   )
 }
 
-function ToggleBtn({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean
-  onClick: () => void
-  children: React.ReactNode
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        'px-2 py-0.5 rounded border transition-colors',
-        active
-          ? 'border-(--color-border) bg-(--color-panel-2) text-(--color-text)'
-          : 'border-transparent text-(--color-text-dim) hover:text-(--color-text)',
-      )}
-    >
-      {children}
-    </button>
-  )
-}
-
 interface ReportRow {
   label: string
   count: number
@@ -857,7 +852,7 @@ interface ReportRow {
   pnl: number
   hideWl?: boolean
 }
-function ReportTable({ title, rows }: { title?: string; rows: ReportRow[] }) {
+function ReportTable({ rows }: { rows: ReportRow[] }) {
   if (rows.length === 0) {
     return (
       <div className="text-xs text-(--color-text-dim) text-center py-3">
@@ -867,10 +862,8 @@ function ReportTable({ title, rows }: { title?: string; rows: ReportRow[] }) {
   }
   const max = Math.max(0, ...rows.map(r => Math.abs(r.pnl)))
   return (
-    <div>
-      {title ? <h3 className="text-sm font-medium mb-2">{title}</h3> : null}
-      <div className="text-xs">
-        <div className="grid grid-cols-[80px_60px_80px_1fr_80px] gap-2 py-1 border-b border-(--color-border) text-(--color-text-dim)">
+    <div className="text-xs">
+        <div className="grid grid-cols-[80px_60px_80px_1fr_80px] gap-2 py-1 mb-2 border-b border-(--color-border) text-(--color-text-dim)">
           <div></div>
           <div className="text-right">Trades</div>
           <div className="text-right">W / L</div>
@@ -885,7 +878,7 @@ function ReportTable({ title, rows }: { title?: string; rows: ReportRow[] }) {
           return (
             <div
               key={r.label}
-              className="grid grid-cols-[80px_60px_80px_1fr_80px] gap-2 py-1.5 items-center"
+              className="grid grid-cols-[80px_60px_80px_1fr_80px] gap-2 py-1 items-center"
             >
               <div className="text-(--color-text-dim) font-mono">{r.label}</div>
               <div className="text-right font-mono">{r.count}</div>
@@ -917,7 +910,6 @@ function ReportTable({ title, rows }: { title?: string; rows: ReportRow[] }) {
             </div>
           )
         })}
-      </div>
     </div>
   )
 }
@@ -934,7 +926,7 @@ function PlannedRRTable({
   }
   return (
     <div className="text-xs">
-      <div className="grid grid-cols-[60px_60px_80px_80px_1fr] gap-2 py-1 border-b border-(--color-border) text-(--color-text-dim)">
+      <div className="grid grid-cols-[60px_60px_80px_80px_1fr] gap-2 py-1 mb-2 border-b border-(--color-border) text-(--color-text-dim)">
         <div>Plan</div>
         <div className="text-right">Trades</div>
         <div className="text-right">Win %</div>
@@ -946,7 +938,7 @@ function PlannedRRTable({
         return (
           <div
             key={r.label}
-            className="grid grid-cols-[60px_60px_80px_80px_1fr] gap-2 py-1.5 font-mono tabular-nums"
+            className="grid grid-cols-[60px_60px_80px_80px_1fr] gap-2 py-1 font-mono tabular-nums"
           >
             <div className="text-(--color-text-dim)">{r.label}</div>
             <div className="text-right">{r.count}</div>
@@ -1031,18 +1023,18 @@ function HoldRow({ data }: { data: ReturnType<typeof holdTimeBuckets> }) {
 function RDistRows({ buckets }: { buckets: ReturnType<typeof rDistribution> }) {
   const max = Math.max(1, ...buckets.map(b => b.count))
   return (
-    <div className="space-y-1">
+    <div>
       {buckets.map(b => {
         const pct = (b.count / max) * 100
         const isWin = b.range[0] >= 0
         const color = isWin ? 'var(--color-win)' : 'var(--color-loss)'
         return (
-          <div key={b.label} className="grid grid-cols-[48px_1fr_28px] items-center gap-2">
+          <div key={b.label} className="grid grid-cols-[48px_1fr_28px] items-center gap-2 py-1">
             <div className="text-xs font-mono text-(--color-text-dim)">{b.label}</div>
-            <div className="h-4 bg-(--color-panel-2) rounded-sm overflow-hidden">
+            <div className="h-2 bg-(--color-panel-2) rounded-full overflow-hidden">
               <div
-                className="h-full rounded-sm"
-                style={{ width: `${pct}%`, backgroundColor: color, opacity: b.count > 0 ? 0.8 : 0.2 }}
+                className="h-full rounded-full"
+                style={{ width: `${pct}%`, backgroundColor: color, opacity: b.count > 0 ? 0.85 : 0.15 }}
               />
             </div>
             <div className="text-xs font-mono text-right tabular-nums text-(--color-text-dim)">

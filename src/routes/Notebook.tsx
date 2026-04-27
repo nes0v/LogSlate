@@ -91,10 +91,10 @@ export function NotebookRoute() {
       if (!byFolder.has(f)) byFolder.set(f, [])
       byFolder.get(f)!.push(n)
     }
-    const out: Array<{ name: string; notes: Note[]; pinned?: boolean }> = []
-    if (pinned.length > 0) out.push({ name: 'Pinned', notes: pinned, pinned: true })
+    const out: Array<{ key: string; name: string; notes: Note[]; pinned?: boolean }> = []
+    if (pinned.length > 0) out.push({ key: '__pinned', name: 'Pinned', notes: pinned, pinned: true })
     for (const f of Array.from(byFolder.keys()).sort()) {
-      out.push({ name: f || 'Inbox', notes: byFolder.get(f)! })
+      out.push({ key: `f:${f}`, name: f, notes: byFolder.get(f)! })
     }
     return out
   }, [notes])
@@ -128,9 +128,9 @@ export function NotebookRoute() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-4 min-h-[60vh]">
+      <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-3 min-h-[60vh]">
         {/* Sidebar */}
-        <aside className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-2 max-h-[80vh] overflow-y-auto">
+        <aside className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3 max-h-[80vh] overflow-y-auto">
           {(notes ?? []).length === 0 ? (
             <div className="text-xs text-(--color-text-dim) text-center py-6">
               No notes yet — start with a template.
@@ -138,11 +138,13 @@ export function NotebookRoute() {
           ) : (
             <div className="space-y-3">
               {groups.map(g => (
-                <div key={g.name}>
-                  <div className="text-xs uppercase tracking-wider text-(--color-text-dim) px-2 py-1 flex items-center gap-1">
-                    {g.pinned && <Pin className="size-3" />}
-                    {g.name}
-                  </div>
+                <div key={g.key}>
+                  {g.name && (
+                    <div className="text-xs uppercase tracking-wider text-(--color-text-dim) px-2 py-1 flex items-center gap-1">
+                      {g.pinned && <Pin className="size-3" />}
+                      {g.name}
+                    </div>
+                  )}
                   <div className="space-y-0.5">
                     {g.notes.map(n => (
                       <button

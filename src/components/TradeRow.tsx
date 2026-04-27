@@ -10,7 +10,7 @@ import {
   totalContracts,
 } from '@/lib/trade-math'
 import { formatUsd } from '@/lib/money'
-import { RATING_EMOJI } from '@/lib/rating-emoji'
+import { RATING_LABEL } from '@/lib/rating-label'
 import { SESSION_BADGE, SESSION_BADGE_CLASS } from '@/lib/session-badge'
 import { cn } from '@/lib/utils'
 
@@ -98,7 +98,7 @@ export function TradeRow({ trade, index }: TradeRowProps) {
       >
         {pnl === null ? '—' : formatUsd(pnl)}
       </span>
-      <span aria-hidden className="text-lg leading-none">{RATING_EMOJI[trade.rating]}</span>
+      <span className="text-sm font-mono text-(--color-text-dim)">{RATING_LABEL[trade.rating]}</span>
     </Link>
   )
 }

@@ -27,17 +27,17 @@ export function Layout() {
           >
             LogSlate
           </Link>
-          <nav className="flex items-center gap-1 text-sm overflow-x-auto">
+          <nav className="flex items-center gap-4 text-sm overflow-x-auto">
             {links.map(l => (
               <NavLink
                 key={l.to}
                 to={l.to}
                 className={({ isActive }) =>
                   cn(
-                    'px-2.5 py-1.5 rounded-(--radius) transition-colors whitespace-nowrap',
+                    'transition-colors whitespace-nowrap',
                     isActive
-                      ? 'text-(--color-text) bg-(--color-panel-2)'
-                      : 'text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)/60',
+                      ? 'text-(--color-text)'
+                      : 'text-(--color-text-dim) hover:text-(--color-text)',
                   )
                 }
               >

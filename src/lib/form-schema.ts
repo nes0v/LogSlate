@@ -176,7 +176,7 @@ export function emptyForm(trade_date: string): TradeFormValues {
     stop_loss: null,
     drawdown: null,
     buildup: null,
-    rating: 'good',
+    rating: 'excellent',
     pnl_override: null,
     screenshot: null,
     profit_target: null,
