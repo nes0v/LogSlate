@@ -4,6 +4,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { addDays, format } from 'date-fns'
 import { X } from 'lucide-react'
 import type { ContractType, Rating, Session, SymbolKey, TradeRecord } from '@/db/types'
+import { EMOTIONS } from '@/db/types'
 import { db } from '@/db/schema'
 import { useActiveAccountId } from '@/lib/active-account'
 import {
@@ -71,7 +72,7 @@ const TABS: Array<{ value: ReportTab; label: string }> = [
   { value: 'compare', label: 'Compare' },
 ]
 
-type CompareAxis = 'symbol' | 'contract' | 'session' | 'rating' | 'side' | 'planned'
+type CompareAxis = 'symbol' | 'contract' | 'session' | 'rating' | 'side' | 'planned' | 'emotion' | 'model'
 
 function defaultRange(baseDate: string) {
   const base = new Date(baseDate + 'T00:00:00')
@@ -635,6 +636,8 @@ const COMPARE_AXES: Array<{ value: CompareAxis; label: string }> = [
   { value: 'rating', label: 'Rating' },
   { value: 'side', label: 'Long / short' },
   { value: 'planned', label: 'Planned R' },
+  { value: 'emotion', label: 'Emotions' },
+  { value: 'model', label: 'Models' },
 ]
 
 function CompareReport({
@@ -646,7 +649,23 @@ function CompareReport({
   axis: CompareAxis
   onAxisChange: (a: CompareAxis) => void
 }) {
-  const groups = useMemo(() => splitByAxis(trades, axis), [trades, axis])
+  const accountId = useActiveAccountId()
+  // Only fetch playbook names when actually needed for the rendered axis;
+  // useLiveQuery still subscribes either way, but the cost is negligible.
+  const playbooks = useLiveQuery(
+    () => db.playbooks.where('account_id').equals(accountId).toArray(),
+    [accountId],
+    [],
+  )
+  const playbookNameById = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const p of playbooks ?? []) m.set(p.id, p.name)
+    return m
+  }, [playbooks])
+  const groups = useMemo(
+    () => splitByAxis(trades, axis, playbookNameById),
+    [trades, axis, playbookNameById],
+  )
   return (
     <div className="space-y-6">
       <Pills size="sm" value={axis} onChange={onAxisChange} options={COMPARE_AXES} />
@@ -664,6 +683,7 @@ function CompareReport({
 function splitByAxis(
   trades: TradeRecord[],
   axis: CompareAxis,
+  playbookNameById: Map<string, string>,
 ): Array<{ label: string; trades: TradeRecord[] }> {
   switch (axis) {
     case 'symbol':
@@ -714,6 +734,34 @@ function splitByAxis(
       return Array.from(map.entries())
         .sort((a, b) => a[0] - b[0])
         .map(([k, v]) => ({ label: `${k}×`, trades: v }))
+    }
+    case 'emotion': {
+      // Preserve EMOTIONS' declared order so the buckets always sort the
+      // same way; an extra "(unset)" bucket catches trades without an
+      // emotion logged.
+      const buckets: Array<{ label: string; trades: TradeRecord[] }> = EMOTIONS.map(
+        e => ({ label: e, trades: trades.filter(t => t.emotion === e) }),
+      )
+      const unset = trades.filter(t => !t.emotion)
+      if (unset.length > 0) buckets.push({ label: '(unset)', trades: unset })
+      return buckets.filter(g => g.trades.length > 0)
+    }
+    case 'model': {
+      const map = new Map<string, TradeRecord[]>()
+      const unset: TradeRecord[] = []
+      for (const t of trades) {
+        if (!t.playbook_id) { unset.push(t); continue }
+        if (!map.has(t.playbook_id)) map.set(t.playbook_id, [])
+        map.get(t.playbook_id)!.push(t)
+      }
+      const buckets = Array.from(map.entries())
+        .map(([id, v]) => ({
+          label: playbookNameById.get(id) ?? '(deleted)',
+          trades: v,
+        }))
+        .sort((a, b) => b.trades.length - a.trades.length)
+      if (unset.length > 0) buckets.push({ label: '(unset)', trades: unset })
+      return buckets
     }
   }
 }

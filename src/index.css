@@ -94,7 +94,7 @@
   /* Muted grey reserved for chart segments (donut "Other"/breakeven/etc.).
    * A touch lighter than text-dim so the slice reads as background rather
    * than active data. */
-  --color-chart-muted: light-dark(#9197a4, #9ea2b1);
+  --color-chart-muted: var(--color-fee);
 
   /* Elevation — with the borderless design these need to do the heavy
    * lifting of making panels read as separate from the page bg. Light

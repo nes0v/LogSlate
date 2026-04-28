@@ -8,7 +8,6 @@ import type {
   TradeDraft,
   TradeRecord,
 } from '@/db/types'
-import { MAIN_ACCOUNT_ID } from '@/db/types'
 import { getActiveAccountId } from '@/lib/active-account'
 
 function now(): string {
@@ -135,18 +134,13 @@ export async function createAccount(draft: AccountDraft): Promise<Account> {
   return rec
 }
 
-export async function renameAccount(id: string, name: string): Promise<void> {
-  const trimmed = name.trim()
-  if (!trimmed) throw new Error('Account name is required.')
-  await db.accounts.update(id, { name: trimmed, updated_at: now() })
-}
-
 // Cascading delete: the account's trades, adjustments, day screenshots and
 // queued uploads go with it, plus any per-account localStorage preferences /
-// Drive folder caches. Refuses to delete the Main account (UI also disables
-// this, but we guard server-side too).
+// Drive folder caches. Refuses to delete the last remaining account so the
+// app always has somewhere to land on next reload.
 export async function deleteAccount(id: string): Promise<void> {
-  if (id === MAIN_ACCOUNT_ID) throw new Error('The Main account cannot be deleted.')
+  const total = await db.accounts.count()
+  if (total <= 1) throw new Error('At least one account must remain.')
   await db.transaction(
     'rw',
     [db.accounts, db.trades, db.adjustments, db.day_screenshots, db.pending_uploads],

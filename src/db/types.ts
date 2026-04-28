@@ -45,7 +45,7 @@ export const EMOTIONS = [
   'greedy',
   'frustrated',
   'tired',
-  'confident',
+  'busy',
 ] as const
 export type Emotion = (typeof EMOTIONS)[number]
 export const MARKET_CONDITIONS = [

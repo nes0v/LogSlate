@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   emptyForm,
   formToDraft,
+  newTradeFormSchema,
   recordToForm,
   tradeFormSchema,
   type TradeFormValues,
@@ -72,6 +73,27 @@ describe('tradeFormSchema', () => {
   it('rejects stop_loss ≤ 0', () => {
     expect(tradeFormSchema.safeParse(validForm({ stop_loss: 0 })).success).toBe(false)
     expect(tradeFormSchema.safeParse(validForm({ stop_loss: -1 })).success).toBe(false)
+  })
+
+  it('accepts null emotion (legacy edits keep saving)', () => {
+    const r = tradeFormSchema.safeParse(validForm({ emotion: null }))
+    expect(r.success).toBe(true)
+  })
+})
+
+describe('newTradeFormSchema', () => {
+  it('rejects null emotion (mandatory on new trades)', () => {
+    const r = newTradeFormSchema.safeParse(validForm({ emotion: null }))
+    expect(r.success).toBe(false)
+    if (!r.success) {
+      const issue = r.error.issues.find(i => i.path[0] === 'emotion')
+      expect(issue?.message).toMatch(/emotion/i)
+    }
+  })
+
+  it('accepts a valid emotion', () => {
+    const r = newTradeFormSchema.safeParse(validForm({ emotion: 'focused' }))
+    expect(r.success).toBe(true)
   })
 })
 

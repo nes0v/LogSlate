@@ -220,11 +220,12 @@ class LogslateDB extends Dexie {
 
 export const db = new LogslateDB()
 
-// Ensures the Main account exists even on a fresh DB (no v3→v4 upgrade path
-// ran, because the DB was created straight at v4). Safe to call repeatedly.
+// Seeds a default Main account on a truly fresh DB so the app always has
+// somewhere to land. Once any account exists this is a no-op — including
+// after the user has deleted Main themselves (we don't resurrect it).
 export async function ensureMainAccount(): Promise<void> {
-  const existing = await db.accounts.get(MAIN_ACCOUNT_ID)
-  if (existing) return
+  const total = await db.accounts.count()
+  if (total > 0) return
   const ts = new Date().toISOString()
   await db.accounts.put({
     id: MAIN_ACCOUNT_ID,

@@ -12,7 +12,6 @@ import {
   listAccounts,
   listAdjustments,
   listAllTrades,
-  renameAccount,
   slugifyAccountName,
   updateAdjustment,
   updateTrade,
@@ -155,21 +154,6 @@ describe('account queries', () => {
     await expect(createAccount({ name: 'Main' })).rejects.toThrow(/already exists/)
   })
 
-  it('renameAccount updates name and bumps updated_at', async () => {
-    const a = await createAccount({ name: 'Alpha' })
-    await new Promise(r => setTimeout(r, 2))
-    await renameAccount(a.id, 'Beta')
-    const all = await listAccounts()
-    const fetched = all.find(x => x.id === a.id)!
-    expect(fetched.name).toBe('Beta')
-    expect(fetched.updated_at > a.updated_at).toBe(true)
-  })
-
-  it('renameAccount rejects empty names', async () => {
-    const a = await createAccount({ name: 'Alpha' })
-    await expect(renameAccount(a.id, '   ')).rejects.toThrow(/required/)
-  })
-
   it('listAccounts puts Main first then alphabetical', async () => {
     await createAccount({ name: 'Zulu' })
     await createAccount({ name: 'Alpha' })
@@ -177,8 +161,16 @@ describe('account queries', () => {
     expect(all.map(a => a.name)).toEqual(['Main', 'Alpha', 'Zulu'])
   })
 
-  it('deleteAccount refuses to delete Main', async () => {
-    await expect(deleteAccount(MAIN_ACCOUNT_ID)).rejects.toThrow(/Main/)
+  it('deleteAccount refuses to remove the last remaining account', async () => {
+    // Only the auto-seeded Main exists at this point.
+    await expect(deleteAccount(MAIN_ACCOUNT_ID)).rejects.toThrow(/at least one/i)
+  })
+
+  it('deleteAccount allows removing Main when other accounts exist', async () => {
+    await createAccount({ name: 'Alpha' })
+    await deleteAccount(MAIN_ACCOUNT_ID)
+    const remaining = await listAccounts()
+    expect(remaining.map(a => a.name)).toEqual(['Alpha'])
   })
 
   it('deleteAccount cascades to trades and adjustments', async () => {
@@ -286,5 +278,14 @@ describe('ensureMainAccount', () => {
     const second = await db.accounts.get(MAIN_ACCOUNT_ID)
     expect(second?.created_at).toBe(first?.created_at)
     expect(second?.updated_at).toBe(first?.updated_at)
+  })
+
+  it('does not resurrect Main when another account exists (deleted-Main case)', async () => {
+    // Simulate the user having deleted Main after creating another account.
+    await createAccount({ name: 'Alpha' })
+    await db.accounts.delete(MAIN_ACCOUNT_ID)
+    await ensureMainAccount()
+    const all = await listAccounts()
+    expect(all.map(a => a.name)).toEqual(['Alpha'])
   })
 })

@@ -1,7 +1,7 @@
 import { Controller, useFieldArray, useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Plus, Trash2 } from 'lucide-react'
-import { emptyForm, formToDraft, tradeFormSchema, type TradeFormValues } from '@/lib/form-schema'
+import { emptyForm, formToDraft, newTradeFormSchema, tradeFormSchema, type TradeFormValues } from '@/lib/form-schema'
 import type { TradeDraft } from '@/db/types'
 import { Pills } from '@/components/form/Pills'
 import { Field, inputClass } from '@/components/form/Field'
@@ -53,6 +53,9 @@ interface TradeFormProps {
    *  orphan the uploaded image. Omitted for new-trade flow (no record yet).
    */
   onScreenshotPersist?: (ref: string | null) => Promise<void> | void
+  /** New-trade flow sets this so emotion becomes a required field. Edits
+   *  leave it off so legacy records without an emotion still save. */
+  requireEmotion?: boolean
 }
 
 export function TradeForm({
@@ -63,6 +66,7 @@ export function TradeForm({
   submitLabel = 'Save trade',
   getTradeOrdinal,
   onScreenshotPersist,
+  requireEmotion = false,
 }: TradeFormProps) {
   const {
     register,
@@ -71,7 +75,7 @@ export function TradeForm({
     formState: { errors, isSubmitting },
     setValue,
   } = useForm<TradeFormValues>({
-    resolver: zodResolver(tradeFormSchema),
+    resolver: zodResolver(requireEmotion ? newTradeFormSchema : tradeFormSchema),
     defaultValues: initialValues ?? emptyForm(initialDate),
     mode: 'onSubmit',
     reValidateMode: 'onSubmit',
@@ -312,7 +316,11 @@ export function TradeForm({
             </div>
           </div>
 
-          <ReflectionSection control={control} values={values} />
+          <ReflectionSection
+            control={control}
+            values={values}
+            emotionError={errors.emotion?.message}
+          />
 
           {/* On smaller screens the grid collapses to a single column; the
               buttons go last so they appear after Reflection. */}

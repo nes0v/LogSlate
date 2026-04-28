@@ -4,6 +4,7 @@ import { Archive, ArchiveRestore, Plus, Trash2 } from 'lucide-react'
 import { db } from '@/db/schema'
 import type { Playbook, PlaybookRuleGroup, SymbolKey } from '@/db/types'
 import { useActiveAccountId } from '@/lib/active-account'
+import { Checkbox } from '@/components/form/Checkbox'
 import { cn } from '@/lib/utils'
 
 function newId(): string {
@@ -49,7 +50,7 @@ export function PlaybookRoute() {
     const p: Playbook = {
       id: newId(),
       account_id: accountId,
-      name: 'New playbook',
+      name: 'New model',
       description: '',
       symbols: [],
       groups: DEFAULT_GROUPS(),
@@ -80,11 +81,11 @@ export function PlaybookRoute() {
   return (
     <div className="pt-1 space-y-8">
       <div className="flex items-center justify-between mb-8">
-        <h1 className="h-8 flex items-center text-lg font-semibold">Playbooks</h1>
+        <h1 className="h-8 flex items-center text-lg font-semibold">Models</h1>
         <div className="flex items-center gap-2">
-          <label className="text-xs text-(--color-text-dim) flex items-center gap-1">
-            <input
-              type="checkbox"
+          <label className="text-xs text-(--color-text-dim) flex items-center gap-2 cursor-pointer">
+            <Checkbox
+              size="sm"
               checked={showArchived}
               onChange={e => setShowArchived(e.target.checked)}
             />
@@ -95,7 +96,7 @@ export function PlaybookRoute() {
             onClick={createPlaybook}
             className="inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-(--radius) bg-(--color-accent) text-(--color-accent-fg) hover:opacity-90"
           >
-            <Plus className="size-4" /> New playbook
+            <Plus className="size-4" /> New model
           </button>
         </div>
       </div>
@@ -104,7 +105,7 @@ export function PlaybookRoute() {
         <aside className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3 max-h-[80vh] overflow-y-auto">
           {visible.length === 0 ? (
             <div className="text-xs text-(--color-text-dim) text-center py-6">
-              No playbooks yet — start with "New playbook".
+              No models yet — start with "New model".
             </div>
           ) : (
             <div className="space-y-0.5">
@@ -147,7 +148,7 @@ export function PlaybookRoute() {
           />
         ) : (
           <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-12 text-center text-sm text-(--color-text-dim)">
-            Select a playbook on the left, or create one.
+            Select a model on the left, or create one.
           </div>
         )}
       </div>
@@ -224,7 +225,7 @@ function PlaybookEditor({ playbook, onChange, onDelete }: PlaybookEditorProps) {
           value={name}
           onChange={e => setName(e.target.value)}
           onBlur={() => commit({ name })}
-          placeholder="Playbook name"
+          placeholder="Model name"
           className="flex-1 bg-transparent border-0 outline-none text-lg font-medium"
         />
         <button
@@ -314,7 +315,9 @@ function PlaybookEditor({ playbook, onChange, onDelete }: PlaybookEditorProps) {
               )}
               {g.rules.map((r, i) => (
                 <div key={i} className="flex items-center gap-2">
-                  <span className="text-(--color-text-dim) text-xs">·</span>
+                  <span className="text-(--color-text-dim) text-xs font-mono tabular-nums w-5 text-right shrink-0">
+                    {i + 1}.
+                  </span>
                   <input
                     value={r}
                     onChange={e => setRule(g.id, i, e.target.value)}

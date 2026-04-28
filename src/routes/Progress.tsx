@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, Plus, Trash2 } from 'lucide-react'
 import { db } from '@/db/schema'
 import type { ProgressCheck, ProgressRule } from '@/db/types'
 import { useActiveAccountId } from '@/lib/active-account'
+import { Checkbox } from '@/components/form/Checkbox'
 import { inputClassCompact } from '@/components/form/Field'
 import { cn } from '@/lib/utils'
 
@@ -260,7 +261,7 @@ export function ProgressRoute() {
       </section>
 
       {/* Rule list / today's checklist */}
-      <section className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-3">
+      <section className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3 space-y-2">
           <div className="text-sm font-medium mb-1">Today's checklist</div>
           {activeRules.length === 0 ? (
@@ -279,8 +280,7 @@ export function ProgressRoute() {
                       checked && 'opacity-60',
                     )}
                   >
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={checked}
                       onChange={() => toggleCheck(r)}
                       className="mt-0.5"
@@ -375,8 +375,7 @@ function RuleManager({
             key={r.id}
             className="flex items-center gap-2 px-1 py-1 rounded-sm hover:bg-(--color-panel-2)/40"
           >
-            <input
-              type="checkbox"
+            <Checkbox
               checked={r.active}
               onChange={e => onUpdate(r.id, { active: e.target.checked })}
               title={r.active ? 'Active — uncheck to pause' : 'Inactive'}
@@ -388,7 +387,7 @@ function RuleManager({
                 if (v && v !== r.text) onUpdate(r.id, { text: v })
               }}
               className={cn(
-                'flex-1 bg-transparent border-0 outline-none text-xs',
+                'flex-1 bg-transparent border-0 outline-none text-sm',
                 !r.active && 'text-(--color-text-dim) italic',
               )}
             />
@@ -398,7 +397,7 @@ function RuleManager({
               className="p-1 rounded text-(--color-text-dim) hover:text-(--color-loss)"
               title="Delete"
             >
-              <Trash2 className="size-3" />
+              <Trash2 className="size-3.5" />
             </button>
           </div>
         ))}

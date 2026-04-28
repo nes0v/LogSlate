@@ -1,11 +1,15 @@
 import { useMemo } from 'react'
 import { format } from 'date-fns'
+import { useLiveQuery } from 'dexie-react-hooks'
 import { DonutChart } from '@/components/DonutChart'
+import { db } from '@/db/schema'
+import { useActiveAccountId } from '@/lib/active-account'
 import { aggregate } from '@/lib/trade-stats'
 import { formatUsd } from '@/lib/money'
 import { classifyTrade, effectivePnl, inferSide } from '@/lib/trade-math'
 import { cn } from '@/lib/utils'
 import type { Session, TradeRecord } from '@/db/types'
+import { EMOTIONS } from '@/db/types'
 import {
   compositeScore,
   dailyEquitySeries,
@@ -74,7 +78,40 @@ export function HeroNetPnl({
   )
 }
 
+// One distinct hue per emotion. Greens lean to the steady/positive end;
+// reds/ambers/purples to the agitated/negative end; greys to neutral
+// states — but the legend label is the authoritative signal.
+const EMOTION_COLORS: Record<(typeof EMOTIONS)[number], string> = {
+  calm: '#10b981',
+  focused: '#34d399',
+  anxious: '#f59e0b',
+  fearful: '#fb7185',
+  greedy: '#a855f7',
+  frustrated: '#ef4444',
+  tired: '#9ca3af',
+  busy: '#06b6d4',
+}
+
+// Palette for the playbook donut. Cycled by index when the user has more
+// playbooks than colors — at 8 entries that should never realistically wrap.
+const PLAYBOOK_PALETTE = [
+  'var(--color-accent)',
+  '#7dd3fc',
+  '#fbbf24',
+  '#c4b5fd',
+  '#f472b6',
+  '#34d399',
+  '#fb923c',
+  '#60a5fa',
+]
+
 export function DistributionDonuts({ filtered }: { filtered: TradeRecord[] }) {
+  const accountId = useActiveAccountId()
+  const playbooks = useLiveQuery(
+    () => db.playbooks.where('account_id').equals(accountId).toArray(),
+    [accountId],
+    [],
+  )
   const outcomeDonut = useMemo(() => {
     let win = 0, loss = 0, be = 0
     for (const t of filtered) {
@@ -99,30 +136,6 @@ export function DistributionDonuts({ filtered }: { filtered: TradeRecord[] }) {
       { label: 'LT', value: counts.LT, color: '#fbbf24' },
       { label: 'PM', value: counts.PM, color: '#2563eb' },
       { label: 'aft', value: counts.aft, color: '#7e22ce' },
-    ]
-  }, [filtered])
-
-  const symbolDonut = useMemo(() => {
-    let nq = 0, es = 0
-    for (const t of filtered) {
-      if (t.symbol === 'NQ') nq++
-      else es++
-    }
-    return [
-      { label: 'NQ', value: nq, color: 'var(--color-accent)' },
-      { label: 'ES', value: es, color: 'var(--color-chart-muted)' },
-    ]
-  }, [filtered])
-
-  const contractDonut = useMemo(() => {
-    let micro = 0, mini = 0
-    for (const t of filtered) {
-      if (t.contract_type === 'micro') micro++
-      else mini++
-    }
-    return [
-      { label: 'micro', value: micro, color: 'var(--color-accent)' },
-      { label: 'mini', value: mini, color: 'var(--color-chart-muted)' },
     ]
   }, [filtered])
 
@@ -151,22 +164,90 @@ export function DistributionDonuts({ filtered }: { filtered: TradeRecord[] }) {
       else if (t.rating === 'egg') egg++
     }
     return [
-      { label: 'A', value: excellent, color: 'var(--color-win)' },
-      { label: 'B', value: good, color: 'var(--color-accent)' },
-      { label: 'C', value: egg, color: 'var(--color-chart-muted)' },
+      { label: 'A (excellent)', value: excellent, color: 'var(--color-win)' },
+      { label: 'B (okay)', value: good, color: 'var(--color-accent)' },
+      { label: 'C (unnecessary)', value: egg, color: 'var(--color-chart-muted)' },
     ]
   }, [filtered])
+
+  const emotionDonut = useMemo(() => {
+    const counts = Object.fromEntries(EMOTIONS.map(e => [e, 0])) as Record<
+      (typeof EMOTIONS)[number],
+      number
+    >
+    let other = 0
+    for (const t of filtered) {
+      if (t.emotion && t.emotion in counts) counts[t.emotion]++
+      else other++
+    }
+    const segments: Array<{
+      label: string
+      value: number
+      color: string
+      legendHidden?: boolean
+    }> = EMOTIONS.map(e => ({
+      label: e,
+      value: counts[e],
+      color: EMOTION_COLORS[e],
+    }))
+    if (other > 0) {
+      segments.push({
+        label: 'Other',
+        value: other,
+        color: 'var(--color-chart-muted)',
+        legendHidden: true,
+      })
+    }
+    return segments
+  }, [filtered])
+
+  const playbookDonut = useMemo(() => {
+    const nameById = new Map<string, string>()
+    for (const p of playbooks ?? []) nameById.set(p.id, p.name)
+    const counts = new Map<string, number>()
+    let other = 0
+    for (const t of filtered) {
+      if (!t.playbook_id || !nameById.has(t.playbook_id)) {
+        // Trades without a model OR pointing at a since-deleted model both
+        // collapse into a single unlabelled "Other" wedge.
+        other++
+        continue
+      }
+      counts.set(t.playbook_id, (counts.get(t.playbook_id) ?? 0) + 1)
+    }
+    const segments: Array<{
+      label: string
+      value: number
+      color: string
+      legendHidden?: boolean
+    }> = Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([id, value], i) => ({
+        label: nameById.get(id)!,
+        value,
+        color: PLAYBOOK_PALETTE[i % PLAYBOOK_PALETTE.length],
+      }))
+    if (other > 0) {
+      segments.push({
+        label: 'Other',
+        value: other,
+        color: 'var(--color-chart-muted)',
+        legendHidden: true,
+      })
+    }
+    return segments
+  }, [filtered, playbooks])
 
   return (
     <section className="space-y-2">
       <h2 className="text-sm font-medium">Distributions</h2>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         <DonutChart title="Outcomes" segments={outcomeDonut} />
-        <DonutChart title="Sessions" segments={sessionDonut} />
-        <DonutChart title="Symbols" segments={symbolDonut} />
-        <DonutChart title="Contract type" segments={contractDonut} />
         <DonutChart title="Side" segments={sideDonut} />
         <DonutChart title="Ratings" segments={ratingDonut} />
+        <DonutChart title="Sessions" segments={sessionDonut} />
+        <DonutChart title="Models" segments={playbookDonut} />
+        <DonutChart title="Emotions" segments={emotionDonut} legendColumns={2} />
       </div>
     </section>
   )

@@ -82,6 +82,16 @@ export const tradeFormSchema = z
 
 export type TradeFormValues = z.infer<typeof tradeFormSchema>
 
+// Variant used on the new-trade page: emotion is required up-front so the
+// reflection data isn't silently skipped. Edits keep the looser schema —
+// pre-existing trades may have been created before this rule and shouldn't
+// suddenly fail to save just by being opened.
+export const newTradeFormSchema = tradeFormSchema.superRefine((v, ctx) => {
+  if (!v.emotion) {
+    ctx.addIssue({ code: 'custom', path: ['emotion'], message: 'pick an emotion' })
+  }
+})
+
 // Combine a local date (YYYY-MM-DD) and local time (HH:MM) into an ISO UTC string.
 function toIso(date: string, time: string): string {
   // `new Date('YYYY-MM-DDTHH:MM')` is interpreted as local time by all major engines.

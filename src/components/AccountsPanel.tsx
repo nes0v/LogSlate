@@ -1,15 +1,13 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Check, Pencil, Trash2, X } from 'lucide-react'
+import { Trash2 } from 'lucide-react'
 import {
   countAccountData,
   createAccount,
   deleteAccount,
   listAccounts,
-  renameAccount,
 } from '@/db/queries'
-import { MAIN_ACCOUNT_ID } from '@/db/types'
-import { setActiveAccountId, useActiveAccountId } from '@/lib/active-account'
+import { useActiveAccountId } from '@/lib/active-account'
 import { inputClassCompact as inputClass } from '@/components/form/Field'
 import { cn } from '@/lib/utils'
 
@@ -17,8 +15,6 @@ export function AccountsPanel() {
   const accounts = useLiveQuery(() => listAccounts(), [], [])
   const activeId = useActiveAccountId()
   const [newName, setNewName] = useState('')
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [editingName, setEditingName] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   async function handleCreate(e: React.FormEvent) {
@@ -26,18 +22,6 @@ export function AccountsPanel() {
     try {
       await createAccount({ name: newName })
       setNewName('')
-      setError(null)
-    } catch (err) {
-      setError((err as Error).message)
-    }
-  }
-
-  async function handleRenameSave() {
-    if (!editingId) return
-    try {
-      await renameAccount(editingId, editingName)
-      setEditingId(null)
-      setEditingName('')
       setError(null)
     } catch (err) {
       setError((err as Error).message)
@@ -54,7 +38,6 @@ export function AccountsPanel() {
           } and ${counts.adjustments} adjustment${counts.adjustments === 1 ? '' : 's'}.`
     if (!confirm(msg)) return
     try {
-      if (activeId === id) setActiveAccountId(MAIN_ACCOUNT_ID)
       await deleteAccount(id)
       setError(null)
     } catch (err) {
@@ -67,90 +50,40 @@ export function AccountsPanel() {
   return (
     <section className="space-y-3">
       <h2 className="text-sm font-medium">Accounts</h2>
+      {/* Account names map 1:1 to a Drive folder, so they're fixed once
+          created — renaming would orphan the existing folder of screenshots. */}
       <p className="text-sm text-(--color-text-dim)">
-        Each account has its own trades, adjustments, and equity curve. All accounts sync
-        together. The Main account cannot be deleted.
+        Each account has its own trades, adjustments, and equity curve. Names are
+        fixed at creation (they map to the Drive screenshot folder). The active
+        account can't be deleted — switch to another account first.
       </p>
 
       {list.length > 0 && (
         <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) divide-y divide-(--color-border)">
           {list.map(a => {
-            const isEditing = editingId === a.id
+            const isActive = a.id === activeId
             return (
               <div
                 key={a.id}
-                className="grid grid-cols-[1fr_auto_auto] gap-3 items-center px-3 py-2"
+                className="grid grid-cols-[1fr_auto] gap-3 items-center px-3 py-2"
               >
-                {isEditing ? (
-                  <input
-                    type="text"
-                    value={editingName}
-                    onChange={e => setEditingName(e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') void handleRenameSave()
-                      if (e.key === 'Escape') {
-                        setEditingId(null)
-                        setEditingName('')
-                      }
-                    }}
-                    autoFocus
-                    className={inputClass}
-                  />
-                ) : (
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-sm truncate">{a.name}</span>
-                    {a.id === activeId && (
-                      <span className="text-xs uppercase tracking-wide text-(--color-accent)">
-                        active
-                      </span>
-                    )}
-                  </div>
-                )}
-                <div className="flex items-center gap-1 justify-self-end">
-                  {isEditing ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => void handleRenameSave()}
-                        aria-label="Save"
-                        className="p-1 rounded-(--radius) text-(--color-text-dim) hover:text-(--color-win) hover:bg-(--color-panel-2)"
-                      >
-                        <Check className="size-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEditingId(null)
-                          setEditingName('')
-                        }}
-                        aria-label="Cancel"
-                        className="p-1 rounded-(--radius) text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)"
-                      >
-                        <X className="size-3.5" />
-                      </button>
-                    </>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditingId(a.id)
-                        setEditingName(a.name)
-                      }}
-                      aria-label="Rename"
-                      className="p-1 rounded-(--radius) text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)"
-                    >
-                      <Pencil className="size-3.5" />
-                    </button>
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-sm truncate">{a.name}</span>
+                  {isActive && (
+                    <span className="text-xs uppercase tracking-wide text-(--color-accent)">
+                      active
+                    </span>
                   )}
                 </div>
                 <button
                   type="button"
-                  disabled={a.is_main}
+                  disabled={isActive}
                   onClick={() => void handleDelete(a.id, a.name)}
                   aria-label="Delete account"
+                  title={isActive ? 'Switch to another account to delete this one' : 'Delete account'}
                   className={cn(
-                    'p-1 rounded-(--radius)',
-                    a.is_main
+                    'p-1 rounded-(--radius) justify-self-end',
+                    isActive
                       ? 'text-(--color-text-dim)/40 cursor-not-allowed'
                       : 'text-(--color-text-dim) hover:text-(--color-loss) hover:bg-(--color-panel-2)',
                   )}

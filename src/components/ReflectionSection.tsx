@@ -5,6 +5,7 @@ import { db } from '@/db/schema'
 import { useActiveAccountId } from '@/lib/active-account'
 import { EMOTIONS, type Emotion } from '@/db/types'
 import type { TradeFormValues } from '@/lib/form-schema'
+import { Checkbox } from '@/components/form/Checkbox'
 import { Field, inputClass } from '@/components/form/Field'
 import { Select } from '@/components/form/Select'
 import { cn } from '@/lib/utils'
@@ -13,9 +14,10 @@ interface ReflectionSectionProps {
   control: Control<TradeFormValues>
   /** Watched form values, so the playbook-rule list can react to selection. */
   values: TradeFormValues
+  emotionError?: string
 }
 
-export function ReflectionSection({ control, values }: ReflectionSectionProps) {
+export function ReflectionSection({ control, values, emotionError }: ReflectionSectionProps) {
   const accountId = useActiveAccountId()
   const playbooks = useLiveQuery(
     async () => {
@@ -34,7 +36,7 @@ export function ReflectionSection({ control, values }: ReflectionSectionProps) {
     <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs)">
         <div className="p-4 space-y-4">
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Playbook">
+            <Field label="Model">
               <Controller
                 control={control}
                 name="playbook_id"
@@ -43,12 +45,12 @@ export function ReflectionSection({ control, values }: ReflectionSectionProps) {
                     value={field.value ?? null}
                     onChange={v => field.onChange(v)}
                     options={(playbooks ?? []).map(p => ({ value: p.id, label: p.name }))}
-                    ariaLabel="Playbook"
+                    ariaLabel="Model"
                   />
                 )}
               />
             </Field>
-            <Field label="Emotion">
+            <Field label="Emotion" error={emotionError}>
               <Controller
                 control={control}
                 name="emotion"
@@ -196,12 +198,12 @@ function PlaybookRuleChecklist({
   if (total === 0) {
     return (
       <div className="text-xs text-(--color-text-dim) italic px-2">
-        This playbook has no rules yet.
+        This model has no rules yet.
       </div>
     )
   }
   return (
-    <div className="bg-(--color-panel-2) rounded-(--radius) p-3 space-y-2">
+    <div className="bg-(--color-bg) rounded-(--radius) p-3 space-y-2">
       <div className="text-xs uppercase tracking-wider text-(--color-text-dim) flex items-center justify-between">
         <span>Rules followed</span>
         <span className="font-mono normal-case">
@@ -216,8 +218,7 @@ function PlaybookRuleChecklist({
               key={`${g.id}-${i}`}
               className="flex items-start gap-2 px-1 py-0.5 rounded hover:bg-(--color-panel-2)/30 cursor-pointer"
             >
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={set.has(r)}
                 onChange={e => toggle(r, e.target.checked)}
                 className="mt-0.5"

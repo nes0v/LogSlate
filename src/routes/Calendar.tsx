@@ -80,7 +80,7 @@ export function CalendarRoute() {
     return s
   }, [trades, dayScreenshots])
 
-  // A notebook entry is associated with a day in two ways: an explicit
+  // A journal entry is associated with a day in two ways: an explicit
   // `YYYY-MM-DD` substring in the title (how the Plan/Watchlist/Review
   // templates name notes) wins; otherwise we fall back to the local-date
   // portion of `created_at` so Lesson/Free notes still light up the day
