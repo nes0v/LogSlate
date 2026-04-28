@@ -634,10 +634,10 @@ const COMPARE_AXES: Array<{ value: CompareAxis; label: string }> = [
   { value: 'contract', label: 'Contract' },
   { value: 'session', label: 'Session' },
   { value: 'rating', label: 'Rating' },
-  { value: 'side', label: 'Long / short' },
-  { value: 'planned', label: 'Planned R' },
-  { value: 'emotion', label: 'Emotions' },
-  { value: 'model', label: 'Models' },
+  { value: 'emotion', label: 'Emotion' },
+  { value: 'model', label: 'Model' },
+  { value: 'side', label: 'Side' },
+  { value: 'planned', label: 'RR' },
 ]
 
 function CompareReport({
@@ -667,16 +667,14 @@ function CompareReport({
     [trades, axis, playbookNameById],
   )
   return (
-    <div className="space-y-6">
-      <Pills size="sm" value={axis} onChange={onAxisChange} options={COMPARE_AXES} />
+    <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3 space-y-3">
+      <Pills value={axis} onChange={onAxisChange} options={COMPARE_AXES} />
       {groups.length === 0 ? (
         <EmptyState>Nothing to compare on this axis.</EmptyState>
       ) : (
-        <Card title={`Split by ${axis}`}>
-          <CompareTable groups={groups} />
-        </Card>
+        <CompareTable groups={groups} />
       )}
-    </div>
+    </section>
   )
 }
 
