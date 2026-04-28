@@ -276,7 +276,7 @@ export function ProgressRoute() {
                   <label
                     key={r.id}
                     className={cn(
-                      'flex items-start gap-3 px-2 py-2 rounded-sm cursor-pointer hover:bg-(--color-panel-2)/50',
+                      'flex items-start gap-2 px-1 py-1 rounded-sm cursor-pointer hover:bg-(--color-panel-2)/50',
                       checked && 'opacity-60',
                     )}
                   >

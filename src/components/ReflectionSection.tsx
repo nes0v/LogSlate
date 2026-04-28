@@ -216,7 +216,7 @@ function PlaybookRuleChecklist({
           {g.rules.map((r, i) => (
             <label
               key={`${g.id}-${i}`}
-              className="flex items-start gap-2 px-1 py-0.5 rounded hover:bg-(--color-panel-2)/30 cursor-pointer"
+              className="flex items-start gap-2 px-1 py-1 rounded-sm hover:bg-(--color-panel-2)/30 cursor-pointer"
             >
               <Checkbox
                 checked={set.has(r)}
