@@ -305,7 +305,7 @@ function DaysAndTimeReport({ trades }: { trades: TradeRecord[] }) {
   }, [trades])
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       <SectionGrid>
         <Card title="Day of week">
           <ReportTable
@@ -378,7 +378,7 @@ function SymbolReport({ trades }: { trades: TradeRecord[] }) {
     return <div className="text-sm text-(--color-text-dim) text-center py-12">No data.</div>
   }
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       {groups.map(([key, list]) => {
         const stats = aggregate(list)
         const cohort = cohortStats(list)
@@ -500,7 +500,7 @@ function RiskReport({
   }, [trades])
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       <SectionGrid>
         <Card title="R-multiple distribution">
           <RDistRows buckets={rDist} />
@@ -592,7 +592,7 @@ function CohortReport({ trades }: { trades: TradeRecord[] }) {
     },
   ]
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       <Card title="Winners vs Losers">
         <div className="text-sm">
           <div className="grid grid-cols-[1fr_120px_120px] gap-2 py-1 mb-2 border-b border-(--color-border) text-(--color-text-dim) text-xs">
@@ -844,7 +844,7 @@ function Card({
   children: React.ReactNode
 }) {
   return (
-    <div className="bg-(--color-panel) rounded-(--radius) p-4 shadow-(--shadow-xs)">
+    <div className="bg-(--color-panel) rounded-(--radius) p-3 shadow-(--shadow-xs)">
       <div className="flex items-baseline justify-between mb-3 gap-2">
         <div>
           <h3 className="text-sm font-medium">{title}</h3>
