@@ -234,7 +234,7 @@ export function ReportsRoute() {
             className={cn(
               'px-2.5 py-1.5 rounded-(--radius) transition-colors whitespace-nowrap',
               tab === t.value
-                ? 'text-(--color-text) bg-(--color-panel-2)'
+                ? 'text-(--color-text) bg-(--color-panel)'
                 : 'text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)/60',
             )}
           >
@@ -667,13 +667,42 @@ function CompareReport({
     [trades, axis, playbookNameById],
   )
   return (
-    <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3 space-y-3">
-      <Pills value={axis} onChange={onAxisChange} options={COMPARE_AXES} />
-      {groups.length === 0 ? (
-        <EmptyState>Nothing to compare on this axis.</EmptyState>
-      ) : (
-        <CompareTable groups={groups} />
-      )}
+    <section>
+      {/* Browser-tab style: tabs sit above the section with their bottom
+          flush against its top edge, each rounded only at the top. The
+          section's top-left is square so the leftmost tab supplies that
+          corner. Active tab takes panel-bg, merging seamlessly into the
+          body below; inactive tabs use the same hover treatment as the
+          report tabs above. */}
+      <div role="tablist" className="flex items-center gap-1 text-sm overflow-x-auto">
+        {COMPARE_AXES.map(opt => {
+          const active = opt.value === axis
+          return (
+            <button
+              key={opt.value}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => onAxisChange(opt.value)}
+              className={cn(
+                'px-2.5 py-1.5 rounded-t-(--radius) transition-colors whitespace-nowrap',
+                active
+                  ? 'text-(--color-text) bg-(--color-panel)'
+                  : 'text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)/60',
+              )}
+            >
+              {opt.label}
+            </button>
+          )
+        })}
+      </div>
+      <div className="bg-(--color-panel) rounded-(--radius) rounded-tl-none shadow-(--shadow-xs) p-3 space-y-3">
+        {groups.length === 0 ? (
+          <EmptyState>Nothing to compare on this axis.</EmptyState>
+        ) : (
+          <CompareTable groups={groups} />
+        )}
+      </div>
     </section>
   )
 }
