@@ -47,19 +47,20 @@ export function DonutChart({ title, segments, centerLabel, className }: DonutCha
     }
   }
 
-  // Pie slices as filled SVG paths (M-to-center → L-to-edge → A-arc → Z).
-  // Each slice owns its full pie-shape geometry, so neighbouring slices
-  // share a clean radial seam without the overlap that comes from drawing
-  // arcs as thick strokes.
+  // Pie slices as filled SVG wedges. To remove the seam where colours meet,
+  // we first paint a full disc in the first slice's colour and then paint
+  // each subsequent slice on top — every boundary now sits over a solid
+  // underlying disc, so anti-aliased edges blend with another slice colour
+  // instead of the panel background.
   let cursor = -Math.PI / 2 // start at 12 o'clock
-  const slices = visible.map(s => {
+  const slices = visible.map((s, i) => {
     const fraction = s.value / total
     const startAngle = cursor
     const endAngle = cursor + fraction * 2 * Math.PI
     cursor = endAngle
 
-    if (fraction >= 1) {
-      // Single 100% segment — draw a full disc; the arc form would collapse.
+    // First slice = the underlying disc.
+    if (i === 0 || fraction >= 1) {
       return <circle key={s.label} cx={R} cy={R} r={R} fill={s.color} {...bindHover(s)} />
     }
 
@@ -81,12 +82,15 @@ export function DonutChart({ title, segments, centerLabel, className }: DonutCha
     >
       <div className="text-xs tracking-wider text-(--color-text-dim)">{title}</div>
       <div className="flex items-center gap-4">
-        <svg viewBox="0 0 100 100" className="size-24 shrink-0">
+        <svg
+          viewBox="0 0 100 100"
+          className="size-24 shrink-0"
+          shapeRendering="geometricPrecision"
+          aria-label={title}
+        >
           {total > 0 ? (
             slices
           ) : (
-            // Empty state — flat disc in the page bg colour so it still reads
-            // as a chart rather than a missing element.
             <circle cx={R} cy={R} r={R} fill="var(--color-bg)" />
           )}
           {centerLabel ? (
@@ -108,13 +112,13 @@ export function DonutChart({ title, segments, centerLabel, className }: DonutCha
             return (
               <li key={s.label} className="flex items-center gap-2">
                 <span
-                  className="size-2.5 rounded-sm shrink-0"
+                  className="size-2.5 rounded-full shrink-0"
                   style={{ backgroundColor: s.color }}
                   aria-hidden
                 />
                 <span className="text-(--color-text) truncate">{s.label}</span>
                 <span className="ml-auto font-mono tabular-nums text-(--color-text-dim)">
-                  {pct.toFixed(0)}% ({s.value})
+                  {pct.toFixed(0)}%
                 </span>
               </li>
             )
