@@ -13,6 +13,7 @@ import {
   startOfWeek,
   subMonths,
 } from 'date-fns'
+import { Image as ImageIcon, StickyNote } from 'lucide-react'
 import { db } from '@/db/schema'
 import { useActiveAccountId } from '@/lib/active-account'
 import { classifyTrade, effectivePnl } from '@/lib/trade-math'
@@ -51,6 +52,52 @@ export function CalendarRoute() {
     [rangeStart, rangeEnd, accountId],
     [],
   )
+
+  const dayScreenshots = useLiveQuery(
+    () =>
+      db.day_screenshots
+        .where('[account_id+date]')
+        .between([accountId, rangeStart], [accountId, rangeEnd], true, true)
+        .toArray(),
+    [rangeStart, rangeEnd, accountId],
+    [],
+  )
+
+  const notes = useLiveQuery(
+    () => db.notes.where('account_id').equals(accountId).toArray(),
+    [accountId],
+    [],
+  )
+
+  const screenshotDays = useMemo(() => {
+    const s = new Set<string>()
+    for (const t of trades ?? []) {
+      if (t.screenshot) s.add(t.trade_date)
+    }
+    for (const d of dayScreenshots ?? []) {
+      if (d.screenshot) s.add(d.date)
+    }
+    return s
+  }, [trades, dayScreenshots])
+
+  // A notebook entry is associated with a day in two ways: an explicit
+  // `YYYY-MM-DD` substring in the title (how the Plan/Watchlist/Review
+  // templates name notes) wins; otherwise we fall back to the local-date
+  // portion of `created_at` so Lesson/Free notes still light up the day
+  // they were written on.
+  const noteDays = useMemo(() => {
+    const s = new Set<string>()
+    const re = /\b(\d{4}-\d{2}-\d{2})\b/
+    for (const n of notes ?? []) {
+      const m = n.title.match(re)
+      if (m) {
+        s.add(m[1])
+      } else {
+        s.add(format(new Date(n.created_at), DATE_KEY))
+      }
+    }
+    return s
+  }, [notes])
 
   // Per-day map. Wins/losses are tracked separately from `count` so a
   // day that only contains scratches renders in the dim/breakeven tone
@@ -147,7 +194,7 @@ export function CalendarRoute() {
           {weekdayLabels.map(lbl => (
             <div
               key={lbl}
-              className="rounded-(--radius) border border-(--color-cal-week-border) bg-transparent text-xs font-bold text-(--color-text) text-center py-2"
+              className="rounded-(--radius) border border-(--color-cal-week-card-border) bg-(--color-cal-week-card-bg) text-xs font-bold text-(--color-text) text-center py-2"
             >
               {lbl}
             </div>
@@ -190,6 +237,8 @@ export function CalendarRoute() {
             : 'dim'
     const isColoured = tone === 'win' || tone === 'loss'
     const winRate = decided > 0 ? Math.round((cell!.wins / decided) * 100) : null
+    const hasScreenshot = inMonth && screenshotDays.has(key)
+    const hasNote = inMonth && noteDays.has(key)
     return (
       <Link
         key={`${weekIdx}-${key}`}
@@ -208,15 +257,29 @@ export function CalendarRoute() {
           // the in-month empty bg, so they read as padding rather than
           // active cells.
           !inMonth &&
-            'bg-transparent border-(--color-panel) hover:bg-(--color-panel)/40 text-(--color-text-faint)',
+            'bg-transparent border-(--color-cal-pad-border) hover:bg-(--color-panel)/40 text-(--color-text-faint)',
         )}
       >
-        <div className="flex items-center justify-end">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1 -mt-0.5 -ml-0.5">
+            {hasScreenshot ? (
+              <ImageIcon
+                className="size-3.5 text-white/70"
+                aria-label="Has screenshot"
+              />
+            ) : null}
+            {hasNote ? (
+              <StickyNote
+                className="size-3.5 text-white/70"
+                aria-label="Has notes"
+              />
+            ) : null}
+          </div>
           <span
             className={cn(
-              'text-xs size-[26px] inline-flex items-center justify-center leading-none rounded-full -mt-1 -mr-1',
+              'text-xs size-[26px] inline-flex items-center justify-center leading-none rounded-full -mt-1.5 -mr-1.5',
               isColoured ? 'text-white/80' : 'text-(--color-text-dim)',
-              today && 'text-(--color-accent-fg) bg-(--color-accent-deep)',
+              today && 'text-white font-bold',
             )}
           >
             {format(d, 'd')}
@@ -254,7 +317,7 @@ function WeekCard({
   const tone: 'win' | 'loss' | 'dim' =
     pnl > 0 ? 'win' : pnl < 0 ? 'loss' : 'dim'
   return (
-    <div className="rounded-(--radius) border border-(--color-cal-week-border) bg-transparent p-3.5 min-h-[88px] sm:min-h-[104px] flex flex-col justify-center gap-0.5">
+    <div className="rounded-(--radius) border border-(--color-cal-week-card-border) bg-(--color-cal-week-card-bg) p-3.5 min-h-[88px] sm:min-h-[104px] flex flex-col justify-center gap-0.5">
       <div className="text-xs tracking-wider text-(--color-text-dim)">
         Week {index}
       </div>

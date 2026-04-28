@@ -1127,7 +1127,7 @@ export function TradingViewChart({
     const adjPrim = createAdjustmentLinesPrimitive()
     // Dashed adjustment lines — lighter gray in light theme so they sit
     // back against the white panel; mid-gray in dark for contrast.
-    adjPrim.setColor(resolvedTheme === 'light' ? '#c4c7d0' : '#374151')
+    adjPrim.setColor(resolvedTheme === 'light' ? '#ccced7' : '#374151')
     series.attachPrimitive(adjPrim)
     adjLinesPrimRef.current = adjPrim
 

@@ -86,7 +86,7 @@ export function DistributionDonuts({ filtered }: { filtered: TradeRecord[] }) {
     return [
       { label: 'Wins', value: win, color: 'var(--color-win)' },
       { label: 'Losses', value: loss, color: 'var(--color-loss)' },
-      { label: 'Breakeven', value: be, color: 'var(--color-text-dim)' },
+      { label: 'Breakeven', value: be, color: 'var(--color-chart-muted)' },
     ]
   }, [filtered])
 
@@ -110,7 +110,7 @@ export function DistributionDonuts({ filtered }: { filtered: TradeRecord[] }) {
     }
     return [
       { label: 'NQ', value: nq, color: 'var(--color-accent)' },
-      { label: 'ES', value: es, color: 'var(--color-text-dim)' },
+      { label: 'ES', value: es, color: 'var(--color-chart-muted)' },
     ]
   }, [filtered])
 
@@ -122,7 +122,7 @@ export function DistributionDonuts({ filtered }: { filtered: TradeRecord[] }) {
     }
     return [
       { label: 'micro', value: micro, color: 'var(--color-accent)' },
-      { label: 'mini', value: mini, color: 'var(--color-text-dim)' },
+      { label: 'mini', value: mini, color: 'var(--color-chart-muted)' },
     ]
   }, [filtered])
 
@@ -138,7 +138,7 @@ export function DistributionDonuts({ filtered }: { filtered: TradeRecord[] }) {
       { label: 'Long', value: longs, color: 'var(--color-win)' },
       { label: 'Short', value: shorts, color: 'var(--color-loss)' },
       ...(unknown > 0
-        ? [{ label: 'Unknown', value: unknown, color: 'var(--color-text-dim)' }]
+        ? [{ label: 'Unknown', value: unknown, color: 'var(--color-chart-muted)' }]
         : []),
     ]
   }, [filtered])
@@ -153,7 +153,7 @@ export function DistributionDonuts({ filtered }: { filtered: TradeRecord[] }) {
     return [
       { label: 'A', value: excellent, color: 'var(--color-win)' },
       { label: 'B', value: good, color: 'var(--color-accent)' },
-      { label: 'C', value: egg, color: 'var(--color-text-dim)' },
+      { label: 'C', value: egg, color: 'var(--color-chart-muted)' },
     ]
   }, [filtered])
 
