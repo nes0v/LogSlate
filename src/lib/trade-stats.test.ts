@@ -128,6 +128,19 @@ describe('aggregate', () => {
     })
     expect(aggregate([t]).avg_duration_ms).toBeNull()
   })
+
+  it('averages stop_loss across trades that have one', () => {
+    const trades = [
+      tradeRecord({ stop_loss: 100 }),
+      tradeRecord({ stop_loss: 200 }),
+      tradeRecord({ stop_loss: 0 }), // ignored
+    ]
+    expect(aggregate(trades).avg_risk).toBeCloseTo(150, 5)
+  })
+
+  it('returns null avg_risk when no trade has a stop', () => {
+    expect(aggregate([tradeRecord({ stop_loss: 0 })]).avg_risk).toBeNull()
+  })
 })
 
 describe('signedAdjustment', () => {

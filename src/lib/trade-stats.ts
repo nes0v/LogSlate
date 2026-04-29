@@ -27,6 +27,7 @@ export interface AggregateStats {
   worst: number | null
   avg_planned_rr: number | null
   avg_realized_rr: number | null
+  avg_risk: number | null // average stop_loss USD across trades with a defined stop
   avg_win: number | null // average net PnL of winning trades (positive)
   avg_loss: number | null // average net PnL of losing trades (negative)
   avg_duration_ms: number | null // average total duration across trades with timing data
@@ -46,6 +47,7 @@ export function aggregate(trades: TradeRecord[]): AggregateStats {
     worst: null,
     avg_planned_rr: null,
     avg_realized_rr: null,
+    avg_risk: null,
     avg_win: null,
     avg_loss: null,
     avg_duration_ms: null,
@@ -56,6 +58,8 @@ export function aggregate(trades: TradeRecord[]): AggregateStats {
   let plannedCount = 0
   let realizedSum = 0
   let realizedCount = 0
+  let riskSum = 0
+  let riskCount = 0
   let winSum = 0
   let lossSum = 0
   let durationSum = 0
@@ -93,6 +97,11 @@ export function aggregate(trades: TradeRecord[]): AggregateStats {
       realizedCount++
     }
 
+    if (t.stop_loss > 0) {
+      riskSum += t.stop_loss
+      riskCount++
+    }
+
     const dur = computeDuration(t).total_ms
     if (dur !== null) {
       durationSum += dur
@@ -104,6 +113,7 @@ export function aggregate(trades: TradeRecord[]): AggregateStats {
   result.win_rate = decided === 0 ? null : result.wins / decided
   result.avg_planned_rr = plannedCount > 0 ? plannedSum / plannedCount : null
   result.avg_realized_rr = realizedCount > 0 ? realizedSum / realizedCount : null
+  result.avg_risk = riskCount > 0 ? riskSum / riskCount : null
   result.avg_win = result.wins > 0 ? winSum / result.wins : null
   result.avg_loss = result.losses > 0 ? lossSum / result.losses : null
   result.avg_duration_ms = durationCount > 0 ? durationSum / durationCount : null

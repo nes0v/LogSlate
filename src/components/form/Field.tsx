@@ -31,7 +31,7 @@ export function Field({ label, hint, error, children, className }: FieldProps) {
 //   with real text once the user starts typing
 // - focus shows a 2px accent-soft ring as the only "active" affordance
 export const inputClass =
-  'bg-(--color-bg) rounded-(--radius) px-3 py-1.5 text-sm font-sans ' +
+  'bg-(--color-bg) rounded-(--radius) px-2.5 py-1.5 text-sm font-sans ' +
   'text-(--color-text) placeholder:text-(--color-text-faint) ' +
   'transition-colors ' +
   'focus:outline-none focus:ring-2 focus:ring-(--color-accent-soft)'

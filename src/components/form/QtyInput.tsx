@@ -32,8 +32,7 @@ export function QtyInput({ value, onChange, min = 1, max, className }: QtyInputP
           const n = Number(e.target.value.replace(/\D/g, ''))
           if (Number.isFinite(n)) onChange(Math.max(min, Math.min(max ?? n, n)))
         }}
-        onFocus={e => e.currentTarget.select()}
-        className="flex-1 min-w-0 bg-transparent px-3 text-sm text-(--color-text) outline-none"
+        className="flex-1 min-w-0 bg-transparent px-2.5 text-sm text-(--color-text) outline-none"
       />
       <div className="flex flex-col w-6 border-l border-(--color-panel)">
         <button

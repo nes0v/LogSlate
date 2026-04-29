@@ -140,7 +140,7 @@ function TagInput({ value, onChange, tone = 'neutral' }: TagInputProps) {
     onChange(value.filter(v => v !== t))
   }
   return (
-    <div className="min-h-8 flex flex-wrap items-center gap-1 bg-(--color-bg) rounded-(--radius) px-2 py-1 focus-within:ring-2 focus-within:ring-(--color-accent-soft) transition-colors">
+    <div className="min-h-8 flex flex-wrap items-center gap-1 bg-(--color-bg) rounded-(--radius) px-2.5 py-1 focus-within:ring-2 focus-within:ring-(--color-accent-soft) transition-colors">
       {value.map(t => (
         <span
           key={t}

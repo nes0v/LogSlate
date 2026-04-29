@@ -1,4 +1,4 @@
-import type { Execution, Side, TradeRecord } from '@/db/types'
+import type { Execution, Side, SymbolKey, TradeRecord } from '@/db/types'
 import { feePerSide, handleValue } from '@/lib/symbols'
 
 // ---------- small helpers ----------
@@ -136,9 +136,34 @@ export function computePlannedRr(
   return t.profit_target / t.stop_loss
 }
 
+// True when `next` reverses `prev`: prev's closing exec price equals next's
+// opening exec price, sides are opposite, and the instrument matches. This
+// captures the real-world "flip" where one fill closes the long and opens
+// the short (or vice versa) at the same price.
+export function isReversal(
+  prev: Pick<TradeRecord, 'executions' | 'symbol' | 'contract_type'>,
+  next: Pick<TradeRecord, 'executions' | 'symbol' | 'contract_type'>,
+): boolean {
+  if (prev.symbol !== next.symbol || prev.contract_type !== next.contract_type) return false
+  const prevSide = inferSide(prev)
+  const nextSide = inferSide(next)
+  if (!prevSide || !nextSide || prevSide === nextSide) return false
+
+  const prevExecs = [...prev.executions].sort((a, b) => Date.parse(a.time) - Date.parse(b.time))
+  const nextExecs = [...next.executions].sort((a, b) => Date.parse(a.time) - Date.parse(b.time))
+  const prevLast = prevExecs[prevExecs.length - 1]
+  const nextFirst = nextExecs[0]
+  if (!prevLast || !nextFirst) return false
+  return prevLast.price === nextFirst.price && prevLast.time === nextFirst.time
+}
+
 // Trades that didn't move the market by at least this many handles in
 // either direction count as "scratch" — neither a winner nor a loser.
-export const BREAKEVEN_HANDLES = 4
+// NQ moves in larger ticks than ES, so the bands differ per symbol.
+export const BREAKEVEN_HANDLES: Record<SymbolKey, number> = {
+  NQ: 5,
+  ES: 2,
+}
 
 export type TradeOutcome = 'win' | 'loss' | 'breakeven'
 
@@ -157,7 +182,7 @@ export function classifyTrade(
     return 'breakeven'
   }
   const ahpc = computeAhpc(t)
-  if (ahpc !== null && Math.abs(ahpc) < BREAKEVEN_HANDLES) return 'breakeven'
+  if (ahpc !== null && Math.abs(ahpc) < BREAKEVEN_HANDLES[t.symbol]) return 'breakeven'
   const pnl = effectivePnl(t)
   if (pnl === null || pnl === 0) return 'breakeven'
   return pnl > 0 ? 'win' : 'loss'

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  classifyTrade,
   computeAhpc,
   computeDuration,
   computeFees,
@@ -8,6 +9,7 @@ import {
   computeRealizedRr,
   effectivePnl,
   inferSide,
+  isReversal,
   totalContracts,
 } from './trade-math'
 import { execution, tradeRecord } from '@/test/fixtures'
@@ -270,5 +272,150 @@ describe('computeDuration', () => {
   it('returns nulls when fewer than 2 executions', () => {
     const t = tradeRecord({ executions: [execution({ kind: 'buy' })] })
     expect(computeDuration(t)).toEqual({ total_ms: null, before_first_exit_ms: null })
+  })
+})
+
+describe('classifyTrade', () => {
+  it('NQ: < 5 handles is breakeven', () => {
+    const t = tradeRecord({
+      symbol: 'NQ',
+      contract_type: 'mini',
+      executions: [
+        execution({ kind: 'buy', price: 20000, contracts: 1 }),
+        execution({ kind: 'sell', price: 20004, contracts: 1 }),
+      ],
+    })
+    expect(classifyTrade(t)).toBe('breakeven')
+  })
+
+  it('NQ: >= 5 handles is win when positive', () => {
+    const t = tradeRecord({
+      symbol: 'NQ',
+      contract_type: 'mini',
+      executions: [
+        execution({ kind: 'buy', price: 20000, contracts: 1 }),
+        execution({ kind: 'sell', price: 20005, contracts: 1 }),
+      ],
+    })
+    expect(classifyTrade(t)).toBe('win')
+  })
+
+  it('ES: < 2 handles is breakeven', () => {
+    const t = tradeRecord({
+      symbol: 'ES',
+      contract_type: 'mini',
+      executions: [
+        execution({ kind: 'buy', price: 5000, contracts: 1 }),
+        execution({ kind: 'sell', price: 5001, contracts: 1 }),
+      ],
+    })
+    expect(classifyTrade(t)).toBe('breakeven')
+  })
+
+  it('ES: >= 2 handles is win when positive', () => {
+    const t = tradeRecord({
+      symbol: 'ES',
+      contract_type: 'mini',
+      executions: [
+        execution({ kind: 'buy', price: 5000, contracts: 1 }),
+        execution({ kind: 'sell', price: 5002, contracts: 1 }),
+      ],
+    })
+    expect(classifyTrade(t)).toBe('win')
+  })
+})
+
+describe('isReversal', () => {
+  it('detects long → short reversal at the same price/time', () => {
+    const flipTime = '2026-04-15T15:00:00.000Z'
+    const flipPrice = 20020
+    const a = tradeRecord({
+      id: 'a',
+      symbol: 'NQ',
+      contract_type: 'mini',
+      executions: [
+        execution({ kind: 'buy', price: 20000, time: '2026-04-15T14:30:00.000Z' }),
+        execution({ kind: 'sell', price: flipPrice, time: flipTime }),
+      ],
+    })
+    const b = tradeRecord({
+      id: 'b',
+      symbol: 'NQ',
+      contract_type: 'mini',
+      executions: [
+        execution({ kind: 'sell', price: flipPrice, time: flipTime }),
+        execution({ kind: 'buy', price: 19990, time: '2026-04-15T15:30:00.000Z' }),
+      ],
+    })
+    expect(isReversal(a, b)).toBe(true)
+  })
+
+  it('rejects when sides match (both long)', () => {
+    const a = tradeRecord({
+      executions: [
+        execution({ kind: 'buy', price: 20000, time: '2026-04-15T14:00:00.000Z' }),
+        execution({ kind: 'sell', price: 20010, time: '2026-04-15T14:30:00.000Z' }),
+      ],
+    })
+    const b = tradeRecord({
+      executions: [
+        execution({ kind: 'buy', price: 20010, time: '2026-04-15T14:30:00.000Z' }),
+        execution({ kind: 'sell', price: 20020, time: '2026-04-15T15:00:00.000Z' }),
+      ],
+    })
+    expect(isReversal(a, b)).toBe(false)
+  })
+
+  it('rejects when prices differ', () => {
+    const a = tradeRecord({
+      executions: [
+        execution({ kind: 'buy', price: 20000, time: '2026-04-15T14:00:00.000Z' }),
+        execution({ kind: 'sell', price: 20020, time: '2026-04-15T15:00:00.000Z' }),
+      ],
+    })
+    const b = tradeRecord({
+      executions: [
+        execution({ kind: 'sell', price: 20021, time: '2026-04-15T15:00:00.000Z' }),
+        execution({ kind: 'buy', price: 20010, time: '2026-04-15T15:30:00.000Z' }),
+      ],
+    })
+    expect(isReversal(a, b)).toBe(false)
+  })
+
+  it('rejects when times differ', () => {
+    const a = tradeRecord({
+      executions: [
+        execution({ kind: 'buy', price: 20000, time: '2026-04-15T14:00:00.000Z' }),
+        execution({ kind: 'sell', price: 20020, time: '2026-04-15T15:00:00.000Z' }),
+      ],
+    })
+    const b = tradeRecord({
+      executions: [
+        execution({ kind: 'sell', price: 20020, time: '2026-04-15T15:00:01.000Z' }),
+        execution({ kind: 'buy', price: 20010, time: '2026-04-15T15:30:00.000Z' }),
+      ],
+    })
+    expect(isReversal(a, b)).toBe(false)
+  })
+
+  it('rejects when symbols differ', () => {
+    const flipTime = '2026-04-15T15:00:00.000Z'
+    const a = tradeRecord({
+      symbol: 'NQ',
+      contract_type: 'mini',
+      executions: [
+        execution({ kind: 'buy', price: 20000, time: '2026-04-15T14:00:00.000Z' }),
+        execution({ kind: 'sell', price: 20020, time: flipTime }),
+      ],
+    })
+    const b = tradeRecord({
+      symbol: 'ES',
+      contract_type: 'mini',
+      executions: [
+        execution({ kind: 'sell', price: 20020, time: flipTime }),
+        execution({ kind: 'buy', price: 20010, time: '2026-04-15T15:30:00.000Z' }),
+      ],
+    })
+    expect(isReversal(a, b)).toBe(false)
   })
 })

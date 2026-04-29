@@ -11,8 +11,6 @@ import { ScreenshotField } from '@/components/ScreenshotField'
 import { ReflectionSection } from '@/components/ReflectionSection'
 import { cn } from '@/lib/utils'
 
-const selectOnFocus = (e: React.FocusEvent<HTMLInputElement>) => e.currentTarget.select()
-
 const SYMBOLS = [
   { value: 'NQ', label: 'NQ' },
   { value: 'ES', label: 'ES' },
@@ -175,7 +173,6 @@ export function TradeForm({
                       <NumberInput
                         placeholder="Price"
                         className={inputClass}
-                        onFocus={selectOnFocus}
                         value={field.value ?? null}
                         onChange={field.onChange}
                       />
@@ -191,7 +188,6 @@ export function TradeForm({
                         placeholder="hh:mm"
                         maxLength={5}
                         className={cn(inputClass, 'font-mono w-full min-w-0')}
-                        onFocus={selectOnFocus}
                         value={field.value ?? ''}
                         onChange={e => {
                           const digits = e.target.value.replace(/\D/g, '').slice(0, 4)
@@ -241,7 +237,6 @@ export function TradeForm({
                 render={({ field }) => (
                   <NumberInput
                     className={inputClass}
-                    onFocus={selectOnFocus}
                     value={field.value ?? null}
                     onChange={field.onChange}
                   />
@@ -255,7 +250,6 @@ export function TradeForm({
                 render={({ field }) => (
                   <NumberInput
                     className={inputClass}
-                    onFocus={selectOnFocus}
                     value={field.value ?? null}
                     onChange={field.onChange}
                   />
@@ -269,7 +263,6 @@ export function TradeForm({
                 render={({ field }) => (
                   <NumberInput
                     className={inputClass}
-                    onFocus={selectOnFocus}
                     value={field.value ?? null}
                     onChange={field.onChange}
                   />
@@ -283,7 +276,6 @@ export function TradeForm({
                 render={({ field }) => (
                   <NumberInput
                     className={inputClass}
-                    onFocus={selectOnFocus}
                     value={field.value ?? null}
                     onChange={field.onChange}
                   />

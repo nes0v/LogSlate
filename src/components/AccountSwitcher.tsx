@@ -67,7 +67,7 @@ export function AccountSwitcher() {
                 setOpen(false)
               }}
               className={cn(
-                'w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left',
+                'w-full flex items-center gap-2 px-2.5 py-1.5 text-sm text-left',
                 'hover:bg-(--color-panel-2)',
                 a.id === activeId && 'text-(--color-text)',
               )}

@@ -1,14 +1,18 @@
 import { Link } from 'react-router-dom'
 import { format, parseISO } from 'date-fns'
+import { useLiveQuery } from 'dexie-react-hooks'
 import { ArrowDown, ArrowUp } from 'lucide-react'
 import type { TradeRecord } from '@/db/types'
+import { db } from '@/db/schema'
 import {
+  computeDuration,
   computePlannedRr,
   computeRealizedRr,
   effectivePnl,
   inferSide,
   totalContracts,
 } from '@/lib/trade-math'
+import { formatDuration } from '@/lib/duration'
 import { formatUsd } from '@/lib/money'
 import { RATING_LABEL } from '@/lib/rating-label'
 import { SESSION_BADGE, SESSION_BADGE_CLASS } from '@/lib/session-badge'
@@ -30,7 +34,9 @@ function earliestTime(t: TradeRecord): string | null {
   return new Date(Math.min(...all)).toISOString()
 }
 
-export function TradeRow({ trade, index }: TradeRowProps) {
+// Renders the 9 cells that make up a trade row. Reusable across Link- and
+// button-shaped wrappers (Stats vs Day expandable row).
+export function TradeRowCells({ trade, index }: TradeRowProps) {
   const side = inferSide(trade)
   const pnl = effectivePnl(trade)
   const realRr = computeRealizedRr(trade)
@@ -38,32 +44,33 @@ export function TradeRow({ trade, index }: TradeRowProps) {
   const contracts = totalContracts(trade)
   const start = earliestTime(trade)
   const startHHmm = start ? format(parseISO(start), 'HH:mm') : '—'
+  const dur = computeDuration(trade)
+  const playbook = useLiveQuery(
+    () => (trade.playbook_id ? db.playbooks.get(trade.playbook_id) : undefined),
+    [trade.playbook_id],
+  )
 
   return (
-    <Link
-      to={`/trade/${trade.id}/edit`}
-      title={trade.idea}
-      className="col-span-9 grid grid-cols-subgrid items-center bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) px-3 py-2 hover:bg-(--color-panel-2) transition-colors"
-    >
-      <span className="text-xs font-mono text-(--color-text-dim) tabular-nums">
+    <>
+      <span className="text-xs font-mono text-(--color-text-dim) tabular-nums -mr-5 inline-block w-7">
         {index !== undefined ? `#${index}` : ''}
       </span>
       <span
         className={cn(
           SESSION_BADGE_CLASS,
-          'justify-center',
+          'justify-center -mr-1.5',
           SESSION_BADGE[trade.session],
         )}
       >
         {trade.session}
       </span>
-      <span className="text-sm font-mono">
+      <span className="text-sm font-mono -mr-5 inline-block min-w-[4.5rem]">
         {trade.symbol}
-        <span className="text-xs text-(--color-text-dim)">·{trade.contract_type}</span>
+        <span className="text-xs text-(--color-text-dim) relative -top-px"> · {trade.contract_type}</span>
       </span>
       <span
         className={cn(
-          'inline-flex items-center gap-1 text-sm font-mono whitespace-nowrap',
+          'inline-flex items-center gap-1 text-sm font-mono whitespace-nowrap -mr-[18px]',
           side === 'long' && 'text-(--color-win)',
           side === 'short' && 'text-(--color-loss)',
           !side && 'text-(--color-text-dim)',
@@ -74,23 +81,31 @@ export function TradeRow({ trade, index }: TradeRowProps) {
         ) : side === 'short' ? (
           <ArrowDown className="size-3.5" />
         ) : null}
-        {side === 'long' ? 'buy' : side === 'short' ? 'sell' : '—'}
+        <span className="inline-block w-12">
+          {side === 'long' ? 'long' : side === 'short' ? 'short' : '—'}
+        </span>
       </span>
-      <span className="text-sm font-mono tabular-nums text-(--color-text-dim)">
+      <span className="text-sm font-mono tabular-nums text-(--color-text-dim) inline-block min-w-[3ch] -mr-2">
         ×{contracts}
       </span>
-      <span className="text-xs text-(--color-text-dim) truncate flex items-baseline gap-3 min-w-0">
-        <span className="font-mono tabular-nums shrink-0">
-          {format(new Date(trade.trade_date + 'T00:00:00'), 'MMM dd')} · {startHHmm}
+      <span className="text-xs text-(--color-text-dim) flex items-baseline gap-3 min-w-0">
+        <span className="font-mono tabular-nums shrink-0 inline-block w-24">
+          {startHHmm}
+          {dur.total_ms !== null && ` (${formatDuration(dur.total_ms)})`}
         </span>
-        <span className="truncate">{trade.idea}</span>
+        <span className="inline-block w-32 truncate text-(--color-text)">
+          {playbook?.name ?? ''}
+        </span>
+        <span className="inline-block w-24 truncate">
+          {trade.emotion ?? ''}
+        </span>
       </span>
-      <span className="text-xs font-mono text-(--color-text-dim) tabular-nums whitespace-nowrap">
+      <span className="text-xs font-mono text-(--color-text-dim) tabular-nums whitespace-nowrap inline-block w-32 text-right">
         {plannedRr === null ? '—' : `${plannedRr.toFixed(2)}x`} → {realRr === null ? '—' : `${realRr.toFixed(2)}x`}
       </span>
       <span
         className={cn(
-          'text-sm font-mono font-medium tabular-nums whitespace-nowrap',
+          'text-sm font-mono font-medium tabular-nums whitespace-nowrap inline-block w-24 text-right',
           pnl !== null && pnl > 0 && 'text-(--color-win)',
           pnl !== null && pnl < 0 && 'text-(--color-loss)',
           (pnl === null || pnl === 0) && 'text-(--color-text-dim)',
@@ -98,7 +113,21 @@ export function TradeRow({ trade, index }: TradeRowProps) {
       >
         {pnl === null ? '—' : formatUsd(pnl)}
       </span>
-      <span className="text-sm font-mono text-(--color-text-dim)">{RATING_LABEL[trade.rating]}</span>
+      <span className="text-sm font-mono text-(--color-text-dim) inline-block w-10 text-center">
+        {RATING_LABEL[trade.rating]}
+      </span>
+    </>
+  )
+}
+
+export function TradeRow({ trade, index }: TradeRowProps) {
+  return (
+    <Link
+      to={`/trade/${trade.id}/edit`}
+      title={trade.idea}
+      className="col-span-9 grid grid-cols-subgrid items-center bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) px-3 py-2 hover:bg-(--color-panel-2) transition-colors"
+    >
+      <TradeRowCells trade={trade} index={index} />
     </Link>
   )
 }
