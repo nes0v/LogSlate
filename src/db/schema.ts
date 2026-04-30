@@ -234,6 +234,19 @@ class LogslateDB extends Dexie {
     this.version(12).stores({
       news_events: '&id, date, updated_at',
     })
+
+    // v13: drop the cancelled/last_seen_at fields — the table now mirrors
+    // the latest feed exactly (postponed events are deleted, not flagged).
+    this.version(13).upgrade(async tx => {
+      const t = tx.table('news_events')
+      type LegacyRow = NewsEvent & { cancelled?: boolean; last_seen_at?: unknown }
+      const stale = await t.filter((r: LegacyRow) => r.cancelled === true).primaryKeys()
+      if (stale.length > 0) await t.bulkDelete(stale)
+      await t.toCollection().modify((r: LegacyRow) => {
+        if ('cancelled' in r) delete r.cancelled
+        if ('last_seen_at' in r) delete r.last_seen_at
+      })
+    })
   }
 }
 

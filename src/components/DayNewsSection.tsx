@@ -2,7 +2,6 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/db/schema'
 import type { NewsEvent } from '@/db/types'
 import { nyTimeHHmm } from '@/lib/tz'
-import { cn } from '@/lib/utils'
 
 const IMPACT_FILL: Record<NewsEvent['impact'], string> = {
   High: '#ef4444',
@@ -48,13 +47,7 @@ function EventRow({ event }: { event: NewsEvent }) {
   const d = new Date(event.scheduled_at)
   const time = Number.isNaN(d.getTime()) ? '—' : nyTimeHHmm(d)
   return (
-    <div
-      className={cn(
-        'grid grid-cols-[3.5rem_auto_auto_1fr] gap-3 items-center px-3 py-2 text-xs',
-        event.cancelled && 'line-through text-(--color-text-faint)',
-      )}
-      title={event.cancelled ? 'Cancelled / postponed' : undefined}
-    >
+    <div className="grid grid-cols-[3.5rem_auto_auto_1fr] gap-3 items-center px-3 py-2 text-xs">
       <span className="font-mono tabular-nums text-(--color-text-dim)">{time}</span>
       <span className="font-mono text-(--color-text-dim) uppercase w-10">{event.country}</span>
       <svg viewBox="0 0 10 10" className="size-3" aria-label={`${event.impact} impact`} role="img">

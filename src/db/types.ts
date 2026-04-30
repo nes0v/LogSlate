@@ -204,12 +204,10 @@ export interface ProgressCheck {
 }
 
 // Persisted USD high/medium-impact news drivers per NY calendar day.
-// `cancelled = true` means the event was previously seen in the feed but
-// has since disappeared (e.g. release postponed). The row is kept so the
-// Day page can show it struck-through instead of silently vanishing.
+// The table mirrors whatever the latest feed reports — events that
+// disappear from a fresh fetch (postponed / cancelled) are deleted.
 //
-// Not scoped per account — economic news is global, the same for every
-// trader using the app — so no `account_id`.
+// Not scoped per account — economic news is global — so no `account_id`.
 export type PersistedNewsImpact = 'High' | 'Medium'
 export interface NewsEvent {
   id: string // `${date}${title}` (unit-separator avoids title collisions)
@@ -220,8 +218,6 @@ export interface NewsEvent {
   scheduled_at: string // ISO 8601 UTC, the event's actual clock time
   forecast: string
   previous: string
-  cancelled: boolean
-  last_seen_at: string // ISO; bumped on every fresh feed that re-confirms it
   created_at: string
   updated_at: string
 }
