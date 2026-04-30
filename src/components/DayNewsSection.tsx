@@ -16,7 +16,7 @@ interface DayNewsSectionProps {
 export function DayNewsSection({ date }: DayNewsSectionProps) {
   const events = useLiveQuery(
     async () => {
-      const rows = await db.news_events.where('date').equals(date).toArray()
+      const rows = await db.news.where('date').equals(date).toArray()
       // ISO 8601 strings sort lexicographically — no Date.parse needed.
       rows.sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at))
       return rows

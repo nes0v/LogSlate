@@ -95,10 +95,10 @@ describe('bucketByDay', () => {
     expect(buckets[0].navTarget).toBe('/day/2026-04-01')
   })
 
-  it('places trades into their day bucket by trade_date', () => {
-    const a = tradeRecord({ trade_date: '2026-04-02' })
-    const b = tradeRecord({ trade_date: '2026-04-02' })
-    const c = tradeRecord({ trade_date: '2026-04-04' })
+  it('places trades into their day bucket by date', () => {
+    const a = tradeRecord({ date: '2026-04-02' })
+    const b = tradeRecord({ date: '2026-04-02' })
+    const c = tradeRecord({ date: '2026-04-04' })
     const start = new Date('2026-04-01T00:00:00')
     const end = new Date('2026-04-05T00:00:00')
     const buckets = bucketByDay([a, b, c], start, end)
@@ -123,11 +123,11 @@ describe('bucketByWeek', () => {
   })
 
   it('places trades into their week bucket', () => {
-    const t = tradeRecord({ trade_date: '2026-04-15' }) // Wednesday
+    const t = tradeRecord({ date: '2026-04-15' }) // Wednesday
     const start = new Date('2026-04-01T00:00:00')
     const end = new Date('2026-04-30T00:00:00')
     const buckets = bucketByWeek([t], start, end)
-    const target = buckets.find(b => t.trade_date >= b.rangeStart && t.trade_date <= b.rangeEnd)
+    const target = buckets.find(b => t.date >= b.rangeStart && t.date <= b.rangeEnd)
     expect(target).toBeDefined()
     expect(target!.trades).toContain(t)
   })
@@ -153,10 +153,10 @@ describe('bucketByMonth', () => {
     expect(buckets[0].navTarget).toBe('/month/2026-02')
   })
 
-  it('places trades into the bucket for their trade_date month', () => {
-    const a = tradeRecord({ trade_date: '2026-03-15' })
-    const b = tradeRecord({ trade_date: '2026-03-31' })
-    const c = tradeRecord({ trade_date: '2026-04-01' })
+  it('places trades into the bucket for their date month', () => {
+    const a = tradeRecord({ date: '2026-03-15' })
+    const b = tradeRecord({ date: '2026-03-31' })
+    const c = tradeRecord({ date: '2026-04-01' })
     const start = new Date('2026-03-01T00:00:00')
     const end = new Date('2026-04-30T00:00:00')
     const buckets = bucketByMonth([a, b, c], start, end)
@@ -179,7 +179,7 @@ describe('bucketByQuarter', () => {
   })
 
   it('places a trade into its quarter', () => {
-    const t = tradeRecord({ trade_date: '2026-05-10' }) // Q2
+    const t = tradeRecord({ date: '2026-05-10' }) // Q2
     const start = new Date('2026-01-01T00:00:00')
     const end = new Date('2026-12-31T00:00:00')
     const buckets = bucketByQuarter([t], start, end)

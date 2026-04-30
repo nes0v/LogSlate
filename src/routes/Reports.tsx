@@ -122,7 +122,7 @@ export function ReportsRoute() {
   const allTrades = useLiveQuery(
     () =>
       db.trades
-        .where('[account_id+trade_date]')
+        .where('[account_id+date]')
         .between([accountId, ''], [accountId, '￿'], true, true)
         .toArray(),
     [accountId],
@@ -132,8 +132,8 @@ export function ReportsRoute() {
   const lastTradeDate = useMemo(() => {
     const list = allTrades ?? []
     if (list.length === 0) return format(new Date(), 'yyyy-MM-dd')
-    let max = list[0].trade_date
-    for (const t of list) if (t.trade_date > max) max = t.trade_date
+    let max = list[0].date
+    for (const t of list) if (t.date > max) max = t.date
     return max
   }, [allTrades])
 
@@ -298,7 +298,7 @@ function DaysAndTimeReport({ trades }: { trades: TradeRecord[] }) {
       losses: 0,
     }))
     for (const t of trades) {
-      const d = Number(t.trade_date.slice(8, 10))
+      const d = Number(t.date.slice(8, 10))
       if (d < 1 || d > 31) continue
       const cell = map[d - 1]
       const { pnl, outcome } = tradeMetrics(t)
@@ -654,21 +654,21 @@ function CompareReport({
   onAxisChange: (a: CompareAxis) => void
 }) {
   const accountId = useActiveAccountId()
-  // Only fetch playbook names when actually needed for the rendered axis;
+  // Only fetch model names when actually needed for the rendered axis;
   // useLiveQuery still subscribes either way, but the cost is negligible.
-  const playbooks = useLiveQuery(
-    () => db.playbooks.where('account_id').equals(accountId).toArray(),
+  const models = useLiveQuery(
+    () => db.models.where('account_id').equals(accountId).toArray(),
     [accountId],
     [],
   )
-  const playbookNameById = useMemo(() => {
+  const modelNameById = useMemo(() => {
     const m = new Map<string, string>()
-    for (const p of playbooks ?? []) m.set(p.id, p.name)
+    for (const p of models ?? []) m.set(p.id, p.name)
     return m
-  }, [playbooks])
+  }, [models])
   const groups = useMemo(
-    () => splitByAxis(trades, axis, playbookNameById),
-    [trades, axis, playbookNameById],
+    () => splitByAxis(trades, axis, modelNameById),
+    [trades, axis, modelNameById],
   )
   return (
     <section>
@@ -714,7 +714,7 @@ function CompareReport({
 function splitByAxis(
   trades: TradeRecord[],
   axis: CompareAxis,
-  playbookNameById: Map<string, string>,
+  modelNameById: Map<string, string>,
 ): Array<{ label: string; trades: TradeRecord[] }> {
   switch (axis) {
     case 'symbol':
@@ -781,13 +781,13 @@ function splitByAxis(
       const map = new Map<string, TradeRecord[]>()
       const unset: TradeRecord[] = []
       for (const t of trades) {
-        if (!t.playbook_id) { unset.push(t); continue }
-        if (!map.has(t.playbook_id)) map.set(t.playbook_id, [])
-        map.get(t.playbook_id)!.push(t)
+        if (!t.model_id) { unset.push(t); continue }
+        if (!map.has(t.model_id)) map.set(t.model_id, [])
+        map.get(t.model_id)!.push(t)
       }
       const buckets = Array.from(map.entries())
         .map(([id, v]) => ({
-          label: playbookNameById.get(id) ?? '(deleted)',
+          label: modelNameById.get(id) ?? '(deleted)',
           trades: v,
         }))
         .sort((a, b) => b.trades.length - a.trades.length)

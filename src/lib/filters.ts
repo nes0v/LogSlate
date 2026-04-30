@@ -30,8 +30,8 @@ export const EMPTY_FILTERS: TradeFilters = {
 
 export function applyFilters(trades: TradeRecord[], f: TradeFilters): TradeRecord[] {
   return trades.filter(t => {
-    if (f.from && t.trade_date < f.from) return false
-    if (f.to && t.trade_date > f.to) return false
+    if (f.from && t.date < f.from) return false
+    if (f.to && t.date > f.to) return false
     if (f.symbol && t.symbol !== f.symbol) return false
     if (f.contract && t.contract_type !== f.contract) return false
     if (f.session && t.session !== f.session) return false

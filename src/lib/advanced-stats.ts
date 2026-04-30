@@ -8,8 +8,11 @@
 import type { TradeRecord } from '@/db/types'
 import {
   classifyTrade,
+  computeDuration,
+  computeFees,
   computeNetPnl,
   computeRealizedRr,
+  firstExecutionMs,
   tradeMetrics,
   type TradeOutcome,
 } from '@/lib/trade-math'
@@ -147,11 +150,11 @@ export function streakStats(trades: TradeRecord[]): StreakStats {
   let longestLoss = 0
   let current = 0
   let curSign = 0
-  // Order trades by trade_date then first execution time so streaks
+  // Order trades by date then first execution time so streaks
   // mean what the user expects (chronological).
   const sorted = [...trades].sort((a, b) => {
-    if (a.trade_date !== b.trade_date) return a.trade_date < b.trade_date ? -1 : 1
-    return firstExecMs(a) - firstExecMs(b)
+    if (a.date !== b.date) return a.date < b.date ? -1 : 1
+    return (firstExecutionMs(a) ?? 0) - (firstExecutionMs(b) ?? 0)
   })
   for (const t of sorted) {
     const outcome = classifyTrade(t)
@@ -172,15 +175,6 @@ export function streakStats(trades: TradeRecord[]): StreakStats {
     if (-current > longestLoss) longestLoss = -current
   }
   return { longestWin, longestLoss, current }
-}
-
-function firstExecMs(t: TradeRecord): number {
-  let min = Infinity
-  for (const e of t.executions) {
-    const ms = Date.parse(e.time)
-    if (!Number.isNaN(ms) && ms < min) min = ms
-  }
-  return min === Infinity ? 0 : min
 }
 
 // ---------- per-day series + drawdown ------------------------------
@@ -204,7 +198,7 @@ export function dailyEquitySeries(
 ): EquityPoint[] {
   const byDay = new Map<string, number>()
   for (const t of trades) {
-    byDay.set(t.trade_date, (byDay.get(t.trade_date) ?? 0) + (computeNetPnl(t) ?? 0))
+    byDay.set(t.date, (byDay.get(t.date) ?? 0) + (computeNetPnl(t) ?? 0))
   }
   let equity = startEquity
   let peak = startEquity
@@ -477,7 +471,7 @@ export function maeScatter(trades: TradeRecord[]): ScatterPoint[] {
       y: pnl,
       win: outcome === 'win',
       outcome,
-      date: t.trade_date,
+      date: t.date,
     })
   }
   return out
@@ -495,7 +489,7 @@ export function mfeScatter(trades: TradeRecord[]): ScatterPoint[] {
       y: pnl,
       win: outcome === 'win',
       outcome,
-      date: t.trade_date,
+      date: t.date,
     })
   }
   return out
@@ -508,8 +502,8 @@ const HOUR_BUCKETS = 24
 export function pnlByHour(trades: TradeRecord[]): Array<{ hour: number; pnl: number; count: number }> {
   const arr = Array.from({ length: HOUR_BUCKETS }, (_, h) => ({ hour: h, pnl: 0, count: 0 }))
   for (const t of trades) {
-    const ms = firstExecMs(t)
-    if (!ms) continue
+    const ms = firstExecutionMs(t)
+    if (ms === null) continue
     const h = new Date(ms).getHours()
     arr[h].pnl += computeNetPnl(t) ?? 0
     arr[h].count++
@@ -521,7 +515,7 @@ const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 export function pnlByWeekday(trades: TradeRecord[]): Array<{ name: string; pnl: number; count: number; wins: number; losses: number }> {
   const arr = WEEKDAYS.map(name => ({ name, pnl: 0, count: 0, wins: 0, losses: 0 }))
   for (const t of trades) {
-    const day = new Date(t.trade_date + 'T00:00:00').getDay()
+    const day = new Date(t.date + 'T00:00:00').getDay()
     const { pnl, outcome } = tradeMetrics(t)
     arr[day].pnl += pnl ?? 0
     arr[day].count++
@@ -535,7 +529,7 @@ export function pnlByWeekday(trades: TradeRecord[]): Array<{ name: string; pnl: 
 export function pnlByMonth(trades: TradeRecord[]): Array<{ month: string; pnl: number; count: number }> {
   const m = new Map<string, { pnl: number; count: number }>()
   for (const t of trades) {
-    const ym = t.trade_date.slice(0, 7)
+    const ym = t.date.slice(0, 7)
     const cur = m.get(ym) ?? { pnl: 0, count: 0 }
     cur.pnl += computeNetPnl(t) ?? 0
     cur.count++
@@ -670,9 +664,9 @@ export function cohortStats(trades: TradeRecord[]): CohortCompare {
       rrSum += rr
       rrN++
     }
-    const ms = t.executions.map(e => Date.parse(e.time)).filter(n => !Number.isNaN(n))
-    if (ms.length >= 2) {
-      dSum += Math.max(...ms) - Math.min(...ms)
+    const dur = computeDuration(t)
+    if (dur.total_ms !== null) {
+      dSum += dur.total_ms
       dN++
     }
     if (t.drawdown !== null && t.drawdown > 0) {
@@ -683,7 +677,7 @@ export function cohortStats(trades: TradeRecord[]): CohortCompare {
       mfeSum += t.buildup
       mfeN++
     }
-    feeSum += t.executions.length * (t.contract_type === 'micro' ? 0.62 : 2.25)
+    feeSum += computeFees(t)
   }
   return {
     count: trades.length,

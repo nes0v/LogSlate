@@ -2,41 +2,67 @@
 // User clicks Export → gets a .json file. User clicks Import → picks a file,
 // the local DB is replaced with its contents.
 
+import type { EntityTable } from 'dexie'
 import { db, ensureMainAccount } from '@/db/schema'
 import type {
   Account,
-  DayScreenshot,
+  Day,
   EquityAdjustment,
+  Model,
+  NewsEvent,
+  Note,
+  ProgressCheck,
+  ProgressRule,
   TradeRecord,
 } from '@/db/types'
 import { MAIN_ACCOUNT_ID } from '@/db/types'
 
-const BACKUP_VERSION = 5
+const BACKUP_VERSION = 6
+
+interface Row {
+  id: string
+}
+
+interface Spec<T extends Row> {
+  fileKey: string
+  table: () => EntityTable<T, 'id'>
+}
+
+const SPECS = [
+  { fileKey: 'accounts',        table: () => db.accounts },
+  { fileKey: 'trades',          table: () => db.trades },
+  { fileKey: 'adjustments',     table: () => db.adjustments },
+  { fileKey: 'days', table: () => db.days },
+  { fileKey: 'notes',           table: () => db.notes },
+  { fileKey: 'models',          table: () => db.models },
+  { fileKey: 'progress_rules',  table: () => db.progress_rules },
+  { fileKey: 'progress_checks', table: () => db.progress_checks },
+  { fileKey: 'news',     table: () => db.news },
+] as const satisfies ReadonlyArray<Spec<Row>>
 
 interface BackupFile {
   version: number
-  trades: TradeRecord[]
+  exported_at: string
+  trades?: TradeRecord[]
   adjustments?: EquityAdjustment[]
   accounts?: Account[]
-  day_screenshots?: DayScreenshot[]
-  exported_at: string
+  days?: Day[]
+  notes?: Note[]
+  models?: Model[]
+  progress_rules?: ProgressRule[]
+  progress_checks?: ProgressCheck[]
+  news?: NewsEvent[]
 }
 
 export async function exportBackup(): Promise<void> {
-  const [trades, adjustments, accounts, day_screenshots] = await Promise.all([
-    db.trades.toArray(),
-    db.adjustments.toArray(),
-    db.accounts.toArray(),
-    db.day_screenshots.toArray(),
-  ])
+  const arrays = await Promise.all(SPECS.map(s => s.table().toArray()))
   const file: BackupFile = {
     version: BACKUP_VERSION,
-    trades,
-    adjustments,
-    accounts,
-    day_screenshots,
     exported_at: new Date().toISOString(),
   }
+  SPECS.forEach((s, i) => {
+    ;(file as Record<string, unknown>)[s.fileKey] = arrays[i]
+  })
   const blob = new Blob([JSON.stringify(file, null, 2)], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -51,52 +77,43 @@ export async function exportBackup(): Promise<void> {
 
 export async function importBackup(
   file: File,
-): Promise<{ imported: number; adjustments: number; accounts: number; dayScreenshots: number }> {
+): Promise<Record<string, number>> {
   const text = await file.text()
-  const parsed = JSON.parse(text) as Partial<BackupFile>
+  const parsed = JSON.parse(text) as Partial<BackupFile> & Record<string, unknown>
   if (!parsed || !Array.isArray(parsed.trades)) {
     throw new Error('Backup file is malformed (no trades array).')
   }
-  const trades = parsed.trades as TradeRecord[]
-  const adjustments = Array.isArray(parsed.adjustments)
-    ? (parsed.adjustments as EquityAdjustment[])
-    : []
-  const accounts = Array.isArray(parsed.accounts) ? (parsed.accounts as Account[]) : []
-  const dayScreenshots = Array.isArray(parsed.day_screenshots)
-    ? (parsed.day_screenshots as DayScreenshot[])
-    : []
 
   // Back-compat: pre-v4 backups have no accounts and no account_id field. Stamp
-  // everything to Main so the imported data is visible in the active account.
-  const tradesFixed = trades.map(t => ({ ...t, account_id: t.account_id ?? MAIN_ACCOUNT_ID }))
-  const adjustmentsFixed = adjustments.map(a => ({
-    ...a,
-    account_id: a.account_id ?? MAIN_ACCOUNT_ID,
-  }))
+  // trades/adjustments to the main account so the imported data is visible.
+  const stamp = <T extends { account_id?: string }>(rows: T[]): T[] =>
+    rows.map(r => ({ ...r, account_id: r.account_id ?? MAIN_ACCOUNT_ID }))
+
+  const arrays: Row[][] = SPECS.map(s => {
+    const v = parsed[s.fileKey]
+    const arr = Array.isArray(v) ? (v as Row[]) : []
+    return s.fileKey === 'trades' || s.fileKey === 'adjustments'
+      ? (stamp(arr as Array<Row & { account_id?: string }>) as Row[])
+      : arr
+  })
 
   await db.transaction(
     'rw',
-    db.trades,
-    db.adjustments,
-    db.accounts,
-    db.day_screenshots,
+    SPECS.map(s => s.table()),
     async () => {
-      await db.trades.clear()
-      await db.adjustments.clear()
-      await db.accounts.clear()
-      await db.day_screenshots.clear()
-      if (accounts.length > 0) await db.accounts.bulkAdd(accounts)
-      if (tradesFixed.length > 0) await db.trades.bulkAdd(tradesFixed)
-      if (adjustmentsFixed.length > 0) await db.adjustments.bulkAdd(adjustmentsFixed)
-      if (dayScreenshots.length > 0) await db.day_screenshots.bulkAdd(dayScreenshots)
+      for (let i = 0; i < SPECS.length; i++) {
+        await SPECS[i].table().clear()
+        if (arrays[i].length > 0)
+          await (SPECS[i].table() as EntityTable<Row, 'id'>).bulkAdd(arrays[i])
+      }
     },
   )
-  // Ensure Main exists even if the backup had no accounts array.
+  // Ensure the main account exists even if the backup had no accounts array.
   await ensureMainAccount()
-  return {
-    imported: tradesFixed.length,
-    adjustments: adjustmentsFixed.length,
-    accounts: accounts.length,
-    dayScreenshots: dayScreenshots.length,
-  }
+
+  const counts: Record<string, number> = {}
+  SPECS.forEach((s, i) => {
+    counts[s.fileKey] = arrays[i].length
+  })
+  return counts
 }

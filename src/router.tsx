@@ -4,8 +4,8 @@ import { CalendarRoute } from '@/routes/Calendar'
 import { DayRoute } from '@/routes/Day'
 import { StatsRoute } from '@/routes/Stats'
 import { ReportsRoute } from '@/routes/Reports'
-import { NotebookRoute } from '@/routes/Notebook'
-import { PlaybookRoute } from '@/routes/Playbook'
+import { JournalRoute } from '@/routes/Journal'
+import { ModelsRoute } from '@/routes/Models'
 import { ProgressRoute } from '@/routes/Progress'
 import { SettingsRoute } from '@/routes/Settings'
 import { TradeNewRoute } from '@/routes/TradeNew'
@@ -22,8 +22,8 @@ export const router = createBrowserRouter([
       { path: 'day/:date', Component: DayRoute },
       { path: 'stats', Component: StatsRoute },
       { path: 'reports', Component: ReportsRoute },
-      { path: 'journal', Component: NotebookRoute },
-      { path: 'models', Component: PlaybookRoute },
+      { path: 'journal', Component: JournalRoute },
+      { path: 'models', Component: ModelsRoute },
       { path: 'progress', Component: ProgressRoute },
       { path: 'settings', Component: SettingsRoute },
       { path: 'trade/new', Component: TradeNewRoute },

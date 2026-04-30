@@ -3,7 +3,7 @@ import type {
   Account,
   AccountDraft,
   AdjustmentDraft,
-  DayScreenshot,
+  Day,
   EquityAdjustment,
   TradeDraft,
   TradeRecord,
@@ -62,7 +62,7 @@ export async function getTrade(id: string): Promise<TradeRecord | undefined> {
 
 export async function listAllTrades(accountId: string): Promise<TradeRecord[]> {
   return db.trades
-    .where('[account_id+trade_date]')
+    .where('[account_id+date]')
     .between([accountId, ''], [accountId, '￿'], true, true)
     .toArray()
 }
@@ -143,11 +143,11 @@ export async function deleteAccount(id: string): Promise<void> {
   if (total <= 1) throw new Error('At least one account must remain.')
   await db.transaction(
     'rw',
-    [db.accounts, db.trades, db.adjustments, db.day_screenshots, db.pending_uploads],
+    [db.accounts, db.trades, db.adjustments, db.days, db.pending_uploads],
     async () => {
       await db.trades.where('account_id').equals(id).delete()
       await db.adjustments.where('account_id').equals(id).delete()
-      await db.day_screenshots.where('account_id').equals(id).delete()
+      await db.days.where('account_id').equals(id).delete()
       await db.pending_uploads.where('account_id').equals(id).delete()
       await db.accounts.delete(id)
     },
@@ -175,39 +175,78 @@ export async function countAccountData(
   return { trades, adjustments }
 }
 
-// ---------- day screenshots ----------
+// ---------- days ----------
 
-// A day can have many screenshots — each one is a row of its own, keyed by a
-// random UUID so independent uploads on two synced devices don't collide.
+// One Day row per (account, date), id derived as `${account_id}:${date}` so
+// the row converges naturally on sync. `screenshots[]` is multi-entry indexed
+// (`*screenshots` in the schema string) so the pending-upload drainer can
+// rewrite refs in place.
+
+function dayId(accountId: string, date: string): string {
+  return `${accountId}:${date}`
+}
+
+export async function getDay(
+  accountId: string,
+  date: string,
+): Promise<Day | undefined> {
+  return db.days.get(dayId(accountId, date))
+}
+
 export async function listDayScreenshotsFor(
   accountId: string,
   date: string,
-): Promise<DayScreenshot[]> {
-  return db.day_screenshots
-    .where('[account_id+date]')
-    .equals([accountId, date])
-    .sortBy('created_at')
+): Promise<string[]> {
+  const day = await getDay(accountId, date)
+  return day?.screenshots ?? []
 }
 
 export async function addDayScreenshot(
   accountId: string,
   date: string,
   screenshot: string,
-): Promise<DayScreenshot> {
+): Promise<Day> {
+  const id = dayId(accountId, date)
   const ts = now()
-  const rec: DayScreenshot = {
-    id: newId(),
-    account_id: accountId,
-    date,
-    screenshot,
-    created_at: ts,
-    updated_at: ts,
-  }
-  await db.day_screenshots.add(rec)
-  return rec
+  return db.transaction('rw', db.days, async () => {
+    const existing = await db.days.get(id)
+    const next: Day = existing
+      ? {
+          ...existing,
+          screenshots: [...existing.screenshots, screenshot],
+          updated_at: ts,
+        }
+      : {
+          id,
+          account_id: accountId,
+          date,
+          screenshots: [screenshot],
+          created_at: ts,
+          updated_at: ts,
+        }
+    await db.days.put(next)
+    return next
+  })
 }
 
-export async function deleteDayScreenshot(id: string): Promise<void> {
-  await db.day_screenshots.delete(id)
+export async function removeDayScreenshot(
+  accountId: string,
+  date: string,
+  screenshot: string,
+): Promise<void> {
+  const id = dayId(accountId, date)
+  const ts = now()
+  await db.transaction('rw', db.days, async () => {
+    const existing = await db.days.get(id)
+    if (!existing) return
+    const screenshots = existing.screenshots.filter(s => s !== screenshot)
+    if (screenshots.length === 0) {
+      // No remaining content on this day — drop the row instead of leaving
+      // an empty placeholder. Future per-day fields would change this.
+      await db.days.delete(id)
+      return
+    }
+    await db.days.put({ ...existing, screenshots, updated_at: ts })
+  })
 }
 

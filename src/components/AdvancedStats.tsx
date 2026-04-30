@@ -90,9 +90,9 @@ const EMOTION_COLORS: Record<(typeof EMOTIONS)[number], string> = {
   busy: '#06b6d4',
 }
 
-// Palette for the playbook donut. Cycled by index when the user has more
-// playbooks than colors — at 8 entries that should never realistically wrap.
-const PLAYBOOK_PALETTE = [
+// Palette for the model donut. Cycled by index when the user has more
+// models than colors — at 8 entries that should never realistically wrap.
+const MODEL_PALETTE = [
   'var(--color-accent)',
   '#7dd3fc',
   '#fbbf24',
@@ -105,8 +105,8 @@ const PLAYBOOK_PALETTE = [
 
 export function DistributionDonuts({ filtered }: { filtered: TradeRecord[] }) {
   const accountId = useActiveAccountId()
-  const playbooks = useLiveQuery(
-    () => db.playbooks.where('account_id').equals(accountId).toArray(),
+  const models = useLiveQuery(
+    () => db.models.where('account_id').equals(accountId).toArray(),
     [accountId],
     [],
   )
@@ -199,20 +199,20 @@ export function DistributionDonuts({ filtered }: { filtered: TradeRecord[] }) {
     return segments
   }, [filtered])
 
-  const playbookDonut = useMemo(() => {
+  const modelDonut = useMemo(() => {
     const nameById = new Map<string, string>()
-    for (const p of playbooks ?? []) nameById.set(p.id, p.name)
+    for (const p of models ?? []) nameById.set(p.id, p.name)
     const counts = new Map<string, number>()
     let other = 0
     for (const t of filtered) {
-      if (!t.playbook_id || !nameById.has(t.playbook_id)) {
+      if (!t.model_id || !nameById.has(t.model_id)) {
         // Trades without a model (or pointing at a since-deleted one) collapse
         // into a single labelled "gambling" wedge — the default fallback name
         // for model-less trades.
         other++
         continue
       }
-      counts.set(t.playbook_id, (counts.get(t.playbook_id) ?? 0) + 1)
+      counts.set(t.model_id, (counts.get(t.model_id) ?? 0) + 1)
     }
     const segments: Array<{
       label: string
@@ -224,7 +224,7 @@ export function DistributionDonuts({ filtered }: { filtered: TradeRecord[] }) {
       .map(([id, value], i) => ({
         label: nameById.get(id)!,
         value,
-        color: PLAYBOOK_PALETTE[i % PLAYBOOK_PALETTE.length],
+        color: MODEL_PALETTE[i % MODEL_PALETTE.length],
       }))
     if (other > 0) {
       segments.push({
@@ -234,7 +234,7 @@ export function DistributionDonuts({ filtered }: { filtered: TradeRecord[] }) {
       })
     }
     return segments
-  }, [filtered, playbooks])
+  }, [filtered, models])
 
   return (
     <section className="space-y-2">
@@ -244,7 +244,7 @@ export function DistributionDonuts({ filtered }: { filtered: TradeRecord[] }) {
         <DonutChart title="Side" segments={sideDonut} />
         <DonutChart title="Ratings" segments={ratingDonut} />
         <DonutChart title="Sessions" segments={sessionDonut} />
-        <DonutChart title="Models" segments={playbookDonut} />
+        <DonutChart title="Models" segments={modelDonut} />
         <DonutChart title="Emotions" segments={emotionDonut} legendColumns={2} />
       </div>
     </section>
@@ -311,10 +311,10 @@ export function AdvancedMetricsSections({
   const dailyPnl = useMemo(() => {
     const m = new Map<string, { pnl: number; count: number }>()
     for (const t of filtered) {
-      const cur = m.get(t.trade_date) ?? { pnl: 0, count: 0 }
+      const cur = m.get(t.date) ?? { pnl: 0, count: 0 }
       cur.pnl += computeNetPnl(t) ?? 0
       cur.count += 1
-      m.set(t.trade_date, cur)
+      m.set(t.date, cur)
     }
     return m
   }, [filtered])

@@ -14,7 +14,7 @@ export function TradeNewRoute() {
 
   async function handleSubmit(draft: TradeDraft) {
     await createTrade(draft)
-    navigate(`/day/${draft.trade_date}`)
+    navigate(`/day/${draft.date}`)
   }
 
   return (
@@ -30,10 +30,9 @@ export function TradeNewRoute() {
         onSubmit={handleSubmit}
         onCancel={() => navigate(`/day/${date}`)}
         submitLabel="Save trade"
-        requireEmotion
         getTradeOrdinal={async () => {
           const count = await db.trades
-            .where('[account_id+trade_date]')
+            .where('[account_id+date]')
             .equals([accountId, date])
             .count()
           return count + 1

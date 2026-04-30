@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { Archive, ArchiveRestore, Plus, Trash2 } from 'lucide-react'
 import { db } from '@/db/schema'
-import type { Playbook, PlaybookRuleGroup, SymbolKey } from '@/db/types'
+import type { Model, ModelRuleGroup, SymbolKey } from '@/db/types'
 import { useActiveAccountId } from '@/lib/active-account'
 import { Checkbox } from '@/components/form/Checkbox'
 import { cn } from '@/lib/utils'
@@ -11,17 +11,17 @@ function newId(): string {
   return crypto.randomUUID()
 }
 
-const DEFAULT_GROUPS = (): PlaybookRuleGroup[] => [
+const DEFAULT_GROUPS = (): ModelRuleGroup[] => [
   { id: newId(), name: 'Entry', rules: [] },
   { id: newId(), name: 'Exit', rules: [] },
   { id: newId(), name: 'Risk management', rules: [] },
 ]
 
-export function PlaybookRoute() {
+export function ModelsRoute() {
   const accountId = useActiveAccountId()
-  const playbooks = useLiveQuery(
+  const models = useLiveQuery(
     () =>
-      db.playbooks
+      db.models
         .where('account_id')
         .equals(accountId)
         .reverse()
@@ -33,8 +33,8 @@ export function PlaybookRoute() {
   const [showArchived, setShowArchived] = useState(false)
 
   const visible = useMemo(
-    () => (playbooks ?? []).filter(p => showArchived || !p.archived),
-    [playbooks, showArchived],
+    () => (models ?? []).filter(p => showArchived || !p.archived),
+    [models, showArchived],
   )
   const selected = useMemo(() => {
     const list = visible
@@ -45,9 +45,9 @@ export function PlaybookRoute() {
     return list[0] ?? null
   }, [visible, selectedId])
 
-  async function createPlaybook() {
+  async function createModel() {
     const ts = new Date().toISOString()
-    const p: Playbook = {
+    const p: Model = {
       id: newId(),
       account_id: accountId,
       name: 'New model',
@@ -58,13 +58,13 @@ export function PlaybookRoute() {
       created_at: ts,
       updated_at: ts,
     }
-    await db.playbooks.put(p)
+    await db.models.put(p)
     setSelectedId(p.id)
   }
 
-  async function update(patch: Partial<Playbook>) {
+  async function update(patch: Partial<Model>) {
     if (!selected) return
-    await db.playbooks.update(selected.id, {
+    await db.models.update(selected.id, {
       ...patch,
       updated_at: new Date().toISOString(),
     })
@@ -75,7 +75,7 @@ export function PlaybookRoute() {
     if (!confirm(`Delete "${selected.name}" permanently?`)) return
     const id = selected.id
     setSelectedId(null)
-    await db.playbooks.delete(id)
+    await db.models.delete(id)
   }
 
   return (
@@ -93,7 +93,7 @@ export function PlaybookRoute() {
           </label>
           <button
             type="button"
-            onClick={createPlaybook}
+            onClick={createModel}
             className="inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-(--radius) bg-(--color-accent) text-(--color-accent-fg) hover:opacity-90"
           >
             <Plus className="size-4" /> New model
@@ -140,9 +140,9 @@ export function PlaybookRoute() {
         </aside>
 
         {selected ? (
-          <PlaybookEditor
+          <ModelEditor
             key={selected.id}
-            playbook={selected}
+            model={selected}
             onChange={update}
             onDelete={remove}
           />
@@ -156,18 +156,18 @@ export function PlaybookRoute() {
   )
 }
 
-interface PlaybookEditorProps {
-  playbook: Playbook
-  onChange: (patch: Partial<Playbook>) => void
+interface ModelEditorProps {
+  model: Model
+  onChange: (patch: Partial<Model>) => void
   onDelete: () => void
 }
-function PlaybookEditor({ playbook, onChange, onDelete }: PlaybookEditorProps) {
-  const [name, setName] = useState(playbook.name)
-  const [description, setDescription] = useState(playbook.description)
-  const [groups, setGroups] = useState<PlaybookRuleGroup[]>(playbook.groups)
-  const [symbols, setSymbols] = useState<SymbolKey[]>(playbook.symbols)
+function ModelEditor({ model, onChange, onDelete }: ModelEditorProps) {
+  const [name, setName] = useState(model.name)
+  const [description, setDescription] = useState(model.description)
+  const [groups, setGroups] = useState<ModelRuleGroup[]>(model.groups)
+  const [symbols, setSymbols] = useState<SymbolKey[]>(model.symbols)
 
-  function commit(patch: Partial<Playbook>) {
+  function commit(patch: Partial<Model>) {
     onChange(patch)
   }
 
@@ -192,7 +192,7 @@ function PlaybookEditor({ playbook, onChange, onDelete }: PlaybookEditorProps) {
     )
     setGroups(next)
   }
-  function commitRules(next: PlaybookRuleGroup[]) {
+  function commitRules(next: ModelRuleGroup[]) {
     commit({ groups: next })
   }
   function deleteRule(groupId: string, idx: number) {
@@ -230,11 +230,11 @@ function PlaybookEditor({ playbook, onChange, onDelete }: PlaybookEditorProps) {
         />
         <button
           type="button"
-          onClick={() => commit({ archived: !playbook.archived })}
+          onClick={() => commit({ archived: !model.archived })}
           className="p-1.5 rounded text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)"
-          title={playbook.archived ? 'Unarchive' : 'Archive'}
+          title={model.archived ? 'Unarchive' : 'Archive'}
         >
-          {playbook.archived ? (
+          {model.archived ? (
             <ArchiveRestore className="size-4" />
           ) : (
             <Archive className="size-4" />

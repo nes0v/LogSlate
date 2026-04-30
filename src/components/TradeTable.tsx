@@ -97,9 +97,9 @@ function TradeTableRow({
   const startHHmm = startMs !== null ? format(new Date(startMs), 'HH:mm') : '—'
   const dur = computeDuration(trade)
   const tone = outcomeTextClass(outcome, pnl !== null)
-  const playbook = useLiveQuery(
-    () => (trade.playbook_id ? db.playbooks.get(trade.playbook_id) : undefined),
-    [trade.playbook_id],
+  const model = useLiveQuery(
+    () => (trade.model_id ? db.models.get(trade.model_id) : undefined),
+    [trade.model_id],
   )
 
   return (
@@ -156,7 +156,7 @@ function TradeTableRow({
         {dur.total_ms !== null && ` (${formatDuration(dur.total_ms)})`}
       </td>
       <td className="pl-0 pr-9 py-2 text-xs truncate max-w-32 w-px">
-        {playbook?.name ?? DEFAULT_MODEL_NAME}
+        {model?.name ?? DEFAULT_MODEL_NAME}
       </td>
       <td className="pl-0 pr-2 py-2 text-xs text-(--color-text-dim) truncate max-w-28">
         {trade.emotion ?? ''}

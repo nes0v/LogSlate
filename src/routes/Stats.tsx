@@ -134,7 +134,7 @@ export function StatsRoute() {
   const allTrades = useLiveQuery(
     () =>
       db.trades
-        .where('[account_id+trade_date]')
+        .where('[account_id+date]')
         .between([accountId, ''], [accountId, '￿'], true, true)
         .toArray(),
     [accountId],
@@ -156,8 +156,8 @@ export function StatsRoute() {
   const lastTradeDate = useMemo(() => {
     const list = allTrades ?? []
     if (list.length === 0) return format(new Date(), 'yyyy-MM-dd')
-    let max = list[0].trade_date
-    for (const t of list) if (t.trade_date > max) max = t.trade_date
+    let max = list[0].date
+    for (const t of list) if (t.date > max) max = t.date
     return max
   }, [allTrades])
 
@@ -183,7 +183,7 @@ export function StatsRoute() {
   const { rangeStart, rangeEnd } = useMemo(() => {
     if (filters.from && filters.to) return { rangeStart: filters.from, rangeEnd: filters.to }
     if (filtered.length === 0) return { rangeStart: null, rangeEnd: null }
-    const dates = filtered.map(t => t.trade_date).sort()
+    const dates = filtered.map(t => t.date).sort()
     return {
       rangeStart: filters.from ?? dates[0],
       rangeEnd: filters.to ?? dates[dates.length - 1],
@@ -204,7 +204,7 @@ export function StatsRoute() {
   // outside the trades' window (e.g. a deposit before the first trade).
   const tfChartRange = useMemo(() => {
     const dates: string[] = []
-    for (const t of chartFiltered) dates.push(t.trade_date)
+    for (const t of chartFiltered) dates.push(t.date)
     for (const a of allAdjustments ?? []) dates.push(a.date)
     if (dates.length === 0) return null
     dates.sort()
@@ -272,7 +272,7 @@ export function StatsRoute() {
   const tradesDesc = useMemo(
     () =>
       [...filtered].sort((a, b) => {
-        if (a.trade_date !== b.trade_date) return a.trade_date < b.trade_date ? -1 : 1
+        if (a.date !== b.date) return a.date < b.date ? -1 : 1
         return (firstExecutionMs(a) ?? 0) - (firstExecutionMs(b) ?? 0)
       }),
     [filtered],

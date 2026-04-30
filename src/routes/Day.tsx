@@ -24,7 +24,7 @@ export function DayRoute() {
   const trades = useLiveQuery(
     async () => {
       const rows = await db.trades
-        .where('[account_id+trade_date]')
+        .where('[account_id+date]')
         .equals([accountId, date])
         .toArray()
       const sortKey = (t: typeof rows[number]) =>
@@ -42,7 +42,7 @@ export function DayRoute() {
   const tradingDays = useLiveQuery(
     async () => {
       const keys = await db.trades
-        .where('[account_id+trade_date]')
+        .where('[account_id+date]')
         .between([accountId, ''], [accountId, '￿'], true, true)
         .uniqueKeys()
       return keys.map(k => (k as unknown as [string, string])[1])

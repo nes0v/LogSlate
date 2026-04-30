@@ -58,9 +58,11 @@ export function SettingsRoute() {
       const r = await importBackup(file)
       setError(null)
       setLastResult(null)
-      alert(
-        `Imported ${r.imported} trade${r.imported === 1 ? '' : 's'} and ${r.adjustments} adjustment${r.adjustments === 1 ? '' : 's'}. Local DB replaced.`,
-      )
+      const summary = Object.entries(r)
+        .filter(([, n]) => n > 0)
+        .map(([name, n]) => `${n} ${name}`)
+        .join(', ')
+      alert(`Imported ${summary || 'nothing'}. Local DB replaced.`)
     } catch (e) {
       setError((e as Error).message ?? String(e))
     }
@@ -154,14 +156,11 @@ export function SettingsRoute() {
 
                 {lastResult && !error && (
                   <div className="text-xs text-(--color-text-dim) font-mono space-y-0.5">
-                    <div>
-                      trades: merged {lastResult.mergedCount} · local {lastResult.localCount} · remote{' '}
-                      {lastResult.remoteCount}
-                    </div>
-                    <div>
-                      adjustments: merged {lastResult.mergedAdjustmentCount} · local{' '}
-                      {lastResult.localAdjustmentCount} · remote {lastResult.remoteAdjustmentCount}
-                    </div>
+                    {Object.entries(lastResult.perTable).map(([name, c]) => (
+                      <div key={name}>
+                        {name}: merged {c.merged} · local {c.local} · remote {c.remote}
+                      </div>
+                    ))}
                     <div>
                       {lastResult.createdRemote ? 'created remote file · ' : ''}
                       {lastResult.skippedPush ? 'skipped push (no changes)' : ''}

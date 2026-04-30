@@ -12,7 +12,7 @@ function newId(): string {
   return crypto.randomUUID()
 }
 
-export function NotebookRoute() {
+export function JournalRoute() {
   const accountId = useActiveAccountId()
   const notes = useLiveQuery(
     () =>
@@ -236,10 +236,10 @@ function NoteEditor({ note, folders, onChange, onDelete }: NoteEditorProps) {
             setDirty(true)
           }}
           placeholder="folder"
-          list="notebook-folders"
+          list="journal-folders"
           className="w-32 bg-(--color-bg) rounded-(--radius) px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-(--color-accent-soft) transition-colors"
         />
-        <datalist id="notebook-folders">
+        <datalist id="journal-folders">
           {folders.filter(f => f).map(f => (
             <option key={f} value={f} />
           ))}

@@ -1,15 +1,19 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Controller, useFieldArray, useForm, useWatch, type Control } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { useLiveQuery } from 'dexie-react-hooks'
 import { Plus, Trash2 } from 'lucide-react'
-import { emptyForm, formToDraft, newTradeFormSchema, tradeFormSchema, type TradeFormValues } from '@/lib/form-schema'
-import type { TradeDraft } from '@/db/types'
+import { emptyForm, formToDraft, tradeFormSchema, type TradeFormValues } from '@/lib/form-schema'
+import { db } from '@/db/schema'
+import { useActiveAccountId } from '@/lib/active-account'
+import { EMOTIONS, type Emotion, type TradeDraft } from '@/db/types'
 import { Pills } from '@/components/form/Pills'
 import { Field, inputClass } from '@/components/form/Field'
 import { NumberInput } from '@/components/form/NumberInput'
 import { QtyInput } from '@/components/form/QtyInput'
+import { Select } from '@/components/form/Select'
+import { Checkbox } from '@/components/form/Checkbox'
 import { ScreenshotField } from '@/components/ScreenshotField'
-import { ReflectionSection } from '@/components/ReflectionSection'
 import { computeAhpc, computeNetPnl } from '@/lib/trade-math'
 import { formatUsd } from '@/lib/money'
 import { RATING_LABEL } from '@/lib/rating-label'
@@ -55,9 +59,6 @@ interface TradeFormProps {
    *  orphan the uploaded image. Omitted for new-trade flow (no record yet).
    */
   onScreenshotPersist?: (ref: string | null) => Promise<void> | void
-  /** New-trade flow sets this so emotion becomes a required field. Edits
-   *  leave it off so legacy records without an emotion still save. */
-  requireEmotion?: boolean
 }
 
 export function TradeForm({
@@ -68,8 +69,17 @@ export function TradeForm({
   submitLabel = 'Save trade',
   getTradeOrdinal,
   onScreenshotPersist,
-  requireEmotion = false,
 }: TradeFormProps) {
+  const accountId = useActiveAccountId()
+  const models = useLiveQuery(
+    async () => {
+      const rows = await db.models.where('account_id').equals(accountId).toArray()
+      return rows.filter(m => !m.archived)
+    },
+    [accountId],
+    [],
+  )
+
   const {
     register,
     control,
@@ -77,7 +87,7 @@ export function TradeForm({
     formState: { errors, isSubmitting },
     setValue,
   } = useForm<TradeFormValues>({
-    resolver: zodResolver(requireEmotion ? newTradeFormSchema : tradeFormSchema),
+    resolver: zodResolver(tradeFormSchema),
     defaultValues: initialValues ?? emptyForm(initialDate),
     mode: 'onSubmit',
     reValidateMode: 'onSubmit',
@@ -85,6 +95,10 @@ export function TradeForm({
 
   const executions = useFieldArray({ control, name: 'executions' })
   const values = useWatch({ control }) as TradeFormValues
+  const activeModel = useMemo(
+    () => (models ?? []).find(m => m.id === values.model_id) ?? null,
+    [models, values.model_id],
+  )
 
   async function submit(v: TradeFormValues) {
     await onSubmit(formToDraft(v))
@@ -295,11 +309,11 @@ export function TradeForm({
                 setValue('screenshot', ref, { shouldDirty: true })
                 if (onScreenshotPersist) void onScreenshotPersist(ref)
               }}
-              date={values.trade_date}
+              date={values.date}
               getFilenameSuffix={async () => `trade-${await getTradeOrdinal()}`}
             />
           </Field>
-        </section>
+            </section>
 
             {/* Buttons live inside the left column on lg+ so growing the
                 Notes textarea (right column) doesn't push them down. */}
@@ -313,16 +327,93 @@ export function TradeForm({
           </div>
 
           <div className="space-y-3">
-            <ReflectionSection
+            <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Model">
+              <Controller
+                control={control}
+                name="model_id"
+                render={({ field }) => (
+                  <Select
+                    value={field.value ?? null}
+                    onChange={v => field.onChange(v)}
+                    options={(models ?? []).map(m => ({ value: m.id, label: m.name }))}
+                    ariaLabel="Model"
+                  />
+                )}
+              />
+            </Field>
+            <Field label="Emotion" error={errors.emotion?.message}>
+              <Controller
+                control={control}
+                name="emotion"
+                render={({ field }) => (
+                  <Select
+                    value={field.value ?? null}
+                    onChange={v => field.onChange(v as Emotion | null)}
+                    options={EMOTIONS.map(e => ({ value: e, label: e }))}
+                    ariaLabel="Emotion"
+                  />
+                )}
+              />
+            </Field>
+          </div>
+
+          {activeModel && (
+            <Controller
               control={control}
-              values={values}
-              emotionError={errors.emotion?.message}
+              name="model_rules_followed"
+              render={({ field }) => (
+                <ModelRuleChecklist
+                  groups={activeModel.groups}
+                  followed={field.value ?? []}
+                  onChange={field.onChange}
+                />
+              )}
             />
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Field label="Setup tags">
+              <Controller
+                control={control}
+                name="setup_tags"
+                render={({ field }) => (
+                  <TagInput value={field.value ?? []} onChange={field.onChange} tone="neutral" />
+                )}
+              />
+            </Field>
+            <Field label="Mistake tags">
+              <Controller
+                control={control}
+                name="mistake_tags"
+                render={({ field }) => (
+                  <TagInput value={field.value ?? []} onChange={field.onChange} tone="loss" />
+                )}
+              />
+            </Field>
+          </div>
+
+          <Field label="Notes">
+            <Controller
+              control={control}
+              name="notes"
+              render={({ field }) => (
+                <textarea
+                  {...field}
+                  value={field.value ?? ''}
+                  className={cn(inputClass, 'min-h-[135px] resize-y')}
+                  placeholder="What did I learn? What would I do differently?"
+                />
+              )}
+            />
+          </Field>
+            </section>
             <LiveStatsSection control={control} />
           </div>
 
           {/* On smaller screens the grid collapses to a single column; the
-              buttons go last so they appear after Reflection. */}
+              buttons go last so they appear after the right column. */}
           <div className="flex lg:hidden items-center gap-2">
             <ActionButtons
               isSubmitting={isSubmitting}
@@ -336,8 +427,34 @@ export function TradeForm({
   )
 }
 
-// Subscribes only to the four fields it needs; idea/notes/reflection
-// keystrokes don't recompute the stats.
+interface ActionButtonsProps {
+  isSubmitting: boolean
+  submitLabel: string
+  onCancel: () => void
+}
+function ActionButtons({ isSubmitting, submitLabel, onCancel }: ActionButtonsProps) {
+  return (
+    <>
+      <button
+        type="submit"
+        disabled={isSubmitting}
+        className="px-4 py-1.5 text-sm rounded-(--radius) bg-(--color-accent) text-(--color-accent-fg) hover:opacity-90 disabled:opacity-50"
+      >
+        {submitLabel}
+      </button>
+      <button
+        type="button"
+        onClick={onCancel}
+        className="px-4 py-1.5 text-sm rounded-(--radius) border border-(--color-border) text-(--color-text-dim) hover:text-(--color-text)"
+      >
+        Cancel
+      </button>
+    </>
+  )
+}
+
+// Subscribes only to the four fields it needs; idea/notes/tag keystrokes
+// don't recompute the stats.
 function LiveStatsSection({ control }: { control: Control<TradeFormValues> }) {
   const [executions, symbol, contract_type, stop_loss] = useWatch({
     control,
@@ -401,28 +518,116 @@ function Stat({
   )
 }
 
-interface ActionButtonsProps {
-  isSubmitting: boolean
-  submitLabel: string
-  onCancel: () => void
+interface TagInputProps {
+  value: string[]
+  onChange: (v: string[]) => void
+  tone?: 'neutral' | 'loss' | 'win'
 }
-function ActionButtons({ isSubmitting, submitLabel, onCancel }: ActionButtonsProps) {
+function TagInput({ value, onChange, tone = 'neutral' }: TagInputProps) {
+  const [draft, setDraft] = useState('')
+  function commit(text: string) {
+    const t = text.trim()
+    if (!t || value.includes(t)) {
+      setDraft('')
+      return
+    }
+    onChange([...value, t])
+    setDraft('')
+  }
+  function remove(t: string) {
+    onChange(value.filter(v => v !== t))
+  }
   return (
-    <>
-      <button
-        type="submit"
-        disabled={isSubmitting}
-        className="px-4 py-1.5 text-sm rounded-(--radius) bg-(--color-accent) text-(--color-accent-fg) hover:opacity-90 disabled:opacity-50"
-      >
-        {submitLabel}
-      </button>
-      <button
-        type="button"
-        onClick={onCancel}
-        className="px-4 py-1.5 text-sm rounded-(--radius) border border-(--color-border) text-(--color-text-dim) hover:text-(--color-text)"
-      >
-        Cancel
-      </button>
-    </>
+    <div className="min-h-8 flex flex-wrap items-center gap-1 bg-(--color-bg) rounded-(--radius) px-2.5 py-1 focus-within:ring-2 focus-within:ring-(--color-accent-soft) transition-colors">
+      {value.map(t => (
+        <span
+          key={t}
+          className={cn(
+            'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs',
+            tone === 'loss' && 'bg-(--color-loss)/15 text-(--color-loss)',
+            tone === 'win' && 'bg-(--color-win)/15 text-(--color-win)',
+            tone === 'neutral' && 'bg-(--color-panel-2) text-(--color-text)',
+          )}
+        >
+          {t}
+          <button
+            type="button"
+            onClick={() => remove(t)}
+            className="cursor-pointer text-(--color-text-dim) hover:text-(--color-text)"
+            aria-label={`Remove tag ${t}`}
+          >
+            ×
+          </button>
+        </span>
+      ))}
+      <input
+        value={draft}
+        onChange={e => setDraft(e.target.value)}
+        onKeyDown={e => {
+          if (e.key === 'Enter' || e.key === ',') {
+            e.preventDefault()
+            commit(draft)
+          } else if (e.key === 'Backspace' && draft === '' && value.length > 0) {
+            onChange(value.slice(0, -1))
+          }
+        }}
+        onBlur={() => commit(draft)}
+        className="flex-1 min-w-[80px] bg-transparent border-0 outline-none text-sm"
+      />
+    </div>
+  )
+}
+
+function ModelRuleChecklist({
+  groups,
+  followed,
+  onChange,
+}: {
+  groups: Array<{ id: string; name: string; rules: string[] }>
+  followed: string[]
+  onChange: (v: string[]) => void
+}) {
+  const set = useMemo(() => new Set(followed), [followed])
+  function toggle(rule: string, on: boolean) {
+    if (on) onChange([...new Set([...followed, rule])])
+    else onChange(followed.filter(r => r !== rule))
+  }
+  const total = groups.reduce((n, g) => n + g.rules.length, 0)
+  if (total === 0) {
+    return (
+      <div className="text-xs text-(--color-text-dim) italic px-2">
+        This model has no rules yet.
+      </div>
+    )
+  }
+  return (
+    <div className="bg-(--color-bg) rounded-(--radius) p-3 space-y-2">
+      <div className="text-xs uppercase tracking-wider text-(--color-text-dim) flex items-center justify-between">
+        <span>Rules followed</span>
+        <span className="font-mono normal-case">
+          {set.size} / {total}
+        </span>
+      </div>
+      {groups.map(g => (
+        <div key={g.id} className="space-y-0.5">
+          <div className="text-xs text-(--color-text-dim)">{g.name}</div>
+          {g.rules.map((r, i) => (
+            <label
+              key={`${g.id}-${i}`}
+              className="flex items-start gap-2 px-1 py-1 rounded-sm hover:bg-(--color-panel-2)/30 cursor-pointer"
+            >
+              <Checkbox
+                checked={set.has(r)}
+                onChange={e => toggle(r, e.target.checked)}
+                className="mt-0.5"
+              />
+              <span className={cn('text-sm', set.has(r) && 'text-(--color-text-dim)')}>
+                {r}
+              </span>
+            </label>
+          ))}
+        </div>
+      ))}
+    </div>
   )
 }

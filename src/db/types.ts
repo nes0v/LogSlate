@@ -34,9 +34,9 @@ export const MAIN_ACCOUNT_ID = 'main'
 
 export type AccountDraft = Pick<Account, 'name'>
 
-// Optional reflection / journaling fields. All nullable / empty by default
-// so existing trades work without migration. The form surfaces these in a
-// collapsible "Reflection" panel.
+// Optional journaling fields. All nullable / empty by default so existing
+// trades work without migration. `emotion` is required on new trades but
+// stays optional on the type so legacy rows still load.
 export const EMOTIONS = [
   'calm',
   'focused',
@@ -51,25 +51,15 @@ export const EMOTIONS = [
 ] as const
 export type Emotion = (typeof EMOTIONS)[number]
 
-// Display fallback for trades with no playbook selected. Not a real Playbook
+// Display fallback for trades with no model selected. Not a real Model
 // row — never appears on the Models page; only used as a label wherever the
 // model name would otherwise be blank.
 export const DEFAULT_MODEL_NAME = 'gambling'
 
-export const MARKET_CONDITIONS = [
-  'trending',
-  'ranging',
-  'choppy',
-  'volatile',
-  'thin',
-  'news-driven',
-] as const
-export type MarketCondition = (typeof MARKET_CONDITIONS)[number]
-
 export interface TradeRecord {
   id: string
   account_id: string
-  trade_date: string // YYYY-MM-DD (local), set by day-click in calendar
+  date: string // YYYY-MM-DD (local), set by day-click in calendar
   symbol: SymbolKey
   contract_type: ContractType
   session: Session
@@ -79,17 +69,15 @@ export interface TradeRecord {
   drawdown: number | null // USD, MAE — max adverse excursion (optional)
   buildup: number | null // USD, MFE — max favorable excursion (optional)
   rating: Rating
-  screenshot: string | null // base64 data URL
-  // Reflection / playbook fields (all optional; empty/null on legacy rows).
+  screenshot: string | null // ref string: 'drive:{fileId}' or 'pending:{pendingId}'
+  // Journaling / model fields (all optional; empty/null on legacy rows).
   profit_target: number // USD planned profit target
   notes?: string // post-trade notes (markdown)
   setup_tags?: string[] // ["breakout", "trend-cont", ...]
   mistake_tags?: string[] // ["FOMO", "moved stop", ...]
   emotion?: Emotion | null
-  market_condition?: MarketCondition | null
-  conviction?: number | null // 1..5 (how strong was the conviction at entry?)
-  playbook_id?: string | null
-  playbook_rules_followed?: string[] // rule strings that were honoured
+  model_id?: string | null
+  model_rules_followed?: string[] // rule strings that were honoured
   created_at: string // ISO
   updated_at: string // ISO
 }
@@ -129,21 +117,24 @@ export interface PendingUpload {
   created_at: string
 }
 
-// Per-day screenshot (one per account+date). The user attaches an image to
-// a trading day itself (e.g. a summary chart), independent of any individual
-// trade. Id is derived as `${account_id}:${date}` so the record stays in
-// lockstep across devices on sync without the UI needing to remember a
-// random UUID.
-export interface DayScreenshot {
+// Per-day record (one row per account+date). Currently holds the day's
+// screenshot list; structured to grow with future per-day fields. Id is
+// derived as `${account_id}:${date}` so cross-device sync produces the
+// same row naturally without the UI tracking a random UUID.
+//
+// `screenshots` is a multi-entry indexed array of Drive refs (`drive:...`
+// or `pending:...`). The pending drainer looks up rows by `where('screenshots')
+// .equals('pending:<id>')` to rewrite refs in place.
+export interface Day {
   id: string
   account_id: string
   date: string // YYYY-MM-DD
-  screenshot: string | null
+  screenshots: string[]
   created_at: string
   updated_at: string
 }
 
-// Free-form note in the trader's notebook. Folders are just a free-text
+// Free-form note in the trader's journal. Folders are just a free-text
 // `folder` field — empty string means "root". Templates are stored verbatim
 // in `body`; `template_kind` is a tag for filtering / re-applying.
 export const NOTE_TEMPLATES = ['plan', 'watchlist', 'review', 'lesson', 'free'] as const
@@ -164,18 +155,18 @@ export interface Note {
 // Risk Management) each with a list of rules. Rules are simple strings to
 // keep the schema flexible; the UI surfaces them as a checklist on the
 // trade form.
-export interface PlaybookRuleGroup {
+export interface ModelRuleGroup {
   id: string
   name: string
   rules: string[]
 }
-export interface Playbook {
+export interface Model {
   id: string
   account_id: string
   name: string
   description: string
   symbols: SymbolKey[] // optional symbol filter ("works for NQ only", etc.)
-  groups: PlaybookRuleGroup[]
+  groups: ModelRuleGroup[]
   archived: boolean
   created_at: string
   updated_at: string

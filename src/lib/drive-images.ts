@@ -51,17 +51,38 @@ function monthFolderMapKey(accountId: string): string {
   return `logslate:drive:month_folders:${accountId}`
 }
 
-function loadCachedAccountFolderId(accountId: string): string | null {
+interface CachedAccountFolder {
+  id: string
+  name: string
+}
+
+function loadCachedAccountFolder(accountId: string): CachedAccountFolder | null {
   try {
-    return localStorage.getItem(accountFolderKey(accountId))
+    const raw = localStorage.getItem(accountFolderKey(accountId))
+    if (!raw) return null
+    // Back-compat: old cache stored the bare id string.
+    if (!raw.startsWith('{')) return { id: raw, name: '' }
+    const parsed = JSON.parse(raw) as unknown
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      typeof (parsed as { id?: unknown }).id === 'string' &&
+      typeof (parsed as { name?: unknown }).name === 'string'
+    ) {
+      return parsed as CachedAccountFolder
+    }
+    return null
   } catch {
     return null
   }
 }
 
-function saveCachedAccountFolderId(accountId: string, id: string | null): void {
+function saveCachedAccountFolder(
+  accountId: string,
+  entry: CachedAccountFolder | null,
+): void {
   try {
-    if (id) localStorage.setItem(accountFolderKey(accountId), id)
+    if (entry) localStorage.setItem(accountFolderKey(accountId), JSON.stringify(entry))
     else localStorage.removeItem(accountFolderKey(accountId))
   } catch {
     // localStorage unavailable — we'll find the folder again next time.
@@ -127,24 +148,27 @@ async function getOrCreateAccountScreenshotsFolder(accountId: string): Promise<s
   const inFlight = accountFolderPromises.get(accountId)
   if (inFlight) return inFlight
   const p = (async () => {
-    const cached = loadCachedAccountFolderId(accountId)
-    if (cached) {
+    const name = await accountFolderName(accountId)
+    const cached = loadCachedAccountFolder(accountId)
+    // Cache hit only when both the id is still alive AND the cached folder
+    // name matches the current account name. Renaming an account would
+    // otherwise route uploads to the old folder forever.
+    if (cached && cached.name === name) {
       try {
-        if (await driveFileExists(cached)) return cached
+        if (await driveFileExists(cached.id)) return cached.id
       } catch {
         // Treat any error as "cache is stale"; fall through to re-find.
       }
-      saveCachedAccountFolderId(accountId, null)
     }
+    saveCachedAccountFolder(accountId, null)
     const topId = await getOrCreateTopFolder()
-    const name = await accountFolderName(accountId)
     const existing = await findDriveFolder(name, topId)
     if (existing) {
-      saveCachedAccountFolderId(accountId, existing)
+      saveCachedAccountFolder(accountId, { id: existing, name })
       return existing
     }
     const created = await createDriveFolder(name, topId)
-    saveCachedAccountFolderId(accountId, created)
+    saveCachedAccountFolder(accountId, { id: created, name })
     return created
   })()
   accountFolderPromises.set(accountId, p)
@@ -442,11 +466,11 @@ export async function drainPendingUploads(): Promise<void> {
       const oldRef = `pending:${p.id}`
       const newRef = `drive:${driveId}`
       // Rewrite any records that pointed at this pending id (both trades and
-      // day_screenshots use the same ref format).
+      // days use the same ref format).
       await db.transaction(
         'rw',
         db.trades,
-        db.day_screenshots,
+        db.days,
         db.pending_uploads,
         async () => {
           const now = new Date().toISOString()
@@ -454,12 +478,15 @@ export async function drainPendingUploads(): Promise<void> {
           for (const t of affectedTrades) {
             await db.trades.update(t.id, { screenshot: newRef, updated_at: now })
           }
-          const affectedDays = await db.day_screenshots
-            .where('screenshot')
+          // `*screenshots` is multi-entry indexed, so this returns any day
+          // whose array contains the pending ref.
+          const affectedDays = await db.days
+            .where('screenshots')
             .equals(oldRef)
             .toArray()
           for (const d of affectedDays) {
-            await db.day_screenshots.update(d.id, { screenshot: newRef, updated_at: now })
+            const screenshots = d.screenshots.map(s => (s === oldRef ? newRef : s))
+            await db.days.update(d.id, { screenshots, updated_at: now })
           }
           await db.pending_uploads.delete(p.id)
         },

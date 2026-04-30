@@ -43,11 +43,11 @@ export function TradeEditRoute() {
   const orderedIds = useLiveQuery(
     async () => {
       const rows = await db.trades
-        .where('[account_id+trade_date]')
+        .where('[account_id+date]')
         .between([accountId, ''], [accountId, '￿'], true, true)
         .toArray()
       rows.sort((a, b) => {
-        if (a.trade_date !== b.trade_date) return a.trade_date < b.trade_date ? -1 : 1
+        if (a.date !== b.date) return a.date < b.date ? -1 : 1
         return a.created_at < b.created_at ? -1 : 1
       })
       return rows.map(t => t.id)
@@ -80,7 +80,7 @@ export function TradeEditRoute() {
     if (state.status !== 'ready') return
     if (!confirm('Delete this trade?')) return
     await deleteTrade(id)
-    navigate(`/day/${state.record.trade_date}`)
+    navigate(`/day/${state.record.date}`)
   }
 
   // Treat "we have a record but it's for a different id" as still loading.
@@ -110,7 +110,7 @@ export function TradeEditRoute() {
         </div>
         <div className="flex items-center gap-3">
           <span className="text-sm text-(--color-text-dim) font-mono">
-            {format(parseISO(state.record.trade_date), 'MMM d, yyyy')}
+            {format(parseISO(state.record.date), 'MMM d, yyyy')}
           </span>
           <button
             type="button"
@@ -124,14 +124,14 @@ export function TradeEditRoute() {
       <TradeForm
         key={id}
         initialValues={state.values}
-        initialDate={state.record.trade_date}
+        initialDate={state.record.date}
         onSubmit={handleSubmit}
-        onCancel={() => navigate(`/day/${state.record.trade_date}`)}
+        onCancel={() => navigate(`/day/${state.record.date}`)}
         submitLabel="Save changes"
         getTradeOrdinal={async () => {
           const rows = await db.trades
-            .where('[account_id+trade_date]')
-            .equals([accountId, state.record.trade_date])
+            .where('[account_id+date]')
+            .equals([accountId, state.record.date])
             .sortBy('created_at')
           const idx = rows.findIndex(t => t.id === id)
           return idx >= 0 ? idx + 1 : rows.length + 1

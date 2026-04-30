@@ -47,16 +47,16 @@ export function CalendarRoute() {
   const trades = useLiveQuery(
     () =>
       db.trades
-        .where('[account_id+trade_date]')
+        .where('[account_id+date]')
         .between([accountId, rangeStart], [accountId, rangeEnd], true, true)
         .toArray(),
     [rangeStart, rangeEnd, accountId],
     [],
   )
 
-  const dayScreenshots = useLiveQuery(
+  const dayRows = useLiveQuery(
     () =>
-      db.day_screenshots
+      db.days
         .where('[account_id+date]')
         .between([accountId, rangeStart], [accountId, rangeEnd], true, true)
         .toArray(),
@@ -73,13 +73,13 @@ export function CalendarRoute() {
   const screenshotDays = useMemo(() => {
     const s = new Set<string>()
     for (const t of trades ?? []) {
-      if (t.screenshot) s.add(t.trade_date)
+      if (t.screenshot) s.add(t.date)
     }
-    for (const d of dayScreenshots ?? []) {
-      if (d.screenshot) s.add(d.date)
+    for (const d of dayRows ?? []) {
+      if (d.screenshots.length > 0) s.add(d.date)
     }
     return s
-  }, [trades, dayScreenshots])
+  }, [trades, dayRows])
 
   // A journal entry is associated with a day in two ways: an explicit
   // `YYYY-MM-DD` substring in the title (how the Plan/Watchlist/Review
@@ -108,13 +108,13 @@ export function CalendarRoute() {
     const m = new Map<string, { pnl: number; count: number; wins: number; losses: number }>()
     for (const t of trades ?? []) {
       const pnl = computeNetPnl(t) ?? 0
-      const cur = m.get(t.trade_date) ?? { pnl: 0, count: 0, wins: 0, losses: 0 }
+      const cur = m.get(t.date) ?? { pnl: 0, count: 0, wins: 0, losses: 0 }
       cur.pnl += pnl
       cur.count += 1
       const outcome = classifyTrade(t)
       if (outcome === 'win') cur.wins += 1
       else if (outcome === 'loss') cur.losses += 1
-      m.set(t.trade_date, cur)
+      m.set(t.date, cur)
     }
     return m
   }, [trades])
@@ -122,7 +122,7 @@ export function CalendarRoute() {
   const monthNet = useMemo(() => {
     let total = 0
     for (const t of trades ?? []) {
-      if (isSameMonth(new Date(t.trade_date + 'T00:00:00'), month)) {
+      if (isSameMonth(new Date(t.date + 'T00:00:00'), month)) {
         total += computeNetPnl(t) ?? 0
       }
     }

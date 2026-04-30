@@ -1,8 +1,8 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
   addDayScreenshot,
-  deleteDayScreenshot,
   listDayScreenshotsFor,
+  removeDayScreenshot,
 } from '@/db/queries'
 import { discardScreenshotRef } from '@/lib/drive-images'
 import { ScreenshotThumb } from '@/components/ScreenshotThumb'
@@ -13,20 +13,20 @@ interface DayScreenshotSectionProps {
   date: string // YYYY-MM-DD
 }
 
-// Per-day screenshots. A day can have any number of them — each one is its
-// own row. The upload button stays visible so the user can keep adding; each
-// thumb gets an X to remove itself (which also deletes the Drive file).
+// Per-day screenshots. A day can have any number of them — they live as a
+// `screenshots[]` array on the single Day row for (account, date). The
+// upload button stays visible so the user can keep adding; each thumb gets
+// an X to remove itself (which also deletes the Drive file).
 export function DayScreenshotSection({ accountId, date }: DayScreenshotSectionProps) {
-  const list = useLiveQuery(
+  const screenshots = useLiveQuery(
     () => listDayScreenshotsFor(accountId, date),
     [accountId, date],
-    [],
+    [] as string[],
   )
-  const rows = list ?? []
 
-  async function handleRemove(id: string, ref: string | null) {
+  async function handleRemove(ref: string) {
     await discardScreenshotRef(ref)
-    await deleteDayScreenshot(id)
+    await removeDayScreenshot(accountId, date, ref)
   }
 
   return (
@@ -34,22 +34,20 @@ export function DayScreenshotSection({ accountId, date }: DayScreenshotSectionPr
       <h2 className="text-sm font-medium">Screenshots</h2>
       <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3">
         <div className="flex flex-wrap items-start gap-3">
-          {rows.map(r =>
-            r.screenshot ? (
-              <ScreenshotThumb
-                key={r.id}
-                value={r.screenshot}
-                onRemove={() => handleRemove(r.id, r.screenshot)}
-              />
-            ) : null,
-          )}
+          {screenshots.map(ref => (
+            <ScreenshotThumb
+              key={ref}
+              value={ref}
+              onRemove={() => handleRemove(ref)}
+            />
+          ))}
           <ScreenshotUploadButton
             date={date}
-            getFilenameSuffix={() => `day-${rows.length + 1}`}
+            getFilenameSuffix={() => `day-${screenshots.length + 1}`}
             onUpload={async ref => {
               await addDayScreenshot(accountId, date, ref)
             }}
-            label={rows.length === 0 ? 'Upload' : 'Add'}
+            label={screenshots.length === 0 ? 'Upload' : 'Add'}
           />
         </div>
       </div>

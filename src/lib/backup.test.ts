@@ -43,7 +43,7 @@ describe('importBackup', () => {
     await createTrade(tradeDraft({ idea: 'pre-import' }))
 
     const result = await importBackup(file)
-    expect(result.imported).toBe(1)
+    expect(result.trades).toBe(1)
     expect(result.adjustments).toBe(1)
 
     const trades = await listAllTrades(MAIN_ACCOUNT_ID)
@@ -59,7 +59,7 @@ describe('importBackup', () => {
     const payload = { version: 2, trades: [], exported_at: new Date().toISOString() }
     const file = new File([JSON.stringify(payload)], 'legacy.json', { type: 'application/json' })
     const result = await importBackup(file)
-    expect(result.imported).toBe(0)
+    expect(result.trades).toBe(0)
     expect(result.adjustments).toBe(0)
   })
 

@@ -1,13 +1,13 @@
 import Dexie, { type EntityTable } from 'dexie'
 import type {
   Account,
-  DayScreenshot,
+  Day,
   EquityAdjustment,
   Execution,
+  Model,
   NewsEvent,
   Note,
   PendingUpload,
-  Playbook,
   ProgressCheck,
   ProgressRule,
   TradeRecord,
@@ -24,12 +24,12 @@ class LogslateDB extends Dexie {
   adjustments!: EntityTable<EquityAdjustment, 'id'>
   accounts!: EntityTable<Account, 'id'>
   pending_uploads!: EntityTable<PendingUpload, 'id'>
-  day_screenshots!: EntityTable<DayScreenshot, 'id'>
+  days!: EntityTable<Day, 'id'>
   notes!: EntityTable<Note, 'id'>
-  playbooks!: EntityTable<Playbook, 'id'>
+  models!: EntityTable<Model, 'id'>
   progress_rules!: EntityTable<ProgressRule, 'id'>
   progress_checks!: EntityTable<ProgressCheck, 'id'>
-  news_events!: EntityTable<NewsEvent, 'id'>
+  news!: EntityTable<NewsEvent, 'id'>
 
   constructor() {
     super('logslate')
@@ -148,8 +148,8 @@ class LogslateDB extends Dexie {
     //   with a human-readable name ("17-apr-2026-trade-1.png", etc.) —
     //   without re-deriving context from trade records that might change.
     // - New `day_screenshots` table for per-day (not per-trade) screenshots.
-    //   Id is `${account_id}:${date}` so cross-device sync produces the
-    //   same row naturally. One screenshot per (account, date).
+    //   Renamed to `days` at v18 once it grew to hold more than just the
+    //   screenshot field.
     // - Old queued items from v6 are dropped (there was no production
     //   data; the `.clear()` only runs if anything was there).
     this.version(7)
@@ -205,7 +205,7 @@ class LogslateDB extends Dexie {
           })
       })
 
-    // v10: notebook + playbook + progress tracker. Four new tables, no
+    // v10: journal + playbook + progress tracker. Four new tables, no
     // migration of existing data needed (they're brand new).
     this.version(10).stores({
       notes:
@@ -231,6 +231,7 @@ class LogslateDB extends Dexie {
 
     // v12: persisted USD high/medium-impact news drivers per NY day. Indexed
     // on `date` so the Day page can pull a single day's events in one query.
+    // Renamed to `news` at v18.
     this.version(12).stores({
       news_events: '&id, date, updated_at',
     })
@@ -247,55 +248,166 @@ class LogslateDB extends Dexie {
         if ('last_seen_at' in r) delete r.last_seen_at
       })
     })
+
+    // v14: rename "playbook" → "model" everywhere it persists. Existing
+    // models are intentionally NOT migrated — the user opted to start the
+    // model layer fresh under the new naming. We just:
+    //   - create the empty `models` store,
+    //   - clear `playbook_id` / `playbook_rules_followed` from every trade
+    //     so no row points at the soon-to-be-deleted store.
+    // v15 drops the legacy `playbooks` store.
+    this.version(14)
+      .stores({
+        models:
+          '&id, [account_id+archived], account_id, archived, updated_at, created_at',
+      })
+      .upgrade(async tx => {
+        type LegacyTrade = TradeRecord & {
+          playbook_id?: string | null
+          playbook_rules_followed?: string[]
+        }
+        await tx
+          .table('trades')
+          .toCollection()
+          .modify((t: LegacyTrade) => {
+            if ('playbook_id' in t) delete t.playbook_id
+            if ('playbook_rules_followed' in t) delete t.playbook_rules_followed
+            t.model_id = null
+            t.model_rules_followed = []
+          })
+      })
+
+    // v15: drop the legacy `playbooks` store (never repopulated).
+    this.version(15).stores({ playbooks: null })
+
+    // v16: a previous v14 had copied playbooks data into the new `models`
+    // store before the user opted to start fresh. Wipe whatever is there
+    // so the Models page lands empty on next open.
+    this.version(16).upgrade(async tx => {
+      await tx.table('models').clear()
+    })
+
+    // v17: full reset. The Drive sync wipe accidentally cascaded into local
+    // trades / accounts via the merge-on-empty-remote branch in sync.ts;
+    // unsynced tables (progress, journal, news) survived. To leave the DB
+    // in a uniformly-empty state across sync boundaries, we clear every
+    // user-data store here. Followed by ensureMainAccount() at app start
+    // to seed the default 'main' account.
+    this.version(17).upgrade(async tx => {
+      const tables = [
+        'trades',
+        'adjustments',
+        'accounts',
+        'pending_uploads',
+        'day_screenshots',
+        'notes',
+        'models',
+        'progress_rules',
+        'progress_checks',
+        'news_events',
+      ]
+      for (const name of tables) await tx.table(name).clear()
+    })
+
+    // v18: rename storage to match the user-facing model and reshape the
+    // day store to support multiple screenshots per day.
+    //   - `day_screenshots` → `days`. One row per (account, date), id
+    //     derived as `${account_id}:${date}`. `screenshots` is a multi-
+    //     entry indexed array (`*screenshots`) so the pending-upload
+    //     drainer can locate rows by ref the same way it does for trades.
+    //   - `news_events` → `news` (drop the redundant suffix).
+    // v17 already wiped both tables, so no data needs to be copied; the
+    // new stores are created empty here, and v19 drops the old shells.
+    this.version(18).stores({
+      days: '&id, [account_id+date], account_id, date, *screenshots, updated_at',
+      news: '&id, date, updated_at',
+    })
+
+    // v19: drop the legacy shells now that v18's replacements are live.
+    this.version(19).stores({
+      day_screenshots: null,
+      news_events: null,
+    })
+
+    // v20: rename `trades.trade_date` → `trades.date` to match the rest of
+    // the schema (adjustments, days, progress_checks, news all use `date`).
+    // Reindex the compound `[account_id+trade_date]` index as
+    // `[account_id+date]`. Walk every row to copy the field; the v17 wipe
+    // means this is usually a no-op for the empty case.
+    this.version(20)
+      .stores({
+        trades:
+          '&id, [account_id+date], account_id, date, symbol, session, screenshot, updated_at, created_at',
+      })
+      .upgrade(async tx => {
+        type LegacyTrade = TradeRecord & { trade_date?: string }
+        await tx
+          .table('trades')
+          .toCollection()
+          .modify((t: LegacyTrade) => {
+            if ('trade_date' in t) {
+              t.date = t.trade_date as string
+              delete t.trade_date
+            }
+          })
+      })
+
+    // v21: drop the never-used `market_condition` and `conviction` reflection
+    // fields. Both were on TradeRecord as optional but no UI ever surfaced
+    // them, so any persisted value was leftover from earlier prototyping.
+    this.version(21).upgrade(async tx => {
+      await tx
+        .table('trades')
+        .toCollection()
+        .modify(
+          (
+            t: TradeRecord & {
+              market_condition?: unknown
+              conviction?: unknown
+            },
+          ) => {
+            if ('market_condition' in t) delete t.market_condition
+            if ('conviction' in t) delete t.conviction
+          },
+        )
+    })
   }
 }
 
 export const db = new LogslateDB()
 
-// Seeds a default Main account on a truly fresh DB so the app always has
+// Seeds a default 'main' account on a truly fresh DB so the app always has
 // somewhere to land. Once any account exists this is a no-op — including
-// after the user has deleted Main themselves (we don't resurrect it).
+// after the user has deleted main themselves (we don't resurrect it).
 export async function ensureMainAccount(): Promise<void> {
   const total = await db.accounts.count()
   if (total > 0) return
   const ts = new Date().toISOString()
   await db.accounts.put({
     id: MAIN_ACCOUNT_ID,
-    name: 'Main',
+    name: 'main',
     is_main: true,
     created_at: ts,
     updated_at: ts,
   })
 }
 
-// Clears any trade / day-screenshot references that point at pending uploads
-// that no longer exist in the queue. Happens when the v6→v7 schema upgrade
-// wipes legacy pending blobs but leaves the records still referring to them,
-// which would show as "Pending upload missing" forever.
-//
-// Also deletes any day_screenshot rows whose screenshot field is null —
-// those only existed under the old one-row-per-day model where null meant
-// "cleared"; in the multi-per-day model a missing screenshot is just zero
-// rows, so null rows are orphans.
+// Clears any trade / day-row references that point at pending uploads which
+// no longer exist in the queue. Happens when an old schema upgrade wipes
+// legacy pending blobs but leaves records still referring to them, which
+// would otherwise show as "Pending upload missing" forever.
 //
 // Safe to call repeatedly; cheap when there's nothing to do.
 export async function cleanOrphanedPendingRefs(): Promise<void> {
-  const [staleTrades, staleDays, emptyDays, pending] = await Promise.all([
+  const [staleTrades, staleDays, pending] = await Promise.all([
     db.trades.where('screenshot').startsWith('pending:').toArray(),
-    db.day_screenshots.where('screenshot').startsWith('pending:').toArray(),
-    db.day_screenshots.filter(d => d.screenshot === null).toArray(),
+    db.days.where('screenshots').startsWith('pending:').toArray(),
     db.pending_uploads.toArray(),
   ])
-  if (
-    staleTrades.length === 0 &&
-    staleDays.length === 0 &&
-    emptyDays.length === 0
-  ) {
-    return
-  }
+  if (staleTrades.length === 0 && staleDays.length === 0) return
   const live = new Set(pending.map(p => p.id))
   const now = new Date().toISOString()
-  await db.transaction('rw', db.trades, db.day_screenshots, async () => {
+  await db.transaction('rw', db.trades, db.days, async () => {
     for (const t of staleTrades) {
       const pid = t.screenshot?.slice('pending:'.length)
       if (!pid || !live.has(pid)) {
@@ -303,13 +415,16 @@ export async function cleanOrphanedPendingRefs(): Promise<void> {
       }
     }
     for (const d of staleDays) {
-      const pid = d.screenshot?.slice('pending:'.length)
-      if (!pid || !live.has(pid)) {
-        await db.day_screenshots.delete(d.id)
+      const filtered = d.screenshots.filter(ref => {
+        if (!ref.startsWith('pending:')) return true
+        return live.has(ref.slice('pending:'.length))
+      })
+      if (filtered.length === d.screenshots.length) continue
+      if (filtered.length === 0) {
+        await db.days.delete(d.id)
+      } else {
+        await db.days.update(d.id, { screenshots: filtered, updated_at: now })
       }
-    }
-    for (const d of emptyDays) {
-      await db.day_screenshots.delete(d.id)
     }
   })
 }

@@ -30,11 +30,11 @@ export function TradeExpandedDetails({ trade }: TradeExpandedDetailsProps) {
     (a, b) => Date.parse(a.time) - Date.parse(b.time),
   )
   const driveUrl = driveViewUrlFromRef(parseScreenshotRef(trade.screenshot))
-  const playbook = useLiveQuery(
-    () => (trade.playbook_id ? db.playbooks.get(trade.playbook_id) : undefined),
-    [trade.playbook_id],
+  const model = useLiveQuery(
+    () => (trade.model_id ? db.models.get(trade.model_id) : undefined),
+    [trade.model_id],
   )
-  const followed = new Set(trade.playbook_rules_followed ?? [])
+  const followed = new Set(trade.model_rules_followed ?? [])
 
   async function handleDelete() {
     if (!confirm('Delete this trade?')) return
@@ -56,8 +56,8 @@ export function TradeExpandedDetails({ trade }: TradeExpandedDetailsProps) {
             </p>
           )}
         </div>
-        {playbook && (
-          <ModelChecklist groups={playbook.groups} followed={followed} />
+        {model && (
+          <ModelChecklist groups={model.groups} followed={followed} />
         )}
         <div className="flex items-center gap-2 shrink-0 ml-auto">
           <Link to={`/trade/${trade.id}/edit`} className={EDIT_BTN_CLASS}>

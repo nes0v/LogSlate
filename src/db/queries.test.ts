@@ -23,7 +23,7 @@ beforeEach(async () => {
   await db.trades.clear()
   await db.adjustments.clear()
   await db.accounts.clear()
-  await db.day_screenshots.clear()
+  await db.days.clear()
   await db.pending_uploads.clear()
   await ensureMainAccount()
 })
@@ -31,7 +31,7 @@ afterEach(async () => {
   await db.trades.clear()
   await db.adjustments.clear()
   await db.accounts.clear()
-  await db.day_screenshots.clear()
+  await db.days.clear()
   await db.pending_uploads.clear()
 })
 
@@ -154,11 +154,11 @@ describe('account queries', () => {
     await expect(createAccount({ name: 'Main' })).rejects.toThrow(/already exists/)
   })
 
-  it('listAccounts puts Main first then alphabetical', async () => {
+  it('listAccounts puts main first then alphabetical', async () => {
     await createAccount({ name: 'Zulu' })
     await createAccount({ name: 'Alpha' })
     const all = await listAccounts()
-    expect(all.map(a => a.name)).toEqual(['Main', 'Alpha', 'Zulu'])
+    expect(all.map(a => a.name)).toEqual(['main', 'Alpha', 'Zulu'])
   })
 
   it('deleteAccount refuses to remove the last remaining account', async () => {
@@ -188,22 +188,22 @@ describe('account queries', () => {
     expect(await listAllTrades(MAIN_ACCOUNT_ID)).toHaveLength(1) // other account untouched
   })
 
-  it('deleteAccount cascades to day_screenshots and pending_uploads', async () => {
+  it('deleteAccount cascades to days and pending_uploads', async () => {
     const a = await createAccount({ name: 'Alpha' })
     const now = new Date().toISOString()
-    await db.day_screenshots.put({
+    await db.days.put({
       id: `${a.id}:2026-04-20`,
       account_id: a.id,
       date: '2026-04-20',
-      screenshot: 'drive:fake',
+      screenshots: ['drive:fake'],
       created_at: now,
       updated_at: now,
     })
-    await db.day_screenshots.put({
+    await db.days.put({
       id: `${MAIN_ACCOUNT_ID}:2026-04-20`,
       account_id: MAIN_ACCOUNT_ID,
       date: '2026-04-20',
-      screenshot: 'drive:other',
+      screenshots: ['drive:other'],
       created_at: now,
       updated_at: now,
     })
@@ -226,8 +226,8 @@ describe('account queries', () => {
 
     await deleteAccount(a.id)
 
-    expect(await db.day_screenshots.where('account_id').equals(a.id).count()).toBe(0)
-    expect(await db.day_screenshots.where('account_id').equals(MAIN_ACCOUNT_ID).count()).toBe(1)
+    expect(await db.days.where('account_id').equals(a.id).count()).toBe(0)
+    expect(await db.days.where('account_id').equals(MAIN_ACCOUNT_ID).count()).toBe(1)
     expect(await db.pending_uploads.where('account_id').equals(a.id).count()).toBe(0)
     expect(await db.pending_uploads.where('account_id').equals(MAIN_ACCOUNT_ID).count()).toBe(1)
   })
@@ -261,15 +261,15 @@ describe('account queries', () => {
 })
 
 describe('ensureMainAccount', () => {
-  it('creates the Main account when absent', async () => {
+  it('creates the main account when absent', async () => {
     await db.accounts.clear()
     await ensureMainAccount()
     const main = await db.accounts.get(MAIN_ACCOUNT_ID)
-    expect(main?.name).toBe('Main')
+    expect(main?.name).toBe('main')
     expect(main?.is_main).toBe(true)
   })
 
-  it('is a no-op when Main already exists (preserves the existing row)', async () => {
+  it('is a no-op when main already exists (preserves the existing row)', async () => {
     await db.accounts.clear()
     await ensureMainAccount()
     const first = await db.accounts.get(MAIN_ACCOUNT_ID)

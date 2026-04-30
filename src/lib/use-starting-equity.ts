@@ -8,7 +8,7 @@ import { computeNetPnl } from '@/lib/trade-math'
 /**
  * Account equity immediately before `dateKey` (YYYY-MM-DD): signed cash flows
  * plus cumulative net PnL from every trade in the active account whose
- * `trade_date` is strictly before `dateKey`. Used as the denominator for ROI
+ * `date` is strictly before `dateKey`. Used as the denominator for ROI
  * so that mid-period deposits/withdrawals don't skew the percentage.
  *
  * Returns 0 until the underlying live queries resolve (or when `dateKey` is
@@ -33,7 +33,7 @@ export function useCurrentEquity(): number {
   const trades = useLiveQuery(
     () =>
       db.trades
-        .where('[account_id+trade_date]')
+        .where('[account_id+date]')
         .between([accountId, ''], [accountId, '￿'], true, true)
         .toArray(),
     [accountId],
@@ -64,7 +64,7 @@ export function useStartingEquity(dateKey: string | null | undefined): number {
     () => {
       if (!dateKey) return []
       return db.trades
-        .where('[account_id+trade_date]')
+        .where('[account_id+date]')
         .between([accountId, ''], [accountId, dateKey], true, false)
         .toArray()
     },

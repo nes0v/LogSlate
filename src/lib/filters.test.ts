@@ -9,15 +9,15 @@ import { tradeRecord } from '@/test/fixtures'
 
 describe('applyFilters', () => {
   const trades = [
-    tradeRecord({ trade_date: '2026-04-05', symbol: 'NQ', contract_type: 'mini', session: 'AM', rating: 'good' }),
-    tradeRecord({ trade_date: '2026-04-10', symbol: 'ES', contract_type: 'micro', session: 'PM', rating: 'egg' }),
-    tradeRecord({ trade_date: '2026-04-20', symbol: 'NQ', contract_type: 'micro', session: 'LT', rating: 'excellent' }),
+    tradeRecord({ date: '2026-04-05', symbol: 'NQ', contract_type: 'mini', session: 'AM', rating: 'good' }),
+    tradeRecord({ date: '2026-04-10', symbol: 'ES', contract_type: 'micro', session: 'PM', rating: 'egg' }),
+    tradeRecord({ date: '2026-04-20', symbol: 'NQ', contract_type: 'micro', session: 'LT', rating: 'excellent' }),
   ]
 
   it('filters by date range inclusively', () => {
     const out = applyFilters(trades, { ...EMPTY_FILTERS, from: '2026-04-06', to: '2026-04-15' })
     expect(out).toHaveLength(1)
-    expect(out[0].trade_date).toBe('2026-04-10')
+    expect(out[0].date).toBe('2026-04-10')
   })
 
   it('filters by symbol', () => {
@@ -44,7 +44,7 @@ describe('applyFilters', () => {
   it('combines multiple filters', () => {
     const out = applyFilters(trades, { ...EMPTY_FILTERS, symbol: 'NQ', contract: 'micro' })
     expect(out).toHaveLength(1)
-    expect(out[0].trade_date).toBe('2026-04-20')
+    expect(out[0].date).toBe('2026-04-20')
   })
 
   it('returns all trades for the empty filter', () => {

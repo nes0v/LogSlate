@@ -181,21 +181,21 @@ describe('sqn', () => {
 describe('streakStats', () => {
   it('tracks longest win, longest loss, and signed current', () => {
     const trades = [
-      tradeWithPnl(100, { trade_date: '2026-04-01' }),
-      tradeWithPnl(100, { trade_date: '2026-04-02' }),
-      tradeWithPnl(-50, { trade_date: '2026-04-03' }),
-      tradeWithPnl(-50, { trade_date: '2026-04-04' }),
-      tradeWithPnl(-50, { trade_date: '2026-04-05' }),
-      tradeWithPnl(100, { trade_date: '2026-04-06' }),
+      tradeWithPnl(100, { date: '2026-04-01' }),
+      tradeWithPnl(100, { date: '2026-04-02' }),
+      tradeWithPnl(-50, { date: '2026-04-03' }),
+      tradeWithPnl(-50, { date: '2026-04-04' }),
+      tradeWithPnl(-50, { date: '2026-04-05' }),
+      tradeWithPnl(100, { date: '2026-04-06' }),
     ]
     expect(streakStats(trades)).toEqual({ longestWin: 2, longestLoss: 3, current: 1 })
   })
 
   it('ends an active losing streak with negative current', () => {
     const trades = [
-      tradeWithPnl(100, { trade_date: '2026-04-01' }),
-      tradeWithPnl(-50, { trade_date: '2026-04-02' }),
-      tradeWithPnl(-50, { trade_date: '2026-04-03' }),
+      tradeWithPnl(100, { date: '2026-04-01' }),
+      tradeWithPnl(-50, { date: '2026-04-02' }),
+      tradeWithPnl(-50, { date: '2026-04-03' }),
     ]
     expect(streakStats(trades).current).toBe(-2)
   })
@@ -206,10 +206,10 @@ describe('streakStats', () => {
 
   it('breaks the current streak on a scratch trade (pnl = 0)', () => {
     const trades = [
-      tradeWithPnl(100, { trade_date: '2026-04-01' }),
-      tradeWithPnl(100, { trade_date: '2026-04-02' }),
-      tradeWithPnl(0, { trade_date: '2026-04-03' }),
-      tradeWithPnl(100, { trade_date: '2026-04-04' }),
+      tradeWithPnl(100, { date: '2026-04-01' }),
+      tradeWithPnl(100, { date: '2026-04-02' }),
+      tradeWithPnl(0, { date: '2026-04-03' }),
+      tradeWithPnl(100, { date: '2026-04-04' }),
     ]
     const s = streakStats(trades)
     // The scratch resets the streak; the trailing winner restarts it at 1.
@@ -220,14 +220,14 @@ describe('streakStats', () => {
 
   it('orders by execution time within the same date', () => {
     const earlier = tradeWithPnl(100, {
-      trade_date: '2026-04-01',
+      date: '2026-04-01',
       executions: [
         execution({ kind: 'buy', time: '2026-04-01T09:00:00.000Z' }),
         execution({ kind: 'sell', time: '2026-04-01T09:05:00.000Z' }),
       ],
     })
     const later = tradeWithPnl(-50, {
-      trade_date: '2026-04-01',
+      date: '2026-04-01',
       executions: [
         execution({ kind: 'buy', time: '2026-04-01T11:00:00.000Z' }),
         execution({ kind: 'sell', time: '2026-04-01T11:05:00.000Z' }),
@@ -242,9 +242,9 @@ describe('streakStats', () => {
 describe('dailyEquitySeries', () => {
   it('runs cumulative equity and tracks peak/dd', () => {
     const trades = [
-      tradeWithPnl(100, { trade_date: '2026-04-01' }),
-      tradeWithPnl(-300, { trade_date: '2026-04-02' }),
-      tradeWithPnl(50, { trade_date: '2026-04-03' }),
+      tradeWithPnl(100, { date: '2026-04-01' }),
+      tradeWithPnl(-300, { date: '2026-04-02' }),
+      tradeWithPnl(50, { date: '2026-04-03' }),
     ]
     const dates = ['2026-04-01', '2026-04-02', '2026-04-03']
     const series = dailyEquitySeries(trades, dates, 10000)
@@ -256,7 +256,7 @@ describe('dailyEquitySeries', () => {
   })
 
   it('fills no-trade days with zero P&L', () => {
-    const trades = [tradeWithPnl(100, { trade_date: '2026-04-01' })]
+    const trades = [tradeWithPnl(100, { date: '2026-04-01' })]
     const series = dailyEquitySeries(trades, ['2026-04-01', '2026-04-02'], 0)
     expect(series[0].pnl).toBeCloseTo(100, 5)
     expect(series[1].pnl).toBe(0)
@@ -267,9 +267,9 @@ describe('dailyEquitySeries', () => {
 describe('drawdownStats', () => {
   it('computes max drawdown and recovery factor', () => {
     const trades = [
-      tradeWithPnl(100, { trade_date: '2026-04-01' }),
-      tradeWithPnl(-200, { trade_date: '2026-04-02' }),
-      tradeWithPnl(150, { trade_date: '2026-04-03' }),
+      tradeWithPnl(100, { date: '2026-04-01' }),
+      tradeWithPnl(-200, { date: '2026-04-02' }),
+      tradeWithPnl(150, { date: '2026-04-03' }),
     ]
     const series = dailyEquitySeries(
       trades,
@@ -305,7 +305,7 @@ describe('ratioStats', () => {
     const dates: string[] = []
     for (let i = 0; i < 30; i++) {
       const d = `2026-04-${String(i + 1).padStart(2, '0')}`
-      trades.push(tradeWithPnl(i % 3 === 0 ? -50 : 100, { trade_date: d }))
+      trades.push(tradeWithPnl(i % 3 === 0 ? -50 : 100, { date: d }))
       dates.push(d)
     }
     const series = dailyEquitySeries(trades, dates, 0)
@@ -407,8 +407,8 @@ describe('time-of-day / weekday / month aggregations', () => {
   it('pnlByWeekday counts wins and losses per weekday', () => {
     // April 15 2026 is a Wednesday (day index 3).
     const trades = [
-      tradeWithPnl(100, { trade_date: '2026-04-15' }),
-      tradeWithPnl(-50, { trade_date: '2026-04-15' }),
+      tradeWithPnl(100, { date: '2026-04-15' }),
+      tradeWithPnl(-50, { date: '2026-04-15' }),
     ]
     const arr = pnlByWeekday(trades)
     const wed = arr[3]
@@ -420,9 +420,9 @@ describe('time-of-day / weekday / month aggregations', () => {
 
   it('pnlByMonth groups by YYYY-MM', () => {
     const trades = [
-      tradeWithPnl(100, { trade_date: '2026-03-31' }),
-      tradeWithPnl(50, { trade_date: '2026-04-01' }),
-      tradeWithPnl(-25, { trade_date: '2026-04-30' }),
+      tradeWithPnl(100, { date: '2026-03-31' }),
+      tradeWithPnl(50, { date: '2026-04-01' }),
+      tradeWithPnl(-25, { date: '2026-04-30' }),
     ]
     const arr = pnlByMonth(trades)
     expect(arr).toHaveLength(2)

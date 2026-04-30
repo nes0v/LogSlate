@@ -4,9 +4,12 @@
 // "last-synced IDs" set to distinguish "new on this device" from "deleted on
 // the other device". After merge, the combined result is written to both
 // local and remote so they converge.
+//
+// New tables are added by appending to `SPECS` — everything else (loading,
+// merging, file format, settings UI counts) is driven off that list.
 
+import type { EntityTable } from 'dexie'
 import { db } from '@/db/schema'
-import type { Account, DayScreenshot, EquityAdjustment, TradeRecord } from '@/db/types'
 import {
   downloadAppDataFile,
   findAppDataFile,
@@ -15,21 +18,40 @@ import {
 } from '@/lib/drive'
 
 const FILE_NAME = 'logslate.json'
-const LAST_SYNCED_TRADE_IDS_KEY = 'logslate:sync:ids'
-const LAST_SYNCED_ADJ_IDS_KEY = 'logslate:sync:adjustment_ids'
-const LAST_SYNCED_ACCOUNT_IDS_KEY = 'logslate:sync:account_ids'
-const LAST_SYNCED_DAY_SCREENSHOT_IDS_KEY = 'logslate:sync:day_screenshot_ids'
 const LAST_SYNC_AT_KEY = 'logslate:sync:at'
+const FILE_VERSION = 6
 
-const FILE_VERSION = 5
+interface SyncItem {
+  id: string
+  updated_at: string
+}
+
+interface SyncSpec {
+  /** Field name in the on-disk JSON file. */
+  fileKey: string
+  /** localStorage key for the last-synced id set. */
+  idsKey: string
+  /** Lazy table accessor (db isn't constructed until module init runs). */
+  table: () => EntityTable<SyncItem, 'id'>
+}
+
+const SPECS: SyncSpec[] = [
+  { fileKey: 'trades',          idsKey: 'logslate:sync:trade_ids',          table: () => db.trades as unknown as EntityTable<SyncItem, 'id'> },
+  { fileKey: 'adjustments',     idsKey: 'logslate:sync:adjustment_ids',     table: () => db.adjustments as unknown as EntityTable<SyncItem, 'id'> },
+  { fileKey: 'accounts',        idsKey: 'logslate:sync:account_ids',        table: () => db.accounts as unknown as EntityTable<SyncItem, 'id'> },
+  { fileKey: 'days',            idsKey: 'logslate:sync:day_ids',            table: () => db.days as unknown as EntityTable<SyncItem, 'id'> },
+  { fileKey: 'notes',           idsKey: 'logslate:sync:note_ids',           table: () => db.notes as unknown as EntityTable<SyncItem, 'id'> },
+  { fileKey: 'models',          idsKey: 'logslate:sync:model_ids',          table: () => db.models as unknown as EntityTable<SyncItem, 'id'> },
+  { fileKey: 'progress_rules',  idsKey: 'logslate:sync:progress_rule_ids',  table: () => db.progress_rules as unknown as EntityTable<SyncItem, 'id'> },
+  { fileKey: 'progress_checks', idsKey: 'logslate:sync:progress_check_ids', table: () => db.progress_checks as unknown as EntityTable<SyncItem, 'id'> },
+  { fileKey: 'news',            idsKey: 'logslate:sync:news_ids',           table: () => db.news as unknown as EntityTable<SyncItem, 'id'> },
+]
 
 interface SyncFile {
   version: number
-  trades: TradeRecord[]
-  adjustments?: EquityAdjustment[]
-  accounts?: Account[]
-  day_screenshots?: DayScreenshot[]
   exported_at: string
+  // Each spec's fileKey gets an array of rows here at write time.
+  [key: string]: unknown
 }
 
 function loadIdSet(key: string): Set<string> {
@@ -53,11 +75,6 @@ export function lastSyncAt(): Date | null {
   if (!v) return null
   const d = new Date(v)
   return Number.isNaN(d.getTime()) ? null : d
-}
-
-interface SyncItem {
-  id: string
-  updated_at: string
 }
 
 export function mergeById<T extends SyncItem>(
@@ -86,19 +103,13 @@ export function mergeById<T extends SyncItem>(
   return out
 }
 
+export interface SyncTableCounts {
+  local: number
+  remote: number
+  merged: number
+}
 export interface SyncResult {
-  remoteCount: number
-  localCount: number
-  mergedCount: number
-  remoteAdjustmentCount: number
-  localAdjustmentCount: number
-  mergedAdjustmentCount: number
-  remoteAccountCount: number
-  localAccountCount: number
-  mergedAccountCount: number
-  remoteDayScreenshotCount: number
-  localDayScreenshotCount: number
-  mergedDayScreenshotCount: number
+  perTable: Record<string, SyncTableCounts>
   createdRemote: boolean
   skippedPush: boolean
   fileId: string
@@ -115,80 +126,46 @@ function sameSnapshot<T extends SyncItem>(remote: T[], merged: T[]): boolean {
   })
 }
 
+function readArrayField(parsed: Partial<SyncFile> | null, key: string): SyncItem[] {
+  const v = parsed?.[key]
+  return Array.isArray(v) ? (v as SyncItem[]) : []
+}
+
 export async function syncNow(): Promise<SyncResult> {
-  const lastSyncedTrades = loadIdSet(LAST_SYNCED_TRADE_IDS_KEY)
-  const lastSyncedAdj = loadIdSet(LAST_SYNCED_ADJ_IDS_KEY)
-  const lastSyncedAccounts = loadIdSet(LAST_SYNCED_ACCOUNT_IDS_KEY)
-  const lastSyncedDayScreenshots = loadIdSet(LAST_SYNCED_DAY_SCREENSHOT_IDS_KEY)
-  const [localTrades, localAdj, localAccounts, localDayScreenshots] = await Promise.all([
-    db.trades.toArray(),
-    db.adjustments.toArray(),
-    db.accounts.toArray(),
-    db.day_screenshots.toArray(),
-  ])
+  // Per-spec local arrays + last-synced id sets, in parallel.
+  const locals: SyncItem[][] = await Promise.all(SPECS.map(s => s.table().toArray()))
+  const lastSyncedSets: Set<string>[] = SPECS.map(s => loadIdSet(s.idsKey))
 
   const meta = await findAppDataFile(FILE_NAME)
-  let remoteTrades: TradeRecord[] = []
-  let remoteAdj: EquityAdjustment[] = []
-  let remoteAccounts: Account[] = []
-  let remoteDayScreenshots: DayScreenshot[] = []
+  let parsed: Partial<SyncFile> | null = null
   if (meta) {
     const text = await downloadAppDataFile(meta.id)
     try {
-      const parsed = JSON.parse(text) as Partial<SyncFile>
-      if (parsed && Array.isArray(parsed.trades)) {
-        remoteTrades = parsed.trades as TradeRecord[]
-      }
-      if (parsed && Array.isArray(parsed.adjustments)) {
-        remoteAdj = parsed.adjustments as EquityAdjustment[]
-      }
-      if (parsed && Array.isArray(parsed.accounts)) {
-        remoteAccounts = parsed.accounts as Account[]
-      }
-      if (parsed && Array.isArray(parsed.day_screenshots)) {
-        remoteDayScreenshots = parsed.day_screenshots as DayScreenshot[]
-      }
+      parsed = JSON.parse(text) as Partial<SyncFile>
     } catch {
       // Corrupt file — treat as empty remote; local will overwrite on push.
-      remoteTrades = []
-      remoteAdj = []
-      remoteAccounts = []
-      remoteDayScreenshots = []
+      parsed = null
     }
   }
 
-  const mergedTrades = mergeById(localTrades, remoteTrades, lastSyncedTrades)
-  const mergedAdj = mergeById(localAdj, remoteAdj, lastSyncedAdj)
-  const mergedAccounts = mergeById(localAccounts, remoteAccounts, lastSyncedAccounts)
-  const mergedDayScreenshots = mergeById(
-    localDayScreenshots,
-    remoteDayScreenshots,
-    lastSyncedDayScreenshots,
+  const remotes: SyncItem[][] = SPECS.map(s => readArrayField(parsed, s.fileKey))
+  const merged: SyncItem[][] = SPECS.map((_, i) =>
+    mergeById(locals[i], remotes[i], lastSyncedSets[i]),
   )
 
+  // Single transaction: clear every table then bulk-add the merged rows.
   await db.transaction(
     'rw',
-    db.trades,
-    db.adjustments,
-    db.accounts,
-    db.day_screenshots,
+    SPECS.map(s => s.table()),
     async () => {
-      await db.trades.clear()
-      await db.adjustments.clear()
-      await db.accounts.clear()
-      await db.day_screenshots.clear()
-      if (mergedTrades.length > 0) await db.trades.bulkAdd(mergedTrades)
-      if (mergedAdj.length > 0) await db.adjustments.bulkAdd(mergedAdj)
-      if (mergedAccounts.length > 0) await db.accounts.bulkAdd(mergedAccounts)
-      if (mergedDayScreenshots.length > 0) await db.day_screenshots.bulkAdd(mergedDayScreenshots)
+      for (let i = 0; i < SPECS.length; i++) {
+        await SPECS[i].table().clear()
+        if (merged[i].length > 0) await SPECS[i].table().bulkAdd(merged[i])
+      }
     },
   )
 
-  const tradesSame = sameSnapshot(remoteTrades, mergedTrades)
-  const adjSame = sameSnapshot(remoteAdj, mergedAdj)
-  const accountsSame = sameSnapshot(remoteAccounts, mergedAccounts)
-  const dayScreenshotsSame = sameSnapshot(remoteDayScreenshots, mergedDayScreenshots)
-  const remoteSameAsMerged = tradesSame && adjSame && accountsSame && dayScreenshotsSame
+  const remoteSameAsMerged = SPECS.every((_, i) => sameSnapshot(remotes[i], merged[i]))
 
   let uploaded: DriveFileMeta
   let createdRemote = false
@@ -197,39 +174,30 @@ export async function syncNow(): Promise<SyncResult> {
   } else {
     const file: SyncFile = {
       version: FILE_VERSION,
-      trades: mergedTrades,
-      adjustments: mergedAdj,
-      accounts: mergedAccounts,
-      day_screenshots: mergedDayScreenshots,
       exported_at: new Date().toISOString(),
     }
+    SPECS.forEach((s, i) => {
+      file[s.fileKey] = merged[i]
+    })
     uploaded = await uploadAppDataFile({ id: meta?.id, name: FILE_NAME, body: JSON.stringify(file) })
     createdRemote = !meta
   }
 
-  saveIdSet(LAST_SYNCED_TRADE_IDS_KEY, new Set(mergedTrades.map(t => t.id)))
-  saveIdSet(LAST_SYNCED_ADJ_IDS_KEY, new Set(mergedAdj.map(a => a.id)))
-  saveIdSet(LAST_SYNCED_ACCOUNT_IDS_KEY, new Set(mergedAccounts.map(a => a.id)))
-  saveIdSet(
-    LAST_SYNCED_DAY_SCREENSHOT_IDS_KEY,
-    new Set(mergedDayScreenshots.map(d => d.id)),
-  )
+  SPECS.forEach((s, i) => saveIdSet(s.idsKey, new Set(merged[i].map(m => m.id))))
   const at = new Date().toISOString()
   localStorage.setItem(LAST_SYNC_AT_KEY, at)
 
+  const perTable: Record<string, SyncTableCounts> = {}
+  SPECS.forEach((s, i) => {
+    perTable[s.fileKey] = {
+      local: locals[i].length,
+      remote: remotes[i].length,
+      merged: merged[i].length,
+    }
+  })
+
   return {
-    remoteCount: remoteTrades.length,
-    localCount: localTrades.length,
-    mergedCount: mergedTrades.length,
-    remoteAdjustmentCount: remoteAdj.length,
-    localAdjustmentCount: localAdj.length,
-    mergedAdjustmentCount: mergedAdj.length,
-    remoteAccountCount: remoteAccounts.length,
-    localAccountCount: localAccounts.length,
-    mergedAccountCount: mergedAccounts.length,
-    remoteDayScreenshotCount: remoteDayScreenshots.length,
-    localDayScreenshotCount: localDayScreenshots.length,
-    mergedDayScreenshotCount: mergedDayScreenshots.length,
+    perTable,
     createdRemote,
     skippedPush: remoteSameAsMerged,
     fileId: uploaded.id,
@@ -241,9 +209,6 @@ export async function syncNow(): Promise<SyncResult> {
 // Clear the last-synced state locally — useful when the user signs out and we
 // want the next sign-in to treat this as a fresh sync (union of both sides).
 export function clearSyncState(): void {
-  localStorage.removeItem(LAST_SYNCED_TRADE_IDS_KEY)
-  localStorage.removeItem(LAST_SYNCED_ADJ_IDS_KEY)
-  localStorage.removeItem(LAST_SYNCED_ACCOUNT_IDS_KEY)
-  localStorage.removeItem(LAST_SYNCED_DAY_SCREENSHOT_IDS_KEY)
+  for (const s of SPECS) localStorage.removeItem(s.idsKey)
   localStorage.removeItem(LAST_SYNC_AT_KEY)
 }

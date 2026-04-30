@@ -10,7 +10,7 @@ export async function seedSampleTrades(): Promise<number> {
 
   const drafts: Array<Parameters<typeof createTrade>[0]> = [
     {
-      trade_date: '2026-04-14',
+      date: '2026-04-14',
       symbol: 'NQ',
       contract_type: 'micro',
       session: 'AM',
@@ -29,7 +29,7 @@ export async function seedSampleTrades(): Promise<number> {
       screenshot: null,
     },
     {
-      trade_date: '2026-04-14',
+      date: '2026-04-14',
       symbol: 'NQ',
       contract_type: 'micro',
       session: 'PM',
@@ -46,7 +46,7 @@ export async function seedSampleTrades(): Promise<number> {
       screenshot: null,
     },
     {
-      trade_date: '2026-04-15',
+      date: '2026-04-15',
       symbol: 'ES',
       contract_type: 'micro',
       session: 'AM',

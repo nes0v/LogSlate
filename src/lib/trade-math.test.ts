@@ -7,9 +7,11 @@ import {
   computeGrossPnl,
   computeNetPnl,
   computeRealizedRr,
+  firstExecutionMs,
   inferSide,
   isReversal,
   totalContracts,
+  tradeMetrics,
 } from './trade-math'
 import { execution, tradeRecord } from '@/test/fixtures'
 
@@ -401,5 +403,64 @@ describe('isReversal', () => {
       ],
     })
     expect(isReversal(a, b)).toBe(false)
+  })
+})
+
+describe("tradeMetrics", () => {
+  it("returns ahpc, pnl, and outcome from a single pass", () => {
+    const t = tradeRecord({
+      symbol: "NQ",
+      contract_type: "mini",
+      executions: [
+        execution({ kind: "buy", price: 20000, contracts: 1 }),
+        execution({ kind: "sell", price: 20010, contracts: 1 }),
+      ],
+    })
+    const m = tradeMetrics(t)
+    expect(m.ahpc).toBe(10)
+    expect(m.pnl).toBeCloseTo(195.5, 5)
+    expect(m.outcome).toBe("win")
+  })
+
+  it("classifies sub-threshold AHPC as breakeven even when pnl is positive", () => {
+    // NQ threshold is 5 handles; 3 handles × $20 − fees = +$55.50 net.
+    // The handle band still wins → 'breakeven'.
+    const t = tradeRecord({
+      symbol: "NQ",
+      contract_type: "mini",
+      executions: [
+        execution({ kind: "buy", price: 20000, contracts: 1 }),
+        execution({ kind: "sell", price: 20003, contracts: 1 }),
+      ],
+    })
+    const m = tradeMetrics(t)
+    expect(m.outcome).toBe("breakeven")
+    expect(m.pnl).toBeGreaterThan(0)
+    expect(Math.abs(m.ahpc!)).toBeLessThan(5)
+  })
+
+  it("returns null pnl + null ahpc when executions are empty", () => {
+    const t = tradeRecord({ executions: [] })
+    const m = tradeMetrics(t)
+    expect(m.ahpc).toBeNull()
+    expect(m.pnl).toBeNull()
+    expect(m.outcome).toBe("breakeven")
+  })
+})
+
+describe("firstExecutionMs", () => {
+  it("returns the earliest execution time in epoch ms", () => {
+    const t = tradeRecord({
+      executions: [
+        execution({ time: "2026-04-15T15:00:00.000Z" }),
+        execution({ time: "2026-04-15T13:00:00.000Z" }),
+        execution({ time: "2026-04-15T14:00:00.000Z" }),
+      ],
+    })
+    expect(firstExecutionMs(t)).toBe(Date.parse("2026-04-15T13:00:00.000Z"))
+  })
+
+  it("returns null when there are no valid times", () => {
+    expect(firstExecutionMs({ executions: [] })).toBeNull()
   })
 })

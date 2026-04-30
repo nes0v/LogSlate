@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import {
   emptyForm,
   formToDraft,
-  newTradeFormSchema,
   recordToForm,
   tradeFormSchema,
   type TradeFormValues,
@@ -20,6 +19,7 @@ function validForm(overrides: Partial<TradeFormValues> = {}): TradeFormValues {
     profit_target: 200,
     drawdown: 20,
     buildup: 200,
+    emotion: 'focused',
     executions: [
       { kind: 'buy', price: 20000, time: '10:00', contracts: 1 },
       { kind: 'sell', price: 20010, time: '10:05', contracts: 1 },
@@ -79,25 +79,13 @@ describe('tradeFormSchema', () => {
     expect(tradeFormSchema.safeParse(validForm({ stop_loss: -1 })).success).toBe(false)
   })
 
-  it('accepts null emotion (legacy edits keep saving)', () => {
+  it('rejects null emotion', () => {
     const r = tradeFormSchema.safeParse(validForm({ emotion: null }))
-    expect(r.success).toBe(true)
-  })
-})
-
-describe('newTradeFormSchema', () => {
-  it('rejects null emotion (mandatory on new trades)', () => {
-    const r = newTradeFormSchema.safeParse(validForm({ emotion: null }))
     expect(r.success).toBe(false)
     if (!r.success) {
       const issue = r.error.issues.find(i => i.path[0] === 'emotion')
       expect(issue?.message).toMatch(/emotion/i)
     }
-  })
-
-  it('accepts a valid emotion', () => {
-    const r = newTradeFormSchema.safeParse(validForm({ emotion: 'focused' }))
-    expect(r.success).toBe(true)
   })
 })
 
@@ -120,7 +108,7 @@ describe('formToDraft', () => {
 describe('recordToForm ↔ formToDraft round-trip', () => {
   it('preserves key fields', () => {
     const record = tradeRecord({
-      trade_date: '2026-04-15',
+      date: '2026-04-15',
       symbol: 'NQ',
       contract_type: 'mini',
       session: 'AM',

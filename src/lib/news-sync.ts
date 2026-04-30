@@ -42,8 +42,8 @@ export async function syncWeekNews(events: FFEvent[]): Promise<void> {
   const fromDay = dayKeys[0]
   const toDay = dayKeys[dayKeys.length - 1]
 
-  await db.transaction('rw', db.news_events, async () => {
-    const existing = await db.news_events
+  await db.transaction('rw', db.news, async () => {
+    const existing = await db.news
       .where('date')
       .between(fromDay, toDay, true, true)
       .toArray()
@@ -61,9 +61,9 @@ export async function syncWeekNews(events: FFEvent[]): Promise<void> {
       created_at: existingCreatedAt.get(id) ?? now,
       updated_at: now,
     }))
-    await db.news_events.bulkPut(upserts)
+    await db.news.bulkPut(upserts)
 
     const staleIds = existing.filter(r => !fetchedById.has(r.id)).map(r => r.id)
-    if (staleIds.length > 0) await db.news_events.bulkDelete(staleIds)
+    if (staleIds.length > 0) await db.news.bulkDelete(staleIds)
   })
 }

@@ -25,7 +25,7 @@ export function execution(overrides: Partial<Execution> = {}): Execution {
 
 export function tradeDraft(overrides: Partial<TradeDraft> = {}): TradeDraft {
   return {
-    trade_date: '2026-04-15',
+    date: '2026-04-15',
     symbol: 'NQ',
     contract_type: 'mini',
     session: 'AM',

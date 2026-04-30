@@ -38,9 +38,9 @@ export interface Bucket {
 function groupTrades(trades: TradeRecord[]): Map<string, TradeRecord[]> {
   const m = new Map<string, TradeRecord[]>()
   for (const t of trades) {
-    const a = m.get(t.trade_date)
+    const a = m.get(t.date)
     if (a) a.push(t)
-    else m.set(t.trade_date, [t])
+    else m.set(t.date, [t])
   }
   return m
 }

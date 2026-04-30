@@ -122,7 +122,7 @@ export function ForexFactoryNews() {
     try {
       // Refresh only the weeks we've already loaded.
       // Manual refresh — bypasses cache, so freshly-fetched thisweek data
-      // is what the persisted news_events table needs to mirror.
+      // is what the persisted news table needs to mirror.
       const weeks = Object.keys(loadedByWeek) as FFWeek[]
       await Promise.all(weeks.map(w => fetchForexFactoryWeek(w, true).then(
         data => {
