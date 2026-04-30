@@ -38,6 +38,7 @@ import {
   type ScatterPoint,
 } from '@/lib/advanced-stats'
 import { formatUsd } from '@/lib/money'
+import { RATING_LABEL } from '@/lib/rating-label'
 import { Pills } from '@/components/form/Pills'
 import { Field, inputClass } from '@/components/form/Field'
 import { cn } from '@/lib/utils'
@@ -64,9 +65,9 @@ const SESSION_OPTS = [
 ] satisfies Array<{ value: Session | null; label: string }>
 const RATING_OPTS = [
   { value: null, label: 'All' },
-  { value: 'excellent' as const, label: 'A' },
-  { value: 'good' as const, label: 'B' },
-  { value: 'egg' as const, label: 'C' },
+  { value: 'excellent' as const, label: RATING_LABEL.excellent },
+  { value: 'good' as const, label: RATING_LABEL.good },
+  { value: 'egg' as const, label: RATING_LABEL.egg },
 ] satisfies Array<{ value: Rating | null; label: string }>
 
 type ReportTab = 'days' | 'symbol' | 'risk' | 'cohort' | 'compare'
@@ -732,9 +733,9 @@ function splitByAxis(
         .filter(g => g.trades.length > 0)
     case 'rating':
       return [
-        { label: 'A', trades: trades.filter(t => t.rating === 'excellent') },
-        { label: 'B', trades: trades.filter(t => t.rating === 'good') },
-        { label: 'C', trades: trades.filter(t => t.rating === 'egg') },
+        { label: RATING_LABEL.excellent, trades: trades.filter(t => t.rating === 'excellent') },
+        { label: RATING_LABEL.good, trades: trades.filter(t => t.rating === 'good') },
+        { label: RATING_LABEL.egg, trades: trades.filter(t => t.rating === 'egg') },
       ].filter(g => g.trades.length > 0)
     case 'side': {
       const longs: TradeRecord[] = []

@@ -1,18 +1,18 @@
-import { Fragment, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { format, parseISO } from 'date-fns'
-import { ArrowUpDown, Plus } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { db } from '@/db/schema'
 import { useActiveAccountId } from '@/lib/active-account'
+import { firstExecutionMs } from '@/lib/trade-math'
 import { aggregate } from '@/lib/trade-stats'
-import { isReversal } from '@/lib/trade-math'
 import { useArrowNavigation } from '@/lib/use-arrow-navigation'
 import { DayNewsSection } from '@/components/DayNewsSection'
 import { DayScreenshotSection } from '@/components/DayScreenshotSection'
-import { ExpandableTradeRow } from '@/components/ExpandableTradeRow'
 import { PageHeader } from '@/components/PageHeader'
 import { StatsGrid } from '@/components/StatsGrid'
+import { TradeTable } from '@/components/TradeTable'
 
 export function DayRoute() {
   const { date = '' } = useParams()
@@ -27,15 +27,9 @@ export function DayRoute() {
         .where('[account_id+trade_date]')
         .equals([accountId, date])
         .toArray()
-      const firstExec = (t: typeof rows[number]) => {
-        let min = Infinity
-        for (const e of t.executions) {
-          const ms = Date.parse(e.time)
-          if (!Number.isNaN(ms) && ms < min) min = ms
-        }
-        return min === Infinity ? Date.parse(t.created_at) : min
-      }
-      return rows.sort((a, b) => firstExec(a) - firstExec(b))
+      const sortKey = (t: typeof rows[number]) =>
+        firstExecutionMs(t) ?? Date.parse(t.created_at)
+      return rows.sort((a, b) => sortKey(a) - sortKey(b))
     },
     [date, accountId],
     [],
@@ -120,42 +114,17 @@ export function DayRoute() {
           <span className="text-(--color-loss) font-normal">{stats.losses}L</span>
         </h2>
         {trades && trades.length > 0 ? (
-          <div className="flex flex-col gap-1.5">
-            {trades.map((t, i) => {
-              const prev = i > 0 ? trades[i - 1] : null
-              const reversed = prev ? isReversal(prev, t) : false
-              return (
-                <Fragment key={t.id}>
-                  {reversed && <ReversalConnector price={t.executions[0]?.price} />}
-                  <ExpandableTradeRow
-                    trade={t}
-                    index={i + 1}
-                    expanded={expandedIds.has(t.id)}
-                    onToggle={() => toggleExpanded(t.id)}
-                  />
-                </Fragment>
-              )
-            })}
-          </div>
+          <TradeTable
+            trades={trades}
+            expandedIds={expandedIds}
+            onToggle={toggleExpanded}
+          />
         ) : (
           <div className="text-sm text-(--color-text-dim) text-center py-12 border border-dashed border-(--color-border) rounded-(--radius)">
             No trades on this day yet.
           </div>
         )}
       </section>
-    </div>
-  )
-}
-
-function ReversalConnector({ price }: { price?: number }) {
-  return (
-    <div className="flex items-center gap-2 px-3 text-(--color-text-dim)" title="Position reversed">
-      <div className="h-px flex-1 bg-(--color-border)" />
-      <ArrowUpDown className="size-3.5" />
-      {price !== undefined && (
-        <span className="text-xs uppercase tracking-wider">@ {price}</span>
-      )}
-      <div className="h-px flex-1 bg-(--color-border)" />
     </div>
   )
 }

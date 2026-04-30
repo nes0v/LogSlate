@@ -31,6 +31,14 @@ function firstTime(execs: Execution[]): number | null {
   return min === Infinity ? null : min
 }
 
+// Earliest valid `time` across all executions, in epoch ms. Used by list
+// views to sort trades chronologically inside a single day.
+export function firstExecutionMs(
+  t: Pick<TradeRecord, 'executions'>,
+): number | null {
+  return firstTime(t.executions)
+}
+
 // ---------- public API ----------
 
 export function inferSide(t: Pick<TradeRecord, 'executions'>): Side | null {
@@ -159,8 +167,8 @@ export const BREAKEVEN_HANDLES: Record<SymbolKey, number> = {
 
 export type TradeOutcome = 'win' | 'loss' | 'breakeven'
 
-// Tailwind class for tinting text by outcome. Centralised so TradeRow,
-// LiveStatsSection, and any future row-shaped UI agree on the mapping.
+// Tailwind class for tinting text by outcome. Centralised so the trade
+// table, LiveStatsSection, and any future row-shaped UI agree on the mapping.
 export function outcomeTextClass(
   outcome: TradeOutcome,
   hasPnl: boolean,
@@ -172,7 +180,7 @@ export function outcomeTextClass(
 }
 
 // Win/loss/breakeven classifier + the underlying ahpc and net PnL in a
-// single pass. Many list views (TradeRow, Reports, advanced-stats) need
+// single pass. Many list views (TradeTable, Reports, advanced-stats) need
 // all three numbers per trade — returning them together avoids redundant
 // `weightedAvgPrice` / fee passes.
 //

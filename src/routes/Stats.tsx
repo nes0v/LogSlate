@@ -13,6 +13,7 @@ import {
   startOfWeek,
   startOfYear,
 } from 'date-fns'
+import { RATING_LABEL } from '@/lib/rating-label'
 import { bucketNavTarget, drillDownRange, timeframeFromParams } from '@/lib/stats-nav'
 import { ChevronRight, X } from 'lucide-react'
 import type { ContractType, Rating, Session, SymbolKey } from '@/db/types'
@@ -30,6 +31,7 @@ import {
   loadSharedFilters,
   saveSharedFilters,
 } from '@/lib/shared-filters'
+import { firstExecutionMs } from '@/lib/trade-math'
 import { adjustmentsByDate, computeCandles } from '@/lib/trade-stats'
 import { useStartingEquity } from '@/lib/use-starting-equity'
 import {
@@ -42,7 +44,7 @@ import { TradingViewChart } from '@/components/TradingViewChart'
 import { ChartTimeframeToggle } from '@/components/ChartTimeframeToggle'
 import { EquityChartToggle, type EquityView } from '@/components/EquityChartToggle'
 import { getDefaultEquityView } from '@/lib/equity-view-preference'
-import { TradeRow, TRADE_ROW_COLS } from '@/components/TradeRow'
+import { TradeTable } from '@/components/TradeTable'
 import {
   AdvancedMetricsSections,
   CompositeScoreSection,
@@ -51,7 +53,6 @@ import {
 } from '@/components/AdvancedStats'
 import { Pills } from '@/components/form/Pills'
 import { Field, inputClass } from '@/components/form/Field'
-import { cn } from '@/lib/utils'
 
 const SYMBOL_OPTS = [
   { value: null, label: 'All' },
@@ -76,9 +77,9 @@ const SESSION_OPTS = [
 
 const RATING_OPTS = [
   { value: null, label: 'All' },
-  { value: 'excellent' as const, label: 'A' },
-  { value: 'good' as const, label: 'B' },
-  { value: 'egg' as const, label: 'C' },
+  { value: 'excellent' as const, label: RATING_LABEL.excellent },
+  { value: 'good' as const, label: RATING_LABEL.good },
+  { value: 'egg' as const, label: RATING_LABEL.egg },
 ] satisfies Array<{ value: Rating | null; label: string }>
 
 /** Default date filter — 30 days (inclusive) ending on `baseDate`.
@@ -98,7 +99,15 @@ export function StatsRoute() {
   const navigate = useNavigate()
   const urlFilters = filtersFromParams(params)
   const [equityView, setEquityView] = useState<EquityView>(getDefaultEquityView)
-  const [tradesOpen, setTradesOpen] = useState(false)
+  const [tableExpandedIds, setTableExpandedIds] = useState<Set<string>>(new Set())
+  function toggleTableRow(id: string) {
+    setTableExpandedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
 
   // First-mount hydration: if the URL is bare and Reports/Stats has saved a
   // filter to the shared slot, replay it into the URL so this page picks it
@@ -260,20 +269,14 @@ export function StatsRoute() {
   const filterToKey = rangeEnd ? dateToBucketKey(rangeEnd, timeframe) : undefined
 
   // Chronological order — oldest trade at the top, newest at the bottom.
-  const tradesDesc = useMemo(() => {
-    function firstExec(t: typeof filtered[number]): number {
-      let min = Infinity
-      for (const e of t.executions) {
-        const ms = Date.parse(e.time)
-        if (!Number.isNaN(ms) && ms < min) min = ms
-      }
-      return min === Infinity ? 0 : min
-    }
-    return [...filtered].sort((a, b) => {
-      if (a.trade_date !== b.trade_date) return a.trade_date < b.trade_date ? -1 : 1
-      return firstExec(a) - firstExec(b)
-    })
-  }, [filtered])
+  const tradesDesc = useMemo(
+    () =>
+      [...filtered].sort((a, b) => {
+        if (a.trade_date !== b.trade_date) return a.trade_date < b.trade_date ? -1 : 1
+        return (firstExecutionMs(a) ?? 0) - (firstExecutionMs(b) ?? 0)
+      }),
+    [filtered],
+  )
 
   // Writes the user-facing change back to URL params. If a field matches
   // the default range, we drop it so the URL stays clean on the default
@@ -375,6 +378,21 @@ export function StatsRoute() {
       </section>
 
       {filtered.length > 0 && (
+        <details className="space-y-2 group">
+          <summary className="text-sm font-medium cursor-pointer text-(--color-text) hover:text-(--color-accent) list-none flex items-center gap-1 transition-colors">
+            <ChevronRight className="size-4 transition-transform group-open:rotate-90" />
+            Trades table{' '}
+            <span className="text-(--color-text-dim) font-normal">({filtered.length})</span>
+          </summary>
+          <TradeTable
+            trades={tradesDesc}
+            expandedIds={tableExpandedIds}
+            onToggle={toggleTableRow}
+          />
+        </details>
+      )}
+
+      {filtered.length > 0 && (
         <>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             <HeroNetPnl filtered={filtered} rangeStart={rangeStart} rangeEnd={rangeEnd} />
@@ -437,31 +455,9 @@ export function StatsRoute() {
             rangeEnd={rangeEnd}
             onDayClick={d => navigate(`/day/${d}`)}
           />
-          <section>
-            <button
-              type="button"
-              onClick={() => setTradesOpen(o => !o)}
-              className="flex items-center gap-1 text-sm font-medium mb-2 text-(--color-text) hover:text-(--color-accent) transition-colors"
-            >
-              <ChevronRight
-                className={cn(
-                  'size-4 transition-transform',
-                  tradesOpen && 'rotate-90',
-                )}
-              />
-              Trades <span className="text-(--color-text-dim) font-normal">({filtered.length})</span>
-            </button>
-            {tradesOpen && (
-              <div className={cn('grid gap-x-5 gap-y-1.5', TRADE_ROW_COLS)}>
-                {tradesDesc.map((t, i) => (
-                  <TradeRow key={t.id} trade={t} index={i + 1} />
-                ))}
-              </div>
-            )}
-          </section>
         </>
       ) : (
-        <div className={cn('text-sm text-(--color-text-dim) text-center py-12 border border-dashed border-(--color-border) rounded-(--radius)')}>
+        <div className="text-sm text-(--color-text-dim) text-center py-12 border border-dashed border-(--color-border) rounded-(--radius)">
           {allTrades && allTrades.length === 0
             ? 'No trades yet.'
             : 'No trades match the current filters.'}

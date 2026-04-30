@@ -12,6 +12,7 @@ import { ScreenshotField } from '@/components/ScreenshotField'
 import { ReflectionSection } from '@/components/ReflectionSection'
 import { computeAhpc, computeNetPnl } from '@/lib/trade-math'
 import { formatUsd } from '@/lib/money'
+import { RATING_LABEL } from '@/lib/rating-label'
 import { cn } from '@/lib/utils'
 
 const SYMBOLS = [
@@ -30,9 +31,9 @@ const SESSIONS = [
   { value: 'aft', label: 'aft' },
 ] as const
 const RATINGS = [
-  { value: 'excellent', label: 'A' },
-  { value: 'good', label: 'B' },
-  { value: 'egg', label: 'C' },
+  { value: 'excellent', label: RATING_LABEL.excellent },
+  { value: 'good', label: RATING_LABEL.good },
+  { value: 'egg', label: RATING_LABEL.egg },
 ] as const
 const EXECUTION_KINDS = [
   { value: 'buy', label: 'Buy' },
