@@ -229,7 +229,7 @@ export function ForexFactoryNews() {
           </button>
         </div>
       </div>
-      <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs)">
+      <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) overflow-hidden">
         {error ? (
           <div className="p-3 text-xs text-(--color-loss)">Failed to load news: {error}</div>
         ) : loading ? (
@@ -237,11 +237,17 @@ export function ForexFactoryNews() {
         ) : dayEvents.length === 0 ? (
           <div className="p-3 text-xs text-(--color-text-dim)">No events.</div>
         ) : (
-          <div className="divide-y divide-(--color-border)">
-            {dayEvents.map(e => (
-              <EventRow key={`${e.date}|${e.country}|${e.title}`} event={e} nowMs={nowMs} />
-            ))}
-          </div>
+          <table className="w-full text-sm border-collapse">
+            <tbody>
+              {dayEvents.map(e => (
+                <EventRow
+                  key={`${e.date}|${e.country}|${e.title}`}
+                  event={e}
+                  nowMs={nowMs}
+                />
+              ))}
+            </tbody>
+          </table>
         )}
       </div>
     </section>
@@ -273,26 +279,36 @@ function CurrencyPill({
   )
 }
 
-function EventRow({ event, nowMs }: { event: FFEvent; nowMs: number }) {
+function EventRow({
+  event,
+  nowMs,
+}: {
+  event: FFEvent
+  nowMs: number
+}) {
   const d = new Date(event.date)
   const time = Number.isNaN(d.getTime()) ? '—' : nyTimeHHmm(d)
   const isPast = !Number.isNaN(d.getTime()) && d.getTime() < nowMs
   return (
-    <div className="grid grid-cols-[3.5rem_auto_auto_1fr] gap-3 items-center px-3 py-2 text-xs">
-      <span
+    <tr className="border-t border-(--color-bg) [&>td]:pt-[7px] [&>td]:pb-[9px] [&>td]:align-middle">
+      <td
         className={cn(
-          'font-mono tabular-nums',
+          'pl-3 pr-6 text-xs font-mono tabular-nums w-px whitespace-nowrap',
           isPast ? 'text-(--color-text-faint)' : 'text-(--color-text-dim)',
         )}
       >
         {time}
-      </span>
-      <span className="font-mono text-(--color-text-dim) uppercase w-10">{event.country || '—'}</span>
-      <ImpactDot impact={event.impact} />
-      <span className="truncate" title={event.title}>
+      </td>
+      <td className="pl-0 pr-6 text-xs font-mono text-(--color-text-dim) uppercase w-px whitespace-nowrap">
+        {event.country || '—'}
+      </td>
+      <td className="pl-0 pr-3 w-px">
+        <ImpactDot impact={event.impact} />
+      </td>
+      <td className="pl-0 pr-3 text-xs truncate" title={event.title}>
         {event.title}
-      </span>
-    </div>
+      </td>
+    </tr>
   )
 }
 

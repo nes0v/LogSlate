@@ -19,6 +19,7 @@ import {
   startOfYear,
 } from 'date-fns'
 import type { TradeRecord } from '@/db/types'
+import { nyDateKey } from '@/lib/tz'
 
 export type Timeframe = 'D' | 'W' | 'M' | 'Q' | 'Y'
 
@@ -231,7 +232,9 @@ export function parseYearMonth(ym: string | undefined): Date {
     const d = parse(ym, 'yyyy-MM', new Date())
     if (!Number.isNaN(d.getTime())) return startOfMonth(d)
   }
-  return startOfMonth(new Date())
+  // Fallback: NY calendar month, not the user's local clock — keeps the
+  // default landing month in sync with the trade-date timezone.
+  return startOfMonth(parse(nyDateKey().slice(0, 7), 'yyyy-MM', new Date()))
 }
 
 export function parseWeekStart(d: string | undefined): Date {

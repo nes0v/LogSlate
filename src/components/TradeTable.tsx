@@ -37,7 +37,6 @@ export function TradeTable({ trades, expandedIds, onToggle }: TradeTableProps) {
           {trades.map((t, i) => {
             const expanded = expandedIds.has(t.id)
             const prev = i > 0 ? trades[i - 1] : null
-            const prevExpanded = prev ? expandedIds.has(prev.id) : false
             const reversed = prev ? isReversal(prev, t) : false
             return (
               <Fragment key={t.id}>
@@ -45,7 +44,6 @@ export function TradeTable({ trades, expandedIds, onToggle }: TradeTableProps) {
                   trade={t}
                   index={i + 1}
                   expanded={expanded}
-                  highlightTopBorder={expanded || prevExpanded}
                   reversedFromPrev={reversed}
                   onToggle={() => onToggle(t.id)}
                 />
@@ -78,10 +76,6 @@ interface RowProps {
   trade: TradeRecord
   index: number
   expanded: boolean
-  /** True when this row's top border should brighten — either this row is
-   *  expanded (top of the expanded entry) or the previous row is expanded
-   *  (this row sits directly under the previous expanded body). */
-  highlightTopBorder: boolean
   /** True when the previous trade reversed into this one — renders a small
    *  "@ price" label floating above the top edge of this row. */
   reversedFromPrev: boolean
@@ -91,7 +85,6 @@ function TradeTableRow({
   trade,
   index,
   expanded,
-  highlightTopBorder,
   reversedFromPrev,
   onToggle,
 }: RowProps) {
@@ -114,9 +107,8 @@ function TradeTableRow({
       onClick={onToggle}
       title={trade.idea}
       className={cn(
-        'cursor-pointer transition-[background-color,border-color] duration-300 ease-out border-t [&>td]:align-middle [&>td]:pt-[7px] [&>td]:pb-[9px]',
+        'cursor-pointer transition-colors duration-300 ease-out border-t border-(--color-bg) [&>td]:align-middle [&>td]:pt-[7px] [&>td]:pb-[9px]',
         expanded ? 'bg-(--color-panel-2)' : 'hover:bg-(--color-panel-2)/60',
-        highlightTopBorder ? 'border-(--color-border-strong)' : 'border-(--color-border)/40',
       )}
     >
       <td className="pl-3 pr-6 py-2 text-xs font-mono tabular-nums text-(--color-text-dim) w-px whitespace-nowrap">
@@ -187,10 +179,7 @@ function TradeTableRow({
       <td className="pl-0 pr-3 py-2 font-mono text-center w-px relative">
         {reversedFromPrev && (
           <span
-            className={cn(
-              'absolute right-[17.5rem] -top-[12px] inline-flex items-center gap-1 w-28 text-xs leading-none text-(--color-text-dim) bg-(--color-bg) border rounded-(--radius) px-2 py-[5px] whitespace-nowrap z-10 pointer-events-none transition-[border-color] duration-300 ease-out',
-              expanded ? 'border-(--color-border-strong)' : 'border-(--color-border)',
-            )}
+            className="absolute right-[16rem] -top-[11px] inline-flex items-center gap-1 w-[6.25rem] text-xs leading-none text-(--color-text-dim) bg-(--color-bg) rounded-(--radius) px-2 py-[4.5px] whitespace-nowrap z-10 pointer-events-none"
           >
             <ArrowUpDown className="size-3" />
             <span className="-translate-y-px">@ {trade.executions[0]?.price ?? ''}</span>

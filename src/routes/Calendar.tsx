@@ -14,6 +14,7 @@ import {
   subMonths,
 } from 'date-fns'
 import { Image as ImageIcon, StickyNote } from 'lucide-react'
+import { nyDateKey } from '@/lib/tz'
 import { db } from '@/db/schema'
 import { useActiveAccountId } from '@/lib/active-account'
 import { classifyTrade, computeNetPnl } from '@/lib/trade-math'
@@ -167,7 +168,7 @@ export function CalendarRoute() {
         next={`/month/${format(addMonths(month, 1), 'yyyy-MM')}`}
         prevLabel="Previous month"
         nextLabel="Next month"
-        todayTo={`/month/${format(new Date(), 'yyyy-MM')}`}
+        todayTo={`/month/${nyDateKey().slice(0, 7)}`}
         rightSlot={
           <div className="flex items-baseline gap-2">
             <span className="text-sm text-(--color-text-dim)">Month net</span>

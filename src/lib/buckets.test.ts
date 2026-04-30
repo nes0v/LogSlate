@@ -16,6 +16,7 @@ import {
   WEEK_OPTS,
 } from './buckets'
 import { tradeRecord } from '@/test/fixtures'
+import { nyDateKey } from '@/lib/tz'
 
 describe('parseYearMonth', () => {
   it('parses valid yyyy-MM', () => {
@@ -25,11 +26,11 @@ describe('parseYearMonth', () => {
     expect(d.getDate()).toBe(1)
   })
 
-  it('falls back to current month for invalid input', () => {
+  it('falls back to current NY-calendar month for invalid input', () => {
     const d = parseYearMonth('not-a-date')
-    const now = new Date()
-    expect(d.getFullYear()).toBe(now.getFullYear())
-    expect(d.getMonth()).toBe(now.getMonth())
+    const [yyyy, mm] = nyDateKey().split('-')
+    expect(d.getFullYear()).toBe(Number(yyyy))
+    expect(d.getMonth()).toBe(Number(mm) - 1)
   })
 
   it('falls back for undefined', () => {
