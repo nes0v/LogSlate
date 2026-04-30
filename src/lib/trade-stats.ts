@@ -11,7 +11,13 @@ import {
 } from '@/lib/trade-math'
 
 export function signedAdjustment(a: EquityAdjustment): number {
-  return a.kind === 'deposit' ? a.amount : -a.amount
+  switch (a.kind) {
+    case 'deposit':
+      return a.amount
+    case 'withdraw':
+    case 'fee':
+      return -a.amount
+  }
 }
 
 export interface AggregateStats {

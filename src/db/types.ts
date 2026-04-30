@@ -84,7 +84,7 @@ export interface TradeRecord {
 
 export type TradeDraft = Omit<TradeRecord, 'id' | 'account_id' | 'created_at' | 'updated_at'>
 
-export type AdjustmentKind = 'deposit' | 'withdraw'
+export type AdjustmentKind = 'deposit' | 'withdraw' | 'fee'
 
 export interface EquityAdjustment {
   id: string

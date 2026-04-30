@@ -7,6 +7,7 @@ import { clearSyncState, lastSyncAt, type SyncResult } from '@/lib/sync'
 import { exportBackup, importBackup } from '@/lib/backup'
 import { AccountsPanel } from '@/components/AccountsPanel'
 import { EquityAdjustmentsPanel } from '@/components/EquityAdjustmentsPanel'
+import { BrokerFeesPanel } from '@/components/BrokerFeesPanel'
 import { CandleGlyph, LineGlyph } from '@/components/EquityChartToggle'
 import { Pills } from '@/components/form/Pills'
 import { setDefaultEquityView, useDefaultEquityView } from '@/lib/equity-view-preference'
@@ -177,6 +178,8 @@ export function SettingsRoute() {
       <AccountsPanel />
 
       <EquityAdjustmentsPanel />
+
+      <BrokerFeesPanel />
 
       <section className="space-y-3">
         <h2 className="text-sm font-medium">Appearance</h2>

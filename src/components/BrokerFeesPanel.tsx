@@ -4,29 +4,25 @@ import { format } from 'date-fns'
 import { Trash2 } from 'lucide-react'
 import { db } from '@/db/schema'
 import { createAdjustment, deleteAdjustment } from '@/db/queries'
-import type { AdjustmentKind } from '@/db/types'
 import { useActiveAccountId } from '@/lib/active-account'
 import { inputClassCompact as inputClass } from '@/components/form/Field'
-import { Select } from '@/components/form/Select'
 import { formatUsd } from '@/lib/money'
-import { cn } from '@/lib/utils'
 
-export function EquityAdjustmentsPanel() {
+export function BrokerFeesPanel() {
   const accountId = useActiveAccountId()
-  const adjustments = useLiveQuery(
+  const fees = useLiveQuery(
     async () => {
       const rows = await db.adjustments
         .where('[account_id+date]')
         .between([accountId, ''], [accountId, '￿'], true, true)
         .toArray()
-      return rows.filter(a => a.kind !== 'fee').reverse()
+      return rows.filter(a => a.kind === 'fee').reverse()
     },
     [accountId],
     [],
   )
 
-  const [date, setDate] = useState(() => format(new Date(), 'yyyy-MM-dd'))
-  const [kind, setKind] = useState<AdjustmentKind>('deposit')
+  const [month, setMonth] = useState(() => format(new Date(), 'yyyy-MM'))
   const [amount, setAmount] = useState('')
   const [note, setNote] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -38,60 +34,48 @@ export function EquityAdjustmentsPanel() {
       setError('Amount must be a positive number.')
       return
     }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      setError('Invalid date.')
+    if (!/^\d{4}-\d{2}$/.test(month)) {
+      setError('Invalid month.')
       return
     }
     setError(null)
-    await createAdjustment({ date, kind, amount: n, note: note.trim() })
+    await createAdjustment({
+      date: `${month}-01`,
+      kind: 'fee',
+      amount: n,
+      note: note.trim(),
+    })
     setAmount('')
     setNote('')
   }
 
   async function handleDelete(id: string) {
-    if (confirm('Delete this adjustment?')) await deleteAdjustment(id)
+    if (confirm('Delete this fee?')) await deleteAdjustment(id)
   }
 
-  const list = adjustments ?? []
-  const totalDeposits = list
-    .filter(a => a.kind === 'deposit')
-    .reduce((s, a) => s + a.amount, 0)
-  const totalWithdraws = list
-    .filter(a => a.kind === 'withdraw')
-    .reduce((s, a) => s + a.amount, 0)
-  const net = totalDeposits - totalWithdraws
+  const list = fees ?? []
+  const total = list.reduce((s, a) => s + a.amount, 0)
 
   return (
     <section className="space-y-3">
-      <h2 className="text-sm font-medium">Deposits &amp; withdrawals</h2>
+      <h2 className="text-sm font-medium">Monthly broker fees</h2>
       <p className="text-sm text-(--color-text-dim)">
-        Cash in/out of the trading account. Deposits grow equity, withdrawals shrink it.
-        These show up on the equity curve but don&rsquo;t affect trade stats.
+        Recurring broker charges (live data feed, platform, etc.). Posted on
+        the 1st of the chosen month and subtracted from equity, but kept out
+        of the deposits/withdrawals view.
       </p>
 
       <form
         onSubmit={handleSubmit}
-        className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3 grid grid-cols-[auto_auto_1fr_1fr_auto] gap-3 items-end"
+        className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3 grid grid-cols-[auto_1fr_1fr_auto] gap-3 items-end"
       >
         <label className="text-xs text-(--color-text-dim) space-y-2">
-          <div>Date</div>
+          <div>Month</div>
           <input
-            type="date"
-            value={date}
-            onChange={e => setDate(e.target.value)}
+            type="month"
+            value={month}
+            onChange={e => setMonth(e.target.value)}
             className={inputClass}
-          />
-        </label>
-        <label className="text-xs text-(--color-text-dim) space-y-2">
-          <div>Type</div>
-          <Select
-            value={kind}
-            onChange={v => v && setKind(v as AdjustmentKind)}
-            options={[
-              { value: 'deposit', label: 'Deposit' },
-              { value: 'withdraw', label: 'Withdraw' },
-            ]}
-            ariaLabel="Adjustment type"
           />
         </label>
         <label className="text-xs text-(--color-text-dim) space-y-2">
@@ -103,7 +87,7 @@ export function EquityAdjustmentsPanel() {
             min="0"
             value={amount}
             onChange={e => setAmount(e.target.value)}
-            placeholder="1000"
+            placeholder="15"
             className={inputClass}
           />
         </label>
@@ -122,7 +106,7 @@ export function EquityAdjustmentsPanel() {
         >
           Add
         </button>
-        {error && <div className="col-span-5 text-xs text-(--color-loss)">{error}</div>}
+        {error && <div className="col-span-4 text-xs text-(--color-loss)">{error}</div>}
       </form>
 
       {list.length > 0 && (
@@ -131,29 +115,13 @@ export function EquityAdjustmentsPanel() {
             {list.map(a => (
               <div
                 key={a.id}
-                className="grid grid-cols-[auto_auto_auto_1fr_auto] gap-3 items-center px-3 py-2"
+                className="grid grid-cols-[auto_auto_1fr_auto] gap-3 items-center px-3 py-2"
               >
                 <span className="text-xs font-mono tabular-nums text-(--color-text-dim)">
-                  {a.date}
+                  {a.date.slice(0, 7)}
                 </span>
-                <span
-                  className={cn(
-                    'inline-block w-[4.5rem] text-center text-xs font-mono px-2 py-0.5 rounded-sm',
-                    a.kind === 'deposit'
-                      ? 'bg-(--color-win)/20 text-(--color-win)'
-                      : 'bg-(--color-loss)/20 text-(--color-loss)',
-                  )}
-                >
-                  {a.kind}
-                </span>
-                <span
-                  className={cn(
-                    'text-sm font-mono font-medium tabular-nums',
-                    a.kind === 'deposit' ? 'text-(--color-win)' : 'text-(--color-loss)',
-                  )}
-                >
-                  {a.kind === 'deposit' ? '+' : '-'}
-                  {formatUsd(a.amount)}
+                <span className="text-sm font-mono font-medium tabular-nums text-(--color-loss)">
+                  -{formatUsd(a.amount)}
                 </span>
                 <span className="text-xs text-(--color-text-dim) truncate" title={a.note}>
                   {a.note}
@@ -161,7 +129,7 @@ export function EquityAdjustmentsPanel() {
                 <button
                   type="button"
                   onClick={() => handleDelete(a.id)}
-                  aria-label="Delete adjustment"
+                  aria-label="Delete fee"
                   className="p-1 rounded-(--radius) text-(--color-text-dim) hover:text-(--color-loss) hover:bg-(--color-panel-2)"
                 >
                   <Trash2 className="size-3.5" />
@@ -170,16 +138,8 @@ export function EquityAdjustmentsPanel() {
             ))}
           </div>
           <div className="text-xs text-(--color-text-dim) font-mono">
-            {list.length} adjustment{list.length === 1 ? '' : 's'} · deposits{' '}
-            {formatUsd(totalDeposits)} · withdrawals {formatUsd(totalWithdraws)} · net{' '}
-            <span
-              className={cn(
-                net > 0 && 'text-(--color-win)',
-                net < 0 && 'text-(--color-loss)',
-              )}
-            >
-              {formatUsd(net)}
-            </span>
+            {list.length} fee{list.length === 1 ? '' : 's'} · total{' '}
+            <span className="text-(--color-loss)">-{formatUsd(total)}</span>
           </div>
         </>
       )}

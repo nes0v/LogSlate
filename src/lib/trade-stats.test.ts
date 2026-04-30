@@ -158,6 +158,10 @@ describe('signedAdjustment', () => {
   it('negative for withdraw', () => {
     expect(signedAdjustment(adjustmentRecord({ kind: 'withdraw', amount: 250 }))).toBe(-250)
   })
+
+  it('negative for fee', () => {
+    expect(signedAdjustment(adjustmentRecord({ kind: 'fee', amount: 15 }))).toBe(-15)
+  })
 })
 
 describe('adjustmentsByDate', () => {
