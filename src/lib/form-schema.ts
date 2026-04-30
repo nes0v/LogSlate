@@ -37,16 +37,18 @@ const executionSchema = z.object({
 export const tradeFormSchema = z
   .object({
     trade_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'invalid date'),
-    symbol: z.enum(SYMBOLS),
-    contract_type: z.enum(CONTRACT_TYPES),
-    session: z.enum(SESSIONS),
+    // Symbol/contract/session/rating start blank on new trades so the user
+    // makes an explicit choice rather than silently submitting a default.
+    // Required on submit via the superRefine below.
+    symbol: z.enum(SYMBOLS).nullable(),
+    contract_type: z.enum(CONTRACT_TYPES).nullable(),
+    session: z.enum(SESSIONS).nullable(),
     idea: z.string(),
     executions: z.array(executionSchema).min(2, 'at least one buy and one sell'),
     stop_loss: requiredPositive('stop loss must be > 0'),
     drawdown: z.number().min(0, 'must be ≥ 0').nullable(),
     buildup: z.number().min(0, 'must be ≥ 0').nullable(),
-    rating: z.enum(RATINGS),
-    pnl_override: z.number().nullable(),
+    rating: z.enum(RATINGS).nullable(),
     screenshot: z.string().nullable(),
     // Optional reflection fields. The form supplies defaults so RHF resolves
     // them; downstream code treats them as optional / nullable.
@@ -61,6 +63,18 @@ export const tradeFormSchema = z
     playbook_rules_followed: z.array(z.string()),
   })
   .superRefine((v, ctx) => {
+    if (!v.symbol) {
+      ctx.addIssue({ code: 'custom', path: ['symbol'], message: 'pick a symbol' })
+    }
+    if (!v.contract_type) {
+      ctx.addIssue({ code: 'custom', path: ['contract_type'], message: 'pick a contract' })
+    }
+    if (!v.session) {
+      ctx.addIssue({ code: 'custom', path: ['session'], message: 'pick a session' })
+    }
+    if (!v.rating) {
+      ctx.addIssue({ code: 'custom', path: ['rating'], message: 'pick a rating' })
+    }
     const buys = v.executions.filter(e => e.kind === 'buy')
     const sells = v.executions.filter(e => e.kind === 'sell')
     if (buys.length === 0) {
@@ -114,16 +128,15 @@ export function formToDraft(v: TradeFormValues): TradeDraft {
 
   return {
     trade_date: v.trade_date,
-    symbol: v.symbol,
-    contract_type: v.contract_type,
-    session: v.session,
+    symbol: v.symbol as NonNullable<typeof v.symbol>,
+    contract_type: v.contract_type as NonNullable<typeof v.contract_type>,
+    session: v.session as NonNullable<typeof v.session>,
     idea: v.idea,
     executions,
     stop_loss: v.stop_loss as number,
     drawdown: v.drawdown,
     buildup: v.buildup,
-    rating: v.rating,
-    pnl_override: v.pnl_override,
+    rating: v.rating as NonNullable<typeof v.rating>,
     screenshot: v.screenshot,
     profit_target: v.profit_target as number,
     notes: v.notes,
@@ -158,7 +171,6 @@ export function recordToForm(r: TradeRecord): TradeFormValues {
     drawdown: r.drawdown,
     buildup: r.buildup,
     rating: r.rating,
-    pnl_override: r.pnl_override,
     screenshot: r.screenshot,
     profit_target: r.profit_target ?? 0,
     notes: r.notes ?? '',
@@ -175,9 +187,9 @@ export function recordToForm(r: TradeRecord): TradeFormValues {
 export function emptyForm(trade_date: string): TradeFormValues {
   return {
     trade_date,
-    symbol: 'NQ',
-    contract_type: 'micro',
-    session: 'pre',
+    symbol: null,
+    contract_type: null,
+    session: null,
     idea: '',
     executions: [
       { kind: 'buy', price: null, time: '', contracts: 1 },
@@ -186,8 +198,7 @@ export function emptyForm(trade_date: string): TradeFormValues {
     stop_loss: null,
     drawdown: null,
     buildup: null,
-    rating: 'excellent',
-    pnl_override: null,
+    rating: null,
     screenshot: null,
     profit_target: null,
     notes: '',

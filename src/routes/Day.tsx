@@ -8,6 +8,7 @@ import { useActiveAccountId } from '@/lib/active-account'
 import { aggregate } from '@/lib/trade-stats'
 import { isReversal } from '@/lib/trade-math'
 import { useArrowNavigation } from '@/lib/use-arrow-navigation'
+import { DayNewsSection } from '@/components/DayNewsSection'
 import { DayScreenshotSection } from '@/components/DayScreenshotSection'
 import { ExpandableTradeRow } from '@/components/ExpandableTradeRow'
 import { PageHeader } from '@/components/PageHeader'
@@ -105,6 +106,8 @@ export function DayRoute() {
 
       <StatsGrid stats={stats} />
 
+      <DayNewsSection date={date} />
+
       <DayScreenshotSection accountId={accountId} date={date} />
 
       <section className="space-y-2">
@@ -112,7 +115,9 @@ export function DayRoute() {
           Trades{' '}
           <span className="text-(--color-text-dim) font-normal">
             ({trades?.length ?? 0})
-          </span>
+          </span>{' '}
+          <span className="text-(--color-win) font-normal">{stats.wins}W</span>{' '}
+          <span className="text-(--color-loss) font-normal">{stats.losses}L</span>
         </h2>
         {trades && trades.length > 0 ? (
           <div className="flex flex-col gap-1.5">
@@ -147,9 +152,9 @@ function ReversalConnector({ price }: { price?: number }) {
     <div className="flex items-center gap-2 px-3 text-(--color-text-dim)" title="Position reversed">
       <div className="h-px flex-1 bg-(--color-border)" />
       <ArrowUpDown className="size-3.5" />
-      <span className="text-xs uppercase tracking-wider">
-        Reversed{price !== undefined ? ` @ ${price}` : ''}
-      </span>
+      {price !== undefined && (
+        <span className="text-xs uppercase tracking-wider">@ {price}</span>
+      )}
       <div className="h-px flex-1 bg-(--color-border)" />
     </div>
   )

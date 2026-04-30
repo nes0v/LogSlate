@@ -7,7 +7,6 @@ import {
   computeGrossPnl,
   computeNetPnl,
   computeRealizedRr,
-  effectivePnl,
   inferSide,
   isReversal,
   totalContracts,
@@ -177,7 +176,7 @@ describe('computeGrossPnl', () => {
   })
 })
 
-describe('computeNetPnl and effectivePnl', () => {
+describe('computeNetPnl', () => {
   it('net = gross − fees', () => {
     const t = tradeRecord({
       symbol: 'NQ',
@@ -188,24 +187,6 @@ describe('computeNetPnl and effectivePnl', () => {
       ],
     })
     expect(computeNetPnl(t)).toBeCloseTo(200 - 4.5, 5)
-  })
-
-  it('effectivePnl returns pnl_override when set (even if 0)', () => {
-    const t = tradeRecord({ pnl_override: 0 })
-    expect(effectivePnl(t)).toBe(0)
-  })
-
-  it('effectivePnl falls back to net when override is null', () => {
-    const t = tradeRecord({
-      symbol: 'NQ',
-      contract_type: 'mini',
-      pnl_override: null,
-      executions: [
-        execution({ kind: 'buy', price: 20000, contracts: 1 }),
-        execution({ kind: 'sell', price: 20010, contracts: 1 }),
-      ],
-    })
-    expect(effectivePnl(t)).toBeCloseTo(195.5, 5)
   })
 })
 
@@ -233,14 +214,17 @@ describe('computeAhpc', () => {
 
 describe('computeRealizedRr', () => {
   it('returns pnl / stop_loss', () => {
+    // Net pnl = 200 − 4.5 fees = 195.5; stop_loss 100 → 1.955.
     const t = tradeRecord({
       symbol: 'NQ',
       contract_type: 'mini',
       stop_loss: 100,
-      pnl_override: 250,
-      executions: [],
+      executions: [
+        execution({ kind: 'buy', price: 20000, contracts: 1 }),
+        execution({ kind: 'sell', price: 20010, contracts: 1 }),
+      ],
     })
-    expect(computeRealizedRr(t)).toBe(2.5)
+    expect(computeRealizedRr(t)).toBeCloseTo(1.955, 5)
   })
 
   it('returns null for zero stop_loss', () => {
@@ -248,8 +232,8 @@ describe('computeRealizedRr', () => {
     expect(computeRealizedRr(t)).toBeNull()
   })
 
-  it('returns null when pnl cannot be computed and no override', () => {
-    const t = tradeRecord({ stop_loss: 100, pnl_override: null, executions: [] })
+  it('returns null when pnl cannot be computed', () => {
+    const t = tradeRecord({ stop_loss: 100, executions: [] })
     expect(computeRealizedRr(t)).toBeNull()
   })
 })

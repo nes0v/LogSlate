@@ -192,7 +192,7 @@ export function ProgressRoute() {
       </div>
 
       {/* Score band */}
-      <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
         <ScoreTile
           label="Today's adherence"
           value={

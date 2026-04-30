@@ -6,7 +6,13 @@
 // stays pure and testable.
 
 import type { TradeRecord } from '@/db/types'
-import { classifyTrade, computeRealizedRr, effectivePnl, type TradeOutcome } from '@/lib/trade-math'
+import {
+  classifyTrade,
+  computeNetPnl,
+  computeRealizedRr,
+  tradeMetrics,
+  type TradeOutcome,
+} from '@/lib/trade-math'
 
 // ---------- profit factor / payoff / expectancy ---------------------
 
@@ -16,8 +22,8 @@ export function profitFactor(trades: TradeRecord[]): number | null {
   let wins = 0
   let losses = 0
   for (const t of trades) {
-    const p = effectivePnl(t) ?? 0
-    const outcome = classifyTrade(t)
+    const { pnl, outcome } = tradeMetrics(t)
+    const p = pnl ?? 0
     if (outcome === 'win') wins += p
     else if (outcome === 'loss') losses += p
   }
@@ -33,8 +39,8 @@ export function payoffRatio(trades: TradeRecord[]): number | null {
   let ln = 0
   let ls = 0
   for (const t of trades) {
-    const p = effectivePnl(t) ?? 0
-    const outcome = classifyTrade(t)
+    const { pnl, outcome } = tradeMetrics(t)
+    const p = pnl ?? 0
     if (outcome === 'win') {
       ws += p
       wn++
@@ -54,8 +60,9 @@ export function expectancyR(trades: TradeRecord[]): number | null {
   let s = 0
   for (const t of trades) {
     if (t.stop_loss <= 0) continue
-    if (classifyTrade(t) === 'breakeven') continue
-    s += (effectivePnl(t) ?? 0) / t.stop_loss
+    const { pnl, outcome } = tradeMetrics(t)
+    if (outcome === 'breakeven') continue
+    s += (pnl ?? 0) / t.stop_loss
     n++
   }
   return n > 0 ? s / n : null
@@ -69,8 +76,8 @@ export function expectancyDollars(trades: TradeRecord[]): number | null {
   let ln = 0
   let ls = 0
   for (const t of trades) {
-    const p = effectivePnl(t) ?? 0
-    const outcome = classifyTrade(t)
+    const { pnl, outcome } = tradeMetrics(t)
+    const p = pnl ?? 0
     if (outcome === 'win') {
       ws += p
       wn++
@@ -115,8 +122,9 @@ export function sqn(trades: TradeRecord[]): number | null {
   const rs: number[] = []
   for (const t of trades) {
     if (t.stop_loss <= 0) continue
-    if (classifyTrade(t) === 'breakeven') continue
-    rs.push((effectivePnl(t) ?? 0) / t.stop_loss)
+    const { pnl, outcome } = tradeMetrics(t)
+    if (outcome === 'breakeven') continue
+    rs.push((pnl ?? 0) / t.stop_loss)
   }
   if (rs.length < 2) return null
   const m = rs.reduce((a, b) => a + b, 0) / rs.length
@@ -196,7 +204,7 @@ export function dailyEquitySeries(
 ): EquityPoint[] {
   const byDay = new Map<string, number>()
   for (const t of trades) {
-    byDay.set(t.trade_date, (byDay.get(t.trade_date) ?? 0) + (effectivePnl(t) ?? 0))
+    byDay.set(t.trade_date, (byDay.get(t.trade_date) ?? 0) + (computeNetPnl(t) ?? 0))
   }
   let equity = startEquity
   let peak = startEquity
@@ -376,8 +384,9 @@ export function rDistribution(trades: TradeRecord[]): RBucket[] {
   }))
   for (const t of trades) {
     if (t.stop_loss <= 0) continue
-    if (classifyTrade(t) === 'breakeven') continue
-    const r = (effectivePnl(t) ?? 0) / t.stop_loss
+    const { pnl, outcome } = tradeMetrics(t)
+    if (outcome === 'breakeven') continue
+    const r = (pnl ?? 0) / t.stop_loss
     for (const b of buckets) {
       if (r > b.range[0] && r <= b.range[1]) {
         b.count++
@@ -424,8 +433,8 @@ export function maeMfeStats(trades: TradeRecord[]): MaeMfeStats {
       mfe += t.buildup
       nMfe++
     }
-    const pnl = effectivePnl(t) ?? 0
-    const outcome = classifyTrade(t)
+    const { pnl: p, outcome } = tradeMetrics(t)
+    const pnl = p ?? 0
     if (outcome === 'win' && t.buildup !== null && t.buildup > 0) {
       effSum += pnl / t.buildup
       effN++
@@ -459,14 +468,13 @@ export interface ScatterPoint {
 export function maeScatter(trades: TradeRecord[]): ScatterPoint[] {
   const out: ScatterPoint[] = []
   for (const t of trades) {
-    const p = effectivePnl(t)
-    if (p === null) continue
+    const { pnl, outcome } = tradeMetrics(t)
+    if (pnl === null) continue
     if (t.drawdown === null) continue
-    const outcome = classifyTrade(t)
     out.push({
       id: t.id,
       x: t.drawdown,
-      y: p,
+      y: pnl,
       win: outcome === 'win',
       outcome,
       date: t.trade_date,
@@ -478,14 +486,13 @@ export function maeScatter(trades: TradeRecord[]): ScatterPoint[] {
 export function mfeScatter(trades: TradeRecord[]): ScatterPoint[] {
   const out: ScatterPoint[] = []
   for (const t of trades) {
-    const p = effectivePnl(t)
-    if (p === null) continue
+    const { pnl, outcome } = tradeMetrics(t)
+    if (pnl === null) continue
     if (t.buildup === null) continue
-    const outcome = classifyTrade(t)
     out.push({
       id: t.id,
       x: t.buildup,
-      y: p,
+      y: pnl,
       win: outcome === 'win',
       outcome,
       date: t.trade_date,
@@ -504,7 +511,7 @@ export function pnlByHour(trades: TradeRecord[]): Array<{ hour: number; pnl: num
     const ms = firstExecMs(t)
     if (!ms) continue
     const h = new Date(ms).getHours()
-    arr[h].pnl += effectivePnl(t) ?? 0
+    arr[h].pnl += computeNetPnl(t) ?? 0
     arr[h].count++
   }
   return arr
@@ -515,10 +522,9 @@ export function pnlByWeekday(trades: TradeRecord[]): Array<{ name: string; pnl: 
   const arr = WEEKDAYS.map(name => ({ name, pnl: 0, count: 0, wins: 0, losses: 0 }))
   for (const t of trades) {
     const day = new Date(t.trade_date + 'T00:00:00').getDay()
-    const p = effectivePnl(t) ?? 0
-    arr[day].pnl += p
+    const { pnl, outcome } = tradeMetrics(t)
+    arr[day].pnl += pnl ?? 0
     arr[day].count++
-    const outcome = classifyTrade(t)
     if (outcome === 'win') arr[day].wins++
     else if (outcome === 'loss') arr[day].losses++
   }
@@ -531,7 +537,7 @@ export function pnlByMonth(trades: TradeRecord[]): Array<{ month: string; pnl: n
   for (const t of trades) {
     const ym = t.trade_date.slice(0, 7)
     const cur = m.get(ym) ?? { pnl: 0, count: 0 }
-    cur.pnl += effectivePnl(t) ?? 0
+    cur.pnl += computeNetPnl(t) ?? 0
     cur.count++
     m.set(ym, cur)
   }

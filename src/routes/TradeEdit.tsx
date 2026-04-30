@@ -74,7 +74,6 @@ export function TradeEditRoute() {
 
   async function handleSubmit(draft: TradeDraft) {
     await updateTrade(id, draft)
-    navigate(`/day/${draft.trade_date}`)
   }
 
   async function handleDelete() {
@@ -103,7 +102,7 @@ export function TradeEditRoute() {
 
   return (
     <div className="pt-1 space-y-8">
-      <div className="flex items-center justify-between mb-8 gap-4">
+      <div className="flex items-center justify-between mb-8 gap-3">
         <div className="flex items-center gap-2">
           <NavArrow to={prevId ? `/trade/${prevId}/edit` : null} direction="prev" label="Previous trade" />
           <h1 className="h-8 flex items-center text-lg font-semibold">Edit trade</h1>

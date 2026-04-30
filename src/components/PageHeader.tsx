@@ -32,7 +32,7 @@ export function PageHeader({
   rightSlot,
 }: PageHeaderProps) {
   return (
-    <div className="flex items-center justify-between gap-4 h-12">
+    <div className="flex items-center justify-between gap-4 h-8 mb-8">
       <div className="flex items-center gap-2">
         {prev !== undefined && <Arrow to={prev} direction="prev" label={prevLabel} />}
         <h1 className="text-lg font-semibold min-w-56 text-center">{title}</h1>

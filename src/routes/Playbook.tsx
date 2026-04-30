@@ -219,7 +219,7 @@ function PlaybookEditor({ playbook, onChange, onDelete }: PlaybookEditorProps) {
   }
 
   return (
-    <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-4 space-y-4">
+    <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3 space-y-3">
       <div className="flex items-center gap-2">
         <input
           value={name}

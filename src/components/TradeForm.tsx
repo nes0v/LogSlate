@@ -1,4 +1,5 @@
-import { Controller, useFieldArray, useForm, useWatch } from 'react-hook-form'
+import { useMemo } from 'react'
+import { Controller, useFieldArray, useForm, useWatch, type Control } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Plus, Trash2 } from 'lucide-react'
 import { emptyForm, formToDraft, newTradeFormSchema, tradeFormSchema, type TradeFormValues } from '@/lib/form-schema'
@@ -9,6 +10,8 @@ import { NumberInput } from '@/components/form/NumberInput'
 import { QtyInput } from '@/components/form/QtyInput'
 import { ScreenshotField } from '@/components/ScreenshotField'
 import { ReflectionSection } from '@/components/ReflectionSection'
+import { computeAhpc, computeNetPnl } from '@/lib/trade-math'
+import { formatUsd } from '@/lib/money'
 import { cn } from '@/lib/utils'
 
 const SYMBOLS = [
@@ -97,30 +100,30 @@ export function TradeForm({
 
   return (
     <form onSubmit={handleSubmit(submit)}>
-      <div className="space-y-4">
-        <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-4 flex flex-wrap items-end gap-4">
-          <Field label="Symbol">
+      <div className="space-y-3">
+        <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3 flex flex-wrap items-end gap-3">
+          <Field label="Symbol" error={errors.symbol?.message}>
             <Controller
               control={control}
               name="symbol"
               render={({ field }) => <Pills value={field.value} onChange={field.onChange} options={SYMBOLS} />}
             />
           </Field>
-          <Field label="Contract">
+          <Field label="Contract" error={errors.contract_type?.message}>
             <Controller
               control={control}
               name="contract_type"
               render={({ field }) => <Pills value={field.value} onChange={field.onChange} options={CONTRACT_TYPES} />}
             />
           </Field>
-          <Field label="Session">
+          <Field label="Session" error={errors.session?.message}>
             <Controller
               control={control}
               name="session"
               render={({ field }) => <Pills value={field.value} onChange={field.onChange} options={SESSIONS} />}
             />
           </Field>
-          <Field label="Rating">
+          <Field label="Rating" error={errors.rating?.message}>
             <Controller
               control={control}
               name="rating"
@@ -129,9 +132,9 @@ export function TradeForm({
           </Field>
         </section>
 
-        <div className="grid lg:grid-cols-2 gap-4 items-start">
-          <div className="space-y-4">
-            <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-4 space-y-4">
+        <div className="grid lg:grid-cols-2 gap-3 items-start">
+          <div className="space-y-3">
+            <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3 space-y-3">
           <Field label="Idea" error={errors.idea?.message}>
             <textarea
               className={cn(inputClass, 'min-h-[135px] resize-y')}
@@ -229,7 +232,7 @@ export function TradeForm({
             </button>
           </div>
 
-          <div className="grid grid-cols-2 gap-4 pt-2">
+          <div className="grid grid-cols-2 gap-3 pt-2">
             <Field label="Stop loss ($)" error={errors.stop_loss?.message}>
               <Controller
                 control={control}
@@ -308,11 +311,14 @@ export function TradeForm({
             </div>
           </div>
 
-          <ReflectionSection
-            control={control}
-            values={values}
-            emotionError={errors.emotion?.message}
-          />
+          <div className="space-y-3">
+            <ReflectionSection
+              control={control}
+              values={values}
+              emotionError={errors.emotion?.message}
+            />
+            <LiveStatsSection control={control} />
+          </div>
 
           {/* On smaller screens the grid collapses to a single column; the
               buttons go last so they appear after Reflection. */}
@@ -326,6 +332,71 @@ export function TradeForm({
         </div>
       </div>
     </form>
+  )
+}
+
+// Subscribes only to the four fields it needs; idea/notes/reflection
+// keystrokes don't recompute the stats.
+function LiveStatsSection({ control }: { control: Control<TradeFormValues> }) {
+  const [executions, symbol, contract_type, stop_loss] = useWatch({
+    control,
+    name: ['executions', 'symbol', 'contract_type', 'stop_loss'],
+  })
+  const stats = useMemo(() => {
+    const execs = (executions ?? [])
+      .filter(e => e && e.price != null && e.contracts != null)
+      .map(e => ({
+        kind: e.kind,
+        price: e.price as number,
+        time: '',
+        contracts: e.contracts as number,
+      }))
+    const ahpc = computeAhpc({ executions: execs })
+    const pnl =
+      symbol && contract_type
+        ? computeNetPnl({ executions: execs, symbol, contract_type })
+        : null
+    const rr = stop_loss && stop_loss > 0 && pnl !== null ? pnl / stop_loss : null
+    return { ahpc, pnl, rr }
+  }, [executions, symbol, contract_type, stop_loss])
+
+  return (
+    <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3">
+      <div className="grid grid-cols-3 gap-3">
+        <Stat label="AHPC" value={stats.ahpc !== null ? stats.ahpc.toFixed(2) : '—'} />
+        <Stat
+          label="PNL"
+          value={stats.pnl !== null ? formatUsd(stats.pnl) : '—'}
+          tone={stats.pnl !== null ? (stats.pnl > 0 ? 'win' : stats.pnl < 0 ? 'loss' : null) : null}
+        />
+        <Stat label="RR" value={stats.rr !== null ? `${stats.rr.toFixed(2)}x` : '—'} />
+      </div>
+    </section>
+  )
+}
+
+function Stat({
+  label,
+  value,
+  tone,
+}: {
+  label: string
+  value: string
+  tone?: 'win' | 'loss' | null
+}) {
+  return (
+    <div>
+      <div className="text-xs text-(--color-text-dim)">{label}</div>
+      <div
+        className={cn(
+          'text-sm font-mono tabular-nums',
+          tone === 'win' && 'text-(--color-win)',
+          tone === 'loss' && 'text-(--color-loss)',
+        )}
+      >
+        {value}
+      </div>
+    </div>
   )
 }
 

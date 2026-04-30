@@ -99,14 +99,6 @@ export function computeNetPnl(
   return gross - computeFees(t)
 }
 
-// Net PnL used for display: manual override wins if set, else computed.
-export function effectivePnl(
-  t: Pick<TradeRecord, 'executions' | 'symbol' | 'contract_type' | 'pnl_override'>,
-): number | null {
-  if (t.pnl_override !== null && t.pnl_override !== undefined) return t.pnl_override
-  return computeNetPnl(t)
-}
-
 // Average handles per contract. Positive = profitable, negative = losing.
 // Symmetric across long/short: avgSell − avgBuy is profit direction in both cases.
 export function computeAhpc(t: Pick<TradeRecord, 'executions'>): number | null {
@@ -117,10 +109,10 @@ export function computeAhpc(t: Pick<TradeRecord, 'executions'>): number | null {
 }
 
 export function computeRealizedRr(
-  t: Pick<TradeRecord, 'executions' | 'symbol' | 'contract_type' | 'pnl_override' | 'stop_loss'>,
+  t: Pick<TradeRecord, 'executions' | 'symbol' | 'contract_type' | 'stop_loss'>,
 ): number | null {
   if (!t.stop_loss || t.stop_loss === 0) return null
-  const pnl = effectivePnl(t)
+  const pnl = computeNetPnl(t)
   if (pnl === null) return null
   return pnl / t.stop_loss
 }
@@ -167,23 +159,46 @@ export const BREAKEVEN_HANDLES: Record<SymbolKey, number> = {
 
 export type TradeOutcome = 'win' | 'loss' | 'breakeven'
 
-// Win/loss/breakeven classifier that respects the BREAKEVEN_HANDLES
-// band: a trade whose absolute AHPC sits below the threshold is a
-// scratch even if its PnL is non-zero. Above the threshold, the PnL
-// sign decides. A manual `pnl_override` takes precedence over the AHPC
-// rule — it's an explicit user signal that the trade outcome should be
-// read straight off that number.
-export function classifyTrade(
-  t: Pick<TradeRecord, 'executions' | 'symbol' | 'contract_type' | 'pnl_override'>,
-): TradeOutcome {
-  if (t.pnl_override !== null && t.pnl_override !== undefined) {
-    if (t.pnl_override > 0) return 'win'
-    if (t.pnl_override < 0) return 'loss'
-    return 'breakeven'
-  }
+// Tailwind class for tinting text by outcome. Centralised so TradeRow,
+// LiveStatsSection, and any future row-shaped UI agree on the mapping.
+export function outcomeTextClass(
+  outcome: TradeOutcome,
+  hasPnl: boolean,
+): string {
+  if (!hasPnl) return 'text-(--color-text-dim)'
+  if (outcome === 'win') return 'text-(--color-win)'
+  if (outcome === 'loss') return 'text-(--color-loss)'
+  return 'text-(--color-text)'
+}
+
+// Win/loss/breakeven classifier + the underlying ahpc and net PnL in a
+// single pass. Many list views (TradeRow, Reports, advanced-stats) need
+// all three numbers per trade — returning them together avoids redundant
+// `weightedAvgPrice` / fee passes.
+//
+// Outcome rule: a trade whose absolute AHPC sits below `BREAKEVEN_HANDLES`
+// is a scratch even when net PnL is non-zero; above the threshold, PnL
+// sign decides.
+export interface TradeMetrics {
+  ahpc: number | null
+  pnl: number | null
+  outcome: TradeOutcome
+}
+export function tradeMetrics(
+  t: Pick<TradeRecord, 'executions' | 'symbol' | 'contract_type'>,
+): TradeMetrics {
   const ahpc = computeAhpc(t)
-  if (ahpc !== null && Math.abs(ahpc) < BREAKEVEN_HANDLES[t.symbol]) return 'breakeven'
-  const pnl = effectivePnl(t)
-  if (pnl === null || pnl === 0) return 'breakeven'
-  return pnl > 0 ? 'win' : 'loss'
+  const pnl = computeNetPnl(t)
+  let outcome: TradeOutcome
+  if (ahpc !== null && Math.abs(ahpc) < BREAKEVEN_HANDLES[t.symbol]) outcome = 'breakeven'
+  else if (pnl === null || pnl === 0) outcome = 'breakeven'
+  else outcome = pnl > 0 ? 'win' : 'loss'
+  return { ahpc, pnl, outcome }
+}
+
+// Outcome-only helper kept for callers that don't need ahpc/pnl.
+export function classifyTrade(
+  t: Pick<TradeRecord, 'executions' | 'symbol' | 'contract_type'>,
+): TradeOutcome {
+  return tradeMetrics(t).outcome
 }

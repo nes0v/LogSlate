@@ -12,6 +12,10 @@ import { tradeRecord } from '@/test/fixtures'
 function validForm(overrides: Partial<TradeFormValues> = {}): TradeFormValues {
   return {
     ...emptyForm('2026-04-15'),
+    symbol: 'NQ',
+    contract_type: 'micro',
+    session: 'AM',
+    rating: 'good',
     stop_loss: 100,
     profit_target: 200,
     drawdown: 20,

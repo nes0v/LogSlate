@@ -34,8 +34,8 @@ export function ReflectionSection({ control, values, emotionError }: ReflectionS
 
   return (
     <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs)">
-        <div className="p-4 space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+        <div className="p-3 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
             <Field label="Model">
               <Controller
                 control={control}
@@ -80,7 +80,7 @@ export function ReflectionSection({ control, values, emotionError }: ReflectionS
             />
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="Setup tags">
               <Controller
                 control={control}

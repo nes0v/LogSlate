@@ -18,7 +18,6 @@ function winningTrade() {
     ],
     stop_loss: 100,
     profit_target: 200,
-    pnl_override: null,
   })
 }
 
@@ -32,12 +31,20 @@ function losingTrade() {
     ],
     stop_loss: 200,
     profit_target: 600,
-    pnl_override: null,
   })
 }
 
+// AHPC = 0 (buy/sell at same price) → classifyTrade returns 'breakeven',
+// and the net pnl is just −fees.
 function breakevenTrade() {
-  return tradeRecord({ pnl_override: 0 })
+  return tradeRecord({
+    symbol: 'NQ',
+    contract_type: 'mini',
+    executions: [
+      execution({ kind: 'buy', price: 20000, contracts: 1 }),
+      execution({ kind: 'sell', price: 20000, contracts: 1 }),
+    ],
+  })
 }
 
 describe('aggregate', () => {

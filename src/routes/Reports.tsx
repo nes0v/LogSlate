@@ -4,7 +4,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { addDays, format } from 'date-fns'
 import { X } from 'lucide-react'
 import type { ContractType, Rating, Session, SymbolKey, TradeRecord } from '@/db/types'
-import { EMOTIONS } from '@/db/types'
+import { EMOTIONS, DEFAULT_MODEL_NAME } from '@/db/types'
 import { db } from '@/db/schema'
 import { useActiveAccountId } from '@/lib/active-account'
 import {
@@ -19,7 +19,13 @@ import {
   saveSharedFilters,
 } from '@/lib/shared-filters'
 import { aggregate } from '@/lib/trade-stats'
-import { classifyTrade, computePlannedRr, computeRealizedRr, effectivePnl, totalContracts } from '@/lib/trade-math'
+import {
+  classifyTrade,
+  computePlannedRr,
+  computeRealizedRr,
+  totalContracts,
+  tradeMetrics,
+} from '@/lib/trade-math'
 import {
   cohortStats,
   holdTimeBuckets,
@@ -294,10 +300,9 @@ function DaysAndTimeReport({ trades }: { trades: TradeRecord[] }) {
       const d = Number(t.trade_date.slice(8, 10))
       if (d < 1 || d > 31) continue
       const cell = map[d - 1]
-      const p = effectivePnl(t) ?? 0
-      cell.pnl += p
+      const { pnl, outcome } = tradeMetrics(t)
+      cell.pnl += pnl ?? 0
       cell.count++
-      const outcome = classifyTrade(t)
       if (outcome === 'win') cell.wins++
       else if (outcome === 'loss') cell.losses++
     }
@@ -445,12 +450,11 @@ function RiskReport({
       const c = totalContracts(t)
       if (c === 0) continue
       const cur = map.get(c) ?? { count: 0, wins: 0, losses: 0, pnl: 0 }
-      const p = effectivePnl(t) ?? 0
+      const { pnl, outcome } = tradeMetrics(t)
       cur.count++
-      const outcome = classifyTrade(t)
       if (outcome === 'win') cur.wins++
       else if (outcome === 'loss') cur.losses++
-      cur.pnl += p
+      cur.pnl += pnl ?? 0
       map.set(c, cur)
     }
     return Array.from(map.entries())
@@ -474,12 +478,11 @@ function RiskReport({
         realizedSum: 0,
         realizedN: 0,
       }
-      const p = effectivePnl(t) ?? 0
+      const { pnl, outcome } = tradeMetrics(t)
       cur.count++
-      const outcome = classifyTrade(t)
       if (outcome === 'win') cur.wins++
       else if (outcome === 'loss') cur.losses++
-      cur.pnl += p
+      cur.pnl += pnl ?? 0
       const rr = computeRealizedRr(t)
       if (rr !== null) {
         cur.realizedSum += rr
@@ -787,7 +790,7 @@ function splitByAxis(
           trades: v,
         }))
         .sort((a, b) => b.trades.length - a.trades.length)
-      if (unset.length > 0) buckets.push({ label: '(unset)', trades: unset })
+      if (unset.length > 0) buckets.push({ label: DEFAULT_MODEL_NAME, trades: unset })
       return buckets
     }
   }
@@ -812,8 +815,8 @@ function CompareTable({ groups }: { groups: Array<{ label: string; trades: Trade
         let wins = 0
         let losses = 0
         for (const t of g.trades) {
-          const outcome = classifyTrade(t)
-          const p = effectivePnl(t) ?? 0
+          const { pnl, outcome } = tradeMetrics(t)
+          const p = pnl ?? 0
           if (outcome === 'win') wins += p
           else if (outcome === 'loss') losses += p
         }

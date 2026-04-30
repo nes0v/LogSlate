@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/db/schema'
 import { useActiveAccountId } from '@/lib/active-account'
 import { signedAdjustment } from '@/lib/trade-stats'
-import { effectivePnl } from '@/lib/trade-math'
+import { computeNetPnl } from '@/lib/trade-math'
 
 /**
  * Account equity immediately before `dateKey` (YYYY-MM-DD): signed cash flows
@@ -42,7 +42,7 @@ export function useCurrentEquity(): number {
   return useMemo(() => {
     let eq = 0
     for (const a of adjustments) eq += signedAdjustment(a)
-    for (const t of trades) eq += effectivePnl(t) ?? 0
+    for (const t of trades) eq += computeNetPnl(t) ?? 0
     return eq
   }, [adjustments, trades])
 }
@@ -74,7 +74,7 @@ export function useStartingEquity(dateKey: string | null | undefined): number {
   return useMemo(() => {
     let eq = 0
     for (const a of priorAdjustments) eq += signedAdjustment(a)
-    for (const t of priorTrades) eq += effectivePnl(t) ?? 0
+    for (const t of priorTrades) eq += computeNetPnl(t) ?? 0
     return eq
   }, [priorAdjustments, priorTrades])
 }

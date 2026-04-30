@@ -50,14 +50,20 @@ export function AccountSwitcher() {
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
-        className="inline-flex items-center gap-1.5 px-2 py-1 text-sm rounded-(--radius) border border-(--color-border) text-(--color-text) hover:bg-(--color-panel-2)"
+        className={cn(
+          'h-8 flex items-center justify-between gap-2 pl-2.5 pr-2 text-sm rounded-(--radius)',
+          'bg-(--color-bg) text-(--color-text) cursor-pointer transition-colors',
+          'focus:outline-none focus:ring-2 focus:ring-(--color-accent-soft)',
+        )}
       >
-        <User className="size-4 text-(--color-text-dim)" />
-        <span className="max-w-40 truncate">{activeName}</span>
-        <ChevronDown className="size-3.5 text-(--color-text-dim)" />
+        <span className="flex items-center gap-1.5 min-w-0">
+          <User className="size-4 shrink-0 text-(--color-text-dim)" />
+          <span className="max-w-40 truncate">{activeName}</span>
+        </span>
+        <ChevronDown className="size-4 shrink-0 text-(--color-text-dim)" />
       </button>
       {open && accounts && (
-        <div className="absolute right-0 top-full mt-1 min-w-52 rounded-(--radius) bg-(--color-panel) shadow-(--shadow-md) z-20 py-1">
+        <div className="absolute right-0 top-full mt-1 z-20 bg-(--color-panel) border border-(--color-border-strong) rounded-(--radius) shadow-(--shadow-md) overflow-hidden">
           {accounts.map(a => (
             <button
               key={a.id}
@@ -67,9 +73,10 @@ export function AccountSwitcher() {
                 setOpen(false)
               }}
               className={cn(
-                'w-full flex items-center gap-2 px-2.5 py-1.5 text-sm text-left',
-                'hover:bg-(--color-panel-2)',
-                a.id === activeId && 'text-(--color-text)',
+                'w-full flex items-center gap-2 px-2.5 py-1.5 text-sm text-left whitespace-nowrap cursor-pointer transition-colors',
+                a.id === activeId
+                  ? 'bg-(--color-panel-2) text-(--color-text)'
+                  : 'text-(--color-text-dim) hover:bg-(--color-panel-2) hover:text-(--color-text)',
               )}
             >
               <Check

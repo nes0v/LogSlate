@@ -7,7 +7,7 @@ import {
   computeGrossPnl,
   computePlannedRr,
   computeRealizedRr,
-  effectivePnl,
+  computeNetPnl,
 } from '@/lib/trade-math'
 
 export function signedAdjustment(a: EquityAdjustment): number {
@@ -66,7 +66,7 @@ export function aggregate(trades: TradeRecord[]): AggregateStats {
   let durationCount = 0
 
   for (const t of trades) {
-    const net = effectivePnl(t) ?? 0
+    const net = computeNetPnl(t) ?? 0
     result.net_pnl += net
     const gross = computeGrossPnl(t) ?? 0
     result.gross_pnl += gross
@@ -175,7 +175,7 @@ function candleFromBucket(
 
   const sorted = [...b.trades].sort((a, b2) => firstExecTime(a) - firstExecTime(b2))
   for (const t of sorted) {
-    running += effectivePnl(t) ?? 0
+    running += computeNetPnl(t) ?? 0
     if (running > high) high = running
     if (running < low) low = running
     fees += computeFees(t)

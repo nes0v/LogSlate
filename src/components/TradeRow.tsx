@@ -2,15 +2,15 @@ import { Link } from 'react-router-dom'
 import { format, parseISO } from 'date-fns'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { ArrowDown, ArrowUp } from 'lucide-react'
-import type { TradeRecord } from '@/db/types'
+import { DEFAULT_MODEL_NAME, type TradeRecord } from '@/db/types'
 import { db } from '@/db/schema'
 import {
   computeDuration,
   computePlannedRr,
-  computeRealizedRr,
-  effectivePnl,
   inferSide,
+  outcomeTextClass,
   totalContracts,
+  tradeMetrics,
 } from '@/lib/trade-math'
 import { formatDuration } from '@/lib/duration'
 import { formatUsd } from '@/lib/money'
@@ -38,13 +38,14 @@ function earliestTime(t: TradeRecord): string | null {
 // button-shaped wrappers (Stats vs Day expandable row).
 export function TradeRowCells({ trade, index }: TradeRowProps) {
   const side = inferSide(trade)
-  const pnl = effectivePnl(trade)
-  const realRr = computeRealizedRr(trade)
+  const { pnl, outcome } = tradeMetrics(trade)
+  const realRr = trade.stop_loss > 0 && pnl !== null ? pnl / trade.stop_loss : null
   const plannedRr = computePlannedRr(trade)
   const contracts = totalContracts(trade)
   const start = earliestTime(trade)
   const startHHmm = start ? format(parseISO(start), 'HH:mm') : '—'
   const dur = computeDuration(trade)
+  const tone = outcomeTextClass(outcome, pnl !== null)
   const playbook = useLiveQuery(
     () => (trade.playbook_id ? db.playbooks.get(trade.playbook_id) : undefined),
     [trade.playbook_id],
@@ -52,7 +53,7 @@ export function TradeRowCells({ trade, index }: TradeRowProps) {
 
   return (
     <>
-      <span className="text-xs font-mono text-(--color-text-dim) tabular-nums -mr-5 inline-block w-7">
+      <span className="text-xs font-mono text-(--color-text-dim) tabular-nums -mr-4 inline-block w-7">
         {index !== undefined ? `#${index}` : ''}
       </span>
       <span
@@ -93,27 +94,25 @@ export function TradeRowCells({ trade, index }: TradeRowProps) {
           {startHHmm}
           {dur.total_ms !== null && ` (${formatDuration(dur.total_ms)})`}
         </span>
-        <span className="inline-block w-32 truncate text-(--color-text)">
-          {playbook?.name ?? ''}
+        <span className="inline-block w-20 truncate text-(--color-text)">
+          {playbook?.name ?? DEFAULT_MODEL_NAME}
         </span>
         <span className="inline-block w-24 truncate">
           {trade.emotion ?? ''}
         </span>
       </span>
-      <span className="text-xs font-mono text-(--color-text-dim) tabular-nums whitespace-nowrap inline-block w-32 text-right">
+      <span className="text-xs font-mono text-(--color-text-dim) tabular-nums whitespace-nowrap inline-block w-[4.5rem] text-left -mr-5">
         {plannedRr === null ? '—' : `${plannedRr.toFixed(2)}x`} → {realRr === null ? '—' : `${realRr.toFixed(2)}x`}
       </span>
       <span
         className={cn(
           'text-sm font-mono font-medium tabular-nums whitespace-nowrap inline-block w-24 text-right',
-          pnl !== null && pnl > 0 && 'text-(--color-win)',
-          pnl !== null && pnl < 0 && 'text-(--color-loss)',
-          (pnl === null || pnl === 0) && 'text-(--color-text-dim)',
+          tone,
         )}
       >
         {pnl === null ? '—' : formatUsd(pnl)}
       </span>
-      <span className="text-sm font-mono text-(--color-text-dim) inline-block w-10 text-center">
+      <span className={cn('text-sm font-mono inline-block w-10 text-center', tone)}>
         {RATING_LABEL[trade.rating]}
       </span>
     </>

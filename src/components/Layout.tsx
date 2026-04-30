@@ -2,6 +2,7 @@ import { Link, NavLink, Outlet } from 'react-router-dom'
 import { AccountSwitcher } from '@/components/AccountSwitcher'
 import { NotificationBanner } from '@/components/NotificationBanner'
 import { SyncStatusIndicator } from '@/components/SyncStatusIndicator'
+import { useNewsSync } from '@/lib/use-news-sync'
 import { useCurrentEquity } from '@/lib/use-starting-equity'
 import { formatUsd } from '@/lib/money'
 import { cn } from '@/lib/utils'
@@ -16,6 +17,7 @@ const links = [
 ]
 
 export function Layout() {
+  useNewsSync()
   const equity = useCurrentEquity()
   return (
     <div className="min-h-full flex flex-col">
@@ -55,7 +57,7 @@ export function Layout() {
           </div>
         </div>
       </header>
-      <main className="flex-1 mx-auto max-w-7xl w-full px-4 py-6">
+      <main className="flex-1 mx-auto max-w-7xl w-full px-4 pt-6 pb-40">
         <NotificationBanner />
         <Outlet />
       </main>

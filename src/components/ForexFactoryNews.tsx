@@ -7,6 +7,7 @@ import {
   type FFImpact,
   type FFWeek,
 } from '@/lib/forex-factory'
+import { syncWeekNews } from '@/lib/news-sync'
 import { NY_TZ, nyDateKey, nyTimeHHmm } from '@/lib/tz'
 import { cn } from '@/lib/utils'
 
@@ -120,9 +121,14 @@ export function ForexFactoryNews() {
     setRefreshing(true)
     try {
       // Refresh only the weeks we've already loaded.
+      // Manual refresh — bypasses cache, so freshly-fetched thisweek data
+      // is what the persisted news_events table needs to mirror.
       const weeks = Object.keys(loadedByWeek) as FFWeek[]
       await Promise.all(weeks.map(w => fetchForexFactoryWeek(w, true).then(
-        data => setLoadedByWeek(prev => ({ ...prev, [w]: data })),
+        data => {
+          setLoadedByWeek(prev => ({ ...prev, [w]: data }))
+          if (w === 'thisweek') void syncWeekNews(data)
+        },
       )))
       setError(null)
     } catch (e) {

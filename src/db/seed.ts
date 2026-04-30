@@ -26,7 +26,6 @@ export async function seedSampleTrades(): Promise<number> {
       drawdown: 20,
       buildup: 110,
       rating: 'good',
-      pnl_override: null,
       screenshot: null,
     },
     {
@@ -44,7 +43,6 @@ export async function seedSampleTrades(): Promise<number> {
       drawdown: 50,
       buildup: 5,
       rating: 'egg',
-      pnl_override: null,
       screenshot: null,
     },
     {
@@ -63,7 +61,6 @@ export async function seedSampleTrades(): Promise<number> {
       drawdown: 15,
       buildup: 70,
       rating: 'excellent',
-      pnl_override: null,
       screenshot: null,
     },
   ]

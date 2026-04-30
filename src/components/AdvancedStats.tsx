@@ -1,15 +1,15 @@
 import { useMemo } from 'react'
-import { format } from 'date-fns'
+import { eachDayOfInterval, format, parseISO } from 'date-fns'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { DonutChart } from '@/components/DonutChart'
 import { db } from '@/db/schema'
 import { useActiveAccountId } from '@/lib/active-account'
 import { aggregate } from '@/lib/trade-stats'
 import { formatUsd } from '@/lib/money'
-import { classifyTrade, effectivePnl, inferSide } from '@/lib/trade-math'
+import { classifyTrade, computeNetPnl, inferSide } from '@/lib/trade-math'
 import { cn } from '@/lib/utils'
 import type { Session, TradeRecord } from '@/db/types'
-import { EMOTIONS } from '@/db/types'
+import { EMOTIONS, DEFAULT_MODEL_NAME } from '@/db/types'
 import {
   compositeScore,
   dailyEquitySeries,
@@ -27,14 +27,10 @@ import {
 
 function buildDayRange(rangeStart: string | null, rangeEnd: string | null): string[] {
   if (!rangeStart || !rangeEnd) return []
-  const out: string[] = []
-  const cur = new Date(rangeStart + 'T00:00:00')
-  const end = new Date(rangeEnd + 'T00:00:00')
-  while (cur <= end) {
-    out.push(format(cur, 'yyyy-MM-dd'))
-    cur.setDate(cur.getDate() + 1)
-  }
-  return out
+  return eachDayOfInterval({
+    start: parseISO(rangeStart),
+    end: parseISO(rangeEnd),
+  }).map(d => format(d, 'yyyy-MM-dd'))
 }
 
 export function HeroNetPnl({
@@ -86,9 +82,11 @@ const EMOTION_COLORS: Record<(typeof EMOTIONS)[number], string> = {
   focused: '#34d399',
   anxious: '#f59e0b',
   fearful: '#fb7185',
-  greedy: '#a855f7',
+  FOMO: '#f97316',
+  impatient: '#ec4899',
   frustrated: '#ef4444',
   tired: '#9ca3af',
+  greedy: '#a855f7',
   busy: '#06b6d4',
 }
 
@@ -208,8 +206,9 @@ export function DistributionDonuts({ filtered }: { filtered: TradeRecord[] }) {
     let other = 0
     for (const t of filtered) {
       if (!t.playbook_id || !nameById.has(t.playbook_id)) {
-        // Trades without a model OR pointing at a since-deleted model both
-        // collapse into a single unlabelled "Other" wedge.
+        // Trades without a model (or pointing at a since-deleted one) collapse
+        // into a single labelled "gambling" wedge — the default fallback name
+        // for model-less trades.
         other++
         continue
       }
@@ -229,10 +228,9 @@ export function DistributionDonuts({ filtered }: { filtered: TradeRecord[] }) {
       }))
     if (other > 0) {
       segments.push({
-        label: 'Other',
+        label: DEFAULT_MODEL_NAME,
         value: other,
         color: 'var(--color-chart-muted)',
-        legendHidden: true,
       })
     }
     return segments
@@ -314,7 +312,7 @@ export function AdvancedMetricsSections({
     const m = new Map<string, { pnl: number; count: number }>()
     for (const t of filtered) {
       const cur = m.get(t.trade_date) ?? { pnl: 0, count: 0 }
-      cur.pnl += effectivePnl(t) ?? 0
+      cur.pnl += computeNetPnl(t) ?? 0
       cur.count += 1
       m.set(t.trade_date, cur)
     }
@@ -482,7 +480,7 @@ export function AdvancedMetricsSections({
       <section className="space-y-2">
         <h2 className="text-sm font-medium">Daily P&amp;L</h2>
         <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3">
-          <div className="grid gap-1 grid-cols-[repeat(auto-fill,minmax(28px,1fr))]">
+          <div className="grid gap-1 grid-cols-[repeat(auto-fill,minmax(36px,1fr))]">
             {days.map(d => {
               const cell = dailyPnl.get(d)
               const pnl = cell?.pnl ?? 0
@@ -500,7 +498,7 @@ export function AdvancedMetricsSections({
                   type="button"
                   onClick={() => onDayClick?.(d)}
                   title={`${d} · ${formatUsd(pnl)} · ${cell?.count ?? 0} trade${(cell?.count ?? 0) === 1 ? '' : 's'}`}
-                  className="aspect-square rounded-sm text-xs font-mono text-(--color-text-dim) hover:opacity-80 transition-opacity"
+                  className="aspect-square rounded-sm text-xs font-mono text-(--color-text-dim) hover:opacity-80 transition-opacity border border-(--color-border)"
                   style={{ backgroundColor: bg }}
                 >
                   {format(new Date(d + 'T00:00:00'), 'd')}
@@ -645,7 +643,7 @@ function CompositeScoreCard({ score }: { score: ReturnType<typeof compositeScore
               return (
                 <g key={p.key}>
                   <circle cx={pt.x} cy={pt.y} r={5} fill={fillColor} />
-                  <circle cx={pt.x} cy={pt.y} r={2} fill="white" />
+                  <circle cx={pt.x} cy={pt.y} r={2} fill="var(--color-panel)" />
                 </g>
               )
             })}

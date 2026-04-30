@@ -16,7 +16,7 @@ import {
 import { Image as ImageIcon, StickyNote } from 'lucide-react'
 import { db } from '@/db/schema'
 import { useActiveAccountId } from '@/lib/active-account'
-import { classifyTrade, effectivePnl } from '@/lib/trade-math'
+import { classifyTrade, computeNetPnl } from '@/lib/trade-math'
 import { formatUsd } from '@/lib/money'
 import { parseYearMonth, WEEK_OPTS } from '@/lib/buckets'
 import { ForexFactoryNews } from '@/components/ForexFactoryNews'
@@ -106,7 +106,7 @@ export function CalendarRoute() {
   const perDay = useMemo(() => {
     const m = new Map<string, { pnl: number; count: number; wins: number; losses: number }>()
     for (const t of trades ?? []) {
-      const pnl = effectivePnl(t) ?? 0
+      const pnl = computeNetPnl(t) ?? 0
       const cur = m.get(t.trade_date) ?? { pnl: 0, count: 0, wins: 0, losses: 0 }
       cur.pnl += pnl
       cur.count += 1
@@ -122,7 +122,7 @@ export function CalendarRoute() {
     let total = 0
     for (const t of trades ?? []) {
       if (isSameMonth(new Date(t.trade_date + 'T00:00:00'), month)) {
-        total += effectivePnl(t) ?? 0
+        total += computeNetPnl(t) ?? 0
       }
     }
     return total

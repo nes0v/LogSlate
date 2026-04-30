@@ -23,26 +23,40 @@ import {
 } from './advanced-stats'
 import { execution, tradeRecord } from '@/test/fixtures'
 
-// Helper: build a trade with a specific net P&L via pnl_override.
-// AHPC is set to match the PnL sign so `classifyTrade` agrees with the
-// override (otherwise the >|4| handles threshold would mark every trade
-// as scratch).
-function tradeWithPnl(pnl: number, overrides: Parameters<typeof tradeRecord>[0] = {}) {
-  const sellPrice = pnl > 0 ? 20010 : pnl < 0 ? 19990 : 20000
+// Helper: build a trade whose computed net PnL matches `pnl`. Uses NQ micro
+// ($2 / handle, $0.62 fee × 2 sides = $1.24 fees) so even small dollar
+// values produce enough handles of price movement to clear the breakeven
+// threshold (NQ: 5 handles); pnl=0 deliberately sits in the scratch band.
+//
+// `overrides.executions` is treated as time-only — buy/sell times are read
+// from the first two entries but their prices are replaced with values that
+// produce the requested net pnl. That way callers can place a trade on a
+// specific clock/date without clobbering the price movement.
+function tradeWithPnl(
+  pnl: number,
+  overrides: Parameters<typeof tradeRecord>[0] = {},
+) {
+  const FEES = 1.24
+  const HANDLE_VALUE = 2
+  const handles = pnl === 0 ? 0 : (pnl + FEES) / HANDLE_VALUE
+  const { executions: execOverrides, ...rest } = overrides
+  const buyTime = execOverrides?.[0]?.time ?? '2026-04-15T14:30:00.000Z'
+  const sellTime = execOverrides?.[1]?.time ?? '2026-04-15T14:45:00.000Z'
   return tradeRecord({
-    pnl_override: pnl,
+    symbol: 'NQ',
+    contract_type: 'micro',
     executions: [
-      execution({ kind: 'buy', price: 20000, time: '2026-04-15T14:30:00.000Z' }),
-      execution({ kind: 'sell', price: sellPrice, time: '2026-04-15T14:45:00.000Z' }),
+      execution({ kind: 'buy', price: 20000, time: buyTime }),
+      execution({ kind: 'sell', price: 20000 + handles, time: sellTime }),
     ],
-    ...overrides,
+    ...rest,
   })
 }
 
 describe('profitFactor', () => {
   it('returns wins/|losses|', () => {
     const trades = [tradeWithPnl(100), tradeWithPnl(200), tradeWithPnl(-100)]
-    expect(profitFactor(trades)).toBe(3)
+    expect(profitFactor(trades)).toBeCloseTo(3, 5)
   })
 
   it('returns Infinity when there are wins but no losses', () => {
@@ -62,7 +76,7 @@ describe('payoffRatio', () => {
   it('returns avg_win / |avg_loss|', () => {
     const trades = [tradeWithPnl(200), tradeWithPnl(100), tradeWithPnl(-50)]
     // avg_win=150, avg_loss=-50 -> 3
-    expect(payoffRatio(trades)).toBe(3)
+    expect(payoffRatio(trades)).toBeCloseTo(3, 5)
   })
 
   it('returns null without both wins and losses', () => {
@@ -99,7 +113,7 @@ describe('expectancyDollars', () => {
   it('uses (win% * avg_win) - (loss% * |avg_loss|)', () => {
     const trades = [tradeWithPnl(100), tradeWithPnl(100), tradeWithPnl(-50), tradeWithPnl(-50)]
     // 0.5 * 100 + 0.5 * -50 = 25
-    expect(expectancyDollars(trades)).toBe(25)
+    expect(expectancyDollars(trades)).toBeCloseTo(25, 5)
   })
 
   it('returns null on empty / scratch-only input', () => {
@@ -205,16 +219,14 @@ describe('streakStats', () => {
   })
 
   it('orders by execution time within the same date', () => {
-    const earlier = tradeRecord({
-      pnl_override: 100,
+    const earlier = tradeWithPnl(100, {
       trade_date: '2026-04-01',
       executions: [
         execution({ kind: 'buy', time: '2026-04-01T09:00:00.000Z' }),
         execution({ kind: 'sell', time: '2026-04-01T09:05:00.000Z' }),
       ],
     })
-    const later = tradeRecord({
-      pnl_override: -50,
+    const later = tradeWithPnl(-50, {
       trade_date: '2026-04-01',
       executions: [
         execution({ kind: 'buy', time: '2026-04-01T11:00:00.000Z' }),
@@ -236,19 +248,19 @@ describe('dailyEquitySeries', () => {
     ]
     const dates = ['2026-04-01', '2026-04-02', '2026-04-03']
     const series = dailyEquitySeries(trades, dates, 10000)
-    expect(series[0].equity).toBe(10100)
-    expect(series[1].equity).toBe(9800)
-    expect(series[1].dd).toBe(-300)
-    expect(series[2].equity).toBe(9850)
-    expect(series[2].dd).toBe(-250)
+    expect(series[0].equity).toBeCloseTo(10100, 5)
+    expect(series[1].equity).toBeCloseTo(9800, 5)
+    expect(series[1].dd).toBeCloseTo(-300, 5)
+    expect(series[2].equity).toBeCloseTo(9850, 5)
+    expect(series[2].dd).toBeCloseTo(-250, 5)
   })
 
   it('fills no-trade days with zero P&L', () => {
     const trades = [tradeWithPnl(100, { trade_date: '2026-04-01' })]
     const series = dailyEquitySeries(trades, ['2026-04-01', '2026-04-02'], 0)
-    expect(series[0].pnl).toBe(100)
+    expect(series[0].pnl).toBeCloseTo(100, 5)
     expect(series[1].pnl).toBe(0)
-    expect(series[1].equity).toBe(100)
+    expect(series[1].equity).toBeCloseTo(100, 5)
   })
 })
 
@@ -265,8 +277,8 @@ describe('drawdownStats', () => {
       0,
     )
     const stats = drawdownStats(series, 50)
-    expect(stats.maxDd).toBe(-200)
-    expect(stats.recoveryFactor).toBe(0.25) // 50 / 200
+    expect(stats.maxDd).toBeCloseTo(-200, 5)
+    expect(stats.recoveryFactor).toBeCloseTo(0.25, 5) // 50 / 200
     expect(stats.maxDdDurationDays).toBeGreaterThanOrEqual(1)
   })
 
@@ -363,8 +375,12 @@ describe('scatter helpers', () => {
     const trades = [tradeWithPnl(100, { drawdown: 20 }), tradeWithPnl(-50, { drawdown: 100 })]
     const pts = maeScatter(trades)
     expect(pts).toHaveLength(2)
-    expect(pts[0]).toMatchObject({ x: 20, y: 100, win: true })
-    expect(pts[1]).toMatchObject({ x: 100, y: -50, win: false })
+    expect(pts[0].x).toBe(20)
+    expect(pts[0].y).toBeCloseTo(100, 5)
+    expect(pts[0].win).toBe(true)
+    expect(pts[1].x).toBe(100)
+    expect(pts[1].y).toBeCloseTo(-50, 5)
+    expect(pts[1].win).toBe(false)
   })
 
   it('mfeScatter skips trades with no buildup', () => {
@@ -385,7 +401,7 @@ describe('time-of-day / weekday / month aggregations', () => {
     const arr = pnlByHour([t])
     expect(arr).toHaveLength(24)
     expect(arr[localHour].count).toBe(1)
-    expect(arr[localHour].pnl).toBe(100)
+    expect(arr[localHour].pnl).toBeCloseTo(100, 5)
   })
 
   it('pnlByWeekday counts wins and losses per weekday', () => {
@@ -399,7 +415,7 @@ describe('time-of-day / weekday / month aggregations', () => {
     expect(wed.name).toBe('Wed')
     expect(wed.wins).toBe(1)
     expect(wed.losses).toBe(1)
-    expect(wed.pnl).toBe(50)
+    expect(wed.pnl).toBeCloseTo(50, 5)
   })
 
   it('pnlByMonth groups by YYYY-MM', () => {
@@ -409,10 +425,13 @@ describe('time-of-day / weekday / month aggregations', () => {
       tradeWithPnl(-25, { trade_date: '2026-04-30' }),
     ]
     const arr = pnlByMonth(trades)
-    expect(arr).toEqual([
-      { month: '2026-03', pnl: 100, count: 1 },
-      { month: '2026-04', pnl: 25, count: 2 },
-    ])
+    expect(arr).toHaveLength(2)
+    expect(arr[0].month).toBe('2026-03')
+    expect(arr[0].count).toBe(1)
+    expect(arr[0].pnl).toBeCloseTo(100, 5)
+    expect(arr[1].month).toBe('2026-04')
+    expect(arr[1].count).toBe(2)
+    expect(arr[1].pnl).toBeCloseTo(25, 5)
   })
 })
 

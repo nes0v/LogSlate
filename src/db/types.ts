@@ -42,12 +42,20 @@ export const EMOTIONS = [
   'focused',
   'anxious',
   'fearful',
-  'greedy',
+  'FOMO',
+  'impatient',
   'frustrated',
   'tired',
+  'greedy',
   'busy',
 ] as const
 export type Emotion = (typeof EMOTIONS)[number]
+
+// Display fallback for trades with no playbook selected. Not a real Playbook
+// row — never appears on the Models page; only used as a label wherever the
+// model name would otherwise be blank.
+export const DEFAULT_MODEL_NAME = 'gambling'
+
 export const MARKET_CONDITIONS = [
   'trending',
   'ranging',
@@ -71,7 +79,6 @@ export interface TradeRecord {
   drawdown: number | null // USD, MAE — max adverse excursion (optional)
   buildup: number | null // USD, MFE — max favorable excursion (optional)
   rating: Rating
-  pnl_override: number | null // when set, overrides computed net PnL
   screenshot: string | null // base64 data URL
   // Reflection / playbook fields (all optional; empty/null on legacy rows).
   profit_target: number // USD planned profit target
@@ -192,6 +199,29 @@ export interface ProgressCheck {
   date: string // YYYY-MM-DD
   rule_id: string
   checked: boolean
+  created_at: string
+  updated_at: string
+}
+
+// Persisted USD high/medium-impact news drivers per NY calendar day.
+// `cancelled = true` means the event was previously seen in the feed but
+// has since disappeared (e.g. release postponed). The row is kept so the
+// Day page can show it struck-through instead of silently vanishing.
+//
+// Not scoped per account — economic news is global, the same for every
+// trader using the app — so no `account_id`.
+export type PersistedNewsImpact = 'High' | 'Medium'
+export interface NewsEvent {
+  id: string // `${date}${title}` (unit-separator avoids title collisions)
+  date: string // YYYY-MM-DD (NY calendar)
+  title: string
+  country: string // always 'USD' for now
+  impact: PersistedNewsImpact
+  scheduled_at: string // ISO 8601 UTC, the event's actual clock time
+  forecast: string
+  previous: string
+  cancelled: boolean
+  last_seen_at: string // ISO; bumped on every fresh feed that re-confirms it
   created_at: string
   updated_at: string
 }

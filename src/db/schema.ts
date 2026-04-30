@@ -4,6 +4,7 @@ import type {
   DayScreenshot,
   EquityAdjustment,
   Execution,
+  NewsEvent,
   Note,
   PendingUpload,
   Playbook,
@@ -28,6 +29,7 @@ class LogslateDB extends Dexie {
   playbooks!: EntityTable<Playbook, 'id'>
   progress_rules!: EntityTable<ProgressRule, 'id'>
   progress_checks!: EntityTable<ProgressCheck, 'id'>
+  news_events!: EntityTable<NewsEvent, 'id'>
 
   constructor() {
     super('logslate')
@@ -214,6 +216,23 @@ class LogslateDB extends Dexie {
         '&id, [account_id+active], account_id, active, sort, updated_at',
       progress_checks:
         '&id, [account_id+date], account_id, date, rule_id, updated_at',
+    })
+
+    // v11: pnl_override removed. Drop the field from existing records.
+    // Guarded so Dexie doesn't rewrite rows that never had the property.
+    this.version(11).upgrade(async tx => {
+      await tx
+        .table('trades')
+        .toCollection()
+        .modify((t: TradeRecord & { pnl_override?: unknown }) => {
+          if ('pnl_override' in t) delete t.pnl_override
+        })
+    })
+
+    // v12: persisted USD high/medium-impact news drivers per NY day. Indexed
+    // on `date` so the Day page can pull a single day's events in one query.
+    this.version(12).stores({
+      news_events: '&id, date, updated_at',
     })
   }
 }

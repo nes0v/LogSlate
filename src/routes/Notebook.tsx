@@ -218,7 +218,7 @@ function NoteEditor({ note, folders, onChange, onDelete }: NoteEditorProps) {
   }, [dirty, title, body, folder, onChange])
 
   return (
-    <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-4 space-y-3">
+    <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3 space-y-3">
       <div className="flex items-center gap-2 flex-wrap">
         <input
           value={title}
