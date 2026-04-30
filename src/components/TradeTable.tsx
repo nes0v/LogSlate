@@ -56,7 +56,7 @@ export function TradeTable({ trades, expandedIds, onToggle }: TradeTableProps) {
                       )}
                     >
                       <div className="overflow-hidden">
-                        <div className="px-3 pb-3 pt-1">
+                        <div className="p-3">
                           <TradeExpandedDetails trade={t} />
                         </div>
                       </div>

@@ -1,7 +1,9 @@
 import { Link } from 'react-router-dom'
 import { format, parseISO } from 'date-fns'
-import { ExternalLink, Pencil, Trash2 } from 'lucide-react'
+import { useLiveQuery } from 'dexie-react-hooks'
+import { Check, ExternalLink, Pencil, Trash2, X } from 'lucide-react'
 import type { TradeRecord } from '@/db/types'
+import { db } from '@/db/schema'
 import { deleteTrade } from '@/db/queries'
 import { computeAhpc, totalContracts } from '@/lib/trade-math'
 import { driveViewUrlFromRef, parseScreenshotRef } from '@/lib/drive-images'
@@ -13,8 +15,11 @@ interface TradeExpandedDetailsProps {
   trade: TradeRecord
 }
 
-const ACTION_BTN_CLASS =
-  'inline-flex items-center gap-2 px-3 py-1.5 text-sm rounded-(--radius) bg-(--color-bg) text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2) transition-colors cursor-pointer'
+const ACTION_BTN_BASE =
+  'inline-flex items-center gap-2 px-3 py-1.5 text-sm rounded-(--radius) border border-(--color-border) hover:bg-(--color-panel-2) transition-colors cursor-pointer'
+const EDIT_BTN_CLASS = `${ACTION_BTN_BASE} text-(--color-accent)`
+const DELETE_BTN_CLASS = `${ACTION_BTN_BASE} text-(--color-loss)`
+const NEUTRAL_BTN_CLASS = `${ACTION_BTN_BASE} text-(--color-text-dim) hover:text-(--color-text)`
 
 export function TradeExpandedDetails({ trade }: TradeExpandedDetailsProps) {
   const contracts = totalContracts(trade)
@@ -25,6 +30,11 @@ export function TradeExpandedDetails({ trade }: TradeExpandedDetailsProps) {
     (a, b) => Date.parse(a.time) - Date.parse(b.time),
   )
   const driveUrl = driveViewUrlFromRef(parseScreenshotRef(trade.screenshot))
+  const playbook = useLiveQuery(
+    () => (trade.playbook_id ? db.playbooks.get(trade.playbook_id) : undefined),
+    [trade.playbook_id],
+  )
+  const followed = new Set(trade.playbook_rules_followed ?? [])
 
   async function handleDelete() {
     if (!confirm('Delete this trade?')) return
@@ -33,16 +43,41 @@ export function TradeExpandedDetails({ trade }: TradeExpandedDetailsProps) {
 
   return (
     <div className="space-y-3 min-w-0">
-      {trade.idea && (
-        <p className="text-sm text-(--color-text) whitespace-pre-wrap break-words">
-          {trade.idea}
-        </p>
-      )}
-      {trade.notes && (
-        <p className="text-sm text-(--color-text-dim) whitespace-pre-wrap break-words">
-          {trade.notes}
-        </p>
-      )}
+      <div className="flex items-start">
+        <div className="w-[27rem] shrink-0 min-w-0 space-y-3">
+          {trade.idea && (
+            <p className="text-sm text-(--color-text) whitespace-pre-wrap break-words">
+              {trade.idea}
+            </p>
+          )}
+          {trade.notes && (
+            <p className="text-sm text-(--color-text-dim) whitespace-pre-wrap break-words">
+              {trade.notes}
+            </p>
+          )}
+        </div>
+        {playbook && (
+          <ModelChecklist groups={playbook.groups} followed={followed} />
+        )}
+        <div className="flex items-center gap-2 shrink-0 ml-auto">
+          <Link to={`/trade/${trade.id}/edit`} className={EDIT_BTN_CLASS}>
+            <Pencil className="size-4" /> Edit
+          </Link>
+          <button type="button" onClick={handleDelete} className={DELETE_BTN_CLASS}>
+            <Trash2 className="size-4" /> Delete
+          </button>
+          {driveUrl && (
+            <a
+              href={driveUrl}
+              target="_blank"
+              rel="noreferrer"
+              className={NEUTRAL_BTN_CLASS}
+            >
+              <ExternalLink className="size-4" /> Drive
+            </a>
+          )}
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-[auto_auto] gap-x-20 gap-y-3 sm:gap-y-5 w-fit">
         {execs.length > 0 ? (
@@ -64,10 +99,6 @@ export function TradeExpandedDetails({ trade }: TradeExpandedDetailsProps) {
           rows={[
             ['Drawdown', trade.drawdown === null ? '—' : formatUsd(trade.drawdown)],
             ['Buildup', trade.buildup === null ? '—' : formatUsd(trade.buildup)],
-          ]}
-        />
-        <StatColumn
-          rows={[
             [
               'AHPC',
               ahpc === null
@@ -82,25 +113,6 @@ export function TradeExpandedDetails({ trade }: TradeExpandedDetailsProps) {
             ],
           ]}
         />
-      </div>
-
-      <div className="flex items-center gap-2 pt-1">
-        <Link to={`/trade/${trade.id}/edit`} className={ACTION_BTN_CLASS}>
-          <Pencil className="size-4" /> Edit
-        </Link>
-        <button type="button" onClick={handleDelete} className={ACTION_BTN_CLASS}>
-          <Trash2 className="size-4" /> Delete
-        </button>
-        {driveUrl && (
-          <a
-            href={driveUrl}
-            target="_blank"
-            rel="noreferrer"
-            className={ACTION_BTN_CLASS}
-          >
-            <ExternalLink className="size-4" /> Drive
-          </a>
-        )}
       </div>
     </div>
   )
@@ -130,6 +142,45 @@ function ExecRow({
       <span>{price}</span>
       <span className="text-(--color-text-dim)">×{contracts}</span>
     </>
+  )
+}
+
+function ModelChecklist({
+  groups,
+  followed,
+}: {
+  groups: Array<{ id: string; name: string; rules: string[] }>
+  followed: Set<string>
+}) {
+  const total = groups.reduce((n, g) => n + g.rules.length, 0)
+  if (total === 0) return null
+  return (
+    <div className="shrink-0 max-w-xs space-y-0.5">
+      {groups.flatMap(g =>
+        g.rules.map((r, i) => {
+          const ok = followed.has(r)
+          const Icon = ok ? Check : X
+          return (
+            <div key={`${g.id}-${i}`} className="flex items-start gap-1.5">
+              <Icon
+                className={cn(
+                  'size-3.5 shrink-0 mt-1',
+                  ok ? 'text-(--color-win)' : 'text-(--color-loss)',
+                )}
+              />
+              <span
+                className={cn(
+                  'text-sm leading-tight',
+                  ok ? 'text-(--color-text)' : 'text-(--color-text-dim)',
+                )}
+              >
+                {r}
+              </span>
+            </div>
+          )
+        }),
+      )}
+    </div>
   )
 }
 
