@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
@@ -13,10 +13,9 @@ import {
   startOfWeek,
   startOfYear,
 } from 'date-fns'
-import { RATING_LABEL } from '@/lib/rating-label'
 import { bucketNavTarget, drillDownRange, timeframeFromParams } from '@/lib/stats-nav'
 import { ChevronRight, X } from 'lucide-react'
-import type { ContractType, Rating, Session, SymbolKey } from '@/db/types'
+import { CONTRACT_OPTS, SESSION_OPTS, SYMBOL_OPTS } from '@/lib/filter-options'
 import { db } from '@/db/schema'
 import { useActiveAccountId } from '@/lib/active-account'
 import {
@@ -52,35 +51,8 @@ import {
   HeroNetPnl,
 } from '@/components/AdvancedStats'
 import { Pills } from '@/components/form/Pills'
+import { RatingFilter } from '@/components/form/RatingFilter'
 import { Field, inputClass } from '@/components/form/Field'
-
-const SYMBOL_OPTS = [
-  { value: null, label: 'All' },
-  { value: 'NQ' as const, label: 'NQ' },
-  { value: 'ES' as const, label: 'ES' },
-] satisfies Array<{ value: SymbolKey | null; label: string }>
-
-const CONTRACT_OPTS = [
-  { value: null, label: 'All' },
-  { value: 'micro' as const, label: 'micro' },
-  { value: 'mini' as const, label: 'mini' },
-] satisfies Array<{ value: ContractType | null; label: string }>
-
-const SESSION_OPTS = [
-  { value: null, label: 'All' },
-  { value: 'pre' as const, label: 'pre' },
-  { value: 'AM' as const, label: 'AM' },
-  { value: 'LT' as const, label: 'LT' },
-  { value: 'PM' as const, label: 'PM' },
-  { value: 'aft' as const, label: 'aft' },
-] satisfies Array<{ value: Session | null; label: string }>
-
-const RATING_OPTS = [
-  { value: null, label: 'All' },
-  { value: 'excellent' as const, label: RATING_LABEL.excellent },
-  { value: 'good' as const, label: RATING_LABEL.good },
-  { value: 'egg' as const, label: RATING_LABEL.egg },
-] satisfies Array<{ value: Rating | null; label: string }>
 
 /** Default date filter — 30 days (inclusive) ending on `baseDate`.
  *  `baseDate` is the most recent trade date when any exists, falling
@@ -99,15 +71,16 @@ export function StatsRoute() {
   const navigate = useNavigate()
   const urlFilters = filtersFromParams(params)
   const [equityView, setEquityView] = useState<EquityView>(getDefaultEquityView)
+  const onAdvancedDayClick = useCallback((d: string) => navigate(`/day/${d}`), [navigate])
   const [tableExpandedIds, setTableExpandedIds] = useState<Set<string>>(new Set())
-  function toggleTableRow(id: string) {
+  const toggleTableRow = useCallback((id: string) => {
     setTableExpandedIds(prev => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
       return next
     })
-  }
+  }, [])
 
   // First-mount hydration: if the URL is bare and Reports/Stats has saved a
   // filter to the shared slot, replay it into the URL so this page picks it
@@ -121,10 +94,12 @@ export function StatsRoute() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   const timeframe = timeframeFromParams(params)
-  // Latest visible bucket-key range reported by the chart. Compared
-  // against the filter's bucket keys to decide whether to surface a
-  // "Set date filter" button; null until the chart first emits.
-  const [visibleRange, setVisibleRange] = useState<{ from: string; to: string } | null>(null)
+  // Latest visible bucket-key range reported by the chart. The chart
+  // emits this on every drag/zoom frame, so it lives in a ref to avoid
+  // re-rendering Stats per frame; only the derived "off-default" boolean
+  // surfaces as React state and only flips when it actually changes.
+  const visibleRangeRef = useRef<{ from: string; to: string } | null>(null)
+  const [showSetRangeBtn, setShowSetRangeBtn] = useState(false)
   // Bumped by `clear()` to make the chart snap back to the default
   // filter range — would otherwise stay bar-preserved if Clear also
   // changed the timeframe (e.g. clearing while on W).
@@ -309,12 +284,42 @@ export function StatsRoute() {
   }
 
   function setFilterToVisible() {
-    if (!visibleRange) return
-    const left = bucketKeyToDateRange(visibleRange.from)
-    const right = bucketKeyToDateRange(visibleRange.to)
+    const cur = visibleRangeRef.current
+    if (!cur) return
+    const left = bucketKeyToDateRange(cur.from)
+    const right = bucketKeyToDateRange(cur.to)
     if (!left || !right) return
     update({ from: left.from, to: right.to })
   }
+
+  // Filter keys live in a ref so the chart's onVisibleRangeChange callback
+  // can compare against the latest values without changing identity (which
+  // would force the chart to re-subscribe). Synced via the same effect
+  // that re-evaluates the off-default flag below.
+  const filterKeysRef = useRef<{ from: string | undefined; to: string | undefined }>({
+    from: filterFromKey,
+    to: filterToKey,
+  })
+
+  // Drag/zoom emits visible range; ref'd to dodge per-frame re-renders.
+  // Only the boolean visibility of the "Set date to range" button is
+  // hoisted to React state, and only updated when its value flips.
+  const handleVisibleRangeChange = useCallback((from: string, to: string) => {
+    visibleRangeRef.current = { from, to }
+    const off = from !== filterKeysRef.current.from || to !== filterKeysRef.current.to
+    setShowSetRangeBtn(prev => (prev === off ? prev : off))
+  }, [])
+
+  // When the filter (or timeframe) changes the chart doesn't re-emit, so
+  // sync the cached filter keys and re-evaluate the off-default flag from
+  // the latest visible range.
+  useEffect(() => {
+    filterKeysRef.current = { from: filterFromKey, to: filterToKey }
+    const cur = visibleRangeRef.current
+    if (!cur) return
+    const off = cur.from !== filterFromKey || cur.to !== filterToKey
+    setShowSetRangeBtn(prev => (prev === off ? prev : off))
+  }, [filterFromKey, filterToKey])
 
   // "Clear" returns to the bare /stats URL and restores the chart's
   // default state: filter back to the last-30-days default, timeframe
@@ -345,7 +350,7 @@ export function StatsRoute() {
       </div>
 
       <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3">
-        <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
+        <div className="flex flex-wrap items-end gap-3">
           <Field label="From" className="w-[135px]">
             <input
               type="date"
@@ -372,7 +377,7 @@ export function StatsRoute() {
             <Pills value={filters.session} onChange={v => update({ session: v })} options={SESSION_OPTS} />
           </Field>
           <Field label="Rating">
-            <Pills value={filters.rating} onChange={v => update({ rating: v })} options={RATING_OPTS} />
+            <RatingFilter value={filters.rating} onChange={v => update({ rating: v })} />
           </Field>
         </div>
       </section>
@@ -415,11 +420,7 @@ export function StatsRoute() {
             viewportFrom={rangeStart ?? undefined}
             viewportTo={rangeEnd ?? undefined}
             viewportEpoch={viewportEpoch}
-            onVisibleRangeChange={(from, to) => {
-              setVisibleRange(prev =>
-                prev && prev.from === from && prev.to === to ? prev : { from, to },
-              )
-            }}
+            onVisibleRangeChange={handleVisibleRangeChange}
             onPointClick={key => {
               // W/M/Q/Y clicks drill into the bucket on /stats;
               // D clicks navigate to the day page.
@@ -433,9 +434,7 @@ export function StatsRoute() {
             view={equityView === 'curve' ? 'line' : 'candles'}
             headerRight={
               <div className="flex items-center gap-2">
-                {visibleRange &&
-                  (visibleRange.from !== filterFromKey ||
-                    visibleRange.to !== filterToKey) && (
+                {showSetRangeBtn && (
                     <button
                       type="button"
                       onClick={setFilterToVisible}
@@ -453,7 +452,7 @@ export function StatsRoute() {
             filtered={filtered}
             rangeStart={rangeStart}
             rangeEnd={rangeEnd}
-            onDayClick={d => navigate(`/day/${d}`)}
+            onDayClick={onAdvancedDayClick}
           />
         </>
       ) : (

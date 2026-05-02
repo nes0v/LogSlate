@@ -1,10 +1,13 @@
 import { useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Archive, ArchiveRestore, Plus, Trash2 } from 'lucide-react'
+import { Archive, ArchiveRestore, Plus, Trash2, X } from 'lucide-react'
 import { db } from '@/db/schema'
-import type { Model, ModelRuleGroup, SymbolKey } from '@/db/types'
+import type { Model, ModelRuleGroup, Session, SymbolKey } from '@/db/types'
 import { useActiveAccountId } from '@/lib/active-account'
 import { Checkbox } from '@/components/form/Checkbox'
+import { inputClass } from '@/components/form/Field'
+import { Pills } from '@/components/form/Pills'
+import { SESSION_OPTS, SYMBOL_OPTS } from '@/lib/filter-options'
 import { cn } from '@/lib/utils'
 
 function newId(): string {
@@ -14,7 +17,7 @@ function newId(): string {
 const DEFAULT_GROUPS = (): ModelRuleGroup[] => [
   { id: newId(), name: 'Entry', rules: [] },
   { id: newId(), name: 'Exit', rules: [] },
-  { id: newId(), name: 'Risk management', rules: [] },
+  { id: newId(), name: 'Risk', rules: [] },
 ]
 
 export function ModelsRoute() {
@@ -53,6 +56,7 @@ export function ModelsRoute() {
       name: 'New model',
       description: '',
       symbols: [],
+      sessions: [],
       groups: DEFAULT_GROUPS(),
       archived: false,
       created_at: ts,
@@ -115,7 +119,7 @@ export function ModelsRoute() {
                   type="button"
                   onClick={() => setSelectedId(p.id)}
                   className={cn(
-                    'block w-full text-left px-2 py-1.5 rounded-sm text-sm transition-colors',
+                    'block w-full text-left p-3 rounded-sm text-sm transition-colors',
                     selected?.id === p.id
                       ? 'bg-(--color-panel-2) text-(--color-text)'
                       : 'text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)/50',
@@ -166,16 +170,26 @@ function ModelEditor({ model, onChange, onDelete }: ModelEditorProps) {
   const [description, setDescription] = useState(model.description)
   const [groups, setGroups] = useState<ModelRuleGroup[]>(model.groups)
   const [symbols, setSymbols] = useState<SymbolKey[]>(model.symbols)
+  const [sessions, setSessions] = useState<Session[]>(model.sessions)
 
   function commit(patch: Partial<Model>) {
     onChange(patch)
   }
 
-  function toggleSymbol(s: SymbolKey) {
-    const next = symbols.includes(s) ? symbols.filter(x => x !== s) : [...symbols, s]
+  function setSymbol(s: SymbolKey | null) {
+    const next: SymbolKey[] = s ? [s] : []
     setSymbols(next)
     commit({ symbols: next })
   }
+  function setSession(s: Session | null) {
+    const next: Session[] = s ? [s] : []
+    setSessions(next)
+    commit({ sessions: next })
+  }
+  // Multi-element arrays from older multi-select UI collapse to "All" here;
+  // single-element arrays surface their lone value.
+  const symbolValue: SymbolKey | null = symbols.length === 1 ? symbols[0] : null
+  const sessionValue: Session | null = sessions.length === 1 ? sessions[0] : null
 
   function addRule(groupId: string) {
     const next = groups.map(g =>
@@ -255,32 +269,17 @@ function ModelEditor({ model, onChange, onDelete }: ModelEditorProps) {
         onChange={e => setDescription(e.target.value)}
         onBlur={() => commit({ description })}
         placeholder="Describe the setup, market conditions, when to use it…"
-        className="w-full min-h-[80px] bg-(--color-bg) rounded-(--radius) p-2 text-sm outline-none focus:ring-2 focus:ring-(--color-accent-soft) resize-y transition-colors"
+        className={cn(inputClass, 'w-full min-h-[80px] resize-y')}
       />
 
-      <div>
-        <div className="text-xs uppercase tracking-wider text-(--color-text-dim) mb-1">
-          Symbols
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="flex flex-col items-start gap-2">
+          <span className="text-xs text-(--color-text-dim)">Symbol</span>
+          <Pills value={symbolValue} onChange={setSymbol} options={SYMBOL_OPTS} />
         </div>
-        <div className="flex gap-1">
-          {(['NQ', 'ES'] as const).map(s => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => toggleSymbol(s)}
-              className={cn(
-                'px-2 py-1 text-xs rounded border transition-colors',
-                symbols.includes(s)
-                  ? 'border-(--color-accent) text-(--color-accent) bg-(--color-accent)/10'
-                  : 'border-(--color-border) text-(--color-text-dim) hover:text-(--color-text)',
-              )}
-            >
-              {s}
-            </button>
-          ))}
-          <span className="text-xs text-(--color-text-dim) self-center pl-2">
-            {symbols.length === 0 ? 'all symbols' : ''}
-          </span>
+        <div className="flex flex-col items-start gap-2">
+          <span className="text-xs text-(--color-text-dim)">Session</span>
+          <Pills value={sessionValue} onChange={setSession} options={SESSION_OPTS} />
         </div>
       </div>
 
@@ -331,7 +330,7 @@ function ModelEditor({ model, onChange, onDelete }: ModelEditorProps) {
                     className="p-1 rounded text-(--color-text-dim) hover:text-(--color-loss)"
                     title="Remove rule"
                   >
-                    <Trash2 className="size-3" />
+                    <X className="size-3.5" />
                   </button>
                 </div>
               ))}

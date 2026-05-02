@@ -3,11 +3,14 @@ import { Controller, useFieldArray, useForm, useWatch, type Control } from 'reac
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { Plus, Trash2 } from 'lucide-react'
-import { emptyForm, formToDraft, tradeFormSchema, type TradeFormValues } from '@/lib/form-schema'
+import { detectSession, emptyForm, formToDraft, tradeFormSchema, type TradeFormValues } from '@/lib/form-schema'
+import { SESSION_BADGE, SESSION_BADGE_CLASS } from '@/lib/session-badge'
 import { db } from '@/db/schema'
 import { useActiveAccountId } from '@/lib/active-account'
 import { EMOTIONS, type Emotion, type TradeDraft } from '@/db/types'
 import { Pills } from '@/components/form/Pills'
+import { StarRating } from '@/components/form/StarRating'
+import { RATING_TO_STARS, STARS_TO_RATING } from '@/lib/rating'
 import { Field, inputClass } from '@/components/form/Field'
 import { NumberInput } from '@/components/form/NumberInput'
 import { QtyInput } from '@/components/form/QtyInput'
@@ -16,7 +19,6 @@ import { Checkbox } from '@/components/form/Checkbox'
 import { ScreenshotField } from '@/components/ScreenshotField'
 import { computeAhpc, computeNetPnl } from '@/lib/trade-math'
 import { formatUsd } from '@/lib/money'
-import { RATING_LABEL } from '@/lib/rating-label'
 import { cn } from '@/lib/utils'
 
 const SYMBOLS = [
@@ -27,21 +29,13 @@ const CONTRACT_TYPES = [
   { value: 'micro', label: 'micro' },
   { value: 'mini', label: 'mini' },
 ] as const
-const SESSIONS = [
-  { value: 'pre', label: 'pre' },
-  { value: 'AM', label: 'AM' },
-  { value: 'LT', label: 'LT' },
-  { value: 'PM', label: 'PM' },
-  { value: 'aft', label: 'aft' },
-] as const
-const RATINGS = [
-  { value: 'excellent', label: RATING_LABEL.excellent },
-  { value: 'good', label: RATING_LABEL.good },
-  { value: 'egg', label: RATING_LABEL.egg },
-] as const
 const EXECUTION_KINDS = [
-  { value: 'buy', label: 'Buy' },
-  { value: 'sell', label: 'Sell' },
+  { value: 'buy', label: 'buy' },
+  { value: 'sell', label: 'sell' },
+] as const
+const ORDER_TYPE_OPTIONS = [
+  { value: 'limit', label: 'limit' },
+  { value: 'market', label: 'market' },
 ] as const
 
 interface TradeFormProps {
@@ -110,46 +104,51 @@ export function TradeForm({
     const current = values.executions ?? []
     const buys = current.filter(e => e?.kind === 'buy').length
     const sells = current.filter(e => e?.kind === 'sell').length
-    executions.append({ kind: buys <= sells ? 'buy' : 'sell', price: null, time: '', contracts: 1 })
+    executions.append({
+      kind: buys <= sells ? 'buy' : 'sell',
+      order_type: 'limit',
+      price: null,
+      time: '',
+      contracts: 1,
+    })
   }
 
   return (
     <form onSubmit={handleSubmit(submit)}>
       <div className="space-y-3">
-        <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3 flex flex-wrap items-end gap-3">
-          <Field label="Symbol" error={errors.symbol?.message}>
-            <Controller
-              control={control}
-              name="symbol"
-              render={({ field }) => <Pills value={field.value} onChange={field.onChange} options={SYMBOLS} />}
-            />
-          </Field>
-          <Field label="Contract" error={errors.contract_type?.message}>
-            <Controller
-              control={control}
-              name="contract_type"
-              render={({ field }) => <Pills value={field.value} onChange={field.onChange} options={CONTRACT_TYPES} />}
-            />
-          </Field>
-          <Field label="Session" error={errors.session?.message}>
-            <Controller
-              control={control}
-              name="session"
-              render={({ field }) => <Pills value={field.value} onChange={field.onChange} options={SESSIONS} />}
-            />
-          </Field>
-          <Field label="Rating" error={errors.rating?.message}>
-            <Controller
-              control={control}
-              name="rating"
-              render={({ field }) => <Pills value={field.value} onChange={field.onChange} options={RATINGS} />}
-            />
-          </Field>
-        </section>
-
         <div className="grid lg:grid-cols-2 gap-3 items-start">
           <div className="space-y-3">
             <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3 space-y-3">
+          <div className="flex flex-wrap items-start gap-3">
+            <Field label="Symbol" error={errors.symbol?.message}>
+              <Controller
+                control={control}
+                name="symbol"
+                render={({ field }) => <Pills value={field.value} onChange={field.onChange} options={SYMBOLS} />}
+              />
+            </Field>
+            <Field label="Contract" error={errors.contract_type?.message}>
+              <Controller
+                control={control}
+                name="contract_type"
+                render={({ field }) => <Pills value={field.value} onChange={field.onChange} options={CONTRACT_TYPES} />}
+              />
+            </Field>
+            <Field label="Rating" error={errors.rating?.message}>
+              <Controller
+                control={control}
+                name="rating"
+                render={({ field }) => (
+                  <StarRating
+                    className="h-8"
+                    value={field.value ? RATING_TO_STARS[field.value] : 0}
+                    onChange={n => field.onChange(STARS_TO_RATING[n - 1])}
+                    count={3}
+                  />
+                )}
+              />
+            </Field>
+          </div>
           <Field label="Idea" error={errors.idea?.message}>
             <textarea
               className={cn(inputClass, 'min-h-[135px] resize-y')}
@@ -175,13 +174,20 @@ export function TradeForm({
               {executions.fields.map((item, i) => (
                 <div
                   key={item.id}
-                  className="grid grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)_70px_24px] gap-2 items-center"
+                  className="grid grid-cols-[auto_auto_minmax(0,1fr)_minmax(0,1fr)_70px_24px] gap-2 items-center"
                 >
                   <Controller
                     control={control}
                     name={`executions.${i}.kind`}
                     render={({ field }) => (
                       <Pills value={field.value} onChange={field.onChange} options={EXECUTION_KINDS} />
+                    )}
+                  />
+                  <Controller
+                    control={control}
+                    name={`executions.${i}.order_type`}
+                    render={({ field }) => (
+                      <Pills value={field.value} onChange={field.onChange} options={ORDER_TYPE_OPTIONS} />
                     )}
                   />
                   <Controller
@@ -221,6 +227,7 @@ export function TradeForm({
                     name={`executions.${i}.contracts`}
                     render={({ field }) => (
                       <QtyInput
+                        className="-mr-1"
                         value={field.value ?? 1}
                         onChange={field.onChange}
                       />
@@ -478,9 +485,28 @@ function LiveStatsSection({ control }: { control: Control<TradeFormValues> }) {
     return { ahpc, pnl, rr }
   }, [executions, symbol, contract_type, stop_loss])
 
+  const session = useMemo(() => {
+    const times = (executions ?? [])
+      .map(e => e?.time)
+      .filter((t): t is string => typeof t === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(t))
+    if (times.length === 0) return null
+    const earliest = times.reduce((min, t) => (t < min ? t : min))
+    return detectSession(earliest)
+  }, [executions])
+
   return (
     <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3">
-      <div className="grid grid-cols-3 gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-6">
+        <div className="flex items-center gap-2">
+          <div className="text-xs text-(--color-text-dim)">Session</div>
+          {session ? (
+            <span className={cn(SESSION_BADGE_CLASS, SESSION_BADGE[session])}>
+              {session}
+            </span>
+          ) : (
+            <div className="text-sm font-mono tabular-nums">—</div>
+          )}
+        </div>
         <Stat label="AHPC" value={stats.ahpc !== null ? stats.ahpc.toFixed(2) : '—'} />
         <Stat
           label="PNL"
@@ -503,7 +529,7 @@ function Stat({
   tone?: 'win' | 'loss' | null
 }) {
   return (
-    <div>
+    <div className="flex items-center gap-2">
       <div className="text-xs text-(--color-text-dim)">{label}</div>
       <div
         className={cn(

@@ -9,9 +9,9 @@ import { tradeRecord } from '@/test/fixtures'
 
 describe('applyFilters', () => {
   const trades = [
-    tradeRecord({ date: '2026-04-05', symbol: 'NQ', contract_type: 'mini', session: 'AM', rating: 'good' }),
-    tradeRecord({ date: '2026-04-10', symbol: 'ES', contract_type: 'micro', session: 'PM', rating: 'egg' }),
-    tradeRecord({ date: '2026-04-20', symbol: 'NQ', contract_type: 'micro', session: 'LT', rating: 'excellent' }),
+    tradeRecord({ date: '2026-04-05', symbol: 'NQ', contract_type: 'mini', session: 'am', rating: 'good' }),
+    tradeRecord({ date: '2026-04-10', symbol: 'ES', contract_type: 'micro', session: 'pm', rating: 'poor' }),
+    tradeRecord({ date: '2026-04-20', symbol: 'NQ', contract_type: 'micro', session: 'lunch', rating: 'excellent' }),
   ]
 
   it('filters by date range inclusively', () => {
@@ -32,7 +32,7 @@ describe('applyFilters', () => {
   })
 
   it('filters by session', () => {
-    const out = applyFilters(trades, { ...EMPTY_FILTERS, session: 'AM' })
+    const out = applyFilters(trades, { ...EMPTY_FILTERS, session: 'am' })
     expect(out).toHaveLength(1)
   })
 
@@ -59,7 +59,7 @@ describe('filtersFromParams ↔ paramsFromFilters round-trip', () => {
       to: '2026-04-30',
       symbol: 'NQ' as const,
       contract: 'mini' as const,
-      session: 'AM' as const,
+      session: 'am' as const,
       rating: 'good' as const,
     }
     expect(filtersFromParams(paramsFromFilters(filters))).toEqual(filters)

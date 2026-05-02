@@ -28,7 +28,7 @@ export function tradeDraft(overrides: Partial<TradeDraft> = {}): TradeDraft {
     date: '2026-04-15',
     symbol: 'NQ',
     contract_type: 'mini',
-    session: 'AM',
+    session: 'am',
     idea: 'test trade',
     executions: [
       execution({ kind: 'buy', price: 20000, time: '2026-04-15T14:30:00.000Z', contracts: 1 }),

@@ -40,7 +40,7 @@
    * surfaces. The shadow `0 0 0 1px` ring adds a hairline so they still
    * have crisp edges. Panel-2 is the recessed/hover step; panel-3 is
    * the deepest surface (used for inputs-on-panel etc.). */
-  --color-bg:        light-dark(#e3e5ec, #0b0d12);
+  --color-bg:        light-dark(#d6d8df, #0b0d12);
   --color-panel:     light-dark(#ffffff, #181a23);
   --color-panel-2:   light-dark(#f4f5f8, #21232e);
   --color-panel-3:   light-dark(#e8eaef, #2a2d3a);

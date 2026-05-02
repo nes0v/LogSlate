@@ -13,7 +13,7 @@ export async function seedSampleTrades(): Promise<number> {
       date: '2026-04-14',
       symbol: 'NQ',
       contract_type: 'micro',
-      session: 'AM',
+      session: 'am',
       idea: 'Opening range break — held vwap reclaim, target prior day high.',
       executions: [
         { kind: 'buy', price: 21050, time: '2026-04-14T13:35:00Z', contracts: 2 },
@@ -32,7 +32,7 @@ export async function seedSampleTrades(): Promise<number> {
       date: '2026-04-14',
       symbol: 'NQ',
       contract_type: 'micro',
-      session: 'PM',
+      session: 'pm',
       idea: 'Fade the pop at resistance — got stopped.',
       executions: [
         { kind: 'sell', price: 21105, time: '2026-04-14T19:30:00Z', contracts: 1 },
@@ -42,14 +42,14 @@ export async function seedSampleTrades(): Promise<number> {
       profit_target: 120,
       drawdown: 50,
       buildup: 5,
-      rating: 'egg',
+      rating: 'poor',
       screenshot: null,
     },
     {
       date: '2026-04-15',
       symbol: 'ES',
       contract_type: 'micro',
-      session: 'AM',
+      session: 'am',
       idea: 'Support bounce, scaled in.',
       executions: [
         { kind: 'buy', price: 5820, time: '2026-04-15T13:40:00Z', contracts: 1 },

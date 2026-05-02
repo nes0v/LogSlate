@@ -2,9 +2,10 @@
 // a new session/symbol/etc. is a one-line change.
 export const SYMBOLS = ['NQ', 'ES'] as const
 export const CONTRACT_TYPES = ['micro', 'mini'] as const
-export const SESSIONS = ['pre', 'AM', 'LT', 'PM', 'aft'] as const
-export const RATINGS = ['good', 'excellent', 'egg'] as const
+export const SESSIONS = ['pre', 'am', 'lunch', 'pm', 'aft'] as const
+export const RATINGS = ['good', 'excellent', 'poor'] as const
 export const EXECUTION_KINDS = ['buy', 'sell'] as const
+export const ORDER_TYPES = ['limit', 'market'] as const
 export const SIDES = ['long', 'short'] as const
 
 export type SymbolKey = (typeof SYMBOLS)[number]
@@ -12,10 +13,12 @@ export type ContractType = (typeof CONTRACT_TYPES)[number]
 export type Session = (typeof SESSIONS)[number]
 export type Rating = (typeof RATINGS)[number]
 export type ExecutionKind = (typeof EXECUTION_KINDS)[number]
+export type OrderType = (typeof ORDER_TYPES)[number]
 export type Side = (typeof SIDES)[number]
 
 export interface Execution {
   kind: ExecutionKind
+  order_type?: OrderType // legacy rows may omit; defaults to 'limit' on read
   price: number
   time: string // ISO 8601
   contracts: number
@@ -166,6 +169,7 @@ export interface Model {
   name: string
   description: string
   symbols: SymbolKey[] // optional symbol filter ("works for NQ only", etc.)
+  sessions: Session[] // optional session filter ("am only", etc.)
   groups: ModelRuleGroup[]
   archived: boolean
   created_at: string

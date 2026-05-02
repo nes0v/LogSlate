@@ -42,9 +42,9 @@ export function TradeExpandedDetails({ trade }: TradeExpandedDetailsProps) {
   }
 
   return (
-    <div className="space-y-3 min-w-0">
+    <div className="space-y-5 min-w-0">
       <div className="flex items-start">
-        <div className="w-[27rem] shrink-0 min-w-0 space-y-3">
+        <div className="w-[22rem] shrink-0 min-w-0 pr-3 space-y-3">
           {trade.idea && (
             <p className="text-sm text-(--color-text) whitespace-pre-wrap break-words">
               {trade.idea}
@@ -79,7 +79,7 @@ export function TradeExpandedDetails({ trade }: TradeExpandedDetailsProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-[auto_auto] gap-x-20 gap-y-3 sm:gap-y-5 w-fit">
+      <div className="grid grid-cols-1 sm:grid-cols-[auto_auto] items-start gap-x-20 gap-y-3 sm:gap-y-5 w-fit">
         {execs.length > 0 ? (
           <div className="grid grid-cols-[auto_auto_auto_auto] gap-x-4 gap-y-0.5 tabular-nums w-fit text-xs font-mono">
             {execs.map(e => (
@@ -164,7 +164,7 @@ function ModelChecklist({
             <div key={`${g.id}-${i}`} className="flex items-start gap-1.5">
               <Icon
                 className={cn(
-                  'size-3.5 shrink-0 mt-1',
+                  'size-3.5 shrink-0 mt-[3px]',
                   ok ? 'text-(--color-win)' : 'text-(--color-loss)',
                 )}
               />

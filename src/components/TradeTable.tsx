@@ -1,5 +1,4 @@
-import { Fragment } from 'react'
-import { format } from 'date-fns'
+import { Fragment, memo } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { ArrowDown, ArrowRight, ArrowUp, ArrowUpDown } from 'lucide-react'
 import { db } from '@/db/schema'
@@ -7,7 +6,6 @@ import { DEFAULT_MODEL_NAME, type TradeRecord } from '@/db/types'
 import {
   computeDuration,
   computePlannedRr,
-  firstExecutionMs,
   inferSide,
   isReversal,
   outcomeTextClass,
@@ -16,7 +14,7 @@ import {
 } from '@/lib/trade-math'
 import { formatDuration } from '@/lib/duration'
 import { formatUsd } from '@/lib/money'
-import { RATING_LABEL, RATING_TEXT_CLASS } from '@/lib/rating-label'
+import { RatingStars } from '@/components/RatingStars'
 import { SESSION_BADGE, SESSION_BADGE_CLASS } from '@/lib/session-badge'
 import { cn } from '@/lib/utils'
 import { TradeExpandedDetails } from '@/components/TradeExpandedDetails'
@@ -29,7 +27,11 @@ interface TradeTableProps {
 
 const COLS = 12
 
-export function TradeTable({ trades, expandedIds, onToggle }: TradeTableProps) {
+export const TradeTable = memo(function TradeTable({
+  trades,
+  expandedIds,
+  onToggle,
+}: TradeTableProps) {
   return (
     <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) overflow-hidden">
       <table className="w-full text-sm border-collapse">
@@ -70,7 +72,7 @@ export function TradeTable({ trades, expandedIds, onToggle }: TradeTableProps) {
       </table>
     </div>
   )
-}
+})
 
 interface RowProps {
   trade: TradeRecord
@@ -93,8 +95,6 @@ function TradeTableRow({
   const realRr = trade.stop_loss > 0 && pnl !== null ? pnl / trade.stop_loss : null
   const plannedRr = computePlannedRr(trade)
   const contracts = totalContracts(trade)
-  const startMs = firstExecutionMs(trade)
-  const startHHmm = startMs !== null ? format(new Date(startMs), 'HH:mm') : '—'
   const dur = computeDuration(trade)
   const tone = outcomeTextClass(outcome, pnl !== null)
   const model = useLiveQuery(
@@ -115,20 +115,14 @@ function TradeTableRow({
         #{index}
       </td>
       <td className="pl-0 pr-0 py-2 w-px">
-        <span
-          className={cn(
-            SESSION_BADGE_CLASS,
-            'justify-center w-7',
-            SESSION_BADGE[trade.session],
-          )}
-        >
+        <span className={cn(SESSION_BADGE_CLASS, SESSION_BADGE[trade.session])}>
           {trade.session}
         </span>
       </td>
-      <td className="pl-9 pr-3 py-2 font-mono whitespace-nowrap w-px">
+      <td className="pl-3 pr-3 py-2 font-mono whitespace-nowrap w-px">
         {trade.symbol}
       </td>
-      <td className="pl-0 pr-9 py-2 text-xs font-mono text-(--color-text-dim) whitespace-nowrap w-px">
+      <td className="pl-0 pr-7 py-2 text-xs font-mono text-(--color-text-dim) whitespace-nowrap w-px">
         {trade.contract_type}
       </td>
       <td className="pl-0 pr-3 py-2 w-px">
@@ -148,14 +142,13 @@ function TradeTableRow({
           {side ?? '—'}
         </span>
       </td>
-      <td className="pl-0 pr-9 py-2 font-mono tabular-nums text-(--color-text-dim) w-px whitespace-nowrap">
+      <td className="pl-0 pr-7 py-2 font-mono tabular-nums text-(--color-text-dim) w-px whitespace-nowrap">
         ×{contracts}
       </td>
       <td className="pl-0 pr-9 py-2 text-xs font-mono tabular-nums text-(--color-text-dim) whitespace-nowrap w-px">
-        {startHHmm}
-        {dur.total_ms !== null && ` (${formatDuration(dur.total_ms)})`}
+        {dur.total_ms !== null ? formatDuration(dur.total_ms) : '—'}
       </td>
-      <td className="pl-0 pr-9 py-2 text-xs truncate max-w-32 w-px">
+      <td className={cn('pl-0 pr-9 py-2 text-xs truncate max-w-32 w-px', !trade.model_id && 'text-amber-600')}>
         {model?.name ?? DEFAULT_MODEL_NAME}
       </td>
       <td className="pl-0 pr-2 py-2 text-xs text-(--color-text-dim) truncate max-w-28">
@@ -179,15 +172,13 @@ function TradeTableRow({
       <td className="pl-0 pr-3 py-2 font-mono text-center w-px relative">
         {reversedFromPrev && (
           <span
-            className="absolute right-[16rem] -top-[11px] inline-flex items-center gap-1 w-[6.25rem] text-xs leading-none text-(--color-text-dim) bg-(--color-bg) rounded-(--radius) px-2 py-[4.5px] whitespace-nowrap z-10 pointer-events-none"
+            className="absolute right-[16.5rem] -top-[11px] inline-flex items-center gap-1 w-[6.25rem] text-xs leading-none text-(--color-text-dim) bg-(--color-bg) rounded-(--radius) px-2 py-[4.5px] whitespace-nowrap z-10 pointer-events-none"
           >
             <ArrowUpDown className="size-3" />
             <span className="-translate-y-px">@ {trade.executions[0]?.price ?? ''}</span>
           </span>
         )}
-        <span className={RATING_TEXT_CLASS[trade.rating]}>
-          {RATING_LABEL[trade.rating]}
-        </span>
+        <RatingStars rating={trade.rating} className="translate-y-0.5" />
       </td>
     </tr>
   )

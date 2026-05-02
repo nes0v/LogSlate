@@ -3,8 +3,9 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { addDays, format } from 'date-fns'
 import { X } from 'lucide-react'
-import type { ContractType, Rating, Session, SymbolKey, TradeRecord } from '@/db/types'
+import type { TradeRecord } from '@/db/types'
 import { EMOTIONS, DEFAULT_MODEL_NAME } from '@/db/types'
+import { CONTRACT_OPTS, SESSION_OPTS, SYMBOL_OPTS } from '@/lib/filter-options'
 import { db } from '@/db/schema'
 import { useActiveAccountId } from '@/lib/active-account'
 import {
@@ -38,37 +39,10 @@ import {
   type ScatterPoint,
 } from '@/lib/advanced-stats'
 import { formatUsd } from '@/lib/money'
-import { RATING_LABEL } from '@/lib/rating-label'
 import { Pills } from '@/components/form/Pills'
+import { RatingFilter } from '@/components/form/RatingFilter'
 import { Field, inputClass } from '@/components/form/Field'
 import { cn } from '@/lib/utils'
-
-// ----- shared filter option lists ---------------------------------------
-
-const SYMBOL_OPTS = [
-  { value: null, label: 'All' },
-  { value: 'NQ' as const, label: 'NQ' },
-  { value: 'ES' as const, label: 'ES' },
-] satisfies Array<{ value: SymbolKey | null; label: string }>
-const CONTRACT_OPTS = [
-  { value: null, label: 'All' },
-  { value: 'micro' as const, label: 'micro' },
-  { value: 'mini' as const, label: 'mini' },
-] satisfies Array<{ value: ContractType | null; label: string }>
-const SESSION_OPTS = [
-  { value: null, label: 'All' },
-  { value: 'pre' as const, label: 'pre' },
-  { value: 'AM' as const, label: 'AM' },
-  { value: 'LT' as const, label: 'LT' },
-  { value: 'PM' as const, label: 'PM' },
-  { value: 'aft' as const, label: 'aft' },
-] satisfies Array<{ value: Session | null; label: string }>
-const RATING_OPTS = [
-  { value: null, label: 'All' },
-  { value: 'excellent' as const, label: RATING_LABEL.excellent },
-  { value: 'good' as const, label: RATING_LABEL.good },
-  { value: 'egg' as const, label: RATING_LABEL.egg },
-] satisfies Array<{ value: Rating | null; label: string }>
 
 type ReportTab = 'days' | 'symbol' | 'risk' | 'cohort' | 'compare'
 const TABS: Array<{ value: ReportTab; label: string }> = [
@@ -200,7 +174,7 @@ export function ReportsRoute() {
 
       {/* Filter bar */}
       <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3">
-        <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
+        <div className="flex flex-wrap items-end gap-3">
           <Field label="From" className="w-[135px]">
             <input
               type="date"
@@ -227,7 +201,7 @@ export function ReportsRoute() {
             <Pills value={filters.session} onChange={v => update({ session: v })} options={SESSION_OPTS} />
           </Field>
           <Field label="Rating">
-            <Pills value={filters.rating} onChange={v => update({ rating: v })} options={RATING_OPTS} />
+            <RatingFilter value={filters.rating} onChange={v => update({ rating: v })} />
           </Field>
         </div>
       </section>
@@ -728,14 +702,14 @@ function splitByAxis(
         { label: 'mini', trades: trades.filter(t => t.contract_type === 'mini') },
       ].filter(g => g.trades.length > 0)
     case 'session':
-      return (['pre', 'AM', 'LT', 'PM', 'aft'] as const)
+      return (['pre', 'am', 'lunch', 'pm', 'aft'] as const)
         .map(s => ({ label: s, trades: trades.filter(t => t.session === s) }))
         .filter(g => g.trades.length > 0)
     case 'rating':
       return [
-        { label: RATING_LABEL.excellent, trades: trades.filter(t => t.rating === 'excellent') },
-        { label: RATING_LABEL.good, trades: trades.filter(t => t.rating === 'good') },
-        { label: RATING_LABEL.egg, trades: trades.filter(t => t.rating === 'egg') },
+        { label: 'excellent', trades: trades.filter(t => t.rating === 'excellent') },
+        { label: 'good', trades: trades.filter(t => t.rating === 'good') },
+        { label: 'poor', trades: trades.filter(t => t.rating === 'poor') },
       ].filter(g => g.trades.length > 0)
     case 'side': {
       const longs: TradeRecord[] = []

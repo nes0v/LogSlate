@@ -23,7 +23,7 @@ describe('hasAnyFilter', () => {
       { to: '2026-04-30' },
       { symbol: 'NQ' },
       { contract: 'micro' },
-      { session: 'AM' },
+      { session: 'am' },
       { rating: 'excellent' },
     ]
     for (const patch of cases) {
@@ -43,7 +43,7 @@ describe('saveSharedFilters / loadSharedFilters', () => {
       to: '2026-04-30',
       symbol: 'NQ',
       contract: 'micro',
-      session: 'AM',
+      session: 'am',
       rating: 'excellent',
     }
     saveSharedFilters(f)

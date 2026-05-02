@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  detectSession,
   emptyForm,
   formToDraft,
   recordToForm,
@@ -13,7 +14,7 @@ function validForm(overrides: Partial<TradeFormValues> = {}): TradeFormValues {
     ...emptyForm('2026-04-15'),
     symbol: 'NQ',
     contract_type: 'micro',
-    session: 'AM',
+    session: 'am',
     rating: 'good',
     stop_loss: 100,
     profit_target: 200,
@@ -21,8 +22,8 @@ function validForm(overrides: Partial<TradeFormValues> = {}): TradeFormValues {
     buildup: 200,
     emotion: 'focused',
     executions: [
-      { kind: 'buy', price: 20000, time: '10:00', contracts: 1 },
-      { kind: 'sell', price: 20010, time: '10:05', contracts: 1 },
+      { kind: 'buy', order_type: 'limit', price: 20000, time: '10:00', contracts: 1 },
+      { kind: 'sell', order_type: 'limit', price: 20010, time: '10:05', contracts: 1 },
     ],
     ...overrides,
   }
@@ -38,8 +39,8 @@ describe('tradeFormSchema', () => {
     const r = tradeFormSchema.safeParse(
       validForm({
         executions: [
-          { kind: 'buy', price: 20000, time: '10:00', contracts: 2 },
-          { kind: 'sell', price: 20010, time: '10:05', contracts: 1 },
+          { kind: 'buy', order_type: 'limit', price: 20000, time: '10:00', contracts: 2 },
+          { kind: 'sell', order_type: 'limit', price: 20010, time: '10:05', contracts: 1 },
         ],
       }),
     )
@@ -54,8 +55,8 @@ describe('tradeFormSchema', () => {
     const r = tradeFormSchema.safeParse(
       validForm({
         executions: [
-          { kind: 'buy', price: 20000, time: '10:00', contracts: 1 },
-          { kind: 'buy', price: 20010, time: '10:05', contracts: 1 },
+          { kind: 'buy', order_type: 'limit', price: 20000, time: '10:00', contracts: 1 },
+          { kind: 'buy', order_type: 'limit', price: 20010, time: '10:05', contracts: 1 },
         ],
       }),
     )
@@ -66,8 +67,8 @@ describe('tradeFormSchema', () => {
     const r = tradeFormSchema.safeParse(
       validForm({
         executions: [
-          { kind: 'buy', price: 0, time: '25:00', contracts: 1 },
-          { kind: 'sell', price: -5, time: 'noon', contracts: 1 },
+          { kind: 'buy', order_type: 'limit', price: 0, time: '25:00', contracts: 1 },
+          { kind: 'sell', order_type: 'limit', price: -5, time: 'noon', contracts: 1 },
         ],
       }),
     )
@@ -94,8 +95,8 @@ describe('formToDraft', () => {
     const draft = formToDraft(
       validForm({
         executions: [
-          { kind: 'sell', price: 20010, time: '10:05', contracts: 1 },
-          { kind: 'buy', price: 20000, time: '10:00', contracts: 1 },
+          { kind: 'sell', order_type: 'limit', price: 20010, time: '10:05', contracts: 1 },
+          { kind: 'buy', order_type: 'limit', price: 20000, time: '10:00', contracts: 1 },
         ],
       }),
     )
@@ -105,13 +106,37 @@ describe('formToDraft', () => {
   })
 })
 
+describe('detectSession', () => {
+  // Returns lowercase enum values after the AM/LT/PM rename. Boundaries
+  // are inclusive at the start and end of each band per the source.
+  it('classifies pre-market times', () => {
+    expect(detectSession('00:00')).toBe('pre')
+    expect(detectSession('09:29')).toBe('pre')
+  })
+  it('classifies the morning band as am', () => {
+    expect(detectSession('09:30')).toBe('am')
+    expect(detectSession('11:29')).toBe('am')
+  })
+  it('classifies midday as lunch', () => {
+    expect(detectSession('11:30')).toBe('lunch')
+    expect(detectSession('13:29')).toBe('lunch')
+  })
+  it('classifies the afternoon band as pm', () => {
+    expect(detectSession('13:30')).toBe('pm')
+    expect(detectSession('16:59')).toBe('pm')
+  })
+  it('classifies evening times as aft', () => {
+    expect(detectSession('17:00')).toBe('aft')
+    expect(detectSession('23:59')).toBe('aft')
+  })
+})
+
 describe('recordToForm ↔ formToDraft round-trip', () => {
   it('preserves key fields', () => {
     const record = tradeRecord({
       date: '2026-04-15',
       symbol: 'NQ',
       contract_type: 'mini',
-      session: 'AM',
       stop_loss: 100,
       profit_target: 200,
       drawdown: 20,
@@ -121,7 +146,8 @@ describe('recordToForm ↔ formToDraft round-trip', () => {
     const roundTrip = formToDraft(recordToForm(record))
     expect(roundTrip.symbol).toBe(record.symbol)
     expect(roundTrip.contract_type).toBe(record.contract_type)
-    expect(roundTrip.session).toBe(record.session)
+    // session is now derived from executions on save; session round-trips via
+    // execution times rather than as a stored field on the form.
     expect(roundTrip.stop_loss).toBe(record.stop_loss)
     expect(roundTrip.executions).toHaveLength(record.executions.length)
   })

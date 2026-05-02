@@ -4,12 +4,27 @@ import {
   CONTRACT_TYPES,
   EMOTIONS,
   EXECUTION_KINDS,
+  ORDER_TYPES,
   RATINGS,
-  SESSIONS,
   SYMBOLS,
+  type Session,
   type TradeDraft,
   type TradeRecord,
 } from '@/db/types'
+
+// Auto-detect a trade's session from its first (earliest) execution. Times
+// are interpreted as NY-local HH:MM since the user enters times in NY time.
+// 17:00–17:59 (the daily settlement break) is folded into "aft" so any
+// stray execution there still classifies cleanly.
+export function detectSession(time: string): Session {
+  const [h, m] = time.split(':').map(Number)
+  const mins = h * 60 + m
+  if (mins >= 9 * 60 + 30 && mins <= 11 * 60 + 29) return 'am'
+  if (mins >= 11 * 60 + 30 && mins <= 13 * 60 + 29) return 'lunch'
+  if (mins >= 13 * 60 + 30 && mins <= 16 * 60 + 59) return 'pm'
+  if (mins >= 17 * 60) return 'aft'
+  return 'pre'
+}
 
 // `null` is used as the "blank" form state so number inputs render empty
 // rather than pre-filled with 0/1. `.refine` then enforces non-null +
@@ -28,6 +43,7 @@ const requiredPositiveInt = (msg: string) =>
 
 const executionSchema = z.object({
   kind: z.enum(EXECUTION_KINDS),
+  order_type: z.enum(ORDER_TYPES),
   price: requiredPositive('price must be > 0'),
   time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'time must be HH:MM (24h)'),
   contracts: requiredPositiveInt('contracts must be a positive integer'),
@@ -41,7 +57,6 @@ export const tradeFormSchema = z
     // Required on submit via the superRefine below.
     symbol: z.enum(SYMBOLS).nullable(),
     contract_type: z.enum(CONTRACT_TYPES).nullable(),
-    session: z.enum(SESSIONS).nullable(),
     idea: z.string(),
     executions: z.array(executionSchema).min(2, 'at least one buy and one sell'),
     stop_loss: requiredPositive('stop loss must be > 0'),
@@ -65,9 +80,6 @@ export const tradeFormSchema = z
     }
     if (!v.contract_type) {
       ctx.addIssue({ code: 'custom', path: ['contract_type'], message: 'pick a contract' })
-    }
-    if (!v.session) {
-      ctx.addIssue({ code: 'custom', path: ['session'], message: 'pick a session' })
     }
     if (!v.rating) {
       ctx.addIssue({ code: 'custom', path: ['rating'], message: 'pick a rating' })
@@ -110,17 +122,23 @@ export function formToDraft(v: TradeFormValues): TradeDraft {
   const executions = v.executions
     .map(e => ({
       kind: e.kind,
+      order_type: e.order_type,
       price: e.price as number,
       time: toIso(v.date, e.time),
       contracts: e.contracts as number,
     }))
     .sort((a, b) => Date.parse(a.time) - Date.parse(b.time))
 
+  // Session is auto-detected from the earliest HH:MM (lexical sort works
+  // since all executions share the same date).
+  const earliest = v.executions.reduce((acc, e) => (e.time < acc ? e.time : acc), v.executions[0]!.time)
+  const session = detectSession(earliest)
+
   return {
     date: v.date,
     symbol: v.symbol as NonNullable<typeof v.symbol>,
     contract_type: v.contract_type as NonNullable<typeof v.contract_type>,
-    session: v.session as NonNullable<typeof v.session>,
+    session,
     idea: v.idea,
     executions,
     stop_loss: v.stop_loss as number,
@@ -143,6 +161,7 @@ export function recordToForm(r: TradeRecord): TradeFormValues {
     .sort((a, b) => Date.parse(a.time) - Date.parse(b.time))
     .map(e => ({
       kind: e.kind,
+      order_type: e.order_type ?? 'limit',
       price: e.price,
       time: format(parseISO(e.time), 'HH:mm'),
       contracts: e.contracts,
@@ -152,7 +171,6 @@ export function recordToForm(r: TradeRecord): TradeFormValues {
     date: r.date,
     symbol: r.symbol,
     contract_type: r.contract_type,
-    session: r.session,
     idea: r.idea,
     executions,
     stop_loss: r.stop_loss,
@@ -173,18 +191,17 @@ export function recordToForm(r: TradeRecord): TradeFormValues {
 export function emptyForm(date: string): TradeFormValues {
   return {
     date,
-    symbol: null,
-    contract_type: null,
-    session: null,
+    symbol: 'NQ',
+    contract_type: 'micro',
     idea: '',
     executions: [
-      { kind: 'buy', price: null, time: '', contracts: 1 },
-      { kind: 'sell', price: null, time: '', contracts: 1 },
+      { kind: 'buy', order_type: 'limit', price: null, time: '', contracts: 1 },
+      { kind: 'sell', order_type: 'limit', price: null, time: '', contracts: 1 },
     ],
     stop_loss: null,
     drawdown: null,
     buildup: null,
-    rating: null,
+    rating: 'poor',
     screenshot: null,
     profit_target: null,
     notes: '',

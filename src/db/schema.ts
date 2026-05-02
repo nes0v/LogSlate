@@ -371,6 +371,51 @@ class LogslateDB extends Dexie {
           },
         )
     })
+
+    // v22: rating "egg" renamed to "poor". Rewrites any existing trade carrying
+    // the old value so it still passes the zod enum on load.
+    this.version(22).upgrade(async tx => {
+      await tx
+        .table('trades')
+        .toCollection()
+        .modify((t: TradeRecord) => {
+          if ((t.rating as string) === 'egg') {
+            ;(t as { rating: string }).rating = 'poor'
+          }
+        })
+    })
+
+    // v23: add `sessions` array to existing models so the new optional-session
+    // filter has a defined value to read from. Defaults to `[]` (any session).
+    this.version(23).upgrade(async tx => {
+      await tx
+        .table('models')
+        .toCollection()
+        .modify((m: Model) => {
+          if (!Array.isArray(m.sessions)) m.sessions = []
+        })
+    })
+
+    // v24: rename session enum values: AM→am, LT→lunch, PM→pm. Rewrites
+    // `trades.session` and `models.sessions` so existing rows pass the zod
+    // enum on load. `pre`/`aft` were already lowercase.
+    this.version(24).upgrade(async tx => {
+      const sessionMap: Record<string, string> = { AM: 'am', LT: 'lunch', PM: 'pm' }
+      await tx
+        .table('trades')
+        .toCollection()
+        .modify((t: TradeRecord) => {
+          const mapped = sessionMap[t.session as string]
+          if (mapped) (t as { session: string }).session = mapped
+        })
+      await tx
+        .table('models')
+        .toCollection()
+        .modify((m: Model) => {
+          if (!Array.isArray(m.sessions)) return
+          m.sessions = m.sessions.map(s => (sessionMap[s as string] ?? s) as Model['sessions'][number])
+        })
+    })
   }
 }
 

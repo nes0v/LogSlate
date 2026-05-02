@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { memo, useMemo } from 'react'
 import { eachDayOfInterval, format, parseISO } from 'date-fns'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { DonutChart } from '@/components/DonutChart'
@@ -33,7 +33,7 @@ function buildDayRange(rangeStart: string | null, rangeEnd: string | null): stri
   }).map(d => format(d, 'yyyy-MM-dd'))
 }
 
-export function HeroNetPnl({
+export const HeroNetPnl = memo(function HeroNetPnl({
   filtered,
   rangeStart,
   rangeEnd,
@@ -72,7 +72,7 @@ export function HeroNetPnl({
       </div>
     </section>
   )
-}
+})
 
 // One distinct hue per emotion. Greens lean to the steady/positive end;
 // reds/ambers/purples to the agitated/negative end; greys to neutral
@@ -103,7 +103,11 @@ const MODEL_PALETTE = [
   '#60a5fa',
 ]
 
-export function DistributionDonuts({ filtered }: { filtered: TradeRecord[] }) {
+export const DistributionDonuts = memo(function DistributionDonuts({
+  filtered,
+}: {
+  filtered: TradeRecord[]
+}) {
   const accountId = useActiveAccountId()
   const models = useLiveQuery(
     () => db.models.where('account_id').equals(accountId).toArray(),
@@ -126,13 +130,13 @@ export function DistributionDonuts({ filtered }: { filtered: TradeRecord[] }) {
   }, [filtered])
 
   const sessionDonut = useMemo(() => {
-    const counts = { pre: 0, AM: 0, LT: 0, PM: 0, aft: 0 } as Record<Session, number>
+    const counts = { pre: 0, am: 0, lunch: 0, pm: 0, aft: 0 } as Record<Session, number>
     for (const t of filtered) counts[t.session]++
     return [
       { label: 'pre', value: counts.pre, color: '#c4b5fd' },
-      { label: 'AM', value: counts.AM, color: '#7dd3fc' },
-      { label: 'LT', value: counts.LT, color: '#fbbf24' },
-      { label: 'PM', value: counts.PM, color: '#2563eb' },
+      { label: 'am', value: counts.am, color: '#7dd3fc' },
+      { label: 'lunch', value: counts.lunch, color: '#fbbf24' },
+      { label: 'pm', value: counts.pm, color: '#2563eb' },
       { label: 'aft', value: counts.aft, color: '#7e22ce' },
     ]
   }, [filtered])
@@ -155,16 +159,16 @@ export function DistributionDonuts({ filtered }: { filtered: TradeRecord[] }) {
   }, [filtered])
 
   const ratingDonut = useMemo(() => {
-    let good = 0, excellent = 0, egg = 0
+    let good = 0, excellent = 0, poor = 0
     for (const t of filtered) {
       if (t.rating === 'good') good++
       else if (t.rating === 'excellent') excellent++
-      else if (t.rating === 'egg') egg++
+      else if (t.rating === 'poor') poor++
     }
     return [
       { label: 'A (excellent)', value: excellent, color: 'var(--color-win)' },
       { label: 'B (okay)', value: good, color: 'var(--color-accent)' },
-      { label: 'C (unnecessary)', value: egg, color: 'var(--color-chart-muted)' },
+      { label: 'C (unnecessary)', value: poor, color: 'var(--color-chart-muted)' },
     ]
   }, [filtered])
 
@@ -249,9 +253,9 @@ export function DistributionDonuts({ filtered }: { filtered: TradeRecord[] }) {
       </div>
     </section>
   )
-}
+})
 
-export function CompositeScoreSection({
+export const CompositeScoreSection = memo(function CompositeScoreSection({
   filtered,
   rangeStart,
   rangeEnd,
@@ -282,9 +286,9 @@ export function CompositeScoreSection({
   )
 
   return <CompositeScoreCard score={composite} />
-}
+})
 
-export function AdvancedMetricsSections({
+export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
   filtered,
   rangeStart,
   rangeEnd,
@@ -510,7 +514,7 @@ export function AdvancedMetricsSections({
       </section>
     </>
   )
-}
+})
 
 interface KpiTileProps {
   label: string
