@@ -36,24 +36,62 @@ function firstTime(execs: Execution[]): number | null {
 export function firstExecutionMs(
   t: Pick<TradeRecord, 'executions'>,
 ): number | null {
-  return firstTime(t.executions)
+  const cached = _firstMsCache.get(t as object)
+  if (cached !== undefined) return cached
+  const result = firstTime(t.executions)
+  _firstMsCache.set(t as object, result)
+  return result
 }
+
+// ---------- per-trade memoization ----------
+//
+// Trade records are immutable in this app — they're persisted blobs read out
+// of Dexie and never mutated in place. The pure compute functions below are
+// called many times on the same trade across advanced-stats / Stats children;
+// caching by reference turns redundant work into O(1) lookups.
+//
+// Each cache stores the result directly. WeakMap.get returns `undefined` for
+// missing keys; since none of the cached functions return `undefined` (only
+// `number`, `number | null`, or a struct), `cached !== undefined` reliably
+// distinguishes "hit" from "miss".
+
+const _ahpcCache = new WeakMap<object, number | null>()
+const _feesCache = new WeakMap<object, number>()
+const _grossPnlCache = new WeakMap<object, number | null>()
+const _netPnlCache = new WeakMap<object, number | null>()
+const _metricsCache = new WeakMap<object, TradeMetrics>()
+const _firstMsCache = new WeakMap<object, number | null>()
+const _sideCache = new WeakMap<object, Side | null>()
+const _totalContractsCache = new WeakMap<object, number>()
+const _durationCache = new WeakMap<object, TradeDuration>()
 
 // ---------- public API ----------
 
 export function inferSide(t: Pick<TradeRecord, 'executions'>): Side | null {
+  const cached = _sideCache.get(t as object)
+  if (cached !== undefined) return cached
   const firstBuy = firstTime(buysOf(t.executions))
   const firstSell = firstTime(sellsOf(t.executions))
-  if (firstBuy === null && firstSell === null) return null
-  if (firstBuy === null) return 'short'
-  if (firstSell === null) return 'long'
-  return firstBuy <= firstSell ? 'long' : 'short'
+  let result: Side | null
+  if (firstBuy === null && firstSell === null) result = null
+  else if (firstBuy === null) result = 'short'
+  else if (firstSell === null) result = 'long'
+  else result = firstBuy <= firstSell ? 'long' : 'short'
+  _sideCache.set(t as object, result)
+  return result
 }
 
 export function totalContracts(t: Pick<TradeRecord, 'executions'>): number {
+  const cached = _totalContractsCache.get(t as object)
+  if (cached !== undefined) return cached
   // For a closed trade, buys.contracts === sells.contracts. Use the max to
   // reflect "position size at peak" when data is incomplete.
-  return Math.max(sumContracts(buysOf(t.executions)), sumContracts(sellsOf(t.executions)))
+  const result = Math.max(
+    sumContracts(buysOf(t.executions)),
+    sumContracts(sellsOf(t.executions)),
+  )
+  _totalContractsCache.set(t as object, result)
+  return result
 }
 
 export interface TradeDuration {
@@ -62,58 +100,84 @@ export interface TradeDuration {
 }
 
 export function computeDuration(t: Pick<TradeRecord, 'executions'>): TradeDuration {
+  const cached = _durationCache.get(t as object)
+  if (cached !== undefined) return cached
   const side = inferSide(t)
   const allTimes = t.executions.map(e => Date.parse(e.time)).filter(n => !Number.isNaN(n))
-  if (allTimes.length < 2) return { total_ms: null, before_first_exit_ms: null }
-  const start = Math.min(...allTimes)
-  const end = Math.max(...allTimes)
-
-  let before: number | null = null
-  if (side === 'long') {
-    const firstSell = firstTime(sellsOf(t.executions))
-    if (firstSell !== null) before = firstSell - start
-  } else if (side === 'short') {
-    const firstBuy = firstTime(buysOf(t.executions))
-    if (firstBuy !== null) before = firstBuy - start
+  let result: TradeDuration
+  if (allTimes.length < 2) {
+    result = { total_ms: null, before_first_exit_ms: null }
+  } else {
+    const start = Math.min(...allTimes)
+    const end = Math.max(...allTimes)
+    let before: number | null = null
+    if (side === 'long') {
+      const firstSell = firstTime(sellsOf(t.executions))
+      if (firstSell !== null) before = firstSell - start
+    } else if (side === 'short') {
+      const firstBuy = firstTime(buysOf(t.executions))
+      if (firstBuy !== null) before = firstBuy - start
+    }
+    result = { total_ms: end - start, before_first_exit_ms: before }
   }
-  return { total_ms: end - start, before_first_exit_ms: before }
+  _durationCache.set(t as object, result)
+  return result
 }
 
 export function computeFees(t: Pick<TradeRecord, 'executions' | 'contract_type'>): number {
+  const cached = _feesCache.get(t as object)
+  if (cached !== undefined) return cached
   const sides = sumContracts(t.executions)
-  return sides * feePerSide(t.contract_type)
+  const result = sides * feePerSide(t.contract_type)
+  _feesCache.set(t as object, result)
+  return result
 }
 
 export function computeGrossPnl(
   t: Pick<TradeRecord, 'executions' | 'symbol' | 'contract_type'>,
 ): number | null {
+  const cached = _grossPnlCache.get(t as object)
+  if (cached !== undefined) return cached
   const buys = buysOf(t.executions)
   const sells = sellsOf(t.executions)
   const avgBuy = weightedAvgPrice(buys)
   const avgSell = weightedAvgPrice(sells)
-  if (avgBuy === null || avgSell === null) return null
-  const contracts = Math.min(sumContracts(buys), sumContracts(sells))
-  if (contracts === 0) return null
-  // Symmetric: profit = avgSell − avgBuy regardless of side (long or short).
-  const handles = avgSell - avgBuy
-  return handles * contracts * handleValue(t.symbol, t.contract_type)
+  let result: number | null
+  if (avgBuy === null || avgSell === null) result = null
+  else {
+    const contracts = Math.min(sumContracts(buys), sumContracts(sells))
+    if (contracts === 0) result = null
+    else {
+      // Symmetric: profit = avgSell − avgBuy regardless of side (long or short).
+      const handles = avgSell - avgBuy
+      result = handles * contracts * handleValue(t.symbol, t.contract_type)
+    }
+  }
+  _grossPnlCache.set(t as object, result)
+  return result
 }
 
 export function computeNetPnl(
   t: Pick<TradeRecord, 'executions' | 'symbol' | 'contract_type'>,
 ): number | null {
+  const cached = _netPnlCache.get(t as object)
+  if (cached !== undefined) return cached
   const gross = computeGrossPnl(t)
-  if (gross === null) return null
-  return gross - computeFees(t)
+  const result = gross === null ? null : gross - computeFees(t)
+  _netPnlCache.set(t as object, result)
+  return result
 }
 
 // Average handles per contract. Positive = profitable, negative = losing.
 // Symmetric across long/short: avgSell − avgBuy is profit direction in both cases.
 export function computeAhpc(t: Pick<TradeRecord, 'executions'>): number | null {
+  const cached = _ahpcCache.get(t as object)
+  if (cached !== undefined) return cached
   const avgBuy = weightedAvgPrice(buysOf(t.executions))
   const avgSell = weightedAvgPrice(sellsOf(t.executions))
-  if (avgBuy === null || avgSell === null) return null
-  return avgSell - avgBuy
+  const result = avgBuy === null || avgSell === null ? null : avgSell - avgBuy
+  _ahpcCache.set(t as object, result)
+  return result
 }
 
 export function computeRealizedRr(
@@ -195,13 +259,17 @@ export interface TradeMetrics {
 export function tradeMetrics(
   t: Pick<TradeRecord, 'executions' | 'symbol' | 'contract_type'>,
 ): TradeMetrics {
+  const cached = _metricsCache.get(t as object)
+  if (cached !== undefined) return cached
   const ahpc = computeAhpc(t)
   const pnl = computeNetPnl(t)
   let outcome: TradeOutcome
   if (ahpc !== null && Math.abs(ahpc) < BREAKEVEN_HANDLES[t.symbol]) outcome = 'breakeven'
   else if (pnl === null || pnl === 0) outcome = 'breakeven'
   else outcome = pnl > 0 ? 'win' : 'loss'
-  return { ahpc, pnl, outcome }
+  const result: TradeMetrics = { ahpc, pnl, outcome }
+  _metricsCache.set(t as object, result)
+  return result
 }
 
 // Outcome-only helper kept for callers that don't need ahpc/pnl.

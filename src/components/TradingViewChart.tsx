@@ -44,26 +44,31 @@ function makeWhitespaceTimestamps(tf: Timeframe): number[] {
   const now = new Date()
   const YEAR = now.getUTCFullYear()
   const out: number[] = []
+  // Deliberately sized to "enough pan room past the user's data window"
+  // for each timeframe — not "every possible date." A trading journal's
+  // realistic horizon is a few years; oversizing this array (esp. for D)
+  // is the largest payload pushed into lightweight-charts, so trimming
+  // it shaves real ms off chart construction.
   if (tf === 'D') {
-    const start = Date.UTC(YEAR - 10, 0, 1)
+    const start = Date.UTC(YEAR - 3, 0, 1)
     const end = Date.UTC(YEAR + 1, 11, 31)
     for (let t = start; t <= end; t += 86400_000) out.push(t / 1000)
   } else if (tf === 'W') {
-    // Align to Sundays; 15 years of weeks ≈ 780 points.
-    const s = new Date(Date.UTC(YEAR - 15, 0, 1))
+    // Align to Sundays; 8 years of weeks ≈ 415 points.
+    const s = new Date(Date.UTC(YEAR - 7, 0, 1))
     s.setUTCDate(s.getUTCDate() - s.getUTCDay())
     const end = Date.UTC(YEAR + 1, 11, 31)
     for (let t = s.getTime(); t <= end; t += 7 * 86400_000) out.push(t / 1000)
   } else if (tf === 'M') {
-    for (let y = YEAR - 25; y <= YEAR + 1; y++) {
+    for (let y = YEAR - 15; y <= YEAR + 1; y++) {
       for (let m = 0; m < 12; m++) out.push(Date.UTC(y, m, 1) / 1000)
     }
   } else if (tf === 'Q') {
-    for (let y = YEAR - 40; y <= YEAR + 1; y++) {
+    for (let y = YEAR - 25; y <= YEAR + 1; y++) {
       for (let q = 0; q < 4; q++) out.push(Date.UTC(y, q * 3, 1) / 1000)
     }
   } else {
-    for (let y = YEAR - 80; y <= YEAR + 1; y++) out.push(Date.UTC(y, 0, 1) / 1000)
+    for (let y = YEAR - 50; y <= YEAR + 1; y++) out.push(Date.UTC(y, 0, 1) / 1000)
   }
   return out
 }
@@ -1456,8 +1461,19 @@ export function TradingViewChart({
         if (x === null) continue
         next.push({ x, amount: a.amount })
       }
-      setAdjLabels(next)
-      setPriceScaleWidth(chart.priceScale('right').width())
+      setAdjLabels(prev => {
+        // Skip the re-render when nothing visible changed — the chart fires
+        // this on every animation frame during drag/zoom; a no-op equality
+        // check here keeps TradingViewChart from rerendering 60×/sec when
+        // the labels have settled.
+        if (prev.length !== next.length) return next
+        for (let i = 0; i < next.length; i++) {
+          if (prev[i].x !== next[i].x || prev[i].amount !== next[i].amount) return next
+        }
+        return prev
+      })
+      const w = chart.priceScale('right').width()
+      setPriceScaleWidth(prev => (prev === w ? prev : w))
     }
     recompute()
     chart.timeScale().subscribeVisibleLogicalRangeChange(recompute)
