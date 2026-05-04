@@ -22,8 +22,8 @@ function validForm(overrides: Partial<TradeFormValues> = {}): TradeFormValues {
     buildup: 200,
     emotion: 'focused',
     executions: [
-      { kind: 'buy', order_type: 'limit', price: 20000, time: '10:00', contracts: 1 },
-      { kind: 'sell', order_type: 'limit', price: 20010, time: '10:05', contracts: 1 },
+      { kind: 'buy', order_type: 'limit', price: 20000, time: '10:00:00', contracts: 1 },
+      { kind: 'sell', order_type: 'limit', price: 20010, time: '10:05:00', contracts: 1 },
     ],
     ...overrides,
   }
@@ -39,8 +39,8 @@ describe('tradeFormSchema', () => {
     const r = tradeFormSchema.safeParse(
       validForm({
         executions: [
-          { kind: 'buy', order_type: 'limit', price: 20000, time: '10:00', contracts: 2 },
-          { kind: 'sell', order_type: 'limit', price: 20010, time: '10:05', contracts: 1 },
+          { kind: 'buy', order_type: 'limit', price: 20000, time: '10:00:00', contracts: 2 },
+          { kind: 'sell', order_type: 'limit', price: 20010, time: '10:05:00', contracts: 1 },
         ],
       }),
     )
@@ -55,8 +55,8 @@ describe('tradeFormSchema', () => {
     const r = tradeFormSchema.safeParse(
       validForm({
         executions: [
-          { kind: 'buy', order_type: 'limit', price: 20000, time: '10:00', contracts: 1 },
-          { kind: 'buy', order_type: 'limit', price: 20010, time: '10:05', contracts: 1 },
+          { kind: 'buy', order_type: 'limit', price: 20000, time: '10:00:00', contracts: 1 },
+          { kind: 'buy', order_type: 'limit', price: 20010, time: '10:05:00', contracts: 1 },
         ],
       }),
     )
@@ -91,12 +91,12 @@ describe('tradeFormSchema', () => {
 })
 
 describe('formToDraft', () => {
-  it('converts HH:mm times to ISO and sorts executions by time', () => {
+  it('converts HH:mm:ss times to ISO and sorts executions by time', () => {
     const draft = formToDraft(
       validForm({
         executions: [
-          { kind: 'sell', order_type: 'limit', price: 20010, time: '10:05', contracts: 1 },
-          { kind: 'buy', order_type: 'limit', price: 20000, time: '10:00', contracts: 1 },
+          { kind: 'sell', order_type: 'limit', price: 20010, time: '10:05:00', contracts: 1 },
+          { kind: 'buy', order_type: 'limit', price: 20000, time: '10:00:00', contracts: 1 },
         ],
       }),
     )

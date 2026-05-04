@@ -237,18 +237,4 @@ export function parseYearMonth(ym: string | undefined): Date {
   return startOfMonth(parse(nyDateKey().slice(0, 7), 'yyyy-MM', new Date()))
 }
 
-export function parseWeekStart(d: string | undefined): Date {
-  if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) {
-    const parsed = parse(d, DATE_KEY, new Date())
-    if (!Number.isNaN(parsed.getTime())) return startOfWeek(parsed, WEEK_OPTS)
-  }
-  return startOfWeek(new Date(), WEEK_OPTS)
-}
-
-export function weekBounds(weekStart: Date) {
-  return { start: startOfWeek(weekStart, WEEK_OPTS), end: endOfWeek(weekStart, WEEK_OPTS) }
-}
-export function addWeek(d: Date, n: number): Date {
-  return addDays(d, n * 7)
-}
 export { addMonths, addDays }

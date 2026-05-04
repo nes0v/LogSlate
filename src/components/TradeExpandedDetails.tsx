@@ -1,10 +1,10 @@
 import { Link } from 'react-router-dom'
-import { format, parseISO } from 'date-fns'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { Check, ExternalLink, Pencil, Trash2, X } from 'lucide-react'
 import type { TradeRecord } from '@/db/types'
 import { db } from '@/db/schema'
 import { deleteTrade } from '@/db/queries'
+import { useConfirm } from '@/components/ConfirmDialog'
 import { computeAhpc, totalContracts } from '@/lib/trade-math'
 import { driveViewUrlFromRef, parseScreenshotRef } from '@/lib/drive-images'
 import { handleValue } from '@/lib/symbols'
@@ -22,6 +22,7 @@ const DELETE_BTN_CLASS = `${ACTION_BTN_BASE} text-(--color-loss)`
 const NEUTRAL_BTN_CLASS = `${ACTION_BTN_BASE} text-(--color-text-dim) hover:text-(--color-text)`
 
 export function TradeExpandedDetails({ trade }: TradeExpandedDetailsProps) {
+  const confirm = useConfirm()
   const contracts = totalContracts(trade)
   const ahpc = computeAhpc(trade)
   const hv = handleValue(trade.symbol, trade.contract_type)
@@ -37,7 +38,7 @@ export function TradeExpandedDetails({ trade }: TradeExpandedDetailsProps) {
   const followed = new Set(trade.model_rules_followed ?? [])
 
   async function handleDelete() {
-    if (!confirm('Delete this trade?')) return
+    if (!(await confirm({ title: 'Delete this trade?' }))) return
     await deleteTrade(trade.id)
   }
 
@@ -85,7 +86,7 @@ export function TradeExpandedDetails({ trade }: TradeExpandedDetailsProps) {
             {execs.map(e => (
               <ExecRow
                 key={`${e.time}-${e.kind}-${e.price}`}
-                time={format(parseISO(e.time), 'HH:mm')}
+                time={e.time.slice(11, 19)}
                 kind={e.kind}
                 price={e.price.toFixed(2)}
                 contracts={e.contracts}

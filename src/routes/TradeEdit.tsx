@@ -4,6 +4,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { format, parseISO } from 'date-fns'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { TradeForm } from '@/components/TradeForm'
+import { useConfirm } from '@/components/ConfirmDialog'
 import { db } from '@/db/schema'
 import { deleteTrade, getTrade, updateTrade } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
@@ -19,6 +20,7 @@ export function TradeEditRoute() {
   const { id = '' } = useParams()
   const navigate = useNavigate()
   const accountId = useActiveAccountId()
+  const confirm = useConfirm()
   const [state, setState] = useState<
     | { status: 'loading' }
     | { status: 'ready'; record: TradeRecord; values: TradeFormValues }
@@ -78,7 +80,7 @@ export function TradeEditRoute() {
 
   async function handleDelete() {
     if (state.status !== 'ready') return
-    if (!confirm('Delete this trade?')) return
+    if (!(await confirm({ title: 'Delete this trade?' }))) return
     await deleteTrade(id)
     navigate(`/day/${state.record.date}`)
   }

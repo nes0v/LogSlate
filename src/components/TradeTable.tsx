@@ -1,8 +1,9 @@
-import { Fragment, memo } from 'react'
+import { Fragment, memo, useMemo } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { ArrowDown, ArrowRight, ArrowUp, ArrowUpDown } from 'lucide-react'
 import { db } from '@/db/schema'
 import { DEFAULT_MODEL_NAME, type TradeRecord } from '@/db/types'
+import { useActiveAccountId } from '@/lib/active-account'
 import {
   computeDuration,
   computePlannedRr,
@@ -32,6 +33,21 @@ export const TradeTable = memo(function TradeTable({
   expandedIds,
   onToggle,
 }: TradeTableProps) {
+  // Single subscription on `db.models` for the whole table — beats one
+  // `useLiveQuery(db.models.get(...))` per row, which scaled with trade
+  // count and re-rendered every row on any model write.
+  const accountId = useActiveAccountId()
+  const models = useLiveQuery(
+    () => db.models.where('account_id').equals(accountId).toArray(),
+    [accountId],
+    [],
+  )
+  const modelNameById = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const p of models ?? []) m.set(p.id, p.name)
+    return m
+  }, [models])
+
   return (
     <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) overflow-hidden">
       <table className="w-full text-sm border-collapse">
@@ -48,6 +64,9 @@ export const TradeTable = memo(function TradeTable({
                   expanded={expanded}
                   reversedFromPrev={reversed}
                   onToggle={() => onToggle(t.id)}
+                  modelName={
+                    t.model_id ? modelNameById.get(t.model_id) ?? null : null
+                  }
                 />
                 <tr>
                   <td colSpan={COLS} className="p-0 bg-(--color-panel-2)/40">
@@ -82,6 +101,9 @@ interface RowProps {
    *  "@ price" label floating above the top edge of this row. */
   reversedFromPrev: boolean
   onToggle: () => void
+  /** Resolved model name (if the trade has one) — passed in so each row
+   *  doesn't open its own `db.models.get` subscription. */
+  modelName: string | null
 }
 function TradeTableRow({
   trade,
@@ -89,6 +111,7 @@ function TradeTableRow({
   expanded,
   reversedFromPrev,
   onToggle,
+  modelName,
 }: RowProps) {
   const side = inferSide(trade)
   const { pnl, outcome } = tradeMetrics(trade)
@@ -97,10 +120,6 @@ function TradeTableRow({
   const contracts = totalContracts(trade)
   const dur = computeDuration(trade)
   const tone = outcomeTextClass(outcome, pnl !== null)
-  const model = useLiveQuery(
-    () => (trade.model_id ? db.models.get(trade.model_id) : undefined),
-    [trade.model_id],
-  )
 
   return (
     <tr
@@ -111,7 +130,7 @@ function TradeTableRow({
         expanded ? 'bg-(--color-panel-2)' : 'hover:bg-(--color-panel-2)/60',
       )}
     >
-      <td className="pl-3 pr-6 py-2 text-xs font-mono tabular-nums text-(--color-text-dim) w-px whitespace-nowrap">
+      <td className="pl-3 pr-4 py-2 text-xs font-mono tabular-nums text-(--color-text-dim) w-px whitespace-nowrap">
         #{index}
       </td>
       <td className="pl-0 pr-0 py-2 w-px">
@@ -149,7 +168,7 @@ function TradeTableRow({
         {dur.total_ms !== null ? formatDuration(dur.total_ms) : '—'}
       </td>
       <td className={cn('pl-0 pr-9 py-2 text-xs truncate max-w-32 w-px', !trade.model_id && 'text-amber-600')}>
-        {model?.name ?? DEFAULT_MODEL_NAME}
+        {modelName ?? DEFAULT_MODEL_NAME}
       </td>
       <td className="pl-0 pr-2 py-2 text-xs text-(--color-text-dim) truncate max-w-28">
         {trade.emotion ?? ''}

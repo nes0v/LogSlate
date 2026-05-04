@@ -1,22 +1,27 @@
-import { memo, useMemo } from 'react'
+import { Children, memo, useMemo } from 'react'
 import { eachDayOfInterval, format, parseISO } from 'date-fns'
 import { useLiveQuery } from 'dexie-react-hooks'
+import { ChevronRight } from 'lucide-react'
 import { DonutChart } from '@/components/DonutChart'
+import { insetTileClass } from '@/components/form/Field'
+import { RatingStars } from '@/components/RatingStars'
 import { db } from '@/db/schema'
 import { useActiveAccountId } from '@/lib/active-account'
 import { aggregate } from '@/lib/trade-stats'
 import { formatUsd } from '@/lib/money'
-import { classifyTrade, computeNetPnl, inferSide } from '@/lib/trade-math'
+import { classifyTrade } from '@/lib/trade-math'
+import { HOLD_BUCKETS, holdBucketOf } from '@/lib/filters'
 import { cn } from '@/lib/utils'
 import type { Session, TradeRecord } from '@/db/types'
 import { EMOTIONS, DEFAULT_MODEL_NAME } from '@/db/types'
 import {
   compositeScore,
   dailyEquitySeries,
+  dailyStats,
   drawdownStats,
   expectancyDollars,
   expectancyR,
-  kellyFraction,
+  extremeStats,
   maeMfeStats,
   payoffRatio,
   profitFactor,
@@ -35,16 +40,12 @@ function buildDayRange(rangeStart: string | null, rangeEnd: string | null): stri
 
 export const HeroNetPnl = memo(function HeroNetPnl({
   filtered,
-  rangeStart,
-  rangeEnd,
 }: {
   filtered: TradeRecord[]
   rangeStart: string | null
   rangeEnd: string | null
 }) {
   const stats = useMemo(() => aggregate(filtered), [filtered])
-  const fmtDate = (iso: string) =>
-    format(new Date(iso + 'T00:00:00'), 'dd-MMM-yyyy').toLowerCase()
   return (
     <section className="flex flex-col gap-2 h-full">
       <h2 className="text-sm font-medium">Net PNL</h2>
@@ -59,16 +60,14 @@ export const HeroNetPnl = memo(function HeroNetPnl({
         >
           {formatUsd(stats.net_pnl)}
         </div>
-        <div className="mt-3 text-xs text-(--color-text-dim) space-y-1.5">
-          {rangeStart && rangeEnd && (
-            <div>
-              {fmtDate(rangeStart)} to {fmtDate(rangeEnd)}
-            </div>
-          )}
-          <div>
-            {filtered.length} trade{filtered.length === 1 ? '' : 's'}
+        {stats.fees > 0 && (
+          <div className="mt-3 text-sm text-(--color-text-dim)">
+            <span className="text-(--color-text)">
+              {formatUsd(-stats.fees)}
+            </span>{' '}
+            fees
           </div>
-        </div>
+        )}
       </div>
     </section>
   )
@@ -88,6 +87,19 @@ const EMOTION_COLORS: Record<(typeof EMOTIONS)[number], string> = {
   tired: '#9ca3af',
   greedy: '#a855f7',
   busy: '#06b6d4',
+}
+
+// Hold-time gradient — quick scalps (cool blues) → long holds (warm
+// oranges). 8 stops, one per HOLD_BUCKETS entry; index-aligned.
+const HOLD_PALETTE: Record<(typeof HOLD_BUCKETS)[number], string> = {
+  '<1m': '#60a5fa',
+  '1-5m': '#38bdf8',
+  '5-15m': '#22d3ee',
+  '15-30m': '#34d399',
+  '30-60m': '#facc15',
+  '1-2h': '#fb923c',
+  '2-4h': '#f97316',
+  '4h+': '#ef4444',
 }
 
 // Palette for the model donut. Cycled by index when the user has more
@@ -141,21 +153,40 @@ export const DistributionDonuts = memo(function DistributionDonuts({
     ]
   }, [filtered])
 
-  const sideDonut = useMemo(() => {
-    let longs = 0, shorts = 0, unknown = 0
+  const holdDonut = useMemo(() => {
+    const counts = Object.fromEntries(HOLD_BUCKETS.map(b => [b, 0])) as Record<
+      (typeof HOLD_BUCKETS)[number],
+      number
+    >
+    let unknown = 0
     for (const t of filtered) {
-      const s = inferSide(t)
-      if (s === 'long') longs++
-      else if (s === 'short') shorts++
+      const b = holdBucketOf(t)
+      if (b) counts[b]++
       else unknown++
     }
-    return [
-      { label: 'Long', value: longs, color: 'var(--color-win)' },
-      { label: 'Short', value: shorts, color: 'var(--color-loss)' },
-      ...(unknown > 0
-        ? [{ label: 'Unknown', value: unknown, color: 'var(--color-chart-muted)' }]
-        : []),
-    ]
+    const segments: Array<{
+      label: string
+      value: number
+      color: string
+      legendHidden?: boolean
+    }> = HOLD_BUCKETS.map(b => ({
+      label: b,
+      value: counts[b],
+      color: HOLD_PALETTE[b],
+    }))
+    if (unknown > 0) {
+      // Trades with fewer than two parsable execution times don't fit any
+      // bucket; show them in the donut for accuracy but skip the legend so
+      // the user isn't distracted by an "(unknown)" row that they can't
+      // act on.
+      segments.push({
+        label: '(unknown)',
+        value: unknown,
+        color: 'var(--color-chart-muted)',
+        legendHidden: true,
+      })
+    }
+    return segments
   }, [filtered])
 
   const ratingDonut = useMemo(() => {
@@ -166,9 +197,39 @@ export const DistributionDonuts = memo(function DistributionDonuts({
       else if (t.rating === 'poor') poor++
     }
     return [
-      { label: 'A (excellent)', value: excellent, color: 'var(--color-win)' },
-      { label: 'B (okay)', value: good, color: 'var(--color-accent)' },
-      { label: 'C (unnecessary)', value: poor, color: 'var(--color-chart-muted)' },
+      {
+        label: 'excellent',
+        value: excellent,
+        color: 'var(--color-win)',
+        legendNode: (
+          <span className="inline-flex items-center gap-1.5">
+            <RatingStars rating="excellent" />
+            <span className="text-(--color-text-dim)">(excellent)</span>
+          </span>
+        ),
+      },
+      {
+        label: 'good',
+        value: good,
+        color: 'var(--color-accent)',
+        legendNode: (
+          <span className="inline-flex items-center gap-1.5">
+            <RatingStars rating="good" />
+            <span className="text-(--color-text-dim)">(good)</span>
+          </span>
+        ),
+      },
+      {
+        label: 'poor',
+        value: poor,
+        color: 'var(--color-chart-muted)',
+        legendNode: (
+          <span className="inline-flex items-center gap-1.5">
+            <RatingStars rating="poor" />
+            <span className="text-(--color-text-dim)">(poor)</span>
+          </span>
+        ),
+      },
     ]
   }, [filtered])
 
@@ -245,11 +306,11 @@ export const DistributionDonuts = memo(function DistributionDonuts({
       <h2 className="text-sm font-medium">Distributions</h2>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         <DonutChart title="Outcomes" segments={outcomeDonut} />
-        <DonutChart title="Side" segments={sideDonut} />
         <DonutChart title="Ratings" segments={ratingDonut} />
         <DonutChart title="Sessions" segments={sessionDonut} />
         <DonutChart title="Models" segments={modelDonut} />
         <DonutChart title="Emotions" segments={emotionDonut} legendColumns={2} />
+        <DonutChart title="Durations" segments={holdDonut} legendColumns={2} />
       </div>
     </section>
   )
@@ -292,12 +353,10 @@ export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
   filtered,
   rangeStart,
   rangeEnd,
-  onDayClick,
 }: {
   filtered: TradeRecord[]
   rangeStart: string | null
   rangeEnd: string | null
-  onDayClick?: (date: string) => void
 }) {
   const stats = useMemo(() => aggregate(filtered), [filtered])
   const days = useMemo(() => buildDayRange(rangeStart, rangeEnd), [rangeStart, rangeEnd])
@@ -307,36 +366,27 @@ export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
   const pf = useMemo(() => profitFactor(filtered), [filtered])
   const expR = useMemo(() => expectancyR(filtered), [filtered])
   const expDollars = useMemo(() => expectancyDollars(filtered), [filtered])
-  const kelly = useMemo(() => kellyFraction(filtered), [filtered])
   const sqnVal = useMemo(() => sqn(filtered), [filtered])
   const streaks = useMemo(() => streakStats(filtered), [filtered])
   const maeMfe = useMemo(() => maeMfeStats(filtered), [filtered])
+  const extremes = useMemo(() => extremeStats(filtered), [filtered])
+  const dayStats = useMemo(() => dailyStats(equitySeries), [equitySeries])
+  const totalDays =
+    dayStats.greenDays + dayStats.redDays + dayStats.breakevenDays
 
-  const dailyPnl = useMemo(() => {
-    const m = new Map<string, { pnl: number; count: number }>()
-    for (const t of filtered) {
-      const cur = m.get(t.date) ?? { pnl: 0, count: 0 }
-      cur.pnl += computeNetPnl(t) ?? 0
-      cur.count += 1
-      m.set(t.date, cur)
-    }
-    return m
-  }, [filtered])
-  const heatmapMaxAbs = useMemo(() => {
-    let m = 0
-    for (const d of days) {
-      const v = dailyPnl.get(d)?.pnl ?? 0
-      if (Math.abs(v) > m) m = Math.abs(v)
-    }
-    return m
-  }, [dailyPnl, days])
-
+  // Sum of KpiTiles rendered below: Performance (5) + Risk metrics (6) +
+  // Excursion (4) + Daily (4) + Extremes & streaks (6). Update if tiles
+  // are added/removed.
+  const metricCount = 5 + 6 + 4 + 4 + 6
   return (
-    <>
-      {/* KPI strip + risk strip share a tighter vertical rhythm so they read
-          as a single block of metrics, separate from the rows below. */}
-      <div className="space-y-2">
-      <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+    <details className="space-y-2 group">
+      <summary className="text-sm font-medium cursor-pointer text-(--color-text) hover:text-(--color-accent) list-none flex items-center gap-1 transition-colors">
+        <ChevronRight className="size-4 transition-transform group-open:rotate-90" />
+        Metrics{' '}
+        <span className="text-(--color-text-dim) font-normal">({metricCount})</span>
+      </summary>
+      <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3 space-y-6">
+      <MetricGroup title="Performance">
         <KpiTile
           label="Win rate"
           value={stats.win_rate === null ? '—' : `${Math.round(stats.win_rate * 100)}%`}
@@ -362,10 +412,9 @@ export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
           value={stats.avg_loss === null ? '—' : formatUsd(stats.avg_loss)}
           tone={stats.avg_loss === null ? 'dim' : 'loss'}
         />
-        <KpiTile label="Total fees" value={formatUsd(-stats.fees)} caption={`${stats.count} sides`} />
-      </section>
+      </MetricGroup>
 
-      <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2">
+      <MetricGroup title="Risk metrics">
         <KpiTile
           label="SQN"
           value={sqnVal === null ? '—' : sqnVal.toFixed(2)}
@@ -397,27 +446,14 @@ export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
           tooltip="Net P&L divided by your worst drawdown. 3 = you've earned 3× your worst drawdown back."
         />
         <KpiTile
-          label="Max DD"
-          value={ddStats.maxDd === 0 ? '—' : formatUsd(ddStats.maxDd)}
-          caption={
-            ddStats.maxDdDurationDays > 0
-              ? `${ddStats.maxDdDurationDays}d underwater`
-              : undefined
-          }
-          tone={ddStats.maxDd === 0 ? 'dim' : 'loss'}
-          tooltip="Largest peak-to-trough drop in your equity curve over this period."
+          label="Ulcer Index"
+          value={ddStats.ulcerIndex.toFixed(2)}
+          caption={qualUlcer(ddStats.ulcerIndex)}
+          tooltip="Pain index. Squared average of percentage drawdowns over the period — higher = deeper or longer underwater stretches. 0 = no drawdowns."
         />
-        <KpiTile
-          label="Kelly"
-          value={kelly === null ? '—' : `${Math.round(kelly * 100)}%`}
-          caption={qualKelly(kelly)}
-          tooltip="Theoretical optimal % of capital to risk per trade given your win rate and payoff. Use ¼ to ½ Kelly in practice — full Kelly is too volatile."
-        />
-      </section>
-      </div>
+      </MetricGroup>
 
-      <div className="space-y-3">
-      <section className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+      <MetricGroup title="Excursion (per trade)">
         <KpiTile
           label="Avg MAE"
           value={maeMfe.avgMae === null ? '—' : formatUsd(-maeMfe.avgMae)}
@@ -448,9 +484,72 @@ export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
           }
           caption="losers excursion vs stop"
         />
-      </section>
+      </MetricGroup>
 
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <MetricGroup title="Daily">
+        <KpiTile
+          label="Best day"
+          value={dayStats.bestDay === null ? '—' : formatUsd(dayStats.bestDay)}
+          tone={dayStats.bestDay === null ? 'dim' : 'win'}
+          tooltip="Highest single-day net PnL."
+        />
+        <KpiTile
+          label="Worst day"
+          value={dayStats.worstDay === null ? '—' : formatUsd(dayStats.worstDay)}
+          tone={dayStats.worstDay === null ? 'dim' : 'loss'}
+          tooltip="Lowest single-day net PnL."
+        />
+        <KpiTile
+          label="Avg daily P&L"
+          value={dayStats.avgDailyPnl === null ? '—' : formatUsd(dayStats.avgDailyPnl)}
+          tone={
+            dayStats.avgDailyPnl === null
+              ? 'dim'
+              : dayStats.avgDailyPnl > 0
+                ? 'win'
+                : dayStats.avgDailyPnl < 0
+                  ? 'loss'
+                  : 'dim'
+          }
+          caption={`across ${totalDays} day${totalDays === 1 ? '' : 's'}`}
+          tooltip="Mean PnL across days that had at least one trade."
+        />
+        <KpiTile
+          label="Day win rate"
+          value={
+            dayStats.dayWinRate === null
+              ? '—'
+              : `${Math.round(dayStats.dayWinRate * 100)}%`
+          }
+          caption={`${dayStats.greenDays}G / ${dayStats.redDays}R`}
+          tooltip="Share of trading days that closed green. Different from trade win rate — tells you how often a session ended profitable."
+        />
+      </MetricGroup>
+
+      <MetricGroup title="Extremes & streaks">
+        <KpiTile
+          label="Largest win"
+          value={extremes.largestWin === null ? '—' : formatUsd(extremes.largestWin)}
+          tone={extremes.largestWin === null ? 'dim' : 'win'}
+          tooltip="Single best winning trade in this period."
+        />
+        <KpiTile
+          label="Largest loss"
+          value={extremes.largestLoss === null ? '—' : formatUsd(extremes.largestLoss)}
+          tone={extremes.largestLoss === null ? 'dim' : 'loss'}
+          tooltip="Single worst losing trade in this period."
+        />
+        <KpiTile
+          label="Max DD"
+          value={ddStats.maxDd === 0 ? '—' : formatUsd(ddStats.maxDd)}
+          caption={
+            ddStats.maxDdDurationDays > 0
+              ? `${ddStats.maxDdDurationDays}d underwater`
+              : undefined
+          }
+          tone={ddStats.maxDd === 0 ? 'dim' : 'loss'}
+          tooltip="Largest peak-to-trough drop in your equity curve over this period."
+        />
         <KpiTile
           label="Longest win streak"
           value={`${streaks.longestWin}`}
@@ -472,49 +571,40 @@ export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
           }
           tone={streaks.current > 0 ? 'win' : streaks.current < 0 ? 'loss' : 'dim'}
         />
-        <KpiTile
-          label="Ulcer Index"
-          value={ddStats.ulcerIndex.toFixed(2)}
-          caption={qualUlcer(ddStats.ulcerIndex)}
-          tooltip="Pain index. Squared average of percentage drawdowns over the period — higher = deeper or longer underwater stretches. 0 = no drawdowns."
-        />
-      </section>
+      </MetricGroup>
       </div>
-
-      <section className="space-y-2">
-        <h2 className="text-sm font-medium">Daily P&amp;L</h2>
-        <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3">
-          <div className="grid gap-1 grid-cols-[repeat(auto-fill,minmax(36px,1fr))]">
-            {days.map(d => {
-              const cell = dailyPnl.get(d)
-              const pnl = cell?.pnl ?? 0
-              const intensity = heatmapMaxAbs > 0 ? Math.abs(pnl) / heatmapMaxAbs : 0
-              const bg = !cell
-                ? 'transparent'
-                : pnl > 0
-                  ? `color-mix(in oklab, var(--color-win) ${10 + intensity * 70}%, transparent)`
-                  : pnl < 0
-                    ? `color-mix(in oklab, var(--color-loss) ${10 + intensity * 70}%, transparent)`
-                    : 'var(--color-panel-2)'
-              return (
-                <button
-                  key={d}
-                  type="button"
-                  onClick={() => onDayClick?.(d)}
-                  title={`${d} · ${formatUsd(pnl)} · ${cell?.count ?? 0} trade${(cell?.count ?? 0) === 1 ? '' : 's'}`}
-                  className="aspect-square rounded-sm text-xs font-mono text-(--color-text-dim) hover:opacity-80 transition-opacity border border-(--color-border)"
-                  style={{ backgroundColor: bg }}
-                >
-                  {format(new Date(d + 'T00:00:00'), 'd')}
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      </section>
-    </>
+    </details>
   )
 })
+
+function MetricGroup({
+  title,
+  children,
+}: {
+  title: string
+  children: React.ReactNode
+}) {
+  // Each row gets exactly N columns where N is the number of tiles in this
+  // group, so the row fills the full width regardless of how many tiles
+  // (4, 5, 6) the group has. Below the lg breakpoint we fall back to a
+  // generic 2/3 grid so narrow viewports don't squeeze tiles into unreadable
+  // strips. `minmax(0, 1fr)` lets tile content (long labels) ellipsize
+  // instead of forcing the column wider than its share.
+  const count = Math.max(1, Children.count(children))
+  return (
+    <section className="space-y-2">
+      <h3 className="text-xs uppercase tracking-[0.08em] font-medium text-(--color-text-dim)">
+        {title}
+      </h3>
+      <div
+        className="grid grid-cols-2 sm:grid-cols-3 gap-2 lg:[grid-template-columns:var(--cols)]"
+        style={{ ['--cols' as string]: `repeat(${count}, minmax(0, 1fr))` }}
+      >
+        {children}
+      </div>
+    </section>
+  )
+}
 
 interface KpiTileProps {
   label: string
@@ -527,8 +617,8 @@ function KpiTile({ label, value, caption, tone, tooltip }: KpiTileProps) {
   return (
     <div
       className={cn(
-        'bg-(--color-panel) rounded-(--radius) p-3 shadow-(--shadow-xs)',
-        'transition-colors hover:border-(--color-border-strong)',
+        insetTileClass,
+        'transition-colors',
         tooltip && 'cursor-help',
       )}
       title={tooltip}
@@ -728,14 +818,6 @@ function qualRecovery(v: number | null): string | undefined {
   if (v < 2) return 'ok'
   if (v < 3) return 'good'
   return 'excellent'
-}
-function qualKelly(v: number | null): string | undefined {
-  if (v === null) return undefined
-  if (v <= 0) return 'no edge'
-  if (v < 0.15) return 'small edge'
-  if (v < 0.3) return 'moderate'
-  if (v < 0.5) return 'large'
-  return 'use ¼–½ in practice'
 }
 function qualUlcer(v: number): string {
   if (v < 1) return 'smooth'

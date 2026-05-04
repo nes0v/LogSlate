@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { formatDistanceToNow } from 'date-fns'
-import { CheckCircle2, CloudDownload, CloudUpload, LogIn, LogOut, Monitor, Moon, RefreshCw, Sun } from 'lucide-react'
+import { CheckCircle2, CloudDownload, CloudUpload, LogIn, LogOut, RefreshCw } from 'lucide-react'
 import { requestManualSync } from '@/lib/auto-sync'
 import { isConfigured, signIn, signOut, useDriveState } from '@/lib/drive'
 import { clearSyncState, lastSyncAt, type SyncResult } from '@/lib/sync'
@@ -17,11 +17,6 @@ import {
   useColorScheme,
   type ColorScheme,
 } from '@/lib/color-scheme-preference'
-import {
-  setTheme,
-  useThemePreference,
-  type ThemePreference,
-} from '@/lib/theme-preference'
 
 export function SettingsRoute() {
   const drive = useDriveState()
@@ -32,7 +27,6 @@ export function SettingsRoute() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const defaultEquityView = useDefaultEquityView()
   const colorScheme = useColorScheme()
-  const themePref = useThemePreference()
 
   async function handleSync() {
     setSyncing(true)
@@ -186,25 +180,7 @@ export function SettingsRoute() {
         <div className="rounded-(--radius) bg-(--color-panel) shadow-(--shadow-xs) p-3 space-y-5">
           <div className="space-y-2">
             <div className="space-y-1">
-              <div className="text-sm">Theme</div>
-              <div className="text-xs text-(--color-text-dim)">
-                <em>System</em> follows your OS preference and switches automatically.
-              </div>
-            </div>
-            <Pills
-              value={themePref}
-              onChange={setTheme}
-              options={[
-                { value: 'system', label: 'System', prefix: <Monitor className="size-3.5" /> },
-                { value: 'light', label: 'Light', prefix: <Sun className="size-3.5" /> },
-                { value: 'dark', label: 'Dark', prefix: <Moon className="size-3.5" /> },
-              ] satisfies Array<{ value: ThemePreference; label: string; prefix: React.ReactNode }>}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <div className="space-y-1">
-              <div className="text-sm">Equity chart default view</div>
+              <div className="text-sm">Default chart view</div>
               <div className="text-xs text-(--color-text-dim)">
                 You can still switch on each page for that session.
               </div>
@@ -221,7 +197,7 @@ export function SettingsRoute() {
 
           <div className="space-y-2">
             <div className="space-y-1">
-              <div className="text-sm">Win / loss palette</div>
+              <div className="text-sm">Default colors</div>
               <div className="text-xs text-(--color-text-dim)">
                 Applies to candle bodies, equity tiles, win/loss text, and every other accent
                 on the page.
@@ -236,13 +212,13 @@ export function SettingsRoute() {
                 value: key,
                 label: palette.label,
                 prefix: (
-                  <span className="inline-flex gap-0.5" aria-hidden>
+                  <span className="inline-flex gap-1" aria-hidden>
                     <span
-                      className="size-3 rounded-sm"
+                      className="size-2.5 rounded-full"
                       style={{ backgroundColor: palette.win }}
                     />
                     <span
-                      className="size-3 rounded-sm"
+                      className="size-2.5 rounded-full"
                       style={{ backgroundColor: palette.loss }}
                     />
                   </span>

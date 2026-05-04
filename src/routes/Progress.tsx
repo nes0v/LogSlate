@@ -6,7 +6,9 @@ import { db } from '@/db/schema'
 import type { ProgressCheck, ProgressRule } from '@/db/types'
 import { useActiveAccountId } from '@/lib/active-account'
 import { Checkbox } from '@/components/form/Checkbox'
-import { inputClassCompact } from '@/components/form/Field'
+import { useConfirm } from '@/components/ConfirmDialog'
+import { inputClass, inputClassCompact } from '@/components/form/Field'
+import { nyToday } from '@/lib/tz'
 import { cn } from '@/lib/utils'
 
 function newId(): string {
@@ -19,7 +21,8 @@ function checkId(accountId: string, date: string, ruleId: string): string {
 
 export function ProgressRoute() {
   const accountId = useActiveAccountId()
-  const today = format(new Date(), 'yyyy-MM-dd')
+  const confirm = useConfirm()
+  const today = nyToday()
   const [date, setDate] = useState(today)
 
   const rules = useLiveQuery(
@@ -128,7 +131,13 @@ export function ProgressRoute() {
   }
 
   async function deleteRule(id: string) {
-    if (!confirm('Delete this rule? Past checks will be hidden but kept.')) return
+    if (
+      !(await confirm({
+        title: 'Delete this rule?',
+        description: 'Past checks will be hidden but kept.',
+      }))
+    )
+      return
     await db.progress_rules.delete(id)
   }
 
@@ -276,7 +285,7 @@ export function ProgressRoute() {
                   <label
                     key={r.id}
                     className={cn(
-                      'flex items-start gap-2 px-1 py-1 rounded-sm cursor-pointer hover:bg-(--color-panel-2)/50',
+                      'flex items-start gap-2 px-1 py-1 rounded-sm cursor-pointer hover:bg-(--color-panel-3)',
                       checked && 'opacity-60',
                     )}
                   >
@@ -358,7 +367,7 @@ function RuleManager({
           value={draft}
           onChange={e => setDraft(e.target.value)}
           placeholder="Add a rule…"
-          className="flex-1 bg-(--color-bg) rounded-(--radius) px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-(--color-accent-soft) transition-colors"
+          className={cn(inputClass, 'flex-1')}
         />
         <button
           type="submit"
@@ -373,7 +382,7 @@ function RuleManager({
         {rules.map(r => (
           <div
             key={r.id}
-            className="flex items-center gap-2 px-1 py-1 rounded-sm hover:bg-(--color-panel-2)/40"
+            className="flex items-center gap-2 px-1 py-1 rounded-sm hover:bg-(--color-panel-3)"
           >
             <Checkbox
               checked={r.active}

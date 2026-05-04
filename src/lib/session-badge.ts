@@ -10,4 +10,4 @@ export const SESSION_BADGE: Record<Session, string> = {
 }
 
 export const SESSION_BADGE_CLASS =
-  'inline-flex items-center justify-center gap-1 min-w-9 px-1.5 h-5 text-xs rounded-sm font-mono leading-none'
+  'inline-flex items-center justify-center gap-1 min-w-10 px-0.5 h-5 text-xs rounded-sm font-mono leading-none'

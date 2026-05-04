@@ -11,6 +11,9 @@ interface DonutSegment {
    *  the side legend. Used for buckets like "(unset)" / "(deleted)" that
    *  should affect the proportions but not the labelled list. */
   legendHidden?: boolean
+  /** Optional custom node rendered in place of the legend text label.
+   *  The string `label` is still used for the hover tooltip. */
+  legendNode?: React.ReactNode
 }
 
 interface DonutChartProps {
@@ -56,17 +59,30 @@ export function DonutChart({ title, segments, centerLabel, className, legendColu
 
   // Pie slices as filled SVG wedges. The wedge itself is fill-only; a
   // sibling stroke-only sub-path traces just the outer arc, so anti-
-  // aliasing on the curved edge blends slice colour → panel bg cleanly
-  // without colouring the radial sides between adjacent slices.
+  // aliasing on the curved edge blends slice colour → panel bg cleanly.
+  //
+  // Each wedge is extended by a small angular epsilon at start and end so
+  // that adjacent wedges *overlap* by ~2ε at every seam. Without this,
+  // SVG fill-AA on each wedge's radial edges blends with the panel-bg
+  // pixel between the two wedges, producing a thin lighter "ladder" line
+  // along diagonal seams. Overlapping eliminates the gap entirely; the
+  // later-drawn wedge wins along the shared seam (visually invisible
+  // since both wedges have full opacity).
+  const SEAM_EPSILON = 0.008 // ≈ 0.46°; enough to seal AA gaps without distorting proportions
   let cursor = -Math.PI / 2 // start at 12 o'clock
-  const slices = visible.map(s => {
+  const slices = visible.map((s, i) => {
     const fraction = s.value / total
     if (fraction >= 1) {
       return <circle key={s.label} cx={R} cy={R} r={R} fill={s.color} {...bindHover(s)} />
     }
-    const startAngle = cursor
-    const endAngle = cursor + fraction * 2 * Math.PI
-    cursor = endAngle
+    const baseStart = cursor
+    const baseEnd = cursor + fraction * 2 * Math.PI
+    cursor = baseEnd
+    // Extend on each side except at the very first/last wedge of the ring,
+    // since extending past the ring's boundary would just wrap and overlap
+    // with itself.
+    const startAngle = i > 0 ? baseStart - SEAM_EPSILON : baseStart
+    const endAngle = i < visible.length - 1 ? baseEnd + SEAM_EPSILON : baseEnd
     const sx = R + R * Math.cos(startAngle)
     const sy = R + R * Math.sin(startAngle)
     const ex = R + R * Math.cos(endAngle)
@@ -93,8 +109,9 @@ export function DonutChart({ title, segments, centerLabel, className, legendColu
       <div className="flex items-center gap-4">
         <svg
           viewBox="-1 -1 102 102"
-          className="size-24 shrink-0"
+          className="size-28 shrink-0"
           aria-label={title}
+          shapeRendering="geometricPrecision"
         >
           {total > 0 ? (
             slices
@@ -131,7 +148,9 @@ export function DonutChart({ title, segments, centerLabel, className, legendColu
                   style={{ backgroundColor: s.color }}
                   aria-hidden
                 />
-                <span className="text-(--color-text) truncate">{s.label}</span>
+                <span className="text-(--color-text) truncate">
+                  {s.legendNode ?? s.label}
+                </span>
                 <span className="ml-auto font-mono tabular-nums text-(--color-text-dim)">
                   {pct.toFixed(0)}%
                 </span>

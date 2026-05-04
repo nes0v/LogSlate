@@ -1,14 +1,74 @@
 import {
   CONTRACT_TYPES,
+  EMOTIONS,
   RATINGS,
   SESSIONS,
+  SIDES,
   SYMBOLS,
   type ContractType,
+  type Emotion,
   type Rating,
   type Session,
+  type Side,
   type SymbolKey,
   type TradeRecord,
 } from '@/db/types'
+import {
+  classifyTrade,
+  inferSide,
+  TRADE_OUTCOMES,
+  type TradeOutcome,
+} from '@/lib/trade-math'
+
+export const WEEKDAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const
+export type Weekday = (typeof WEEKDAYS)[number]
+
+export const HOLD_BUCKETS = [
+  '<1m',
+  '1-5m',
+  '5-15m',
+  '15-30m',
+  '30-60m',
+  '1-2h',
+  '2-4h',
+  '4h+',
+] as const
+export type HoldBucket = (typeof HOLD_BUCKETS)[number]
+
+const HOLD_BUCKET_RANGES_MIN: Record<HoldBucket, [number, number]> = {
+  '<1m': [0, 1],
+  '1-5m': [1, 5],
+  '5-15m': [5, 15],
+  '15-30m': [15, 30],
+  '30-60m': [30, 60],
+  '1-2h': [60, 120],
+  '2-4h': [120, 240],
+  '4h+': [240, Infinity],
+}
+
+/** Holding duration in minutes — first to last execution time. Returns
+ *  null when the trade has fewer than two parsable execution times. */
+export function holdMinutes(t: TradeRecord): number | null {
+  const times = t.executions
+    .map(e => Date.parse(e.time))
+    .filter(n => !Number.isNaN(n))
+  if (times.length < 2) return null
+  return (Math.max(...times) - Math.min(...times)) / 60000
+}
+
+export function holdBucketOf(t: TradeRecord): HoldBucket | null {
+  const m = holdMinutes(t)
+  if (m === null) return null
+  for (const b of HOLD_BUCKETS) {
+    const [lo, hi] = HOLD_BUCKET_RANGES_MIN[b]
+    if (m >= lo && m < hi) return b
+  }
+  return null
+}
+
+/** Sentinel model id for trades with no `model_id` set. UUIDs never
+ *  produce this string, so it can't collide with a real model. */
+export const MODEL_NONE = 'none'
 
 export interface TradeFilters {
   from: string | null // YYYY-MM-DD, inclusive
@@ -17,6 +77,13 @@ export interface TradeFilters {
   contract: ContractType | null
   session: Session | null
   rating: Rating | null
+  weekday: Weekday | null
+  outcome: TradeOutcome | null
+  side: Side | null
+  hold: HoldBucket | null
+  emotion: Emotion | null
+  /** Model id, or `MODEL_NONE` for trades with no model. */
+  model: string | null
 }
 
 export const EMPTY_FILTERS: TradeFilters = {
@@ -26,6 +93,12 @@ export const EMPTY_FILTERS: TradeFilters = {
   contract: null,
   session: null,
   rating: null,
+  weekday: null,
+  outcome: null,
+  side: null,
+  hold: null,
+  emotion: null,
+  model: null,
 }
 
 export function applyFilters(trades: TradeRecord[], f: TradeFilters): TradeRecord[] {
@@ -36,6 +109,22 @@ export function applyFilters(trades: TradeRecord[], f: TradeFilters): TradeRecor
     if (f.contract && t.contract_type !== f.contract) return false
     if (f.session && t.session !== f.session) return false
     if (f.rating && t.rating !== f.rating) return false
+    if (f.weekday) {
+      const wd = WEEKDAYS[new Date(t.date + 'T00:00:00').getDay()]
+      if (wd !== f.weekday) return false
+    }
+    if (f.outcome && classifyTrade(t) !== f.outcome) return false
+    if (f.side) {
+      const s = inferSide(t)
+      if (s !== f.side) return false
+    }
+    if (f.hold && holdBucketOf(t) !== f.hold) return false
+    if (f.emotion && t.emotion !== f.emotion) return false
+    if (f.model) {
+      if (f.model === MODEL_NONE) {
+        if (t.model_id) return false
+      } else if (t.model_id !== f.model) return false
+    }
     return true
   })
 }
@@ -45,6 +134,7 @@ export function filtersFromParams(p: URLSearchParams): TradeFilters {
     const v = p.get(key)
     return v !== null && (allowed as readonly string[]).includes(v) ? (v as K) : null
   }
+  const rawModel = p.get('model')
   return {
     from: p.get('from'),
     to: p.get('to'),
@@ -52,8 +142,35 @@ export function filtersFromParams(p: URLSearchParams): TradeFilters {
     contract: get<ContractType>('contract', CONTRACT_TYPES),
     session: get<Session>('session', SESSIONS),
     rating: get<Rating>('rating', RATINGS),
+    weekday: get<Weekday>('weekday', WEEKDAYS),
+    outcome: get<TradeOutcome>('outcome', TRADE_OUTCOMES),
+    side: get<Side>('side', SIDES),
+    hold: get<HoldBucket>('hold', HOLD_BUCKETS),
+    emotion: get<Emotion>('emotion', EMOTIONS),
+    // Model id is a free-form string (UUID) or the `MODEL_NONE` sentinel.
+    // Validation against the user's actual model list happens in the UI;
+    // a stale/invalid id just produces no matching trades.
+    model: rawModel && rawModel.length > 0 ? rawModel : null,
   }
 }
+
+/** URL-param names that map to a TradeFilters dimension. The Stats/Reports
+ *  pages use this to count "active" filters (non-default URL state) so the
+ *  filter bar opens/closes its collapsible appropriately. */
+export const FILTER_PARAM_KEYS = [
+  'from',
+  'to',
+  'symbol',
+  'contract',
+  'session',
+  'rating',
+  'weekday',
+  'outcome',
+  'side',
+  'hold',
+  'emotion',
+  'model',
+] as const
 
 export function paramsFromFilters(f: TradeFilters): URLSearchParams {
   const p = new URLSearchParams()
@@ -63,5 +180,11 @@ export function paramsFromFilters(f: TradeFilters): URLSearchParams {
   if (f.contract) p.set('contract', f.contract)
   if (f.session) p.set('session', f.session)
   if (f.rating) p.set('rating', f.rating)
+  if (f.weekday) p.set('weekday', f.weekday)
+  if (f.outcome) p.set('outcome', f.outcome)
+  if (f.side) p.set('side', f.side)
+  if (f.hold) p.set('hold', f.hold)
+  if (f.emotion) p.set('emotion', f.emotion)
+  if (f.model) p.set('model', f.model)
   return p
 }

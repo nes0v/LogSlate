@@ -1,15 +1,17 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { format } from 'date-fns'
 import { Trash2 } from 'lucide-react'
 import { db } from '@/db/schema'
 import { createAdjustment, deleteAdjustment } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
+import { useConfirm } from '@/components/ConfirmDialog'
 import { inputClassCompact as inputClass } from '@/components/form/Field'
 import { formatUsd } from '@/lib/money'
+import { nyMonthKey } from '@/lib/tz'
 
 export function BrokerFeesPanel() {
   const accountId = useActiveAccountId()
+  const confirm = useConfirm()
   const fees = useLiveQuery(
     async () => {
       const rows = await db.adjustments
@@ -22,7 +24,7 @@ export function BrokerFeesPanel() {
     [],
   )
 
-  const [month, setMonth] = useState(() => format(new Date(), 'yyyy-MM'))
+  const [month, setMonth] = useState(() => nyMonthKey())
   const [amount, setAmount] = useState('')
   const [note, setNote] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -50,7 +52,7 @@ export function BrokerFeesPanel() {
   }
 
   async function handleDelete(id: string) {
-    if (confirm('Delete this fee?')) await deleteAdjustment(id)
+    if (await confirm({ title: 'Delete this fee?' })) await deleteAdjustment(id)
   }
 
   const list = fees ?? []

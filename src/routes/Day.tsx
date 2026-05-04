@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { format, parseISO } from 'date-fns'
@@ -9,6 +9,7 @@ import { firstExecutionMs } from '@/lib/trade-math'
 import { aggregate } from '@/lib/trade-stats'
 import { useArrowNavigation } from '@/lib/use-arrow-navigation'
 import { DayNewsSection } from '@/components/DayNewsSection'
+import { DayNoteSection } from '@/components/DayNoteSection'
 import { DayScreenshotSection } from '@/components/DayScreenshotSection'
 import { PageHeader } from '@/components/PageHeader'
 import { StatsGrid } from '@/components/StatsGrid'
@@ -71,14 +72,16 @@ export function DayRoute() {
   const stats = aggregate(trades ?? [])
 
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
-  function toggleExpanded(id: string) {
+  // Stable identity so the memoized `<TradeTable>` doesn't re-render on
+  // every parent render.
+  const toggleExpanded = useCallback((id: string) => {
     setExpandedIds(prev => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
       return next
     })
-  }
+  }, [])
 
   return (
     <div className="pt-1 space-y-8">
@@ -101,6 +104,8 @@ export function DayRoute() {
       <StatsGrid stats={stats} />
 
       <DayNewsSection date={date} />
+
+      <DayNoteSection accountId={accountId} date={date} />
 
       <DayScreenshotSection accountId={accountId} date={date} />
 

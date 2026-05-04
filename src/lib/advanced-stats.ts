@@ -13,6 +13,7 @@ import {
   computeNetPnl,
   computeRealizedRr,
   firstExecutionMs,
+  lastExecutionMs,
   tradeMetrics,
   type TradeOutcome,
 } from '@/lib/trade-math'
@@ -96,25 +97,6 @@ export function expectancyDollars(trades: TradeRecord[]): number | null {
   const avgWin = wn > 0 ? ws / wn : 0
   const avgLoss = ln > 0 ? ls / ln : 0
   return wr * avgWin + lr * avgLoss
-}
-
-/** Kelly fraction: win% - (loss% / payoff). Capped to [0, 1]. */
-export function kellyFraction(trades: TradeRecord[]): number | null {
-  const pf = payoffRatio(trades)
-  if (pf === null) return null
-  let wn = 0
-  let ln = 0
-  for (const t of trades) {
-    const outcome = classifyTrade(t)
-    if (outcome === 'win') wn++
-    else if (outcome === 'loss') ln++
-  }
-  const decided = wn + ln
-  if (decided === 0) return null
-  const wr = wn / decided
-  const lr = ln / decided
-  const k = wr - lr / pf
-  return Math.max(0, Math.min(1, k))
 }
 
 // ---------- Van Tharp SQN ------------------------------------------
@@ -499,14 +481,32 @@ export function mfeScatter(trades: TradeRecord[]): ScatterPoint[] {
 
 const HOUR_BUCKETS = 24
 
-export function pnlByHour(trades: TradeRecord[]): Array<{ hour: number; pnl: number; count: number }> {
-  const arr = Array.from({ length: HOUR_BUCKETS }, (_, h) => ({ hour: h, pnl: 0, count: 0 }))
+export type HourMode = 'first' | 'last'
+
+export function pnlByHour(
+  trades: TradeRecord[],
+  mode: HourMode = 'first',
+): Array<{ hour: number; pnl: number; count: number; wins: number; losses: number }> {
+  const arr = Array.from({ length: HOUR_BUCKETS }, (_, h) => ({
+    hour: h,
+    pnl: 0,
+    count: 0,
+    wins: 0,
+    losses: 0,
+  }))
+  const pickMs = mode === 'last' ? lastExecutionMs : firstExecutionMs
   for (const t of trades) {
-    const ms = firstExecutionMs(t)
+    const ms = pickMs(t)
     if (ms === null) continue
-    const h = new Date(ms).getHours()
-    arr[h].pnl += computeNetPnl(t) ?? 0
+    // Execution times are stored as `${date}T${HH:MM:SS}.000Z` literals —
+    // the typed NY wallclock encoded as a fictional UTC. `getUTCHours()`
+    // pulls the typed hour back out without any tz math.
+    const h = new Date(ms).getUTCHours()
+    const { pnl, outcome } = tradeMetrics(t)
+    arr[h].pnl += pnl ?? 0
     arr[h].count++
+    if (outcome === 'win') arr[h].wins++
+    else if (outcome === 'loss') arr[h].losses++
   }
   return arr
 }
@@ -523,6 +523,34 @@ export function pnlByWeekday(trades: TradeRecord[]): Array<{ name: string; pnl: 
     else if (outcome === 'loss') arr[day].losses++
   }
   return arr
+}
+
+/** P&L grouped by ISO week (Mon..Sun). The label is the week's Monday
+ *  in `YYYY-MM-DD` form so it sorts naturally and is unambiguous across
+ *  year boundaries. */
+export function pnlByWeek(
+  trades: TradeRecord[],
+): Array<{ weekStart: string; pnl: number; count: number; wins: number; losses: number }> {
+  const m = new Map<string, { pnl: number; count: number; wins: number; losses: number }>()
+  for (const t of trades) {
+    const d = new Date(t.date + 'T00:00:00')
+    // Shift to Monday: getDay() returns 0..6 with 0 = Sunday.
+    const dow = d.getDay()
+    const offset = dow === 0 ? -6 : 1 - dow
+    const monday = new Date(d)
+    monday.setDate(d.getDate() + offset)
+    const key = `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, '0')}-${String(monday.getDate()).padStart(2, '0')}`
+    const cur = m.get(key) ?? { pnl: 0, count: 0, wins: 0, losses: 0 }
+    const { pnl, outcome } = tradeMetrics(t)
+    cur.pnl += pnl ?? 0
+    cur.count++
+    if (outcome === 'win') cur.wins++
+    else if (outcome === 'loss') cur.losses++
+    m.set(key, cur)
+  }
+  return Array.from(m.entries())
+    .map(([weekStart, v]) => ({ weekStart, ...v }))
+    .sort((a, b) => (a.weekStart < b.weekStart ? -1 : 1))
 }
 
 /** P&L grouped by `YYYY-MM` (calendar month). */
@@ -634,6 +662,75 @@ export function compositeScore(args: {
   return {
     total,
     parts: { profitFactor, payoff, maxDd, winRate, recovery, consistency },
+  }
+}
+
+// ---------- per-trade extremes & day-level summary -----------------
+
+export interface ExtremeStats {
+  largestWin: number | null // most positive single-trade pnl
+  largestLoss: number | null // most negative single-trade pnl
+}
+
+export function extremeStats(trades: TradeRecord[]): ExtremeStats {
+  let largestWin: number | null = null
+  let largestLoss: number | null = null
+  for (const t of trades) {
+    const pnl = computeNetPnl(t)
+    if (pnl === null) continue
+    if (pnl > 0 && (largestWin === null || pnl > largestWin)) largestWin = pnl
+    if (pnl < 0 && (largestLoss === null || pnl < largestLoss)) largestLoss = pnl
+  }
+  return { largestWin, largestLoss }
+}
+
+export interface DailyStats {
+  bestDay: number | null
+  worstDay: number | null
+  avgDailyPnl: number | null
+  /** Days with positive PnL ÷ days that had trades. */
+  dayWinRate: number | null
+  greenDays: number
+  redDays: number
+  breakevenDays: number
+}
+
+/** Aggregates the equity series down to per-trading-day metrics. Only
+ *  days with at least one trade count toward the rates and average. */
+export function dailyStats(series: EquityPoint[]): DailyStats {
+  const tradingDays = series.filter(p => p.pnl !== 0)
+  if (tradingDays.length === 0) {
+    return {
+      bestDay: null,
+      worstDay: null,
+      avgDailyPnl: null,
+      dayWinRate: null,
+      greenDays: 0,
+      redDays: 0,
+      breakevenDays: 0,
+    }
+  }
+  let best = -Infinity
+  let worst = Infinity
+  let green = 0
+  let red = 0
+  let total = 0
+  for (const p of tradingDays) {
+    if (p.pnl > best) best = p.pnl
+    if (p.pnl < worst) worst = p.pnl
+    if (p.pnl > 0) green++
+    else if (p.pnl < 0) red++
+    total += p.pnl
+  }
+  const decided = green + red
+  return {
+    bestDay: best,
+    worstDay: worst,
+    avgDailyPnl: total / tradingDays.length,
+    dayWinRate: decided > 0 ? green / decided : null,
+    greenDays: green,
+    redDays: red,
+    breakevenDays: tradingDays.length - green - red,
   }
 }
 

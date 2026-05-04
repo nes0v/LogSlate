@@ -1,17 +1,12 @@
 @import "tailwindcss";
 
 /* ============================================================================
- * Theme tokens
+ * Theme tokens — dark-only.
  * ============================================================================
- * Colors use the modern `light-dark()` CSS function so the same `:root`
- * resolves automatically based on `color-scheme`. The theme switcher writes
- * `data-theme="light" | "dark"` onto <html> to lock a specific mode; without
- * that attribute the browser follows OS preference. See
- * `src/lib/theme-preference.ts`.
- *
  * The win/loss pair is set at runtime by the color-scheme picker
  * (src/lib/color-scheme-preference.ts) — those inline styles take precedence
- * over these defaults.
+ * over the defaults below. That picker swaps trading-colors only; it doesn't
+ * touch the surrounding surface palette.
  */
 
 @theme {
@@ -33,89 +28,79 @@
 }
 
 :root {
-  color-scheme: light dark;
+  color-scheme: dark;
 
-  /* Surfaces — page bg is intentionally a shade darker than panels in
-   * both modes so borderless cards/sections/pills read as elevated
-   * surfaces. The shadow `0 0 0 1px` ring adds a hairline so they still
-   * have crisp edges. Panel-2 is the recessed/hover step; panel-3 is
-   * the deepest surface (used for inputs-on-panel etc.). */
-  --color-bg:        light-dark(#d6d8df, #0b0d12);
-  --color-panel:     light-dark(#ffffff, #181a23);
-  --color-panel-2:   light-dark(#f4f5f8, #21232e);
-  --color-panel-3:   light-dark(#e8eaef, #2a2d3a);
+  /* Surfaces — page bg is intentionally a shade darker than panels so
+   * borderless cards/sections/pills read as elevated surfaces. The shadow
+   * `0 0 0 1px` ring adds a hairline so they still have crisp edges.
+   * Panel-2 is the recessed/hover step; panel-3 is the deepest surface
+   * (used for inputs-on-panel etc.). */
+  --color-bg:        #0b0d12;
+  --color-panel:     #1b1d27;
+  --color-panel-2:   #21232e;
+  --color-panel-3:   #2a2d3a;
 
   /* Borders — `border` is the everyday subtle line; `border-strong` is for
    * emphasis (focus, the active edge of a control). */
-  --color-border:        light-dark(#e7e8ed, #2a2c37);
-  --color-border-strong: light-dark(#d0d3db, #3a3d4a);
+  --color-border:        #2a2c37;
+  --color-border-strong: #3a3d4a;
 
   /* Text — three steps so headings, body, and captions can each pick the
    * right amount of contrast. */
-  --color-text:       light-dark(#16181d, #edeef2);
-  --color-text-dim:   light-dark(#5e6271, #9ea2b1);
-  --color-text-faint: light-dark(#9197a4, #6a6f7d);
+  --color-text:       #edeef2;
+  --color-text-dim:   #9ea2b1;
+  --color-text-faint: #6a6f7d;
 
-  /* Accent — slightly darker in light for AA contrast on white surfaces. */
-  --color-accent:      light-dark(#6840ee, #8a6dff);
+  --color-accent:      #8a6dff;
   --color-accent-fg:   #ffffff;
-  --color-accent-soft: light-dark(rgba(104, 64, 238, 0.10), rgba(138, 109, 255, 0.16));
+  --color-accent-soft: rgba(138, 109, 255, 0.16);
   /* A deeper, more saturated purple — used for solid pills/chips that
-   * need to read as "dark purple" in both light and dark mode. */
+   * need to read as "dark purple". */
   --color-accent-deep: #2c2759;
 
   /* Trading colors — overridden at runtime by color-scheme-preference.ts.
    * Defaults are the "classic" green/red. */
   --color-win:  #22c55e;
   --color-loss: #ef4444;
-  /* Calendar win/loss-cell backgrounds + matching outline rings.
-   * Light mode uses the bright palette greens/reds (with a slightly
-   * darker shade for the border); dark mode uses deep pine/wine bgs
-   * with a lighter shade for the border. Independent of
+  /* Calendar win/loss-cell backgrounds + matching outline rings. Deep
+   * pine/wine bgs with a lighter shade for the border. Independent of
    * --color-win/loss so the win/loss palette picker doesn't drag the
    * calendar along with it. */
-  --color-cal-win-bg:         light-dark(#16a34a, #073d29);
-  --color-cal-win-ring:       light-dark(#15803d, #155947);
-  --color-cal-loss-bg:        light-dark(#c81e1e, #5c1f1d);
-  --color-cal-loss-ring:      light-dark(#a91b1b, #8b3d3a);
-  --color-cal-breakeven-bg:   light-dark(#9197a4, #4d4d4d);
-  --color-cal-breakeven-ring: light-dark(#5e6271, #6b6b6b);
-  /* Week summary cards + weekday header labels. Solid surface in both
-   * themes (matches `--color-panel` in dark) with a visible outline. */
-  --color-cal-week-card-bg:     light-dark(#ffffff, #181a23);
-  --color-cal-week-card-border: light-dark(#b4bac6, #3e414e);
+  --color-cal-win-bg:         #073d29;
+  --color-cal-win-ring:       #155947;
+  --color-cal-loss-bg:        #5c1f1d;
+  --color-cal-loss-ring:      #8b3d3a;
+  --color-cal-breakeven-bg:   #4d4d4d;
+  --color-cal-breakeven-ring: #6b6b6b;
+  /* Week summary cards + weekday header labels. Solid surface with a
+   * visible outline. */
+  --color-cal-week-card-bg:     #181a23;
+  --color-cal-week-card-border: #3e414e;
   /* Out-of-month padding cells in the calendar grid — a notch lighter
    * than `--color-panel` so they read as faint placeholders. */
-  --color-cal-pad-border: light-dark(#ffffff, #21232e);
-  /* Fee bars — light gray. In light mode it matches the page bg; in dark
-   * we step it down a bit so it doesn't dominate the panel. */
-  --color-fee:  light-dark(#d4d7de, #9ca3af);
-  --color-line: light-dark(#3b82f6, #6892ff);
+  --color-cal-pad-border: #21232e;
+  /* Fee bars. */
+  --color-fee:  #9ca3af;
+  --color-line: #6892ff;
   /* Muted grey reserved for chart segments (donut "Other"/breakeven/etc.).
    * A touch lighter than text-dim so the slice reads as background rather
    * than active data. */
   --color-chart-muted: var(--color-fee);
 
   /* Elevation — with the borderless design these need to do the heavy
-   * lifting of making panels read as separate from the page bg. Light
-   * uses gentle layered shadows; dark uses a tinted ring (subtle inset
-   * highlight at the top) plus a deeper drop shadow. */
-  --shadow-xs: light-dark(
-    0 0 0 1px rgba(15, 18, 28, 0.04), 0 1px 2px rgba(15, 18, 28, 0.05),
-    0 0 0 1px rgba(255, 255, 255, 0.02), 0 1px 2px rgba(0, 0, 0, 0.35)
-  );
-  --shadow-sm: light-dark(
-    0 0 0 1px rgba(15, 18, 28, 0.05), 0 1px 2px rgba(15, 18, 28, 0.04), 0 4px 8px rgba(15, 18, 28, 0.06),
-    0 0 0 1px rgba(255, 255, 255, 0.025), 0 1px 2px rgba(0, 0, 0, 0.30), 0 4px 12px rgba(0, 0, 0, 0.32)
-  );
-  --shadow-md: light-dark(
-    0 0 0 1px rgba(15, 18, 28, 0.05), 0 4px 8px rgba(15, 18, 28, 0.06), 0 8px 24px rgba(15, 18, 28, 0.10),
-    0 0 0 1px rgba(255, 255, 255, 0.03), 0 4px 8px rgba(0, 0, 0, 0.30), 0 8px 24px rgba(0, 0, 0, 0.40)
-  );
-  --shadow-lg: light-dark(
-    0 0 0 1px rgba(15, 18, 28, 0.06), 0 8px 16px rgba(15, 18, 28, 0.08), 0 16px 40px rgba(15, 18, 28, 0.14),
-    0 0 0 1px rgba(255, 255, 255, 0.04), 0 8px 16px rgba(0, 0, 0, 0.35), 0 16px 40px rgba(0, 0, 0, 0.50)
-  );
+   * lifting of making panels read as separate from the page bg. A tinted
+   * ring (subtle inset highlight at the top) plus a deeper drop shadow. */
+  --shadow-xs:
+    0 0 0 1px rgba(255, 255, 255, 0.02), 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-sm:
+    0 0 0 1px rgba(255, 255, 255, 0.025), 0 1px 2px rgba(0, 0, 0, 0.30),
+    0 4px 12px rgba(0, 0, 0, 0.32);
+  --shadow-md:
+    0 0 0 1px rgba(255, 255, 255, 0.03), 0 4px 8px rgba(0, 0, 0, 0.30),
+    0 8px 24px rgba(0, 0, 0, 0.40);
+  --shadow-lg:
+    0 0 0 1px rgba(255, 255, 255, 0.04), 0 8px 16px rgba(0, 0, 0, 0.35),
+    0 16px 40px rgba(0, 0, 0, 0.50);
 
   /* Focus ring — two-stop layered offset that reads on any surface. */
   --focus-ring: 0 0 0 2px var(--color-bg), 0 0 0 4px var(--color-accent);
@@ -132,9 +117,6 @@
   --duration-base: 180ms;
   --ease: cubic-bezier(0.4, 0, 0.2, 1);
 }
-
-:root[data-theme="light"] { color-scheme: light; }
-:root[data-theme="dark"]  { color-scheme: dark; }
 
 html {
   scrollbar-gutter: stable;
@@ -179,7 +161,7 @@ h1, h2, h3, h4 {
   color: var(--color-text);
 }
 
-/* Refined scrollbar — slim, theme-aware, no thumb in light idle. */
+/* Refined scrollbar — slim and theme-aware. */
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--color-border-strong) transparent;
@@ -209,10 +191,8 @@ input, textarea, select, button {
   letter-spacing: inherit;
 }
 
-/* date inputs in dark mode get a light icon via color-scheme; that's enough.
- * Some browsers still tint the picker icon to match the page bg, which can
- * make it disappear on white inputs in light. Force a visible color via the
- * standard pseudo-element. */
+/* Date/time picker indicators inherit color-scheme so they stay legible
+ * against dark inputs. */
 input[type="date"]::-webkit-calendar-picker-indicator,
 input[type="time"]::-webkit-calendar-picker-indicator {
   opacity: 0.6;

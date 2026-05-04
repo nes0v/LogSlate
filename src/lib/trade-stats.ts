@@ -8,6 +8,7 @@ import {
   computePlannedRr,
   computeRealizedRr,
   computeNetPnl,
+  firstExecutionMs,
 } from '@/lib/trade-math'
 
 export function signedAdjustment(a: EquityAdjustment): number {
@@ -157,15 +158,6 @@ export interface CandlePoint {
   adjustment: number // signed cash flow on this bucket (deposit+ / withdraw-)
 }
 
-function firstExecTime(t: TradeRecord): number {
-  let min = Infinity
-  for (const e of t.executions) {
-    const ms = Date.parse(e.time)
-    if (!Number.isNaN(ms) && ms < min) min = ms
-  }
-  return min === Infinity ? 0 : min
-}
-
 function candleFromBucket(
   b: Bucket,
   startEquity: number,
@@ -179,7 +171,9 @@ function candleFromBucket(
   let low = running
   let fees = 0
 
-  const sorted = [...b.trades].sort((a, b2) => firstExecTime(a) - firstExecTime(b2))
+  const sorted = [...b.trades].sort(
+    (a, b2) => (firstExecutionMs(a) ?? 0) - (firstExecutionMs(b2) ?? 0),
+  )
   for (const t of sorted) {
     running += computeNetPnl(t) ?? 0
     if (running > high) high = running

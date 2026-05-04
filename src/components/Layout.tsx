@@ -1,5 +1,6 @@
 import { Link, NavLink, Outlet } from 'react-router-dom'
 import { AccountSwitcher } from '@/components/AccountSwitcher'
+import { ConfirmProvider } from '@/components/ConfirmDialog'
 import { NotificationBanner } from '@/components/NotificationBanner'
 import { SyncStatusIndicator } from '@/components/SyncStatusIndicator'
 import { useNewsSync } from '@/lib/use-news-sync'
@@ -10,7 +11,6 @@ import { cn } from '@/lib/utils'
 const links = [
   { to: '/stats', label: 'Stats' },
   { to: '/reports', label: 'Reports' },
-  { to: '/journal', label: 'Journal' },
   { to: '/models', label: 'Models' },
   { to: '/progress', label: 'Progress' },
   { to: '/settings', label: 'Settings' },
@@ -20,6 +20,7 @@ export function Layout() {
   useNewsSync()
   const equity = useCurrentEquity()
   return (
+    <ConfirmProvider>
     <div className="min-h-full flex flex-col">
       <header className="sticky top-0 z-30 border-b border-(--color-border) bg-(--color-panel)/85 backdrop-blur-md backdrop-saturate-150">
         <div className="mx-auto max-w-7xl px-4 h-14 flex items-center gap-6">
@@ -62,5 +63,6 @@ export function Layout() {
         <Outlet />
       </main>
     </div>
+    </ConfirmProvider>
   )
 }

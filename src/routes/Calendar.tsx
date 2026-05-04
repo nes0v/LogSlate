@@ -8,7 +8,6 @@ import {
   endOfWeek,
   format,
   isSameMonth,
-  isToday,
   startOfMonth,
   startOfWeek,
   subMonths,
@@ -64,12 +63,6 @@ export function CalendarRoute() {
     [],
   )
 
-  const notes = useLiveQuery(
-    () => db.notes.where('account_id').equals(accountId).toArray(),
-    [accountId],
-    [],
-  )
-
   const screenshotDays = useMemo(() => {
     const s = new Set<string>()
     for (const t of trades ?? []) {
@@ -81,24 +74,16 @@ export function CalendarRoute() {
     return s
   }, [trades, dayRows])
 
-  // A journal entry is associated with a day in two ways: an explicit
-  // `YYYY-MM-DD` substring in the title (how the Plan/Watchlist/Review
-  // templates name notes) wins; otherwise we fall back to the local-date
-  // portion of `created_at` so Lesson/Free notes still light up the day
-  // they were written on.
+  // Day-level note indicator — lights up when the user has written a
+  // free-text journal entry on that day's record. The note is stored on
+  // the Day row's `note` field, scoped to the active account.
   const noteDays = useMemo(() => {
     const s = new Set<string>()
-    const re = /\b(\d{4}-\d{2}-\d{2})\b/
-    for (const n of notes ?? []) {
-      const m = n.title.match(re)
-      if (m) {
-        s.add(m[1])
-      } else {
-        s.add(format(new Date(n.created_at), DATE_KEY))
-      }
+    for (const d of dayRows ?? []) {
+      if (d.note && d.note.trim().length > 0) s.add(d.date)
     }
     return s
-  }, [notes])
+  }, [dayRows])
 
   // Per-day map. Wins/losses are tracked separately from `count` so a
   // day that only contains scratches renders in the dim/breakeven tone
@@ -223,7 +208,10 @@ export function CalendarRoute() {
     const key = format(d, DATE_KEY)
     const cell = perDay.get(key)
     const inMonth = isSameMonth(d, month)
-    const today = isToday(d)
+    // "Today" = today in NY, since the app is NY-trading-only. Local
+    // `isToday()` would treat the user's local day as today, which is
+    // wrong for a non-NY-resident trader.
+    const today = key === nyDateKey()
     const decided = cell ? cell.wins + cell.losses : 0
     // A day of trades that only contains scratches falls into the dim
     // tone even when the summed PnL is technically non-zero from

@@ -5,6 +5,7 @@ import {
   parseScreenshotRef,
   resolveScreenshotUrl,
 } from '@/lib/drive-images'
+import { useConfirm } from '@/components/ConfirmDialog'
 
 interface ScreenshotThumbProps {
   value: string
@@ -27,6 +28,7 @@ type LoadState =
 // Drive), or a "Couldn't load" fallback with Retry + Drive-link. Optional
 // onRemove wires up an X button in the top-right corner.
 export function ScreenshotThumb({ value, onRemove, size = 'md' }: ScreenshotThumbProps) {
+  const confirm = useConfirm()
   const [fetched, setFetched] = useState<
     { ref: string; url: string; error: null } | { ref: string; url: null; error: string } | null
   >(null)
@@ -70,8 +72,8 @@ export function ScreenshotThumb({ value, onRemove, size = 'md' }: ScreenshotThum
       {onRemove && load.status !== 'loading' && (
         <button
           type="button"
-          onClick={() => {
-            if (confirm('Delete this screenshot?')) void onRemove()
+          onClick={async () => {
+            if (await confirm({ title: 'Delete this screenshot?' })) void onRemove()
           }}
           className="absolute -top-2 -right-2 size-6 rounded-full bg-(--color-panel-2) border border-(--color-border) flex items-center justify-center text-(--color-text-dim) hover:text-(--color-text)"
           aria-label="Remove screenshot"

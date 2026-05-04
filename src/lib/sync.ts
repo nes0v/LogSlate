@@ -40,7 +40,6 @@ const SPECS: SyncSpec[] = [
   { fileKey: 'adjustments',     idsKey: 'logslate:sync:adjustment_ids',     table: () => db.adjustments as unknown as EntityTable<SyncItem, 'id'> },
   { fileKey: 'accounts',        idsKey: 'logslate:sync:account_ids',        table: () => db.accounts as unknown as EntityTable<SyncItem, 'id'> },
   { fileKey: 'days',            idsKey: 'logslate:sync:day_ids',            table: () => db.days as unknown as EntityTable<SyncItem, 'id'> },
-  { fileKey: 'notes',           idsKey: 'logslate:sync:note_ids',           table: () => db.notes as unknown as EntityTable<SyncItem, 'id'> },
   { fileKey: 'models',          idsKey: 'logslate:sync:model_ids',          table: () => db.models as unknown as EntityTable<SyncItem, 'id'> },
   { fileKey: 'progress_rules',  idsKey: 'logslate:sync:progress_rule_ids',  table: () => db.progress_rules as unknown as EntityTable<SyncItem, 'id'> },
   { fileKey: 'progress_checks', idsKey: 'logslate:sync:progress_check_ids', table: () => db.progress_checks as unknown as EntityTable<SyncItem, 'id'> },

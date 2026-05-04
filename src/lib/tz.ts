@@ -1,6 +1,11 @@
-// NY (ET) time/date helpers. Event times from the ForexFactory feed are in
-// NY-anchored ISO strings and we render them in NY regardless of the user's
-// local timezone.
+// NY (ET) helpers — only used for two things now:
+//   1. Computing "today's date" / "this month" in NY (so the app's day
+//      boundary follows NY regardless of where the user is).
+//   2. Displaying real-instant news drivers (ForexFactory feed) in NY.
+//
+// Trade execution times are *not* converted: they are stored as the typed
+// NY wallclock encoded as `${date}T${HH:MM:SS}.000Z` and read back via
+// string slicing or `getUTCHours()`. No timezone math involved.
 
 export const NY_TZ = 'America/New_York'
 
@@ -16,13 +21,29 @@ const nyTimeFmt = new Intl.DateTimeFormat('en-GB', {
   minute: '2-digit',
   hour12: false,
 })
+const nyMonthFmt = new Intl.DateTimeFormat('en-CA', {
+  timeZone: NY_TZ,
+  year: 'numeric',
+  month: '2-digit',
+})
 
-/** YYYY-MM-DD in NY for a given instant. */
+/** YYYY-MM-DD in NY for a given instant (default: now). */
 export function nyDateKey(d: Date = new Date()): string {
   return nyDateFmt.format(d)
 }
 
-/** HH:mm in NY for a given instant. */
+/** Convenience for "today in NY" — same as `nyDateKey()`. */
+export function nyToday(): string {
+  return nyDateFmt.format(new Date())
+}
+
+/** YYYY-MM in NY for a given instant (default: now). */
+export function nyMonthKey(d: Date = new Date()): string {
+  return nyMonthFmt.format(d)
+}
+
+/** HH:mm in NY for a given real instant (used by the ForexFactory news
+ *  feed, whose `scheduled_at` is a true UTC ISO string). */
 export function nyTimeHHmm(d: Date): string {
   return nyTimeFmt.format(d)
 }

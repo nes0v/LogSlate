@@ -1,18 +1,20 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { format } from 'date-fns'
 import { Trash2 } from 'lucide-react'
 import { db } from '@/db/schema'
 import { createAdjustment, deleteAdjustment } from '@/db/queries'
 import type { AdjustmentKind } from '@/db/types'
 import { useActiveAccountId } from '@/lib/active-account'
+import { useConfirm } from '@/components/ConfirmDialog'
 import { inputClassCompact as inputClass } from '@/components/form/Field'
 import { Select } from '@/components/form/Select'
 import { formatUsd } from '@/lib/money'
+import { nyToday } from '@/lib/tz'
 import { cn } from '@/lib/utils'
 
 export function EquityAdjustmentsPanel() {
   const accountId = useActiveAccountId()
+  const confirm = useConfirm()
   const adjustments = useLiveQuery(
     async () => {
       const rows = await db.adjustments
@@ -25,7 +27,7 @@ export function EquityAdjustmentsPanel() {
     [],
   )
 
-  const [date, setDate] = useState(() => format(new Date(), 'yyyy-MM-dd'))
+  const [date, setDate] = useState(() => nyToday())
   const [kind, setKind] = useState<AdjustmentKind>('deposit')
   const [amount, setAmount] = useState('')
   const [note, setNote] = useState('')
@@ -49,7 +51,7 @@ export function EquityAdjustmentsPanel() {
   }
 
   async function handleDelete(id: string) {
-    if (confirm('Delete this adjustment?')) await deleteAdjustment(id)
+    if (await confirm({ title: 'Delete this adjustment?' })) await deleteAdjustment(id)
   }
 
   const list = adjustments ?? []

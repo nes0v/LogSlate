@@ -24,7 +24,6 @@ import { format } from 'date-fns'
 import type { CandlePoint } from '@/lib/trade-stats'
 import { bucketKeyToTs, dateToBucketKey, type Timeframe } from '@/lib/buckets'
 import { useColorScheme } from '@/lib/color-scheme-preference'
-import { useResolvedTheme } from '@/lib/theme-preference'
 import { themeColor } from '@/lib/theme-colors'
 import { formatUsd } from '@/lib/money'
 import { cn } from '@/lib/utils'
@@ -604,9 +603,6 @@ interface TradingViewChartProps {
   points: CandlePoint[]
   height?: number
   onPointClick?: (key: string) => void
-  /** Visual theme. `slate` = grey surface + mono candles; `dark` = app
-   *  panel color + green/red candles. */
-  variant?: 'slate' | 'dark'
   title?: string
   /** Deposit (+) / withdrawal (−) markers rendered on the candle timeline. */
   adjustments?: Array<{ x: string; amount: number }>
@@ -651,7 +647,6 @@ export function TradingViewChart({
   points,
   height = 560,
   onPointClick,
-  variant = 'slate',
   title = 'Equity and fees',
   adjustments,
   timeframe = 'D',
@@ -666,11 +661,6 @@ export function TradingViewChart({
   // init + series effects below re-run and pick up the new CSS-var
   // values via `themeColor()`, refreshing chart colors live.
   const colorScheme = useColorScheme()
-  // Resolved light/dark — drives whether candles get a black border
-  // outline (light theme: yes; dark: no) so they remain readable on
-  // a white panel background. Re-runs the series + init effects when
-  // the user flips themes.
-  const resolvedTheme = useResolvedTheme()
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | ISeriesApi<'Line'> | null>(null)
@@ -752,27 +742,13 @@ export function TradingViewChart({
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
-    const isDark = variant === 'dark'
-    // Slate = grey surface + mono candles (white=up, black=down, black
-    // wicks + borders). Dark = app panel tones + classic green/red candles
-    // without an explicit border stroke.
-    const bg = isDark
-      ? themeColor('--color-panel', '#12151c')
-      : '#9598a1'
-    const text = isDark
-      ? themeColor('--color-text-dim', '#8b91a1')
-      : '#111827'
-    const scaleBorder = isDark
-      ? themeColor('--color-border', '#232836')
-      : '#000000'
-    const crosshairColor = isDark
-      ? themeColor('--color-text-dim', '#8b91a1')
-      : '#1f2937'
-    const crosshairStyle = isDark ? LineStyle.SparseDotted : LineStyle.LargeDashed
-    // Slate variant uses a black chip (lightweight-charts auto-picks white
-    // text); dark variant uses a light chip so the labels pop against the
-    // panel and read as dark text.
-    const crosshairLabelBg = isDark ? '#e5e7eb' : '#000000'
+    const bg = themeColor('--color-panel', '#12151c')
+    const text = themeColor('--color-text-dim', '#8b91a1')
+    const scaleBorder = themeColor('--color-border', '#232836')
+    const crosshairColor = themeColor('--color-text-dim', '#8b91a1')
+    const crosshairStyle = LineStyle.SparseDotted
+    // Light chip so the labels pop against the panel and read as dark text.
+    const crosshairLabelBg = '#e5e7eb'
 
     const chart = createChart(container, {
       height,
@@ -876,7 +852,7 @@ export function TradingViewChart({
     // Mirror the vertical cursor line into the fees pane. The horizontal
     // line is gated by `hoveredPaneIndex` so each pane only draws its own
     // horizontal cursor — no ghost line in the other pane.
-    const crossColor = isDark ? '#6b7280' : '#374151'
+    const crossColor = '#6b7280'
     const feesCrossPrim = createCrosshairPrimitive({ ownPaneIndex: 1 })
     feesCrossPrim.setColor(crossColor)
     feesSeries.attachPrimitive(feesCrossPrim)
@@ -884,9 +860,8 @@ export function TradingViewChart({
 
     // Same hover-border treatment for the fees pane, minus the
     // pointer-cursor swap and click handling — fee bars aren't clickable.
-    // Border color flips to black in light theme so it reads on the
-    // bright fee bars; stays white in dark for contrast on dark bars.
-    const hoverBorderColor = resolvedTheme === 'light' ? '#000000' : '#ffffff'
+    // White border for contrast on dark fee bars.
+    const hoverBorderColor = '#ffffff'
     const feesHoverPrim = createCandleHoverPrimitive()
     feesHoverPrim.setColor(hoverBorderColor)
     feesSeries.attachPrimitive(feesHoverPrim)
@@ -1067,7 +1042,7 @@ export function TradingViewChart({
       feesSeriesRef.current = null
       anchorSeriesRef.current = null
     }
-  }, [height, variant, colorScheme, resolvedTheme])
+  }, [height, colorScheme])
 
   // Main equity series + main-pane primitives. Recreated on view
   // change (Line ↔ Candles) since the series type itself differs.
@@ -1077,18 +1052,13 @@ export function TradingViewChart({
   useEffect(() => {
     const chart = chartRef.current
     if (!chart) return
-    const isDark = variant === 'dark'
-    const bodyUp = isDark
-      ? themeColor('--color-win', '#16a34a')
-      : '#ffffff'
-    const bodyDown = isDark
-      ? themeColor('--color-loss', '#dc2626')
-      : '#000000'
-    const candleBorderVisible = !isDark
+    const bodyUp = themeColor('--color-win', '#16a34a')
+    const bodyDown = themeColor('--color-loss', '#dc2626')
+    const candleBorderVisible = false
     const candleStroke = '#000000'
-    const wickUp = isDark ? bodyUp : candleStroke
-    const wickDown = isDark ? bodyDown : candleStroke
-    const crossColor = isDark ? '#6b7280' : '#374151'
+    const wickUp = bodyUp
+    const wickDown = bodyDown
+    const crossColor = '#6b7280'
 
     const sharedPriceFormat = {
       type: 'price' as const,
@@ -1130,9 +1100,8 @@ export function TradingViewChart({
     seriesRef.current = series
 
     const adjPrim = createAdjustmentLinesPrimitive()
-    // Dashed adjustment lines — lighter gray in light theme so they sit
-    // back against the white panel; mid-gray in dark for contrast.
-    adjPrim.setColor(resolvedTheme === 'light' ? '#ccced7' : '#374151')
+    // Dashed adjustment lines — mid-gray for contrast on the dark panel.
+    adjPrim.setColor('#374151')
     series.attachPrimitive(adjPrim)
     adjLinesPrimRef.current = adjPrim
 
@@ -1143,10 +1112,8 @@ export function TradingViewChart({
 
     const hoverPrim = view === 'candles' ? createCandleHoverPrimitive() : null
     if (hoverPrim) {
-      // Hover-border color flips per theme so it stays high-contrast on
-      // both colored candle bodies (dark bg → white border) and pale
-      // bordered candles (light bg → black border).
-      hoverPrim.setColor(resolvedTheme === 'light' ? '#000000' : '#ffffff')
+      // Hover-border in white for high contrast on the colored candle bodies.
+      hoverPrim.setColor('#ffffff')
       series.attachPrimitive(hoverPrim)
       candleHoverPrimRef.current = hoverPrim
     }
@@ -1196,7 +1163,7 @@ export function TradingViewChart({
       }
       seriesRef.current = null
     }
-  }, [view, variant, colorScheme, resolvedTheme])
+  }, [view, colorScheme])
 
   // Tick-mark formatter follows the active timeframe.
   useEffect(() => {

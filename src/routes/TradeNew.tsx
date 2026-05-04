@@ -4,13 +4,14 @@ import { TradeForm } from '@/components/TradeForm'
 import { db } from '@/db/schema'
 import { createTrade } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
+import { nyToday } from '@/lib/tz'
 import type { TradeDraft } from '@/db/types'
 
 export function TradeNewRoute() {
   const [params] = useSearchParams()
   const navigate = useNavigate()
   const accountId = useActiveAccountId()
-  const date = params.get('date') || format(new Date(), 'yyyy-MM-dd')
+  const date = params.get('date') || nyToday()
 
   async function handleSubmit(draft: TradeDraft) {
     await createTrade(draft)

@@ -1,20 +1,21 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { addDays, format } from 'date-fns'
 import { X } from 'lucide-react'
 import type { TradeRecord } from '@/db/types'
 import { EMOTIONS, DEFAULT_MODEL_NAME } from '@/db/types'
-import { CONTRACT_OPTS, SESSION_OPTS, SYMBOL_OPTS } from '@/lib/filter-options'
+import { nyToday } from '@/lib/tz'
 import { db } from '@/db/schema'
 import { useActiveAccountId } from '@/lib/active-account'
 import {
   applyFilters,
+  FILTER_PARAM_KEYS,
   filtersFromParams,
   paramsFromFilters,
   type TradeFilters,
 } from '@/lib/filters'
 import {
+  defaultRange,
   hasAnyFilter,
   loadSharedFilters,
   saveSharedFilters,
@@ -26,6 +27,7 @@ import {
   computeRealizedRr,
   totalContracts,
   tradeMetrics,
+  type TradeOutcome,
 } from '@/lib/trade-math'
 import {
   cohortStats,
@@ -34,14 +36,14 @@ import {
   mfeScatter,
   pnlByHour,
   pnlByMonth,
+  pnlByWeek,
   pnlByWeekday,
   rDistribution,
   type ScatterPoint,
 } from '@/lib/advanced-stats'
 import { formatUsd } from '@/lib/money'
 import { Pills } from '@/components/form/Pills'
-import { RatingFilter } from '@/components/form/RatingFilter'
-import { Field, inputClass } from '@/components/form/Field'
+import { StatsFilterBar } from '@/components/StatsFilterBar'
 import { cn } from '@/lib/utils'
 
 type ReportTab = 'days' | 'symbol' | 'risk' | 'cohort' | 'compare'
@@ -53,15 +55,7 @@ const TABS: Array<{ value: ReportTab; label: string }> = [
   { value: 'compare', label: 'Compare' },
 ]
 
-type CompareAxis = 'symbol' | 'contract' | 'session' | 'rating' | 'side' | 'planned' | 'emotion' | 'model'
-
-function defaultRange(baseDate: string) {
-  const base = new Date(baseDate + 'T00:00:00')
-  return {
-    from: format(addDays(base, -29), 'yyyy-MM-dd'),
-    to: baseDate,
-  }
-}
+type CompareAxis = 'symbol' | 'contract' | 'session' | 'rating' | 'side' | 'emotion' | 'model'
 
 export function ReportsRoute() {
   const [params, setParams] = useSearchParams()
@@ -74,13 +68,7 @@ export function ReportsRoute() {
   // (excluding the tab/axis params which are page-local). Lets the user
   // arrive on /reports with the filter they last set on /stats.
   useEffect(() => {
-    const hasFilterParam =
-      params.has('from') ||
-      params.has('to') ||
-      params.has('symbol') ||
-      params.has('contract') ||
-      params.has('session') ||
-      params.has('rating')
+    const hasFilterParam = FILTER_PARAM_KEYS.some(k => params.has(k))
     if (hasFilterParam) return
     const stored = loadSharedFilters()
     if (stored && hasAnyFilter(stored)) {
@@ -105,7 +93,7 @@ export function ReportsRoute() {
 
   const lastTradeDate = useMemo(() => {
     const list = allTrades ?? []
-    if (list.length === 0) return format(new Date(), 'yyyy-MM-dd')
+    if (list.length === 0) return nyToday()
     let max = list[0].date
     for (const t of list) if (t.date > max) max = t.date
     return max
@@ -172,39 +160,7 @@ export function ReportsRoute() {
         )}
       </div>
 
-      {/* Filter bar */}
-      <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3">
-        <div className="flex flex-wrap items-end gap-3">
-          <Field label="From" className="w-[135px]">
-            <input
-              type="date"
-              className={inputClass}
-              value={filters.from ?? ''}
-              onChange={e => update({ from: e.target.value || null })}
-            />
-          </Field>
-          <Field label="To" className="w-[135px]">
-            <input
-              type="date"
-              className={inputClass}
-              value={filters.to ?? ''}
-              onChange={e => update({ to: e.target.value || null })}
-            />
-          </Field>
-          <Field label="Symbol">
-            <Pills value={filters.symbol} onChange={v => update({ symbol: v })} options={SYMBOL_OPTS} />
-          </Field>
-          <Field label="Contract">
-            <Pills value={filters.contract} onChange={v => update({ contract: v })} options={CONTRACT_OPTS} />
-          </Field>
-          <Field label="Session">
-            <Pills value={filters.session} onChange={v => update({ session: v })} options={SESSION_OPTS} />
-          </Field>
-          <Field label="Rating">
-            <RatingFilter value={filters.rating} onChange={v => update({ rating: v })} />
-          </Field>
-        </div>
-      </section>
+      <StatsFilterBar filters={filters} update={update} />
 
       {/* Tab bar — same style as the main app nav for visual consistency. */}
       <nav className="flex items-center gap-1 text-sm overflow-x-auto">
@@ -258,10 +214,11 @@ function EmptyState({ children }: { children: React.ReactNode }) {
 // =====================================================================
 
 function DaysAndTimeReport({ trades }: { trades: TradeRecord[] }) {
+  const [hourMode, setHourMode] = useState<'first' | 'last'>('first')
   const weekday = useMemo(() => pnlByWeekday(trades), [trades])
-  const hour = useMemo(() => pnlByHour(trades), [trades])
+  const hour = useMemo(() => pnlByHour(trades, hourMode), [trades, hourMode])
+  const week = useMemo(() => pnlByWeek(trades), [trades])
   const month = useMemo(() => pnlByMonth(trades), [trades])
-  const hold = useMemo(() => holdTimeBuckets(trades), [trades])
 
   const dayOfMonth = useMemo(() => {
     const map = Array.from({ length: 31 }, (_, i) => ({
@@ -284,8 +241,62 @@ function DaysAndTimeReport({ trades }: { trades: TradeRecord[] }) {
     return map
   }, [trades])
 
+  const hourRows = hour
+    .filter(h => h.count > 0)
+    .map(h => ({
+      label: `${String(h.hour).padStart(2, '0')}:00`,
+      count: h.count,
+      wins: h.wins,
+      losses: h.losses,
+      pnl: h.pnl,
+    }))
+  // Split visible hour rows roughly in half for the two-column layout.
+  const hourSplit = Math.ceil(hourRows.length / 2)
+  const hourRowsLeft = hourRows.slice(0, hourSplit)
+  const hourRowsRight = hourRows.slice(hourSplit)
+
   return (
     <div className="space-y-3">
+      <section>
+        {/* Browser-tab style on the right edge — mirrors the Compare-tab
+            switcher but flush-right. Active tab takes the panel bg and
+            merges seamlessly into the body below; the rightmost tab
+            supplies the panel's top-right corner, so the panel has
+            `rounded-tr-none`. */}
+        <div role="tablist" className="flex justify-end gap-1 text-sm">
+          {[
+            { value: 'first' as const, label: 'First execution' },
+            { value: 'last' as const, label: 'Last execution' },
+          ].map(opt => {
+            const active = opt.value === hourMode
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => setHourMode(opt.value)}
+                className={cn(
+                  'px-2.5 py-1.5 rounded-t-(--radius) transition-colors whitespace-nowrap',
+                  active
+                    ? 'text-(--color-text) bg-(--color-panel)'
+                    : 'text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)/60',
+                )}
+              >
+                {opt.label}
+              </button>
+            )
+          })}
+        </div>
+        <div className="bg-(--color-panel) rounded-(--radius) rounded-tr-none shadow-(--shadow-xs) p-3">
+          <h3 className="text-sm font-medium mb-3">P&L by hour</h3>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-2">
+            <ReportTable rows={hourRowsLeft} />
+            {hourRowsRight.length > 0 ? <ReportTable rows={hourRowsRight} /> : null}
+          </div>
+        </div>
+      </section>
+
       <SectionGrid>
         <Card title="Day of week">
           <ReportTable
@@ -316,26 +327,30 @@ function DaysAndTimeReport({ trades }: { trades: TradeRecord[] }) {
       </SectionGrid>
 
       <SectionGrid>
-        <Card title="P&L by hour" caption="local-time first execution">
-          <HourRow data={hour} />
+        <Card title="Weekly returns">
+          <ReportTable
+            rows={week.map(w => ({
+              label: w.weekStart,
+              count: w.count,
+              wins: w.wins,
+              losses: w.losses,
+              pnl: w.pnl,
+            }))}
+          />
         </Card>
-        <Card title="Hold time" caption="winners vs losers per duration">
-          <HoldRow data={hold} />
+        <Card title="Monthly returns">
+          <ReportTable
+            rows={month.map(m => ({
+              label: m.month,
+              count: m.count,
+              wins: 0,
+              losses: 0,
+              pnl: m.pnl,
+              hideWl: true,
+            }))}
+          />
         </Card>
       </SectionGrid>
-
-      <Card title="Monthly returns">
-        <ReportTable
-          rows={month.map(m => ({
-            label: m.month,
-            count: m.count,
-            wins: 0,
-            losses: 0,
-            pnl: m.pnl,
-            hideWl: true,
-          }))}
-        />
-      </Card>
     </div>
   )
 }
@@ -417,6 +432,20 @@ function RiskReport({
   const maePoints = useMemo(() => maeScatter(trades), [trades])
   const mfePoints = useMemo(() => mfeScatter(trades), [trades])
   const [scatter, setScatter] = useState<'mae' | 'mfe'>('mfe')
+
+  // Planned R vs realised R: how often did the actual exit hit the
+  // planned R-target? Diagonal y=x = perfect execution; below = cut
+  // early / stopped, above = let it run past target.
+  const plannedVsRealized = useMemo(() => {
+    const out: Array<{ id: string; planned: number; realized: number; outcome: TradeOutcome; date: string }> = []
+    for (const t of trades) {
+      const planned = computePlannedRr(t)
+      const realized = computeRealizedRr(t)
+      if (planned === null || realized === null) continue
+      out.push({ id: t.id, planned, realized, outcome: classifyTrade(t), date: t.date })
+    }
+    return out
+  }, [trades])
 
   // Position size (by contract count) breakdown.
   const sizeRows = useMemo(() => {
@@ -517,6 +546,16 @@ function RiskReport({
           <PlannedRRTable rows={plannedRows} />
         </Card>
       </SectionGrid>
+
+      <Card
+        title="Planned vs realised R"
+        caption="diagonal = perfect execution; below = cut short, above = let run"
+      >
+        <PlannedRealizedScatter
+          points={plannedVsRealized}
+          onClick={onTradeClick ? p => onTradeClick(p.id) : undefined}
+        />
+      </Card>
     </div>
   )
 }
@@ -592,10 +631,10 @@ function CohortReport({ trades }: { trades: TradeRecord[] }) {
       </Card>
 
       <SectionGrid>
-        <Card title="Winners — hold time">
+        <Card title="Winners — duration">
           <HoldRow data={wHold} />
         </Card>
-        <Card title="Losers — hold time">
+        <Card title="Losers — duration">
           <HoldRow data={lHold} />
         </Card>
       </SectionGrid>
@@ -615,7 +654,6 @@ const COMPARE_AXES: Array<{ value: CompareAxis; label: string }> = [
   { value: 'emotion', label: 'Emotion' },
   { value: 'model', label: 'Model' },
   { value: 'side', label: 'Side' },
-  { value: 'planned', label: 'RR' },
 ]
 
 function CompareReport({
@@ -726,19 +764,6 @@ function splitByAxis(
         { label: 'long', trades: longs },
         { label: 'short', trades: shorts },
       ].filter(g => g.trades.length > 0)
-    }
-    case 'planned': {
-      const map = new Map<number, TradeRecord[]>()
-      for (const t of trades) {
-        const planned = computePlannedRr(t)
-        if (planned === null) continue
-        const key = Math.max(1, Math.round(planned))
-        if (!map.has(key)) map.set(key, [])
-        map.get(key)!.push(t)
-      }
-      return Array.from(map.entries())
-        .sort((a, b) => a[0] - b[0])
-        .map(([k, v]) => ({ label: `${k}×`, trades: v }))
     }
     case 'emotion': {
       // Preserve EMOTIONS' declared order so the buckets always sort the
@@ -852,10 +877,12 @@ function Card({
 }) {
   return (
     <div className="bg-(--color-panel) rounded-(--radius) p-3 shadow-(--shadow-xs)">
-      <div className="flex items-baseline justify-between mb-3 gap-2">
+      <div className="flex justify-between gap-2 mb-1.5">
         <div>
           <h3 className="text-sm font-medium">{title}</h3>
-          {caption ? <div className="text-xs text-(--color-text-dim) mt-0.5">{caption}</div> : null}
+          {caption ? (
+            <div className="text-xs text-(--color-text-dim) mt-0.5">{caption}</div>
+          ) : null}
         </div>
         {right}
       </div>
@@ -1016,32 +1043,6 @@ function PlannedRRTable({
   )
 }
 
-function HourRow({ data }: { data: ReturnType<typeof pnlByHour> }) {
-  const max = Math.max(1, ...data.map(d => Math.abs(d.pnl)))
-  return (
-    <div className="grid grid-cols-12 gap-0.5">
-      {data.map(d => {
-        const pct = (Math.abs(d.pnl) / max) * 100
-        const tone = d.pnl > 0 ? 'var(--color-win)' : d.pnl < 0 ? 'var(--color-loss)' : 'var(--color-panel-2)'
-        return (
-          <div key={d.hour} className="flex flex-col items-center gap-1">
-            <div className="h-16 w-full flex items-end">
-              <div
-                className="w-full rounded-sm"
-                style={{ height: `${pct}%`, backgroundColor: tone, opacity: d.count > 0 ? 0.85 : 0.15 }}
-                title={`${d.hour}:00 · ${formatUsd(d.pnl)} · ${d.count} trade${d.count === 1 ? '' : 's'}`}
-              />
-            </div>
-            <div className="text-xs font-mono text-(--color-text-dim)">
-              {String(d.hour).padStart(2, '0')}
-            </div>
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
 function HoldRow({ data }: { data: ReturnType<typeof holdTimeBuckets> }) {
   const max = Math.max(1, ...data.map(d => d.wins + d.losses))
   return (
@@ -1121,8 +1122,26 @@ function Scatter({
   const y = (v: number) => H / 2 - (v / yMax) * (H / 2 - PAD)
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-[220px]">
-      <line x1={PAD} x2={W - PAD} y1={H / 2} y2={H / 2} stroke="var(--color-border)" strokeWidth={1} />
-      <line x1={PAD} x2={PAD} y1={PAD} y2={H - PAD} stroke="var(--color-border)" strokeWidth={1} />
+      <line
+        x1={PAD}
+        x2={W - PAD}
+        y1={H / 2}
+        y2={H / 2}
+        stroke="var(--color-border)"
+        strokeWidth={1}
+        vectorEffect="non-scaling-stroke"
+        shapeRendering="crispEdges"
+      />
+      <line
+        x1={PAD}
+        x2={PAD}
+        y1={PAD}
+        y2={H - PAD}
+        stroke="var(--color-border)"
+        strokeWidth={1}
+        vectorEffect="non-scaling-stroke"
+        shapeRendering="crispEdges"
+      />
       {points.map(p => (
         <circle
           key={p.id}
@@ -1149,6 +1168,131 @@ function Scatter({
         >
           <title>
             {p.date} · {formatUsd(p.y)} · excursion {formatUsd(p.x)}
+          </title>
+        </circle>
+      ))}
+    </svg>
+  )
+}
+
+function PlannedRealizedScatter({
+  points,
+  onClick,
+}: {
+  points: Array<{ id: string; planned: number; realized: number; outcome: TradeOutcome; date: string }>
+  onClick?: (p: { id: string }) => void
+}) {
+  const W = 480
+  const H = 240
+  const PAD_L = 36
+  const PAD_R = 16
+  const PAD_T = 12
+  const PAD_B = 28
+  if (points.length === 0) {
+    return (
+      <div className="text-xs text-(--color-text-dim) text-center py-6">
+        No trades with both planned and realised R.
+      </div>
+    )
+  }
+  const xMaxRaw = Math.max(...points.map(p => p.planned))
+  const xMax = Math.max(1, Math.ceil(xMaxRaw))
+  const yVals = points.map(p => p.realized)
+  const yMin = Math.min(0, Math.floor(Math.min(...yVals)))
+  const yMaxRaw = Math.max(...yVals, xMax)
+  const yMax = Math.max(1, Math.ceil(yMaxRaw))
+  const x = (v: number) => PAD_L + ((v - 0) / xMax) * (W - PAD_L - PAD_R)
+  const y = (v: number) =>
+    H - PAD_B - ((v - yMin) / (yMax - yMin)) * (H - PAD_T - PAD_B)
+  // Tick spacing: integer R values from 0..xMax on x; integer y ticks yMin..yMax.
+  const xTicks = Array.from({ length: xMax + 1 }, (_, i) => i)
+  const yTicks: number[] = []
+  for (let v = yMin; v <= yMax; v++) yTicks.push(v)
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-[240px]">
+      {/* X axis runs through y = 0 (breakeven) so points above sit on
+          winners-territory and points below sit on losers-territory. */}
+      <line
+        x1={PAD_L}
+        x2={W - PAD_R}
+        y1={y(0)}
+        y2={y(0)}
+        stroke="var(--color-border)"
+        strokeWidth={1}
+        vectorEffect="non-scaling-stroke"
+        shapeRendering="crispEdges"
+      />
+      <line
+        x1={PAD_L}
+        x2={PAD_L}
+        y1={PAD_T}
+        y2={H - PAD_B}
+        stroke="var(--color-border)"
+        strokeWidth={1}
+        vectorEffect="non-scaling-stroke"
+        shapeRendering="crispEdges"
+      />
+      {yTicks.map(v => (
+        <text
+          key={`yt-${v}`}
+          x={PAD_L - 6}
+          y={y(v)}
+          textAnchor="end"
+          dominantBaseline="central"
+          fontSize="10"
+          fill="var(--color-text-dim)"
+        >
+          {v}R
+        </text>
+      ))}
+      {xTicks.map(v => (
+        <text
+          key={`xt-${v}`}
+          x={x(v)}
+          y={H - PAD_B + 14}
+          textAnchor="middle"
+          fontSize="10"
+          fill="var(--color-text-dim)"
+        >
+          {v}R
+        </text>
+      ))}
+      {/* Perfect-execution diagonal y=x. Clipped to the visible area. */}
+      <line
+        x1={x(Math.max(0, yMin))}
+        y1={y(Math.max(0, yMin))}
+        x2={x(Math.min(xMax, yMax))}
+        y2={y(Math.min(xMax, yMax))}
+        stroke="var(--color-border)"
+        strokeWidth={1}
+        vectorEffect="non-scaling-stroke"
+      />
+      {points.map(p => (
+        <circle
+          key={p.id}
+          cx={x(p.planned)}
+          cy={y(p.realized)}
+          r={3.5}
+          fill={
+            p.outcome === 'win'
+              ? 'var(--color-win)'
+              : p.outcome === 'loss'
+                ? 'var(--color-loss)'
+                : 'var(--color-text-faint)'
+          }
+          fillOpacity={0.7}
+          stroke={
+            p.outcome === 'win'
+              ? 'var(--color-win)'
+              : p.outcome === 'loss'
+                ? 'var(--color-loss)'
+                : 'var(--color-text-faint)'
+          }
+          style={{ cursor: onClick ? 'pointer' : 'default' }}
+          onClick={() => onClick?.(p)}
+        >
+          <title>
+            {p.date} · planned {p.planned.toFixed(2)}R · realised {p.realized.toFixed(2)}R
           </title>
         </circle>
       ))}

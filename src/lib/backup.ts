@@ -10,7 +10,6 @@ import type {
   EquityAdjustment,
   Model,
   NewsEvent,
-  Note,
   ProgressCheck,
   ProgressRule,
   TradeRecord,
@@ -33,7 +32,6 @@ const SPECS = [
   { fileKey: 'trades',          table: () => db.trades },
   { fileKey: 'adjustments',     table: () => db.adjustments },
   { fileKey: 'days', table: () => db.days },
-  { fileKey: 'notes',           table: () => db.notes },
   { fileKey: 'models',          table: () => db.models },
   { fileKey: 'progress_rules',  table: () => db.progress_rules },
   { fileKey: 'progress_checks', table: () => db.progress_checks },
@@ -47,7 +45,6 @@ interface BackupFile {
   adjustments?: EquityAdjustment[]
   accounts?: Account[]
   days?: Day[]
-  notes?: Note[]
   models?: Model[]
   progress_rules?: ProgressRule[]
   progress_checks?: ProgressCheck[]

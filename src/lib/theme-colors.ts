@@ -4,15 +4,14 @@
  *
  * `getComputedStyle(...).getPropertyValue('--name')` returns the *raw textual
  * value* of the custom property as declared — for tokens defined with
- * modern functions like `light-dark(#a, #b)` or `oklch(...)`, that text is
- * not a valid <color> for canvas. lightweight-charts then silently falls
- * back to a default (typically white/transparent), which broke our chart
- * theming as soon as we adopted `light-dark()`.
+ * modern functions like `oklch(...)` or any nested `var()`, that text is
+ * not always a valid <color> for canvas. lightweight-charts then silently
+ * falls back to a default.
  *
  * Trick: apply the variable to a real DOM property (`color`) on a probe
  * element, then read the *computed* color back. The browser fully resolves
- * `var()` + `light-dark()` + any nested fallbacks and returns an
- * `rgb(...)` / `rgba(...)` string the canvas understands.
+ * `var()` + any nested fallbacks and returns an `rgb(...)` / `rgba(...)`
+ * string the canvas understands.
  *
  * Call this inside effects (not during SSR).
  */

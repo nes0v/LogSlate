@@ -240,13 +240,59 @@ export async function removeDayScreenshot(
     const existing = await db.days.get(id)
     if (!existing) return
     const screenshots = existing.screenshots.filter(s => s !== screenshot)
-    if (screenshots.length === 0) {
+    if (screenshots.length === 0 && !existing.note) {
       // No remaining content on this day — drop the row instead of leaving
-      // an empty placeholder. Future per-day fields would change this.
+      // an empty placeholder.
       await db.days.delete(id)
       return
     }
     await db.days.put({ ...existing, screenshots, updated_at: ts })
+  })
+}
+
+export async function getDayNote(
+  accountId: string,
+  date: string,
+): Promise<string> {
+  const day = await getDay(accountId, date)
+  return day?.note ?? ''
+}
+
+/** Upserts the per-day journal note. Empty/whitespace strings clear the
+ *  field; if the row has no other content (no screenshots, no note) the
+ *  whole row is removed so the days table doesn't grow with empty rows. */
+export async function setDayNote(
+  accountId: string,
+  date: string,
+  note: string,
+): Promise<void> {
+  const id = dayId(accountId, date)
+  const ts = now()
+  const trimmed = note.trim().length === 0 ? '' : note
+  await db.transaction('rw', db.days, async () => {
+    const existing = await db.days.get(id)
+    if (!existing) {
+      if (trimmed === '') return
+      await db.days.put({
+        id,
+        account_id: accountId,
+        date,
+        screenshots: [],
+        note: trimmed,
+        created_at: ts,
+        updated_at: ts,
+      })
+      return
+    }
+    if (trimmed === '' && existing.screenshots.length === 0) {
+      await db.days.delete(id)
+      return
+    }
+    await db.days.put({
+      ...existing,
+      note: trimmed === '' ? undefined : trimmed,
+      updated_at: ts,
+    })
   })
 }
 

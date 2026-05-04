@@ -15,7 +15,7 @@ import {
 } from 'date-fns'
 import { bucketNavTarget, drillDownRange, timeframeFromParams } from '@/lib/stats-nav'
 import { ChevronRight, X } from 'lucide-react'
-import { CONTRACT_OPTS, SESSION_OPTS, SYMBOL_OPTS } from '@/lib/filter-options'
+import { nyToday } from '@/lib/tz'
 import { db } from '@/db/schema'
 import { useActiveAccountId } from '@/lib/active-account'
 import {
@@ -26,6 +26,7 @@ import {
   type TradeFilters,
 } from '@/lib/filters'
 import {
+  defaultRange,
   hasAnyFilter,
   loadSharedFilters,
   saveSharedFilters,
@@ -50,28 +51,13 @@ import {
   DistributionDonuts,
   HeroNetPnl,
 } from '@/components/AdvancedStats'
-import { Pills } from '@/components/form/Pills'
-import { RatingFilter } from '@/components/form/RatingFilter'
-import { Field, inputClass } from '@/components/form/Field'
-
-/** Default date filter — 30 days (inclusive) ending on `baseDate`.
- *  `baseDate` is the most recent trade date when any exists, falling
- *  back to today, so opening Stats lands you on your real trading
- *  window instead of a probably-empty trailing 30 days. */
-function defaultRange(baseDate: string) {
-  const base = new Date(baseDate + 'T00:00:00')
-  return {
-    from: format(addDays(base, -29), 'yyyy-MM-dd'),
-    to: baseDate,
-  }
-}
+import { StatsFilterBar } from '@/components/StatsFilterBar'
 
 export function StatsRoute() {
   const [params, setParams] = useSearchParams()
   const navigate = useNavigate()
   const urlFilters = filtersFromParams(params)
   const [equityView, setEquityView] = useState<EquityView>(getDefaultEquityView)
-  const onAdvancedDayClick = useCallback((d: string) => navigate(`/day/${d}`), [navigate])
   const [tableExpandedIds, setTableExpandedIds] = useState<Set<string>>(new Set())
   const toggleTableRow = useCallback((id: string) => {
     setTableExpandedIds(prev => {
@@ -130,7 +116,7 @@ export function StatsRoute() {
   // any trades exist.
   const lastTradeDate = useMemo(() => {
     const list = allTrades ?? []
-    if (list.length === 0) return format(new Date(), 'yyyy-MM-dd')
+    if (list.length === 0) return nyToday()
     let max = list[0].date
     for (const t of list) if (t.date > max) max = t.date
     return max
@@ -349,44 +335,13 @@ export function StatsRoute() {
         )}
       </div>
 
-      <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3">
-        <div className="flex flex-wrap items-end gap-3">
-          <Field label="From" className="w-[135px]">
-            <input
-              type="date"
-              className={inputClass}
-              value={filters.from ?? ''}
-              onChange={e => update({ from: e.target.value || null })}
-            />
-          </Field>
-          <Field label="To" className="w-[135px]">
-            <input
-              type="date"
-              className={inputClass}
-              value={filters.to ?? ''}
-              onChange={e => update({ to: e.target.value || null })}
-            />
-          </Field>
-          <Field label="Symbol">
-            <Pills value={filters.symbol} onChange={v => update({ symbol: v })} options={SYMBOL_OPTS} />
-          </Field>
-          <Field label="Contract">
-            <Pills value={filters.contract} onChange={v => update({ contract: v })} options={CONTRACT_OPTS} />
-          </Field>
-          <Field label="Session">
-            <Pills value={filters.session} onChange={v => update({ session: v })} options={SESSION_OPTS} />
-          </Field>
-          <Field label="Rating">
-            <RatingFilter value={filters.rating} onChange={v => update({ rating: v })} />
-          </Field>
-        </div>
-      </section>
+      <StatsFilterBar filters={filters} update={update} />
 
       {filtered.length > 0 && (
         <details className="space-y-2 group">
           <summary className="text-sm font-medium cursor-pointer text-(--color-text) hover:text-(--color-accent) list-none flex items-center gap-1 transition-colors">
             <ChevronRight className="size-4 transition-transform group-open:rotate-90" />
-            Trades table{' '}
+            Trades{' '}
             <span className="text-(--color-text-dim) font-normal">({filtered.length})</span>
           </summary>
           <TradeTable
@@ -395,6 +350,14 @@ export function StatsRoute() {
             onToggle={toggleTableRow}
           />
         </details>
+      )}
+
+      {filtered.length > 0 && (
+        <AdvancedMetricsSections
+          filtered={filtered}
+          rangeStart={rangeStart}
+          rangeEnd={rangeEnd}
+        />
       )}
 
       {filtered.length > 0 && (
@@ -412,49 +375,40 @@ export function StatsRoute() {
       )}
 
       {filtered.length > 0 ? (
-        <>
-          <TradingViewChart
-            points={tfCandles}
-            adjustments={tfAdjustmentMarkers}
-            timeframe={timeframe}
-            viewportFrom={rangeStart ?? undefined}
-            viewportTo={rangeEnd ?? undefined}
-            viewportEpoch={viewportEpoch}
-            onVisibleRangeChange={handleVisibleRangeChange}
-            onPointClick={key => {
-              // W/M/Q/Y clicks drill into the bucket on /stats;
-              // D clicks navigate to the day page.
-              const drill = drillDownRange(timeframe, key)
-              if (drill) update(drill)
-              else navigate(bucketNavTarget(key, timeframe))
-            }}
-            variant="dark"
-            title="Equity and fees"
-            height={698}
-            view={equityView === 'curve' ? 'line' : 'candles'}
-            headerRight={
-              <div className="flex items-center gap-2">
-                {showSetRangeBtn && (
-                    <button
-                      type="button"
-                      onClick={setFilterToVisible}
-                      className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono rounded-(--radius) bg-(--color-panel) shadow-(--shadow-xs) text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2) transition-colors"
-                    >
-                      Set date to range
-                    </button>
-                  )}
-                <EquityChartToggle value={equityView} onChange={setEquityView} />
-                <ChartTimeframeToggle value={timeframe} onChange={setTimeframe} />
-              </div>
-            }
-          />
-          <AdvancedMetricsSections
-            filtered={filtered}
-            rangeStart={rangeStart}
-            rangeEnd={rangeEnd}
-            onDayClick={onAdvancedDayClick}
-          />
-        </>
+        <TradingViewChart
+          points={tfCandles}
+          adjustments={tfAdjustmentMarkers}
+          timeframe={timeframe}
+          viewportFrom={rangeStart ?? undefined}
+          viewportTo={rangeEnd ?? undefined}
+          viewportEpoch={viewportEpoch}
+          onVisibleRangeChange={handleVisibleRangeChange}
+          onPointClick={key => {
+            // W/M/Q/Y clicks drill into the bucket on /stats;
+            // D clicks navigate to the day page.
+            const drill = drillDownRange(timeframe, key)
+            if (drill) update(drill)
+            else navigate(bucketNavTarget(key, timeframe))
+          }}
+          title="Equity and fees"
+          height={698}
+          view={equityView === 'curve' ? 'line' : 'candles'}
+          headerRight={
+            <div className="flex items-center gap-2">
+              {showSetRangeBtn && (
+                  <button
+                    type="button"
+                    onClick={setFilterToVisible}
+                    className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono rounded-(--radius) bg-(--color-panel) shadow-(--shadow-xs) text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2) transition-colors"
+                  >
+                    Set date to range
+                  </button>
+                )}
+              <EquityChartToggle value={equityView} onChange={setEquityView} />
+              <ChartTimeframeToggle value={timeframe} onChange={setTimeframe} />
+            </div>
+          }
+        />
       ) : (
         <div className="text-sm text-(--color-text-dim) text-center py-12 border border-dashed border-(--color-border) rounded-(--radius)">
           {allTrades && allTrades.length === 0

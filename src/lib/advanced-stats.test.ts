@@ -3,17 +3,19 @@ import {
   cohortStats,
   compositeScore,
   dailyEquitySeries,
+  dailyStats,
   drawdownStats,
   expectancyDollars,
   expectancyR,
+  extremeStats,
   holdTimeBuckets,
-  kellyFraction,
   maeMfeStats,
   maeScatter,
   mfeScatter,
   payoffRatio,
   pnlByHour,
   pnlByMonth,
+  pnlByWeek,
   pnlByWeekday,
   profitFactor,
   rDistribution,
@@ -119,30 +121,6 @@ describe('expectancyDollars', () => {
   it('returns null on empty / scratch-only input', () => {
     expect(expectancyDollars([])).toBeNull()
     expect(expectancyDollars([tradeWithPnl(0)])).toBeNull()
-  })
-})
-
-describe('kellyFraction', () => {
-  it('caps to [0, 1]', () => {
-    // All winners -> payoff ratio is null -> kelly null. Use mixed.
-    const trades = [
-      tradeWithPnl(100),
-      tradeWithPnl(100),
-      tradeWithPnl(100),
-      tradeWithPnl(-50),
-    ]
-    const k = kellyFraction(trades)!
-    expect(k).toBeGreaterThan(0)
-    expect(k).toBeLessThanOrEqual(1)
-  })
-
-  it('clamps a negative-edge system to 0', () => {
-    const trades = [tradeWithPnl(50), tradeWithPnl(-200), tradeWithPnl(-200)]
-    expect(kellyFraction(trades)).toBe(0)
-  })
-
-  it('returns null when payoff is undefined', () => {
-    expect(kellyFraction([tradeWithPnl(100)])).toBeNull()
   })
 })
 
@@ -390,18 +368,20 @@ describe('scatter helpers', () => {
 })
 
 describe('time-of-day / weekday / month aggregations', () => {
-  it('pnlByHour buckets per hour using first execution local time', () => {
+  it('pnlByHour buckets by the typed NY wallclock hour', () => {
+    // Times are stored as `${date}T${HH:MM:SS}.000Z` literals — the typed
+    // NY wallclock encoded as fictional UTC. So a 10:30 stored time
+    // buckets into hour 10, no timezone math involved.
     const t = tradeWithPnl(100, {
       executions: [
         execution({ kind: 'buy', time: '2026-04-15T10:30:00.000Z' }),
         execution({ kind: 'sell', time: '2026-04-15T10:45:00.000Z' }),
       ],
     })
-    const localHour = new Date('2026-04-15T10:30:00.000Z').getHours()
     const arr = pnlByHour([t])
     expect(arr).toHaveLength(24)
-    expect(arr[localHour].count).toBe(1)
-    expect(arr[localHour].pnl).toBeCloseTo(100, 5)
+    expect(arr[10].count).toBe(1)
+    expect(arr[10].pnl).toBeCloseTo(100, 5)
   })
 
   it('pnlByWeekday counts wins and losses per weekday', () => {
@@ -508,5 +488,106 @@ describe('cohortStats', () => {
     expect(s.avgMae).toBe(25)
     expect(s.avgMfe).toBe(150)
     expect(s.avgFees).toBeGreaterThan(0)
+  })
+})
+
+describe('extremeStats', () => {
+  it('finds the largest single-trade win and loss', () => {
+    const trades = [
+      tradeWithPnl(50),
+      tradeWithPnl(-20),
+      tradeWithPnl(180), // biggest win
+      tradeWithPnl(-65), // biggest loss
+      tradeWithPnl(30),
+    ]
+    const e = extremeStats(trades)
+    expect(e.largestWin).toBeCloseTo(180, 5)
+    expect(e.largestLoss).toBeCloseTo(-65, 5)
+  })
+
+  it('returns null on each side when no winners or no losers', () => {
+    const onlyWin = extremeStats([tradeWithPnl(100)])
+    expect(onlyWin.largestWin).toBeCloseTo(100, 5)
+    expect(onlyWin.largestLoss).toBeNull()
+    const onlyLoss = extremeStats([tradeWithPnl(-50)])
+    expect(onlyLoss.largestWin).toBeNull()
+    expect(onlyLoss.largestLoss).toBeCloseTo(-50, 5)
+    expect(extremeStats([])).toEqual({ largestWin: null, largestLoss: null })
+  })
+})
+
+describe('dailyStats', () => {
+  it('summarises trading days, ignoring zero-pnl days', () => {
+    // 4 trading days with pnls [100, -40, 60, -10]; one no-trade day at 0.
+    const series = [
+      { date: '2026-04-01', pnl: 100, equity: 100, peak: 100, dd: 0, ddPct: 0 },
+      { date: '2026-04-02', pnl: 0, equity: 100, peak: 100, dd: 0, ddPct: 0 },
+      { date: '2026-04-03', pnl: -40, equity: 60, peak: 100, dd: -40, ddPct: -0.4 },
+      { date: '2026-04-04', pnl: 60, equity: 120, peak: 120, dd: 0, ddPct: 0 },
+      { date: '2026-04-05', pnl: -10, equity: 110, peak: 120, dd: -10, ddPct: -0.083 },
+    ]
+    const d = dailyStats(series)
+    expect(d.bestDay).toBe(100)
+    expect(d.worstDay).toBe(-40)
+    expect(d.avgDailyPnl).toBeCloseTo((100 - 40 + 60 - 10) / 4, 5)
+    expect(d.greenDays).toBe(2)
+    expect(d.redDays).toBe(2)
+    expect(d.dayWinRate).toBe(0.5)
+  })
+
+  it('returns all-null on a fully no-trade series', () => {
+    const series = [
+      { date: '2026-04-01', pnl: 0, equity: 0, peak: 0, dd: 0, ddPct: 0 },
+    ]
+    const d = dailyStats(series)
+    expect(d.bestDay).toBeNull()
+    expect(d.worstDay).toBeNull()
+    expect(d.avgDailyPnl).toBeNull()
+    expect(d.dayWinRate).toBeNull()
+  })
+})
+
+describe('pnlByWeek', () => {
+  it('groups trades into Mon-start weeks', () => {
+    // 2026-04-13 = Mon, 2026-04-15 = Wed, 2026-04-19 = Sun, 2026-04-20 = next Mon
+    const trades = [
+      tradeWithPnl(100, { date: '2026-04-13' }),
+      tradeWithPnl(50, { date: '2026-04-15' }),
+      tradeWithPnl(-30, { date: '2026-04-19' }),
+      tradeWithPnl(20, { date: '2026-04-20' }),
+    ]
+    const weeks = pnlByWeek(trades)
+    expect(weeks).toHaveLength(2)
+    expect(weeks[0].weekStart).toBe('2026-04-13')
+    expect(weeks[0].pnl).toBeCloseTo(100 + 50 - 30, 5)
+    expect(weeks[0].count).toBe(3)
+    expect(weeks[1].weekStart).toBe('2026-04-20')
+    expect(weeks[1].pnl).toBeCloseTo(20, 5)
+  })
+
+  it('rolls a Sunday trade back to the prior Monday', () => {
+    // 2026-04-19 is a Sunday; week start should be Monday 2026-04-13.
+    const weeks = pnlByWeek([tradeWithPnl(100, { date: '2026-04-19' })])
+    expect(weeks).toHaveLength(1)
+    expect(weeks[0].weekStart).toBe('2026-04-13')
+  })
+})
+
+describe('pnlByHour mode', () => {
+  it("buckets by the trade's last execution when mode='last'", () => {
+    // Buy at 09:00, sell at 14:30 — under 'first' lands in hour 9, under
+    // 'last' it lands in hour 14.
+    const t = tradeWithPnl(100, {
+      executions: [
+        execution({ kind: 'buy', time: '2026-04-15T09:00:00.000Z' }),
+        execution({ kind: 'sell', time: '2026-04-15T14:30:00.000Z' }),
+      ],
+    })
+    const first = pnlByHour([t], 'first')
+    const last = pnlByHour([t], 'last')
+    expect(first[9].count).toBe(1)
+    expect(first[14].count).toBe(0)
+    expect(last[14].count).toBe(1)
+    expect(last[9].count).toBe(0)
   })
 })

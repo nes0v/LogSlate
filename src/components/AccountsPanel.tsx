@@ -8,12 +8,14 @@ import {
   listAccounts,
 } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
+import { useConfirm } from '@/components/ConfirmDialog'
 import { inputClassCompact as inputClass } from '@/components/form/Field'
 import { cn } from '@/lib/utils'
 
 export function AccountsPanel() {
   const accounts = useLiveQuery(() => listAccounts(), [], [])
   const activeId = useActiveAccountId()
+  const confirm = useConfirm()
   const [newName, setNewName] = useState('')
   const [error, setError] = useState<string | null>(null)
 
@@ -30,13 +32,13 @@ export function AccountsPanel() {
 
   async function handleDelete(id: string, name: string) {
     const counts = await countAccountData(id)
-    const msg =
+    const description =
       counts.trades === 0 && counts.adjustments === 0
-        ? `Delete account "${name}"?`
-        : `Delete account "${name}"? This will permanently remove ${counts.trades} trade${
+        ? undefined
+        : `This will permanently remove ${counts.trades} trade${
             counts.trades === 1 ? '' : 's'
           } and ${counts.adjustments} adjustment${counts.adjustments === 1 ? '' : 's'}.`
-    if (!confirm(msg)) return
+    if (!(await confirm({ title: `Delete account "${name}"?`, description }))) return
     try {
       await deleteAccount(id)
       setError(null)

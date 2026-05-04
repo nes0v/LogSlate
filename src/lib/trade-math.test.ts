@@ -6,10 +6,12 @@ import {
   computeFees,
   computeGrossPnl,
   computeNetPnl,
+  computePlannedRr,
   computeRealizedRr,
   firstExecutionMs,
   inferSide,
   isReversal,
+  lastExecutionMs,
   totalContracts,
   tradeMetrics,
 } from './trade-math'
@@ -462,5 +464,38 @@ describe("firstExecutionMs", () => {
 
   it("returns null when there are no valid times", () => {
     expect(firstExecutionMs({ executions: [] })).toBeNull()
+  })
+})
+
+describe("lastExecutionMs", () => {
+  it("returns the latest execution time in epoch ms", () => {
+    const t = tradeRecord({
+      executions: [
+        execution({ time: "2026-04-15T13:00:00.000Z" }),
+        execution({ time: "2026-04-15T15:00:00.000Z" }),
+        execution({ time: "2026-04-15T14:00:00.000Z" }),
+      ],
+    })
+    expect(lastExecutionMs(t)).toBe(Date.parse("2026-04-15T15:00:00.000Z"))
+  })
+
+  it("returns null when there are no valid times", () => {
+    expect(lastExecutionMs({ executions: [] })).toBeNull()
+  })
+})
+
+describe("computePlannedRr", () => {
+  it("returns profit_target / stop_loss when both > 0", () => {
+    const t = tradeRecord({ stop_loss: 100, profit_target: 200 })
+    expect(computePlannedRr(t)).toBe(2)
+  })
+
+  it("returns null when stop_loss is 0", () => {
+    const t = tradeRecord({ stop_loss: 0, profit_target: 200 })
+    expect(computePlannedRr(t)).toBeNull()
+  })
+
+  it("returns 0 for a zero profit_target (no upside / scratch target)", () => {
+    expect(computePlannedRr(tradeRecord({ stop_loss: 100, profit_target: 0 }))).toBe(0)
   })
 })

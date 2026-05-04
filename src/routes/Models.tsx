@@ -2,12 +2,13 @@ import { useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { Archive, ArchiveRestore, Plus, Trash2, X } from 'lucide-react'
 import { db } from '@/db/schema'
-import type { Model, ModelRuleGroup, Session, SymbolKey } from '@/db/types'
+import type { Model, ModelRuleGroup, Session } from '@/db/types'
+import { SESSIONS } from '@/db/types'
 import { useActiveAccountId } from '@/lib/active-account'
 import { Checkbox } from '@/components/form/Checkbox'
-import { inputClass } from '@/components/form/Field'
-import { Pills } from '@/components/form/Pills'
-import { SESSION_OPTS, SYMBOL_OPTS } from '@/lib/filter-options'
+import { useConfirm } from '@/components/ConfirmDialog'
+import { inputClass, insetTileClass } from '@/components/form/Field'
+import { useAutosizeTextarea } from '@/lib/use-autosize-textarea'
 import { cn } from '@/lib/utils'
 
 function newId(): string {
@@ -22,6 +23,7 @@ const DEFAULT_GROUPS = (): ModelRuleGroup[] => [
 
 export function ModelsRoute() {
   const accountId = useActiveAccountId()
+  const confirm = useConfirm()
   const models = useLiveQuery(
     () =>
       db.models
@@ -55,7 +57,6 @@ export function ModelsRoute() {
       account_id: accountId,
       name: 'New model',
       description: '',
-      symbols: [],
       sessions: [],
       groups: DEFAULT_GROUPS(),
       archived: false,
@@ -76,7 +77,7 @@ export function ModelsRoute() {
 
   async function remove() {
     if (!selected) return
-    if (!confirm(`Delete "${selected.name}" permanently?`)) return
+    if (!(await confirm({ title: `Delete "${selected.name}" permanently?` }))) return
     const id = selected.id
     setSelectedId(null)
     await db.models.delete(id)
@@ -134,8 +135,10 @@ export function ModelsRoute() {
                     )}
                   </div>
                   <div className="text-xs text-(--color-text-dim) truncate">
-                    {p.symbols.length > 0 ? p.symbols.join(', ') : 'any symbol'} ·{' '}
-                    {p.groups.reduce((n, g) => n + g.rules.length, 0)} rules
+                    {p.sessions.length === 0 || p.sessions.length === SESSIONS.length
+                      ? 'any session'
+                      : p.sessions.join(', ')}{' '}
+                    · {p.groups.reduce((n, g) => n + g.rules.length, 0)} rules
                   </div>
                 </button>
               ))}
@@ -166,30 +169,27 @@ interface ModelEditorProps {
   onDelete: () => void
 }
 function ModelEditor({ model, onChange, onDelete }: ModelEditorProps) {
+  const confirm = useConfirm()
   const [name, setName] = useState(model.name)
   const [description, setDescription] = useState(model.description)
   const [groups, setGroups] = useState<ModelRuleGroup[]>(model.groups)
-  const [symbols, setSymbols] = useState<SymbolKey[]>(model.symbols)
   const [sessions, setSessions] = useState<Session[]>(model.sessions)
+  const descriptionRef = useAutosizeTextarea(description)
 
   function commit(patch: Partial<Model>) {
     onChange(patch)
   }
 
-  function setSymbol(s: SymbolKey | null) {
-    const next: SymbolKey[] = s ? [s] : []
-    setSymbols(next)
-    commit({ symbols: next })
-  }
-  function setSession(s: Session | null) {
-    const next: Session[] = s ? [s] : []
+  function toggleSession(s: Session, on: boolean) {
+    const set = new Set(sessions)
+    if (on) set.add(s)
+    else set.delete(s)
+    // Preserve canonical session order so `pre, am, lunch` reads naturally
+    // regardless of click order.
+    const next = SESSIONS.filter(x => set.has(x))
     setSessions(next)
     commit({ sessions: next })
   }
-  // Multi-element arrays from older multi-select UI collapse to "All" here;
-  // single-element arrays surface their lone value.
-  const symbolValue: SymbolKey | null = symbols.length === 1 ? symbols[0] : null
-  const sessionValue: Session | null = sessions.length === 1 ? sessions[0] : null
 
   function addRule(groupId: string) {
     const next = groups.map(g =>
@@ -225,8 +225,8 @@ function ModelEditor({ model, onChange, onDelete }: ModelEditorProps) {
     const next = groups.map(g => (g.id === groupId ? { ...g, name: text } : g))
     setGroups(next)
   }
-  function deleteGroup(groupId: string) {
-    if (!confirm('Delete this group and all its rules?')) return
+  async function deleteGroup(groupId: string) {
+    if (!(await confirm({ title: 'Delete this group and all its rules?' }))) return
     const next = groups.filter(g => g.id !== groupId)
     setGroups(next)
     commit({ groups: next })
@@ -265,21 +265,42 @@ function ModelEditor({ model, onChange, onDelete }: ModelEditorProps) {
       </div>
 
       <textarea
+        ref={descriptionRef}
         value={description}
         onChange={e => setDescription(e.target.value)}
         onBlur={() => commit({ description })}
         placeholder="Describe the setup, market conditions, when to use it…"
-        className={cn(inputClass, 'w-full min-h-[80px] resize-y')}
+        className={cn(inputClass, 'w-full min-h-[95px] resize-none overflow-hidden')}
       />
 
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="flex flex-col items-start gap-2">
-          <span className="text-xs text-(--color-text-dim)">Symbol</span>
-          <Pills value={symbolValue} onChange={setSymbol} options={SYMBOL_OPTS} />
-        </div>
-        <div className="flex flex-col items-start gap-2">
-          <span className="text-xs text-(--color-text-dim)">Session</span>
-          <Pills value={sessionValue} onChange={setSession} options={SESSION_OPTS} />
+      <div className="flex flex-col items-start gap-2">
+        <span className="text-xs text-(--color-text-dim)">Sessions</span>
+        {/* Same visual track as `Pills`, but each item is independently
+            toggleable so multiple sessions can be active. No "All" option
+            here — leaving every pill off means "any session" implicitly. */}
+        {/* Same visual track as `Pills`, but each item is independently
+            toggleable so multiple sessions can be active. No "All" option
+            here — leaving every pill off means "any session" implicitly. */}
+        <div className="inline-flex gap-0.5 rounded-(--radius) bg-(--color-bg) p-0.5">
+          {SESSIONS.map(s => {
+            const active = sessions.includes(s)
+            return (
+              <button
+                key={s}
+                type="button"
+                onClick={() => toggleSession(s, !active)}
+                aria-pressed={active}
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-[6px] cursor-pointer transition-colors whitespace-nowrap px-2.5 py-1 text-sm',
+                  active
+                    ? 'bg-(--color-panel) text-(--color-text) shadow-(--shadow-xs)'
+                    : 'text-(--color-text-dim) hover:text-(--color-text)',
+                )}
+              >
+                {s}
+              </button>
+            )
+          })}
         </div>
       </div>
 
@@ -287,7 +308,7 @@ function ModelEditor({ model, onChange, onDelete }: ModelEditorProps) {
         {groups.map(g => (
           <div
             key={g.id}
-            className="bg-(--color-panel-2) rounded-(--radius) p-3"
+            className={insetTileClass}
           >
             <div className="flex items-center justify-between mb-2">
               <input

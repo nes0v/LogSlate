@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import {
-  addWeek,
   bucketByDay,
   bucketByMonth,
   bucketByQuarter,
@@ -10,9 +9,7 @@ import {
   bucketKeyToTs,
   chartDayLabel,
   dateToBucketKey,
-  parseWeekStart,
   parseYearMonth,
-  weekBounds,
   WEEK_OPTS,
 } from './buckets'
 import { tradeRecord } from '@/test/fixtures'
@@ -36,38 +33,6 @@ describe('parseYearMonth', () => {
   it('falls back for undefined', () => {
     const d = parseYearMonth(undefined)
     expect(d.getDate()).toBe(1)
-  })
-})
-
-describe('parseWeekStart', () => {
-  it('parses a yyyy-MM-dd and snaps to the week start (Sunday)', () => {
-    // 2026-04-15 is a Wednesday; WEEK_OPTS is Sunday-based.
-    const d = parseWeekStart('2026-04-15')
-    expect(d.getDay()).toBe(0) // Sunday
-    expect(d.getDate()).toBe(12)
-  })
-
-  it('falls back to current week for invalid input', () => {
-    const d = parseWeekStart('garbage')
-    expect(d.getDay()).toBe(0)
-  })
-})
-
-describe('weekBounds', () => {
-  it('returns Sunday..Saturday for a given Sunday', () => {
-    const start = parseWeekStart('2026-04-12') // Sunday
-    const { start: s, end: e } = weekBounds(start)
-    expect(s.getDay()).toBe(0)
-    expect(e.getDay()).toBe(6)
-    expect(e.getDate() - s.getDate()).toBe(6)
-  })
-})
-
-describe('addWeek', () => {
-  it('shifts a date by N weeks', () => {
-    const d = new Date('2026-04-12T00:00:00')
-    const later = addWeek(d, 2)
-    expect(later.getDate()).toBe(26)
   })
 })
 

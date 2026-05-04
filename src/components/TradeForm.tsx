@@ -11,7 +11,7 @@ import { EMOTIONS, type Emotion, type TradeDraft } from '@/db/types'
 import { Pills } from '@/components/form/Pills'
 import { StarRating } from '@/components/form/StarRating'
 import { RATING_TO_STARS, STARS_TO_RATING } from '@/lib/rating'
-import { Field, inputClass } from '@/components/form/Field'
+import { Field, inputClass, insetTileClass } from '@/components/form/Field'
 import { NumberInput } from '@/components/form/NumberInput'
 import { QtyInput } from '@/components/form/QtyInput'
 import { Select } from '@/components/form/Select'
@@ -19,7 +19,8 @@ import { Checkbox } from '@/components/form/Checkbox'
 import { ScreenshotField } from '@/components/ScreenshotField'
 import { computeAhpc, computeNetPnl } from '@/lib/trade-math'
 import { formatUsd } from '@/lib/money'
-import { cn } from '@/lib/utils'
+import { useAutosizeTextarea } from '@/lib/use-autosize-textarea'
+import { cn, mergeRefs } from '@/lib/utils'
 
 const SYMBOLS = [
   { value: 'NQ', label: 'NQ' },
@@ -89,6 +90,10 @@ export function TradeForm({
 
   const executions = useFieldArray({ control, name: 'executions' })
   const values = useWatch({ control }) as TradeFormValues
+  const ideaRef = useAutosizeTextarea(values.idea)
+  const notesRef = useAutosizeTextarea(values.notes)
+  const ideaReg = register('idea')
+  const notesReg = register('notes')
   const activeModel = useMemo(
     () => (models ?? []).find(m => m.id === values.model_id) ?? null,
     [models, values.model_id],
@@ -151,9 +156,10 @@ export function TradeForm({
           </div>
           <Field label="Idea" error={errors.idea?.message}>
             <textarea
-              className={cn(inputClass, 'min-h-[135px] resize-y')}
+              className={cn(inputClass, 'min-h-[95px] resize-none overflow-hidden')}
               placeholder="Trade thesis, setup, context…"
-              {...register('idea')}
+              {...ideaReg}
+              ref={mergeRefs(ideaReg.ref, ideaRef)}
             />
           </Field>
 
@@ -209,14 +215,23 @@ export function TradeForm({
                       <input
                         type="text"
                         inputMode="numeric"
-                        placeholder="hh:mm"
-                        maxLength={5}
+                        placeholder="hh:mm:ss"
+                        maxLength={8}
                         className={cn(inputClass, 'font-mono w-full min-w-0')}
                         value={field.value ?? ''}
                         onChange={e => {
-                          const digits = e.target.value.replace(/\D/g, '').slice(0, 4)
-                          const formatted =
-                            digits.length <= 2 ? digits : digits.slice(0, 2) + ':' + digits.slice(2)
+                          const digits = e.target.value.replace(/\D/g, '').slice(0, 6)
+                          let formatted = digits
+                          if (digits.length > 4) {
+                            formatted =
+                              digits.slice(0, 2) +
+                              ':' +
+                              digits.slice(2, 4) +
+                              ':' +
+                              digits.slice(4)
+                          } else if (digits.length > 2) {
+                            formatted = digits.slice(0, 2) + ':' + digits.slice(2)
+                          }
                           field.onChange(formatted)
                         }}
                       />
@@ -402,17 +417,11 @@ export function TradeForm({
           </div>
 
           <Field label="Notes">
-            <Controller
-              control={control}
-              name="notes"
-              render={({ field }) => (
-                <textarea
-                  {...field}
-                  value={field.value ?? ''}
-                  className={cn(inputClass, 'min-h-[135px] resize-y')}
-                  placeholder="What did I learn? What would I do differently?"
-                />
-              )}
+            <textarea
+              className={cn(inputClass, 'min-h-[95px] resize-none overflow-hidden')}
+              placeholder="What did I learn? What would I do differently?"
+              {...notesReg}
+              ref={mergeRefs(notesReg.ref, notesRef)}
             />
           </Field>
             </section>
@@ -627,7 +636,7 @@ function ModelRuleChecklist({
     )
   }
   return (
-    <div className="bg-(--color-bg) rounded-(--radius) p-3 space-y-2">
+    <div className={cn(insetTileClass, 'space-y-2')}>
       <div className="text-xs uppercase tracking-wider text-(--color-text-dim) flex items-center justify-between">
         <span>Rules followed</span>
         <span className="font-mono normal-case">
@@ -640,7 +649,7 @@ function ModelRuleChecklist({
           {g.rules.map((r, i) => (
             <label
               key={`${g.id}-${i}`}
-              className="flex items-start gap-2 px-1 py-1 rounded-sm hover:bg-(--color-panel-2)/30 cursor-pointer"
+              className="flex items-start gap-2 px-1 py-1 rounded-sm hover:bg-(--color-panel-3) cursor-pointer"
             >
               <Checkbox
                 checked={set.has(r)}

@@ -120,36 +120,24 @@ export interface PendingUpload {
   created_at: string
 }
 
-// Per-day record (one row per account+date). Currently holds the day's
-// screenshot list; structured to grow with future per-day fields. Id is
-// derived as `${account_id}:${date}` so cross-device sync produces the
-// same row naturally without the UI tracking a random UUID.
+// Per-day record (one row per account+date). Holds the day's free-text
+// note, screenshot list, and structured to grow with future per-day fields.
+// Id is derived as `${account_id}:${date}` so cross-device sync produces
+// the same row naturally without the UI tracking a random UUID.
 //
 // `screenshots` is a multi-entry indexed array of Drive refs (`drive:...`
 // or `pending:...`). The pending drainer looks up rows by `where('screenshots')
 // .equals('pending:<id>')` to rewrite refs in place.
+//
+// `note` is the user's free-text journal entry for the day. Optional on the
+// type so legacy rows (pre-v25) load cleanly; the UI treats `undefined` and
+// `''` interchangeably.
 export interface Day {
   id: string
   account_id: string
   date: string // YYYY-MM-DD
   screenshots: string[]
-  created_at: string
-  updated_at: string
-}
-
-// Free-form note in the trader's journal. Folders are just a free-text
-// `folder` field — empty string means "root". Templates are stored verbatim
-// in `body`; `template_kind` is a tag for filtering / re-applying.
-export const NOTE_TEMPLATES = ['plan', 'watchlist', 'review', 'lesson', 'free'] as const
-export type NoteTemplateKind = (typeof NOTE_TEMPLATES)[number]
-export interface Note {
-  id: string
-  account_id: string
-  folder: string // free text, '' means root
-  title: string
-  body: string // markdown
-  template_kind: NoteTemplateKind
-  pinned: boolean
+  note?: string
   created_at: string
   updated_at: string
 }
@@ -168,8 +156,7 @@ export interface Model {
   account_id: string
   name: string
   description: string
-  symbols: SymbolKey[] // optional symbol filter ("works for NQ only", etc.)
-  sessions: Session[] // optional session filter ("am only", etc.)
+  sessions: Session[] // sessions this model is meant for; empty = any
   groups: ModelRuleGroup[]
   archived: boolean
   created_at: string

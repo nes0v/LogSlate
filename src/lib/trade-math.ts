@@ -31,6 +31,16 @@ function firstTime(execs: Execution[]): number | null {
   return min === Infinity ? null : min
 }
 
+function lastTime(execs: Execution[]): number | null {
+  if (execs.length === 0) return null
+  let max = -Infinity
+  for (const e of execs) {
+    const t = Date.parse(e.time)
+    if (!Number.isNaN(t) && t > max) max = t
+  }
+  return max === -Infinity ? null : max
+}
+
 // Earliest valid `time` across all executions, in epoch ms. Used by list
 // views to sort trades chronologically inside a single day.
 export function firstExecutionMs(
@@ -40,6 +50,17 @@ export function firstExecutionMs(
   if (cached !== undefined) return cached
   const result = firstTime(t.executions)
   _firstMsCache.set(t as object, result)
+  return result
+}
+
+/** Latest valid `time` across all executions, in epoch ms. */
+export function lastExecutionMs(
+  t: Pick<TradeRecord, 'executions'>,
+): number | null {
+  const cached = _lastMsCache.get(t as object)
+  if (cached !== undefined) return cached
+  const result = lastTime(t.executions)
+  _lastMsCache.set(t as object, result)
   return result
 }
 
@@ -61,6 +82,7 @@ const _grossPnlCache = new WeakMap<object, number | null>()
 const _netPnlCache = new WeakMap<object, number | null>()
 const _metricsCache = new WeakMap<object, TradeMetrics>()
 const _firstMsCache = new WeakMap<object, number | null>()
+const _lastMsCache = new WeakMap<object, number | null>()
 const _sideCache = new WeakMap<object, Side | null>()
 const _totalContractsCache = new WeakMap<object, number>()
 const _durationCache = new WeakMap<object, TradeDuration>()
@@ -229,7 +251,8 @@ export const BREAKEVEN_HANDLES: Record<SymbolKey, number> = {
   ES: 2,
 }
 
-export type TradeOutcome = 'win' | 'loss' | 'breakeven'
+export const TRADE_OUTCOMES = ['win', 'loss', 'breakeven'] as const
+export type TradeOutcome = (typeof TRADE_OUTCOMES)[number]
 
 // Tailwind class for tinting text by outcome. Centralised so the trade
 // table, LiveStatsSection, and any future row-shaped UI agree on the mapping.

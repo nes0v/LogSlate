@@ -1,5 +1,4 @@
 import { z } from 'zod'
-import { format, parseISO } from 'date-fns'
 import {
   CONTRACT_TYPES,
   EMOTIONS,
@@ -45,7 +44,9 @@ const executionSchema = z.object({
   kind: z.enum(EXECUTION_KINDS),
   order_type: z.enum(ORDER_TYPES),
   price: requiredPositive('price must be > 0'),
-  time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'time must be HH:MM (24h)'),
+  time: z
+    .string()
+    .regex(/^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$/, 'time must be HH:MM:SS (24h)'),
   contracts: requiredPositiveInt('contracts must be a positive integer'),
 })
 
@@ -108,11 +109,13 @@ export const tradeFormSchema = z
 
 export type TradeFormValues = z.infer<typeof tradeFormSchema>
 
-// Combine a local date (YYYY-MM-DD) and local time (HH:MM) into an ISO UTC string.
+// Combine a calendar date and a NY wallclock time into a single ISO string.
+// The app treats every typed time as NY — no timezone conversion happens at
+// store/read time. The trailing `Z` makes the string round-trip cleanly
+// through Date/Date.parse for sorting and duration math; the underlying
+// "instant" is fictional but globally consistent for every execution row.
 function toIso(date: string, time: string): string {
-  // `new Date('YYYY-MM-DDTHH:MM')` is interpreted as local time by all major engines.
-  const d = new Date(`${date}T${time}`)
-  return d.toISOString()
+  return `${date}T${time}.000Z`
 }
 
 export function formToDraft(v: TradeFormValues): TradeDraft {
@@ -163,7 +166,8 @@ export function recordToForm(r: TradeRecord): TradeFormValues {
       kind: e.kind,
       order_type: e.order_type ?? 'limit',
       price: e.price,
-      time: format(parseISO(e.time), 'HH:mm'),
+      // Stored ISO is `${date}T${HH:MM:SS}.000Z` — slice off the wallclock.
+      time: e.time.slice(11, 19),
       contracts: e.contracts,
     }))
 
