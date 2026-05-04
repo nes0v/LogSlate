@@ -1,9 +1,11 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { renderHook } from '@testing-library/react'
 import {
   COLOR_SCHEMES,
   applyColorScheme,
   getColorScheme,
   setColorScheme,
+  useColorScheme,
 } from './color-scheme-preference'
 
 afterEach(() => {
@@ -27,6 +29,14 @@ describe('getColorScheme', () => {
   it('falls back to "classic" for an invalid stored value', () => {
     localStorage.setItem('logslate:color_scheme', 'rainbow')
     expect(getColorScheme()).toBe('classic')
+  })
+
+  it('falls back to "classic" when localStorage throws', () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('blocked')
+    })
+    expect(getColorScheme()).toBe('classic')
+    vi.restoreAllMocks()
   })
 })
 
@@ -62,6 +72,34 @@ describe('setColorScheme', () => {
   it('is a no-op when the scheme is unchanged', () => {
     setColorScheme('classic') // same as the default — should not write
     expect(localStorage.getItem('logslate:color_scheme')).toBeNull()
+  })
+
+  it('survives a localStorage write throwing', () => {
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('quota')
+    })
+    expect(() => setColorScheme('azure')).not.toThrow()
+    expect(document.documentElement.style.getPropertyValue('--color-win'))
+      .toBe(COLOR_SCHEMES.azure.win)
+    vi.restoreAllMocks()
+  })
+})
+
+describe('useColorScheme', () => {
+  it('returns the current scheme and re-renders on change', () => {
+    const { result, rerender } = renderHook(() => useColorScheme())
+    expect(result.current).toBe('classic')
+    setColorScheme('azure')
+    rerender()
+    expect(result.current).toBe('azure')
+  })
+
+  it('cleanly unsubscribes on unmount', () => {
+    const { unmount } = renderHook(() => useColorScheme())
+    unmount()
+    // Setting after unmount must not throw — exercises the cleanup branch.
+    setColorScheme('azure')
+    expect(getColorScheme()).toBe('azure')
   })
 })
 

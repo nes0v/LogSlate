@@ -12,6 +12,7 @@ import {
   inferSide,
   isReversal,
   lastExecutionMs,
+  outcomeTextClass,
   totalContracts,
   tradeMetrics,
 } from './trade-math'
@@ -261,6 +262,20 @@ describe('computeDuration', () => {
     const t = tradeRecord({ executions: [execution({ kind: 'buy' })] })
     expect(computeDuration(t)).toEqual({ total_ms: null, before_first_exit_ms: null })
   })
+
+  it('measures pre-first-exit on a short from the first buy (cover)', () => {
+    const t = tradeRecord({
+      executions: [
+        execution({ kind: 'sell', time: '2026-04-15T10:00:00Z' }),
+        execution({ kind: 'sell', time: '2026-04-15T10:01:00Z' }),
+        execution({ kind: 'buy', time: '2026-04-15T10:04:00Z' }),
+        execution({ kind: 'buy', time: '2026-04-15T10:08:00Z' }),
+      ],
+    })
+    const d = computeDuration(t)
+    expect(d.total_ms).toBe(8 * 60 * 1000)
+    expect(d.before_first_exit_ms).toBe(4 * 60 * 1000)
+  })
 })
 
 describe('classifyTrade', () => {
@@ -497,5 +512,20 @@ describe("computePlannedRr", () => {
 
   it("returns 0 for a zero profit_target (no upside / scratch target)", () => {
     expect(computePlannedRr(tradeRecord({ stop_loss: 100, profit_target: 0 }))).toBe(0)
+  })
+})
+
+describe('outcomeTextClass', () => {
+  it('dims the row when there is no PnL value yet', () => {
+    expect(outcomeTextClass('win', false)).toMatch(/text-dim/)
+    expect(outcomeTextClass('loss', false)).toMatch(/text-dim/)
+    expect(outcomeTextClass('breakeven', false)).toMatch(/text-dim/)
+  })
+  it('maps win → win color and loss → loss color', () => {
+    expect(outcomeTextClass('win', true)).toMatch(/--color-win/)
+    expect(outcomeTextClass('loss', true)).toMatch(/--color-loss/)
+  })
+  it('uses the neutral text color for breakeven', () => {
+    expect(outcomeTextClass('breakeven', true)).toMatch(/--color-text\)/)
   })
 })

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { db, ensureMainAccount } from './schema'
 import {
+  addDayScreenshot,
   countAccountData,
   createAccount,
   createAdjustment,
@@ -8,10 +9,15 @@ import {
   deleteAccount,
   deleteAdjustment,
   deleteTrade,
+  getDay,
+  getDayNote,
   getTrade,
   listAccounts,
   listAdjustments,
   listAllTrades,
+  listDayScreenshotsFor,
+  removeDayScreenshot,
+  setDayNote,
   slugifyAccountName,
   updateAdjustment,
   updateTrade,
@@ -257,6 +263,107 @@ describe('account queries', () => {
 
     expect(await countAccountData(a.id)).toEqual({ trades: 2, adjustments: 1 })
     expect(await countAccountData(MAIN_ACCOUNT_ID)).toEqual({ trades: 1, adjustments: 0 })
+  })
+})
+
+describe('day queries', () => {
+  const ACCT = MAIN_ACCOUNT_ID
+  const DATE = '2026-04-20'
+
+  describe('getDay / listDayScreenshotsFor / getDayNote', () => {
+    it('return defaults when the row is absent', async () => {
+      expect(await getDay(ACCT, DATE)).toBeUndefined()
+      expect(await listDayScreenshotsFor(ACCT, DATE)).toEqual([])
+      expect(await getDayNote(ACCT, DATE)).toBe('')
+    })
+  })
+
+  describe('addDayScreenshot', () => {
+    it('creates the row when none exists', async () => {
+      const day = await addDayScreenshot(ACCT, DATE, 'drive:abc')
+      expect(day.screenshots).toEqual(['drive:abc'])
+      expect(day.account_id).toBe(ACCT)
+      expect(day.date).toBe(DATE)
+      expect(day.id).toBe(`${ACCT}:${DATE}`)
+      expect(day.created_at).toBe(day.updated_at)
+    })
+
+    it('appends to an existing row and bumps updated_at', async () => {
+      const first = await addDayScreenshot(ACCT, DATE, 'drive:a')
+      await new Promise(r => setTimeout(r, 2))
+      const second = await addDayScreenshot(ACCT, DATE, 'drive:b')
+      expect(second.screenshots).toEqual(['drive:a', 'drive:b'])
+      expect(second.created_at).toBe(first.created_at)
+      expect(second.updated_at >= first.updated_at).toBe(true)
+    })
+  })
+
+  describe('removeDayScreenshot', () => {
+    it('drops the matching screenshot from a multi-entry row', async () => {
+      await addDayScreenshot(ACCT, DATE, 'drive:a')
+      await addDayScreenshot(ACCT, DATE, 'drive:b')
+      await removeDayScreenshot(ACCT, DATE, 'drive:a')
+      expect(await listDayScreenshotsFor(ACCT, DATE)).toEqual(['drive:b'])
+    })
+
+    it('deletes the row when removing the last screenshot and no note', async () => {
+      await addDayScreenshot(ACCT, DATE, 'drive:a')
+      await removeDayScreenshot(ACCT, DATE, 'drive:a')
+      expect(await getDay(ACCT, DATE)).toBeUndefined()
+    })
+
+    it('keeps the row when a note is present and screenshots empty', async () => {
+      await setDayNote(ACCT, DATE, 'reflection')
+      await addDayScreenshot(ACCT, DATE, 'drive:a')
+      await removeDayScreenshot(ACCT, DATE, 'drive:a')
+      const day = await getDay(ACCT, DATE)
+      expect(day?.screenshots).toEqual([])
+      expect(day?.note).toBe('reflection')
+    })
+
+    it('is a no-op when the row does not exist', async () => {
+      await expect(removeDayScreenshot(ACCT, DATE, 'drive:missing')).resolves.toBeUndefined()
+    })
+  })
+
+  describe('setDayNote', () => {
+    it('creates the row when one does not exist', async () => {
+      await setDayNote(ACCT, DATE, 'first thought')
+      expect(await getDayNote(ACCT, DATE)).toBe('first thought')
+    })
+
+    it('does not create a row when the note is empty', async () => {
+      await setDayNote(ACCT, DATE, '   ')
+      expect(await getDay(ACCT, DATE)).toBeUndefined()
+    })
+
+    it('updates an existing row in place', async () => {
+      await setDayNote(ACCT, DATE, 'first')
+      await new Promise(r => setTimeout(r, 2))
+      await setDayNote(ACCT, DATE, 'second')
+      expect(await getDayNote(ACCT, DATE)).toBe('second')
+    })
+
+    it('clears the note while preserving the row when screenshots remain', async () => {
+      await addDayScreenshot(ACCT, DATE, 'drive:a')
+      await setDayNote(ACCT, DATE, 'a thought')
+      await setDayNote(ACCT, DATE, '')
+      const day = await getDay(ACCT, DATE)
+      expect(day?.note).toBeUndefined()
+      expect(day?.screenshots).toEqual(['drive:a'])
+    })
+
+    it('deletes the row when both note and screenshots become empty', async () => {
+      await setDayNote(ACCT, DATE, 'a thought')
+      await setDayNote(ACCT, DATE, '')
+      expect(await getDay(ACCT, DATE)).toBeUndefined()
+    })
+
+    it('treats whitespace-only input as empty', async () => {
+      await setDayNote(ACCT, DATE, 'real')
+      await setDayNote(ACCT, DATE, '   \n\t ')
+      expect(await getDay(ACCT, DATE)).toBeUndefined()
+    })
   })
 })
 

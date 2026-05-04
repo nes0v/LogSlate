@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { EMPTY_FILTERS, type TradeFilters } from './filters'
 import {
+  defaultRange,
   hasAnyFilter,
   loadSharedFilters,
   saveSharedFilters,
@@ -10,6 +11,22 @@ const KEY = 'logslate.shared-filters.v1'
 
 afterEach(() => {
   localStorage.removeItem(KEY)
+})
+
+describe('defaultRange', () => {
+  it('returns a 30-day inclusive window ending on baseDate', () => {
+    expect(defaultRange('2026-04-30')).toEqual({
+      from: '2026-04-01',
+      to: '2026-04-30',
+    })
+  })
+
+  it('handles month boundaries', () => {
+    expect(defaultRange('2026-03-15')).toEqual({
+      from: '2026-02-14',
+      to: '2026-03-15',
+    })
+  })
 })
 
 describe('hasAnyFilter', () => {

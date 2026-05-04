@@ -1,8 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db, ensureMainAccount } from '@/db/schema'
 import { createAdjustment, createTrade, listAllTrades, listAdjustments } from '@/db/queries'
 import { MAIN_ACCOUNT_ID } from '@/db/types'
-import { importBackup } from './backup'
+import { exportBackup, importBackup } from './backup'
 import { adjustmentDraft, tradeDraft } from '@/test/fixtures'
 
 beforeEach(async () => {
@@ -66,5 +66,41 @@ describe('importBackup', () => {
   it('rejects malformed input', async () => {
     const file = new File(['{"foo": 1}'], 'bad.json', { type: 'application/json' })
     await expect(importBackup(file)).rejects.toThrow(/malformed/)
+  })
+})
+
+describe('exportBackup', () => {
+  it('writes a JSON blob containing every table and triggers a download', async () => {
+    await createTrade(tradeDraft({ idea: 'export me' }))
+    await createAdjustment(adjustmentDraft({ amount: 250 }))
+
+    // Capture the Blob handed to URL.createObjectURL so we can inspect the
+    // serialised JSON without intercepting the click pipeline.
+    let captured: Blob | null = null
+    const createUrl = vi.spyOn(URL, 'createObjectURL').mockImplementation(blob => {
+      captured = blob as Blob
+      return 'blob:test'
+    })
+    const revokeUrl = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+
+    await exportBackup()
+
+    expect(createUrl).toHaveBeenCalledTimes(1)
+    expect(revokeUrl).toHaveBeenCalledWith('blob:test')
+
+    expect(captured).toBeTruthy()
+    const text = await (captured as unknown as Blob).text()
+    const parsed = JSON.parse(text)
+    expect(parsed.version).toBeGreaterThan(0)
+    expect(parsed.exported_at).toMatch(/^\d{4}-/)
+    expect(Array.isArray(parsed.trades)).toBe(true)
+    expect(parsed.trades).toHaveLength(1)
+    expect(parsed.trades[0].idea).toBe('export me')
+    expect(parsed.adjustments).toHaveLength(1)
+    expect(parsed.adjustments[0].amount).toBe(250)
+    // Empty tables still appear so the import side has a stable shape.
+    expect(parsed.accounts).toBeDefined()
+    expect(parsed.days).toBeDefined()
+    expect(parsed.models).toBeDefined()
   })
 })
