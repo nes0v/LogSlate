@@ -24,6 +24,9 @@ const DEFAULT_GROUPS = (): ModelRuleGroup[] => [
 export function ModelsRoute() {
   const accountId = useActiveAccountId()
   const confirm = useConfirm()
+  // No default value — `models` is undefined until Dexie resolves so we
+  // can suppress the "No models yet" placeholder + empty editor pane on
+  // the first paint frame (otherwise the page flickers on navigation).
   const models = useLiveQuery(
     () =>
       db.models
@@ -32,8 +35,8 @@ export function ModelsRoute() {
         .reverse()
         .sortBy('updated_at'),
     [accountId],
-    [],
   )
+  const loaded = models !== undefined
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [showArchived, setShowArchived] = useState(false)
 
@@ -108,7 +111,7 @@ export function ModelsRoute() {
 
       <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-3 min-h-[60vh]">
         <aside className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3 max-h-[80vh] overflow-y-auto">
-          {visible.length === 0 ? (
+          {!loaded ? null : visible.length === 0 ? (
             <div className="text-xs text-(--color-text-dim) text-center py-6">
               No models yet — start with "New model".
             </div>
@@ -146,7 +149,7 @@ export function ModelsRoute() {
           )}
         </aside>
 
-        {selected ? (
+        {!loaded ? null : selected ? (
           <ModelEditor
             key={selected.id}
             model={selected}

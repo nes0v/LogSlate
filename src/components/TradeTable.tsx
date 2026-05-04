@@ -1,9 +1,6 @@
-import { Fragment, memo, useMemo } from 'react'
-import { useLiveQuery } from 'dexie-react-hooks'
+import { Fragment, memo } from 'react'
 import { ArrowDown, ArrowRight, ArrowUp, ArrowUpDown } from 'lucide-react'
-import { db } from '@/db/schema'
 import { DEFAULT_MODEL_NAME, type TradeRecord } from '@/db/types'
-import { useActiveAccountId } from '@/lib/active-account'
 import {
   computeDuration,
   computePlannedRr,
@@ -24,6 +21,10 @@ interface TradeTableProps {
   trades: TradeRecord[]
   expandedIds: Set<string>
   onToggle: (id: string) => void
+  /** Resolved model name lookup. Lifted to the parent route so the page
+   *  reveals with full model names already filled in — without this,
+   *  rows briefly showed "gambling" before the model query resolved. */
+  modelNameById: Map<string, string>
 }
 
 const COLS = 12
@@ -32,22 +33,8 @@ export const TradeTable = memo(function TradeTable({
   trades,
   expandedIds,
   onToggle,
+  modelNameById,
 }: TradeTableProps) {
-  // Single subscription on `db.models` for the whole table — beats one
-  // `useLiveQuery(db.models.get(...))` per row, which scaled with trade
-  // count and re-rendered every row on any model write.
-  const accountId = useActiveAccountId()
-  const models = useLiveQuery(
-    () => db.models.where('account_id').equals(accountId).toArray(),
-    [accountId],
-    [],
-  )
-  const modelNameById = useMemo(() => {
-    const m = new Map<string, string>()
-    for (const p of models ?? []) m.set(p.id, p.name)
-    return m
-  }, [models])
-
   return (
     <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) overflow-hidden">
       <table className="w-full text-sm border-collapse">

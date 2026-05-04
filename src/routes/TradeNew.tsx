@@ -1,5 +1,6 @@
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { format, parseISO } from 'date-fns'
+import { PageHeader } from '@/components/PageHeader'
 import { TradeForm } from '@/components/TradeForm'
 import { db } from '@/db/schema'
 import { createTrade } from '@/db/queries'
@@ -20,12 +21,15 @@ export function TradeNewRoute() {
 
   return (
     <div className="pt-1 space-y-8">
-      <div className="flex items-center justify-between mb-8">
-        <h1 className="h-8 flex items-center text-lg font-semibold">New trade</h1>
-        <span className="text-sm text-(--color-text-dim) font-mono">
-          {format(parseISO(date), 'MMM d, yyyy')}
-        </span>
-      </div>
+      <PageHeader
+        back
+        title="New trade"
+        rightSlot={
+          <span className="text-sm text-(--color-text-dim) font-mono">
+            {format(parseISO(date), 'MMM d, yyyy')}
+          </span>
+        }
+      />
       <TradeForm
         initialDate={date}
         onSubmit={handleSubmit}

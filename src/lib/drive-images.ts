@@ -426,6 +426,10 @@ async function blobForDrive(fileId: string): Promise<Blob> {
 // (missing pending blob, Drive fetch error, scope issue) so callers can
 // surface a meaningful message — swallowing made "image won't load" bugs
 // impossible to diagnose without devtools.
+/** Per-ref resolution result: either a blob URL ready for `<img>` or the
+ *  error message from the failed fetch. Returned by `useScreenshotUrls`. */
+export type ResolvedScreenshot = { url: string } | { error: string }
+
 export async function resolveScreenshotUrl(raw: string | null | undefined): Promise<string> {
   if (!raw) throw new Error('No screenshot ref')
   const cached = urlCache.get(raw)
@@ -442,6 +446,21 @@ export async function resolveScreenshotUrl(raw: string | null | undefined): Prom
     )
   }
   const url = URL.createObjectURL(blob)
+  // Wait for the image to be fully decoded so the `<img>` element knows
+  // its intrinsic dimensions on first paint. Without this, the thumb
+  // briefly renders at 0px wide before the browser decodes and reflows
+  // — visually that's a "small then big" pop which shifts everything
+  // below the screenshots section. `decode()` is supported in every
+  // evergreen browser; the catch falls back gracefully if a runtime
+  // misses it.
+  try {
+    const img = new Image()
+    img.src = url
+    await img.decode()
+  } catch {
+    // Decode failures are non-fatal — the `<img>` will still try to
+    // load. We just lose the layout-stable guarantee for that one image.
+  }
   rememberUrl(raw, url)
   return url
 }

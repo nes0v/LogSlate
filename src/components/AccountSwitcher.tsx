@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { useLiveQuery } from 'dexie-react-hooks'
 import { Check, ChevronDown, User } from 'lucide-react'
-import { listAccounts } from '@/db/queries'
-import { MAIN_ACCOUNT_ID } from '@/db/types'
+import { MAIN_ACCOUNT_ID, type Account } from '@/db/types'
 import {
   getActiveAccountId,
   setActiveAccountId,
@@ -10,8 +8,15 @@ import {
 } from '@/lib/active-account'
 import { cn } from '@/lib/utils'
 
-export function AccountSwitcher() {
-  const accounts = useLiveQuery(() => listAccounts(), [], [])
+interface AccountSwitcherProps {
+  /** Resolved account list. Lifted from `Layout` so the global nav can
+   *  hide the whole right-side cluster until accounts + equity are both
+   *  ready, instead of showing a placeholder name that snaps to the
+   *  real one. */
+  accounts: Account[]
+}
+
+export function AccountSwitcher({ accounts }: AccountSwitcherProps) {
   const activeId = useActiveAccountId()
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
@@ -19,7 +24,7 @@ export function AccountSwitcher() {
   // If the active account was deleted (e.g. by a sync from another device),
   // fall back to Main so the UI doesn't render an empty dataset forever.
   useEffect(() => {
-    if (!accounts || accounts.length === 0) return
+    if (accounts.length === 0) return
     const current = getActiveAccountId()
     if (!accounts.some(a => a.id === current)) {
       setActiveAccountId(MAIN_ACCOUNT_ID)
@@ -42,7 +47,7 @@ export function AccountSwitcher() {
     }
   }, [open])
 
-  const active = accounts?.find(a => a.id === activeId) ?? accounts?.find(a => a.is_main)
+  const active = accounts.find(a => a.id === activeId) ?? accounts.find(a => a.is_main)
   const activeName = active?.name ?? 'Main'
 
   return (
@@ -62,7 +67,7 @@ export function AccountSwitcher() {
         </span>
         <ChevronDown className="size-4 shrink-0 text-(--color-text-dim)" />
       </button>
-      {open && accounts && (
+      {open && (
         <div className="absolute right-0 top-full mt-1 z-20 bg-(--color-panel) border border-(--color-border-strong) rounded-(--radius) shadow-(--shadow-md) overflow-hidden">
           {accounts.map(a => (
             <button

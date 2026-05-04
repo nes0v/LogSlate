@@ -20,6 +20,7 @@ import { ScreenshotField } from '@/components/ScreenshotField'
 import { computeAhpc, computeNetPnl } from '@/lib/trade-math'
 import { formatUsd } from '@/lib/money'
 import { useAutosizeTextarea } from '@/lib/use-autosize-textarea'
+import { useScreenshotUrls } from '@/lib/use-screenshot-urls'
 import { cn, mergeRefs } from '@/lib/utils'
 
 const SYMBOLS = [
@@ -66,14 +67,30 @@ export function TradeForm({
   onScreenshotPersist,
 }: TradeFormProps) {
   const accountId = useActiveAccountId()
+  // No default — the form's right column waits on the model list so the
+  // checklist (which only renders when an existing trade has a `model_id`
+  // matching a live model) doesn't pop in late and shove the setup /
+  // mistake tag rows downward.
   const models = useLiveQuery(
     async () => {
       const rows = await db.models.where('account_id').equals(accountId).toArray()
       return rows.filter(m => !m.archived)
     },
     [accountId],
-    [],
   )
+  // Pre-resolve the initial screenshot so the thumb paints in its final
+  // state (image or "Couldn't load" panel) instead of flashing the
+  // "loading…" placeholder. Captured in state so subsequent uploads
+  // mid-edit don't re-gate the form.
+  const [initialScreenshot] = useState(initialValues?.screenshot ?? null)
+  const initialScreenshotRefs = useMemo(
+    () => (initialScreenshot ? [initialScreenshot] : []),
+    [initialScreenshot],
+  )
+  const {
+    loaded: initialScreenshotResolved,
+    resolved: screenshotResolutions,
+  } = useScreenshotUrls(initialScreenshotRefs)
 
   const {
     register,
@@ -117,6 +134,13 @@ export function TradeForm({
       contracts: 1,
     })
   }
+
+  // Gate the entire form on `models` having resolved AND the initial
+  // screenshot (if any) having resolved. The right column's
+  // ModelRuleChecklist depends on which model is selected, and we want
+  // the screenshot to render in its final state on first paint instead
+  // of flashing the "loading…" placeholder.
+  if (models === undefined || !initialScreenshotResolved) return null
 
   return (
     <form onSubmit={handleSubmit(submit)}>
@@ -333,6 +357,11 @@ export function TradeForm({
               }}
               date={values.date}
               getFilenameSuffix={async () => `trade-${await getTradeOrdinal()}`}
+              prefetched={
+                values.screenshot
+                  ? screenshotResolutions.get(values.screenshot)
+                  : undefined
+              }
             />
           </Field>
             </section>

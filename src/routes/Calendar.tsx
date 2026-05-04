@@ -43,6 +43,8 @@ export function CalendarRoute() {
   const rangeEnd = format(gridEnd, DATE_KEY)
   const accountId = useActiveAccountId()
 
+  // No defaults — `loaded` gates the day grid so colored cells don't flash
+  // a gray "no trades" state before Dexie resolves.
   const trades = useLiveQuery(
     () =>
       db.trades
@@ -50,9 +52,7 @@ export function CalendarRoute() {
         .between([accountId, rangeStart], [accountId, rangeEnd], true, true)
         .toArray(),
     [rangeStart, rangeEnd, accountId],
-    [],
   )
-
   const dayRows = useLiveQuery(
     () =>
       db.days
@@ -60,8 +60,8 @@ export function CalendarRoute() {
         .between([accountId, rangeStart], [accountId, rangeEnd], true, true)
         .toArray(),
     [rangeStart, rangeEnd, accountId],
-    [],
   )
+  const loaded = trades !== undefined && dayRows !== undefined
 
   const screenshotDays = useMemo(() => {
     const s = new Set<string>()
@@ -155,52 +155,60 @@ export function CalendarRoute() {
         nextLabel="Next month"
         todayTo={`/month/${nyDateKey().slice(0, 7)}`}
         rightSlot={
-          <div className="flex items-baseline gap-2">
-            <span className="text-sm text-(--color-text-dim)">Month net</span>
-            <span
-              className={cn(
-                'text-lg font-mono',
-                monthNet > 0 && 'text-(--color-win)',
-                monthNet < 0 && 'text-(--color-loss)',
-                monthNet === 0 && 'text-(--color-text-dim)',
-              )}
-            >
-              {formatUsd(monthNet)}
-            </span>
-          </div>
+          loaded ? (
+            <div className="flex items-baseline gap-2">
+              <span className="text-sm text-(--color-text-dim)">Month net</span>
+              <span
+                className={cn(
+                  'text-lg font-mono',
+                  monthNet > 0 && 'text-(--color-win)',
+                  monthNet < 0 && 'text-(--color-loss)',
+                  monthNet === 0 && 'text-(--color-text-dim)',
+                )}
+              >
+                {formatUsd(monthNet)}
+              </span>
+            </div>
+          ) : null
         }
       />
 
-      <div className="space-y-8">
-        {/* The 4px spacer column + the surrounding 6px column-gaps give a
-            16px aisle between the day grid and the weekly summary
-            column, matching the gap-4 spacing used between sections on
-            the new-trade page. */}
-        <div className="grid grid-cols-[repeat(7,minmax(0,1fr))_4px_minmax(96px,140px)] gap-1.5">
-          {weekdayLabels.map(lbl => (
-            <div
-              key={lbl}
-              className="rounded-(--radius) border border-(--color-cal-week-card-border) bg-(--color-cal-week-card-bg) text-xs font-bold text-(--color-text) text-center py-2"
-            >
-              {lbl}
-            </div>
-          ))}
-          <div aria-hidden />
-          <div aria-hidden />
-          {weeks.flatMap((week, weekIdx) => [
-            ...week.days.map(d => renderDayCell(d, weekIdx)),
-            <div key={`aisle-${weekIdx}`} aria-hidden />,
-            <WeekCard
-              key={`week-${weekIdx}`}
-              index={weekIdx + 1}
-              pnl={week.pnl}
-              tradedDays={week.tradedDays}
-            />,
-          ])}
-        </div>
+      {/* Everything below the header is gated on the primary data load —
+          including the cached news feed — so the page reveals as a single
+          unit instead of news flashing on top while the calendar grid is
+          still resolving. */}
+      {loaded ? (
+        <div className="space-y-8">
+          {/* The 4px spacer column + the surrounding 6px column-gaps give a
+              16px aisle between the day grid and the weekly summary
+              column, matching the gap-4 spacing used between sections on
+              the new-trade page. */}
+          <div className="grid grid-cols-[repeat(7,minmax(0,1fr))_4px_minmax(96px,140px)] gap-1.5">
+            {weekdayLabels.map(lbl => (
+              <div
+                key={lbl}
+                className="rounded-(--radius) border border-(--color-cal-week-card-border) bg-(--color-cal-week-card-bg) text-xs font-bold text-(--color-text) text-center py-2"
+              >
+                {lbl}
+              </div>
+            ))}
+            <div aria-hidden />
+            <div aria-hidden />
+            {weeks.flatMap((week, weekIdx) => [
+              ...week.days.map(d => renderDayCell(d, weekIdx)),
+              <div key={`aisle-${weekIdx}`} aria-hidden />,
+              <WeekCard
+                key={`week-${weekIdx}`}
+                index={weekIdx + 1}
+                pnl={week.pnl}
+                tradedDays={week.tradedDays}
+              />,
+            ])}
+          </div>
 
-        <ForexFactoryNews />
-      </div>
+          <ForexFactoryNews />
+        </div>
+      ) : null}
     </div>
   )
 

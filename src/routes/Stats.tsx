@@ -32,7 +32,7 @@ import {
   saveSharedFilters,
 } from '@/lib/shared-filters'
 import { firstExecutionMs } from '@/lib/trade-math'
-import { adjustmentsByDate, computeCandles } from '@/lib/trade-stats'
+import { adjustmentsByDate, aggregate, computeCandles } from '@/lib/trade-stats'
 import { useStartingEquity } from '@/lib/use-starting-equity'
 import {
   bucketByTimeframe,
@@ -92,6 +92,10 @@ export function StatsRoute() {
   const [viewportEpoch, setViewportEpoch] = useState(0)
 
   const accountId = useActiveAccountId()
+  // No default value — `allTrades` is `undefined` while Dexie resolves so
+  // we can suppress the empty-state placeholder + downstream sections
+  // until the real data arrives. Without this, "No trades yet" shows for
+  // a single frame and then snaps to the actual content.
   const allTrades = useLiveQuery(
     () =>
       db.trades
@@ -99,7 +103,6 @@ export function StatsRoute() {
         .between([accountId, ''], [accountId, '￿'], true, true)
         .toArray(),
     [accountId],
-    [],
   )
   const allAdjustments = useLiveQuery(
     () =>
@@ -110,6 +113,19 @@ export function StatsRoute() {
     [accountId],
     [],
   )
+  // Models are resolved once at the route level so trade rows render
+  // with the right name on first paint (instead of flashing "gambling"
+  // before the lookup map populates).
+  const models = useLiveQuery(
+    () => db.models.where('account_id').equals(accountId).toArray(),
+    [accountId],
+  )
+  const modelNameById = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const p of models ?? []) m.set(p.id, p.name)
+    return m
+  }, [models])
+  const loaded = allTrades !== undefined && models !== undefined
 
   // Most recent trade date — anchors the default filter so Stats lands
   // on the user's actual trading window. Falls back to today before
@@ -137,6 +153,39 @@ export function StatsRoute() {
   }, [params, lastTradeDate])
 
   const filtered = useMemo(() => applyFilters(allTrades ?? [], filters), [allTrades, filters])
+  // Aggregate once at the route level and pass down. Previously each
+  // memo'd child (HeroNetPnl, CompositeScoreSection, AdvancedMetricsSections)
+  // computed `aggregate(filtered)` independently — same data, three
+  // full-array passes per render.
+  const stats = useMemo(() => aggregate(filtered), [filtered])
+
+  // Lazy-mount the TradingView chart on a tick after the rest of the
+  // page has painted. The chart synchronously builds canvases, primitives,
+  // ~365 whitespace timestamps, and pushes the candle stream — that's the
+  // single largest contributor to first-paint latency on Stats.
+  const [chartReady, setChartReady] = useState(false)
+  useEffect(() => {
+    if (chartReady) return
+    // requestIdleCallback isn't on all browsers (Safari < 17 etc.); a 0ms
+    // timeout schedules a macrotask after paint, which is good enough.
+    const handle =
+      typeof requestIdleCallback !== 'undefined'
+        ? requestIdleCallback(() => setChartReady(true))
+        : window.setTimeout(() => setChartReady(true), 0)
+    return () => {
+      if (typeof cancelIdleCallback !== 'undefined' && typeof handle === 'number') {
+        // Best-effort; idle and timeout handles are interchangeable as
+        // numbers in the TS lib types.
+        try {
+          cancelIdleCallback(handle)
+        } catch {
+          clearTimeout(handle)
+        }
+      } else {
+        clearTimeout(handle as number)
+      }
+    }
+  }, [chartReady])
 
   // Bucket trades by day across the filter range (falling back to first/last
   // traded day when no explicit from/to). Using the filter bounds makes charts
@@ -348,6 +397,7 @@ export function StatsRoute() {
             trades={tradesDesc}
             expandedIds={tableExpandedIds}
             onToggle={toggleTableRow}
+            modelNameById={modelNameById}
           />
         </details>
       )}
@@ -355,6 +405,7 @@ export function StatsRoute() {
       {filtered.length > 0 && (
         <AdvancedMetricsSections
           filtered={filtered}
+          stats={stats}
           rangeStart={rangeStart}
           rangeEnd={rangeEnd}
         />
@@ -363,9 +414,10 @@ export function StatsRoute() {
       {filtered.length > 0 && (
         <>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            <HeroNetPnl filtered={filtered} rangeStart={rangeStart} rangeEnd={rangeEnd} />
+            <HeroNetPnl stats={stats} />
             <CompositeScoreSection
               filtered={filtered}
+              stats={stats}
               rangeStart={rangeStart}
               rangeEnd={rangeEnd}
             />
@@ -374,7 +426,7 @@ export function StatsRoute() {
         </>
       )}
 
-      {filtered.length > 0 ? (
+      {filtered.length > 0 && chartReady ? (
         <TradingViewChart
           points={tfCandles}
           adjustments={tfAdjustmentMarkers}
@@ -409,13 +461,13 @@ export function StatsRoute() {
             </div>
           }
         />
-      ) : (
+      ) : loaded ? (
         <div className="text-sm text-(--color-text-dim) text-center py-12 border border-dashed border-(--color-border) rounded-(--radius)">
-          {allTrades && allTrades.length === 0
+          {allTrades.length === 0
             ? 'No trades yet.'
             : 'No trades match the current filters.'}
         </div>
-      )}
+      ) : null}
     </div>
   )
 }

@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
-import { useLiveQuery } from 'dexie-react-hooks'
-import { getDayNote, setDayNote } from '@/db/queries'
+import { setDayNote } from '@/db/queries'
 import { useAutosizeTextarea } from '@/lib/use-autosize-textarea'
 
 interface DayNoteSectionProps {
   accountId: string
   date: string // YYYY-MM-DD
+  /** Stored note value for this (account, date); empty string if none. */
+  stored: string
 }
 
 /**
@@ -13,13 +14,12 @@ interface DayNoteSectionProps {
  * field (one row per (account, date)). Persisted on blur — typing-time
  * writes would cause a Dexie transaction per keystroke.
  *
- * Local `value` state shadows the Dexie value so typing feels immediate;
- * we only re-sync from Dexie when the underlying note changes from a
- * different source (initial load, cross-device sync) and the textarea
- * isn't currently focused.
+ * Local `value` state shadows the parent-supplied stored value so typing
+ * feels immediate; we re-sync from `stored` only when it changes from a
+ * different source (cross-device sync) and the textarea isn't currently
+ * focused.
  */
-export function DayNoteSection({ accountId, date }: DayNoteSectionProps) {
-  const stored = useLiveQuery(() => getDayNote(accountId, date), [accountId, date], '')
+export function DayNoteSection({ accountId, date, stored }: DayNoteSectionProps) {
   const [value, setValue] = useState(stored)
   const textareaRef = useAutosizeTextarea(value)
 

@@ -25,6 +25,9 @@ export function ProgressRoute() {
   const today = nyToday()
   const [date, setDate] = useState(today)
 
+  // No default values on the primary queries — `loaded` gates the
+  // rendering of the score band + heat strip + checklist so we don't
+  // flash zero adherence + "No active rules" before Dexie resolves.
   const rules = useLiveQuery(
     () =>
       db.progress_rules
@@ -32,7 +35,6 @@ export function ProgressRoute() {
         .equals(accountId)
         .sortBy('sort'),
     [accountId],
-    [],
   )
   const checksToday = useLiveQuery(
     () =>
@@ -41,8 +43,8 @@ export function ProgressRoute() {
         .equals([accountId, date])
         .toArray(),
     [accountId, date],
-    [],
   )
+  const loaded = rules !== undefined && checksToday !== undefined
   // Last 30 days of checks for the streak / heatmap.
   const recent = useLiveQuery(
     () => {
@@ -200,6 +202,8 @@ export function ProgressRoute() {
         </div>
       </div>
 
+      {!loaded ? null : (
+        <>
       {/* Score band */}
       <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
         <ScoreTile
@@ -316,6 +320,8 @@ export function ProgressRoute() {
           onDelete={deleteRule}
         />
       </section>
+      </>
+      )}
     </div>
   )
 }

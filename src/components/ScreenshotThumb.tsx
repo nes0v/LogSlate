@@ -4,6 +4,7 @@ import {
   driveViewUrlFromRef,
   parseScreenshotRef,
   resolveScreenshotUrl,
+  type ResolvedScreenshot,
 } from '@/lib/drive-images'
 import { useConfirm } from '@/components/ConfirmDialog'
 
@@ -12,6 +13,11 @@ interface ScreenshotThumbProps {
   onRemove?: () => void | Promise<void>
   /** "md" (default) for ~128px height, "sm" for ~64px inline thumbnails. */
   size?: 'sm' | 'md'
+  /** Pre-resolved URL or error from a parent that hoisted the fetch
+   *  (e.g. via `useScreenshotUrls`). When provided, the thumb renders
+   *  in its final state immediately and skips its own async fetch —
+   *  eliminating the staggered "loading…" flash on lists. */
+  prefetched?: ResolvedScreenshot
 }
 
 const SIZE_CLASSES = {
@@ -27,13 +33,24 @@ type LoadState =
 // Renders one screenshot — loading placeholder, image (clickable to open in
 // Drive), or a "Couldn't load" fallback with Retry + Drive-link. Optional
 // onRemove wires up an X button in the top-right corner.
-export function ScreenshotThumb({ value, onRemove, size = 'md' }: ScreenshotThumbProps) {
+export function ScreenshotThumb({ value, onRemove, size = 'md', prefetched }: ScreenshotThumbProps) {
   const confirm = useConfirm()
+  // When the parent has pre-resolved the ref via `useScreenshotUrls`,
+  // seed local state from that so the thumb skips its own async fetch
+  // entirely. Falls back to the standalone in-component fetch when the
+  // prop isn't provided (e.g. ScreenshotField in the trade form).
   const [fetched, setFetched] = useState<
     { ref: string; url: string; error: null } | { ref: string; url: null; error: string } | null
-  >(null)
+  >(() => prefetchedToState(value, prefetched))
 
   useEffect(() => {
+    // If a pre-resolved value is supplied, sync local state to it whenever
+    // the upstream value changes (e.g. retry, ref change) and skip the
+    // network path.
+    if (prefetched) {
+      setFetched(prefetchedToState(value, prefetched))
+      return
+    }
     if (fetched?.ref === value) return
     let cancelled = false
     void (async () => {
@@ -49,7 +66,7 @@ export function ScreenshotThumb({ value, onRemove, size = 'md' }: ScreenshotThum
     return () => {
       cancelled = true
     }
-  }, [value, fetched?.ref])
+  }, [value, fetched?.ref, prefetched])
 
   const load: LoadState =
     fetched?.ref === value
@@ -151,4 +168,18 @@ function ScreenshotBody({ load, viewUrl, onRetry, sizes }: ScreenshotBodyProps) 
       loading…
     </div>
   )
+}
+
+// Translate a `ResolvedScreenshot` (the parent-supplied prefetch) into the
+// local `fetched` shape that the render path consumes.
+function prefetchedToState(
+  ref: string,
+  prefetched: ResolvedScreenshot | undefined,
+):
+  | { ref: string; url: string; error: null }
+  | { ref: string; url: null; error: string }
+  | null {
+  if (!prefetched) return null
+  if ('url' in prefetched) return { ref, url: prefetched.url, error: null }
+  return { ref, url: null, error: prefetched.error }
 }

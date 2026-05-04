@@ -1,5 +1,3 @@
-import { useLiveQuery } from 'dexie-react-hooks'
-import { db } from '@/db/schema'
 import type { NewsEvent } from '@/db/types'
 import { nyTimeHHmm } from '@/lib/tz'
 
@@ -9,22 +7,11 @@ const IMPACT_FILL: Record<NewsEvent['impact'], string> = {
 }
 
 interface DayNewsSectionProps {
-  /** YYYY-MM-DD (NY calendar day). */
-  date: string
+  /** Pre-fetched news events for this day, sorted by `scheduled_at`. */
+  events: NewsEvent[]
 }
 
-export function DayNewsSection({ date }: DayNewsSectionProps) {
-  const events = useLiveQuery(
-    async () => {
-      const rows = await db.news.where('date').equals(date).toArray()
-      // ISO 8601 strings sort lexicographically — no Date.parse needed.
-      rows.sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at))
-      return rows
-    },
-    [date],
-    [] as NewsEvent[],
-  )
-
+export function DayNewsSection({ events }: DayNewsSectionProps) {
   return (
     <section className="space-y-2">
       <h2 className="text-sm font-medium">News</h2>

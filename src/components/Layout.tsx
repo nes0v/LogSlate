@@ -1,8 +1,10 @@
 import { Link, NavLink, Outlet } from 'react-router-dom'
+import { useLiveQuery } from 'dexie-react-hooks'
 import { AccountSwitcher } from '@/components/AccountSwitcher'
 import { ConfirmProvider } from '@/components/ConfirmDialog'
 import { NotificationBanner } from '@/components/NotificationBanner'
 import { SyncStatusIndicator } from '@/components/SyncStatusIndicator'
+import { listAccounts } from '@/db/queries'
 import { useNewsSync } from '@/lib/use-news-sync'
 import { useCurrentEquity } from '@/lib/use-starting-equity'
 import { formatUsd } from '@/lib/money'
@@ -19,6 +21,11 @@ const links = [
 export function Layout() {
   useNewsSync()
   const equity = useCurrentEquity()
+  // Lifted from AccountSwitcher so the entire equity + switcher cluster
+  // can render in one go once both are ready, instead of either piece
+  // jumping in independently.
+  const accounts = useLiveQuery(() => listAccounts(), [])
+  const navReady = equity !== undefined && accounts !== undefined
   return (
     <ConfirmProvider>
     <div className="min-h-full flex flex-col">
@@ -50,11 +57,15 @@ export function Layout() {
           </nav>
           <div className="ml-auto flex items-center gap-3">
             <SyncStatusIndicator />
-            <div className="flex items-baseline gap-1.5 font-mono text-sm tabular-nums">
-              <span className="text-xs uppercase tracking-wider text-(--color-text-dim)">Equity</span>
-              <span className="text-(--color-text)">{formatUsd(equity)}</span>
-            </div>
-            <AccountSwitcher />
+            {navReady ? (
+              <>
+                <div className="flex items-baseline gap-1.5 font-mono text-sm tabular-nums">
+                  <span className="text-xs uppercase tracking-wider text-(--color-text-dim)">Equity</span>
+                  <span className="text-(--color-text)">{formatUsd(equity)}</span>
+                </div>
+                <AccountSwitcher accounts={accounts} />
+              </>
+            ) : null}
           </div>
         </div>
       </header>

@@ -1,4 +1,8 @@
-import { discardScreenshotRef, parseScreenshotRef } from '@/lib/drive-images'
+import {
+  discardScreenshotRef,
+  parseScreenshotRef,
+  type ResolvedScreenshot,
+} from '@/lib/drive-images'
 import { useDriveState } from '@/lib/drive'
 import { ScreenshotThumb } from '@/components/ScreenshotThumb'
 import { ScreenshotUploadButton } from '@/components/ScreenshotUploadButton'
@@ -12,12 +16,22 @@ interface ScreenshotFieldProps {
    *  trade ordinal.
    */
   getFilenameSuffix: () => Promise<string> | string
+  /** Pre-resolved blob URL / error for the current `value`. The trade
+   *  form passes this for the initial screenshot so the thumb renders
+   *  in its final state on first paint instead of flashing "loading…". */
+  prefetched?: ResolvedScreenshot
 }
 
 // Single-value screenshot field: shows the thumb when set (upload button
 // hidden), or the upload button when unset. To replace an image, the user
 // removes the current one via the X and then picks a new file.
-export function ScreenshotField({ value, onChange, date, getFilenameSuffix }: ScreenshotFieldProps) {
+export function ScreenshotField({
+  value,
+  onChange,
+  date,
+  getFilenameSuffix,
+  prefetched,
+}: ScreenshotFieldProps) {
   const drive = useDriveState()
   const ref = parseScreenshotRef(value)
   const isPending = ref?.kind === 'pending'
@@ -30,7 +44,7 @@ export function ScreenshotField({ value, onChange, date, getFilenameSuffix }: Sc
   return (
     <div className="space-y-2">
       {value ? (
-        <ScreenshotThumb value={value} onRemove={handleRemove} />
+        <ScreenshotThumb value={value} onRemove={handleRemove} prefetched={prefetched} />
       ) : (
         <ScreenshotUploadButton
           date={date}

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { format, parseISO } from 'date-fns'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { PageHeader } from '@/components/PageHeader'
 import { TradeForm } from '@/components/TradeForm'
 import { useConfirm } from '@/components/ConfirmDialog'
 import { db } from '@/db/schema'
@@ -11,10 +11,6 @@ import { useActiveAccountId } from '@/lib/active-account'
 import { useArrowNavigation } from '@/lib/use-arrow-navigation'
 import { recordToForm, type TradeFormValues } from '@/lib/form-schema'
 import type { TradeDraft, TradeRecord } from '@/db/types'
-import { cn } from '@/lib/utils'
-
-const NAV_BTN_CLASS =
-  'inline-flex items-center justify-center p-1.5 rounded-(--radius) text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)'
 
 export function TradeEditRoute() {
   const { id = '' } = useParams()
@@ -90,9 +86,9 @@ export function TradeEditRoute() {
   // form values (stale state propagates into TradeForm's initialValues, and
   // react-hook-form pins those defaults for the lifetime of the mount).
   const stale = state.status === 'ready' && state.record.id !== id
-  if (state.status === 'loading' || stale) {
-    return <div className="text-(--color-text-dim)">Loading…</div>
-  }
+  const ready = state.status === 'ready' && !stale
+  const record = ready ? state.record : null
+
   if (state.status === 'not-found') {
     return (
       <div>
@@ -104,66 +100,52 @@ export function TradeEditRoute() {
 
   return (
     <div className="pt-1 space-y-8">
-      <div className="flex items-center justify-between mb-8 gap-3">
-        <div className="flex items-center gap-2">
-          <NavArrow to={prevId ? `/trade/${prevId}/edit` : null} direction="prev" label="Previous trade" />
-          <h1 className="h-8 flex items-center text-lg font-semibold">Edit trade</h1>
-          <NavArrow to={nextId ? `/trade/${nextId}/edit` : null} direction="next" label="Next trade" />
-        </div>
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-(--color-text-dim) font-mono">
-            {format(parseISO(state.record.date), 'MMM d, yyyy')}
-          </span>
-          <button
-            type="button"
-            onClick={handleDelete}
-            className="px-3 py-1.5 text-sm rounded-(--radius) border border-(--color-border) text-(--color-loss) hover:bg-(--color-panel-2)"
-          >
-            Delete
-          </button>
-        </div>
-      </div>
-      <TradeForm
-        key={id}
-        initialValues={state.values}
-        initialDate={state.record.date}
-        onSubmit={handleSubmit}
-        onCancel={() => navigate(`/day/${state.record.date}`)}
-        submitLabel="Save changes"
-        getTradeOrdinal={async () => {
-          const rows = await db.trades
-            .where('[account_id+date]')
-            .equals([accountId, state.record.date])
-            .sortBy('created_at')
-          const idx = rows.findIndex(t => t.id === id)
-          return idx >= 0 ? idx + 1 : rows.length + 1
-        }}
-        onScreenshotPersist={ref => updateTrade(id, { screenshot: ref })}
+      {/* Header renders immediately — same shape regardless of load state.
+          The date and delete button stay visible (delete just no-ops
+          until the record resolves) so the page doesn't flash a "Loading…"
+          stub before snapping to the real layout. */}
+      <PageHeader
+        back
+        title="Edit trade"
+        prev={prevId ? `/trade/${prevId}/edit` : null}
+        next={nextId ? `/trade/${nextId}/edit` : null}
+        prevLabel="Previous trade"
+        nextLabel="Next trade"
+        rightSlot={
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-(--color-text-dim) font-mono">
+              {record ? format(parseISO(record.date), 'MMM d, yyyy') : ' '}
+            </span>
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={!record}
+              className="px-3 py-1.5 text-sm rounded-(--radius) border border-(--color-border) text-(--color-loss) hover:bg-(--color-panel-2) disabled:opacity-50 disabled:hover:bg-transparent"
+            >
+              Delete
+            </button>
+          </div>
+        }
       />
+      {ready && record ? (
+        <TradeForm
+          key={id}
+          initialValues={state.values}
+          initialDate={record.date}
+          onSubmit={handleSubmit}
+          onCancel={() => navigate(`/day/${record.date}`)}
+          submitLabel="Save changes"
+          getTradeOrdinal={async () => {
+            const rows = await db.trades
+              .where('[account_id+date]')
+              .equals([accountId, record.date])
+              .sortBy('created_at')
+            const idx = rows.findIndex(t => t.id === id)
+            return idx >= 0 ? idx + 1 : rows.length + 1
+          }}
+          onScreenshotPersist={ref => updateTrade(id, { screenshot: ref })}
+        />
+      ) : null}
     </div>
-  )
-}
-
-function NavArrow({
-  to,
-  direction,
-  label,
-}: {
-  to: string | null
-  direction: 'prev' | 'next'
-  label: string
-}) {
-  const Icon = direction === 'prev' ? ChevronLeft : ChevronRight
-  if (!to) {
-    return (
-      <span aria-disabled className={cn(NAV_BTN_CLASS, 'opacity-30 pointer-events-none')}>
-        <Icon className="size-4" />
-      </span>
-    )
-  }
-  return (
-    <Link to={to} aria-label={label} title={label} className={NAV_BTN_CLASS}>
-      <Icon className="size-4" />
-    </Link>
   )
 }

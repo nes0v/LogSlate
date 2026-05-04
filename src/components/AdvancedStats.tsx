@@ -7,7 +7,7 @@ import { insetTileClass } from '@/components/form/Field'
 import { RatingStars } from '@/components/RatingStars'
 import { db } from '@/db/schema'
 import { useActiveAccountId } from '@/lib/active-account'
-import { aggregate } from '@/lib/trade-stats'
+import type { AggregateStats } from '@/lib/trade-stats'
 import { formatUsd } from '@/lib/money'
 import { classifyTrade } from '@/lib/trade-math'
 import { HOLD_BUCKETS, holdBucketOf } from '@/lib/filters'
@@ -39,13 +39,10 @@ function buildDayRange(rangeStart: string | null, rangeEnd: string | null): stri
 }
 
 export const HeroNetPnl = memo(function HeroNetPnl({
-  filtered,
+  stats,
 }: {
-  filtered: TradeRecord[]
-  rangeStart: string | null
-  rangeEnd: string | null
+  stats: AggregateStats
 }) {
-  const stats = useMemo(() => aggregate(filtered), [filtered])
   return (
     <section className="flex flex-col gap-2 h-full">
       <h2 className="text-sm font-medium">Net PNL</h2>
@@ -126,44 +123,85 @@ export const DistributionDonuts = memo(function DistributionDonuts({
     [accountId],
     [],
   )
-  const outcomeDonut = useMemo(() => {
+  // One pass over `filtered` populates every donut's counts. Previously
+  // each donut had its own useMemo with its own loop — at 6 donuts and N
+  // trades that's 6N work plus per-trade `classifyTrade` / `holdBucketOf`
+  // calls (which are themselves O(executions) without their own caches).
+  // Single-pass keeps everything to N.
+  const donutCounts = useMemo(() => {
     let win = 0, loss = 0, be = 0
+    let good = 0, excellent = 0, poor = 0
+    const session: Record<Session, number> = { pre: 0, am: 0, lunch: 0, pm: 0, aft: 0 }
+    const hold = Object.fromEntries(HOLD_BUCKETS.map(b => [b, 0])) as Record<
+      (typeof HOLD_BUCKETS)[number],
+      number
+    >
+    let holdUnknown = 0
+    const emotion = Object.fromEntries(EMOTIONS.map(e => [e, 0])) as Record<
+      (typeof EMOTIONS)[number],
+      number
+    >
+    let emotionOther = 0
+    const model = new Map<string, number>()
+    let modelOther = 0
+
     for (const t of filtered) {
       const o = classifyTrade(t)
       if (o === 'win') win++
       else if (o === 'loss') loss++
       else be++
+
+      if (t.rating === 'good') good++
+      else if (t.rating === 'excellent') excellent++
+      else if (t.rating === 'poor') poor++
+
+      session[t.session]++
+
+      const b = holdBucketOf(t)
+      if (b) hold[b]++
+      else holdUnknown++
+
+      if (t.emotion && t.emotion in emotion) emotion[t.emotion]++
+      else emotionOther++
+
+      if (t.model_id) model.set(t.model_id, (model.get(t.model_id) ?? 0) + 1)
+      else modelOther++
     }
-    return [
-      { label: 'Wins', value: win, color: 'var(--color-win)' },
-      { label: 'Losses', value: loss, color: 'var(--color-loss)' },
-      { label: 'Breakeven', value: be, color: 'var(--color-chart-muted)' },
-    ]
+
+    return {
+      outcome: { win, loss, be },
+      rating: { good, excellent, poor },
+      session,
+      hold,
+      holdUnknown,
+      emotion,
+      emotionOther,
+      model,
+      modelOther,
+    }
   }, [filtered])
 
-  const sessionDonut = useMemo(() => {
-    const counts = { pre: 0, am: 0, lunch: 0, pm: 0, aft: 0 } as Record<Session, number>
-    for (const t of filtered) counts[t.session]++
-    return [
-      { label: 'pre', value: counts.pre, color: '#c4b5fd' },
-      { label: 'am', value: counts.am, color: '#7dd3fc' },
-      { label: 'lunch', value: counts.lunch, color: '#fbbf24' },
-      { label: 'pm', value: counts.pm, color: '#2563eb' },
-      { label: 'aft', value: counts.aft, color: '#7e22ce' },
-    ]
-  }, [filtered])
+  const outcomeDonut = useMemo(
+    () => [
+      { label: 'Wins', value: donutCounts.outcome.win, color: 'var(--color-win)' },
+      { label: 'Losses', value: donutCounts.outcome.loss, color: 'var(--color-loss)' },
+      { label: 'Breakeven', value: donutCounts.outcome.be, color: 'var(--color-chart-muted)' },
+    ],
+    [donutCounts],
+  )
+
+  const sessionDonut = useMemo(
+    () => [
+      { label: 'pre', value: donutCounts.session.pre, color: '#c4b5fd' },
+      { label: 'am', value: donutCounts.session.am, color: '#7dd3fc' },
+      { label: 'lunch', value: donutCounts.session.lunch, color: '#fbbf24' },
+      { label: 'pm', value: donutCounts.session.pm, color: '#2563eb' },
+      { label: 'aft', value: donutCounts.session.aft, color: '#7e22ce' },
+    ],
+    [donutCounts],
+  )
 
   const holdDonut = useMemo(() => {
-    const counts = Object.fromEntries(HOLD_BUCKETS.map(b => [b, 0])) as Record<
-      (typeof HOLD_BUCKETS)[number],
-      number
-    >
-    let unknown = 0
-    for (const t of filtered) {
-      const b = holdBucketOf(t)
-      if (b) counts[b]++
-      else unknown++
-    }
     const segments: Array<{
       label: string
       value: number
@@ -171,35 +209,29 @@ export const DistributionDonuts = memo(function DistributionDonuts({
       legendHidden?: boolean
     }> = HOLD_BUCKETS.map(b => ({
       label: b,
-      value: counts[b],
+      value: donutCounts.hold[b],
       color: HOLD_PALETTE[b],
     }))
-    if (unknown > 0) {
+    if (donutCounts.holdUnknown > 0) {
       // Trades with fewer than two parsable execution times don't fit any
       // bucket; show them in the donut for accuracy but skip the legend so
       // the user isn't distracted by an "(unknown)" row that they can't
       // act on.
       segments.push({
         label: '(unknown)',
-        value: unknown,
+        value: donutCounts.holdUnknown,
         color: 'var(--color-chart-muted)',
         legendHidden: true,
       })
     }
     return segments
-  }, [filtered])
+  }, [donutCounts])
 
-  const ratingDonut = useMemo(() => {
-    let good = 0, excellent = 0, poor = 0
-    for (const t of filtered) {
-      if (t.rating === 'good') good++
-      else if (t.rating === 'excellent') excellent++
-      else if (t.rating === 'poor') poor++
-    }
-    return [
+  const ratingDonut = useMemo(
+    () => [
       {
         label: 'excellent',
-        value: excellent,
+        value: donutCounts.rating.excellent,
         color: 'var(--color-win)',
         legendNode: (
           <span className="inline-flex items-center gap-1.5">
@@ -210,7 +242,7 @@ export const DistributionDonuts = memo(function DistributionDonuts({
       },
       {
         label: 'good',
-        value: good,
+        value: donutCounts.rating.good,
         color: 'var(--color-accent)',
         legendNode: (
           <span className="inline-flex items-center gap-1.5">
@@ -221,7 +253,7 @@ export const DistributionDonuts = memo(function DistributionDonuts({
       },
       {
         label: 'poor',
-        value: poor,
+        value: donutCounts.rating.poor,
         color: 'var(--color-chart-muted)',
         legendNode: (
           <span className="inline-flex items-center gap-1.5">
@@ -230,19 +262,11 @@ export const DistributionDonuts = memo(function DistributionDonuts({
           </span>
         ),
       },
-    ]
-  }, [filtered])
+    ],
+    [donutCounts],
+  )
 
   const emotionDonut = useMemo(() => {
-    const counts = Object.fromEntries(EMOTIONS.map(e => [e, 0])) as Record<
-      (typeof EMOTIONS)[number],
-      number
-    >
-    let other = 0
-    for (const t of filtered) {
-      if (t.emotion && t.emotion in counts) counts[t.emotion]++
-      else other++
-    }
     const segments: Array<{
       label: string
       value: number
@@ -250,34 +274,30 @@ export const DistributionDonuts = memo(function DistributionDonuts({
       legendHidden?: boolean
     }> = EMOTIONS.map(e => ({
       label: e,
-      value: counts[e],
+      value: donutCounts.emotion[e],
       color: EMOTION_COLORS[e],
     }))
-    if (other > 0) {
+    if (donutCounts.emotionOther > 0) {
       segments.push({
         label: 'Other',
-        value: other,
+        value: donutCounts.emotionOther,
         color: 'var(--color-chart-muted)',
         legendHidden: true,
       })
     }
     return segments
-  }, [filtered])
+  }, [donutCounts])
 
   const modelDonut = useMemo(() => {
     const nameById = new Map<string, string>()
     for (const p of models ?? []) nameById.set(p.id, p.name)
+    // Trades whose model_id no longer exists fall through to the
+    // "gambling" wedge along with truly unmodelled trades.
+    let unmodelled = donutCounts.modelOther
     const counts = new Map<string, number>()
-    let other = 0
-    for (const t of filtered) {
-      if (!t.model_id || !nameById.has(t.model_id)) {
-        // Trades without a model (or pointing at a since-deleted one) collapse
-        // into a single labelled "gambling" wedge — the default fallback name
-        // for model-less trades.
-        other++
-        continue
-      }
-      counts.set(t.model_id, (counts.get(t.model_id) ?? 0) + 1)
+    for (const [id, n] of donutCounts.model) {
+      if (nameById.has(id)) counts.set(id, n)
+      else unmodelled += n
     }
     const segments: Array<{
       label: string
@@ -291,15 +311,15 @@ export const DistributionDonuts = memo(function DistributionDonuts({
         value,
         color: MODEL_PALETTE[i % MODEL_PALETTE.length],
       }))
-    if (other > 0) {
+    if (unmodelled > 0) {
       segments.push({
         label: DEFAULT_MODEL_NAME,
-        value: other,
+        value: unmodelled,
         color: 'var(--color-chart-muted)',
       })
     }
     return segments
-  }, [filtered, models])
+  }, [donutCounts, models])
 
   return (
     <section className="space-y-2">
@@ -318,14 +338,15 @@ export const DistributionDonuts = memo(function DistributionDonuts({
 
 export const CompositeScoreSection = memo(function CompositeScoreSection({
   filtered,
+  stats,
   rangeStart,
   rangeEnd,
 }: {
   filtered: TradeRecord[]
+  stats: AggregateStats
   rangeStart: string | null
   rangeEnd: string | null
 }) {
-  const stats = useMemo(() => aggregate(filtered), [filtered])
   const days = useMemo(() => buildDayRange(rangeStart, rangeEnd), [rangeStart, rangeEnd])
   const equitySeries = useMemo(() => dailyEquitySeries(filtered, days, 0), [filtered, days])
   const ddStats = useMemo(() => drawdownStats(equitySeries, stats.net_pnl), [equitySeries, stats.net_pnl])
@@ -351,14 +372,15 @@ export const CompositeScoreSection = memo(function CompositeScoreSection({
 
 export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
   filtered,
+  stats,
   rangeStart,
   rangeEnd,
 }: {
   filtered: TradeRecord[]
+  stats: AggregateStats
   rangeStart: string | null
   rangeEnd: string | null
 }) {
-  const stats = useMemo(() => aggregate(filtered), [filtered])
   const days = useMemo(() => buildDayRange(rangeStart, rangeEnd), [rangeStart, rangeEnd])
   const equitySeries = useMemo(() => dailyEquitySeries(filtered, days, 0), [filtered, days])
   const ddStats = useMemo(() => drawdownStats(equitySeries, stats.net_pnl), [equitySeries, stats.net_pnl])

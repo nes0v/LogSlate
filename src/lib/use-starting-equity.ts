@@ -18,8 +18,12 @@ import { computeNetPnl } from '@/lib/trade-math'
  * Current account equity = all signed adjustments plus cumulative net PnL
  * across every trade in the active account. Live-reactive to every
  * trade/adjustment change so the header indicator stays in sync.
+ *
+ * Returns `undefined` until both underlying queries have resolved — the
+ * caller is expected to render nothing (or a placeholder) instead of
+ * showing a flash of $0 before real data arrives.
  */
-export function useCurrentEquity(): number {
+export function useCurrentEquity(): number | undefined {
   const accountId = useActiveAccountId()
   const adjustments = useLiveQuery(
     () =>
@@ -28,7 +32,6 @@ export function useCurrentEquity(): number {
         .between([accountId, ''], [accountId, '￿'], true, true)
         .toArray(),
     [accountId],
-    [],
   )
   const trades = useLiveQuery(
     () =>
@@ -37,9 +40,9 @@ export function useCurrentEquity(): number {
         .between([accountId, ''], [accountId, '￿'], true, true)
         .toArray(),
     [accountId],
-    [],
   )
   return useMemo(() => {
+    if (!adjustments || !trades) return undefined
     let eq = 0
     for (const a of adjustments) eq += signedAdjustment(a)
     for (const t of trades) eq += computeNetPnl(t) ?? 0

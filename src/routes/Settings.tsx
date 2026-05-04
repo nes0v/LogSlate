@@ -1,7 +1,11 @@
 import { useRef, useState } from 'react'
+import { useLiveQuery } from 'dexie-react-hooks'
 import { formatDistanceToNow } from 'date-fns'
 import { CheckCircle2, CloudDownload, CloudUpload, LogIn, LogOut, RefreshCw } from 'lucide-react'
 import { requestManualSync } from '@/lib/auto-sync'
+import { db } from '@/db/schema'
+import { listAccounts } from '@/db/queries'
+import { useActiveAccountId } from '@/lib/active-account'
 import { isConfigured, signIn, signOut, useDriveState } from '@/lib/drive'
 import { clearSyncState, lastSyncAt, type SyncResult } from '@/lib/sync'
 import { exportBackup, importBackup } from '@/lib/backup'
@@ -27,6 +31,22 @@ export function SettingsRoute() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const defaultEquityView = useDefaultEquityView()
   const colorScheme = useColorScheme()
+
+  // Drive the page-level loaded gate so the whole Settings body reveals
+  // at once. Panels keep their own internal queries (Dexie de-duplicates
+  // so the cost is negligible); this just blocks paint until the data
+  // they need is available.
+  const accountId = useActiveAccountId()
+  const accounts = useLiveQuery(() => listAccounts(), [])
+  const adjustments = useLiveQuery(
+    () =>
+      db.adjustments
+        .where('[account_id+date]')
+        .between([accountId, ''], [accountId, '￿'], true, true)
+        .toArray(),
+    [accountId],
+  )
+  const loaded = accounts !== undefined && adjustments !== undefined
 
   async function handleSync() {
     setSyncing(true)
@@ -71,6 +91,8 @@ export function SettingsRoute() {
         <h1 className="h-8 flex items-center text-lg font-semibold">Settings</h1>
       </div>
 
+      {!loaded ? null : (
+      <>
       <section className="space-y-3">
         <h2 className="text-sm font-medium">Google Drive sync</h2>
         <p className="text-sm text-(--color-text-dim)">
@@ -169,11 +191,11 @@ export function SettingsRoute() {
         )}
       </section>
 
-      <AccountsPanel />
+      <AccountsPanel accounts={accounts} />
 
-      <EquityAdjustmentsPanel />
+      <EquityAdjustmentsPanel adjustments={adjustments} />
 
-      <BrokerFeesPanel />
+      <BrokerFeesPanel adjustments={adjustments} />
 
       <section className="space-y-3">
         <h2 className="text-sm font-medium">Appearance</h2>
@@ -261,6 +283,8 @@ export function SettingsRoute() {
           />
         </div>
       </section>
+      </>
+      )}
     </div>
   )
 }

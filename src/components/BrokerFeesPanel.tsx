@@ -1,27 +1,23 @@
-import { useState } from 'react'
-import { useLiveQuery } from 'dexie-react-hooks'
+import { useMemo, useState } from 'react'
 import { Trash2 } from 'lucide-react'
-import { db } from '@/db/schema'
 import { createAdjustment, deleteAdjustment } from '@/db/queries'
-import { useActiveAccountId } from '@/lib/active-account'
+import type { EquityAdjustment } from '@/db/types'
 import { useConfirm } from '@/components/ConfirmDialog'
 import { inputClassCompact as inputClass } from '@/components/form/Field'
 import { formatUsd } from '@/lib/money'
 import { nyMonthKey } from '@/lib/tz'
 
-export function BrokerFeesPanel() {
-  const accountId = useActiveAccountId()
+interface BrokerFeesPanelProps {
+  /** All adjustments for the active account; this panel filters for the
+   *  `fee` kind internally. */
+  adjustments: EquityAdjustment[]
+}
+
+export function BrokerFeesPanel({ adjustments }: BrokerFeesPanelProps) {
   const confirm = useConfirm()
-  const fees = useLiveQuery(
-    async () => {
-      const rows = await db.adjustments
-        .where('[account_id+date]')
-        .between([accountId, ''], [accountId, '￿'], true, true)
-        .toArray()
-      return rows.filter(a => a.kind === 'fee').reverse()
-    },
-    [accountId],
-    [],
+  const list = useMemo(
+    () => adjustments.filter(a => a.kind === 'fee').slice().reverse(),
+    [adjustments],
   )
 
   const [month, setMonth] = useState(() => nyMonthKey())
@@ -55,7 +51,6 @@ export function BrokerFeesPanel() {
     if (await confirm({ title: 'Delete this fee?' })) await deleteAdjustment(id)
   }
 
-  const list = fees ?? []
   const total = list.reduce((s, a) => s + a.amount, 0)
 
   return (

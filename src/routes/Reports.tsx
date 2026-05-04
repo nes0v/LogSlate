@@ -81,6 +81,9 @@ export function ReportsRoute() {
   }, [])
 
   const accountId = useActiveAccountId()
+  // No default value — `allTrades` stays undefined while Dexie resolves so
+  // we can suppress the empty-state placeholder until the real data lands
+  // (otherwise "No trades yet" flashes for one frame on navigation).
   const allTrades = useLiveQuery(
     () =>
       db.trades
@@ -88,8 +91,8 @@ export function ReportsRoute() {
         .between([accountId, ''], [accountId, '￿'], true, true)
         .toArray(),
     [accountId],
-    [],
   )
+  const loaded = allTrades !== undefined
 
   const lastTradeDate = useMemo(() => {
     const list = allTrades ?? []
@@ -180,9 +183,9 @@ export function ReportsRoute() {
         ))}
       </nav>
 
-      {filtered.length === 0 ? (
+      {!loaded ? null : filtered.length === 0 ? (
         <EmptyState>
-          {(allTrades ?? []).length === 0
+          {allTrades.length === 0
             ? 'No trades yet.'
             : 'No trades match the current filters.'}
         </EmptyState>

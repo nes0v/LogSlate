@@ -4,10 +4,12 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { format, parseISO } from 'date-fns'
 import { Plus } from 'lucide-react'
 import { db } from '@/db/schema'
+import { getDayNote, listDayScreenshotsFor } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
 import { firstExecutionMs } from '@/lib/trade-math'
 import { aggregate } from '@/lib/trade-stats'
 import { useArrowNavigation } from '@/lib/use-arrow-navigation'
+import { useScreenshotUrls } from '@/lib/use-screenshot-urls'
 import { DayNewsSection } from '@/components/DayNewsSection'
 import { DayNoteSection } from '@/components/DayNoteSection'
 import { DayScreenshotSection } from '@/components/DayScreenshotSection'
@@ -22,6 +24,11 @@ export function DayRoute() {
   const pretty = parsed ? format(parsed, 'EEEE, MMMM d, yyyy') : date
 
   const accountId = useActiveAccountId()
+  // All four day-scoped queries live here so the page can reveal as a
+  // single unit. Children are pure presentational: news, note, and
+  // screenshot data are passed in as props instead of each component
+  // opening its own `useLiveQuery` (which would each settle on a separate
+  // microtask, producing the multi-stage flicker).
   const trades = useLiveQuery(
     async () => {
       const rows = await db.trades
@@ -33,8 +40,48 @@ export function DayRoute() {
       return rows.sort((a, b) => sortKey(a) - sortKey(b))
     },
     [date, accountId],
-    [],
   )
+  const news = useLiveQuery(
+    async () => {
+      const rows = await db.news.where('date').equals(date).toArray()
+      // ISO 8601 strings sort lexicographically — no Date.parse needed.
+      rows.sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at))
+      return rows
+    },
+    [date],
+  )
+  const note = useLiveQuery(
+    () => getDayNote(accountId, date),
+    [accountId, date],
+  )
+  const screenshots = useLiveQuery(
+    () => listDayScreenshotsFor(accountId, date),
+    [accountId, date],
+  )
+  // Resolve every screenshot ref to a blob URL (or an error) up here so
+  // each `ScreenshotThumb` can render in its final state on first paint.
+  // Without this, thumbs each fire their own async fetch and flash
+  // "loading…" tiles for one-or-more frames before settling.
+  const { loaded: screenshotsResolved, resolved: screenshotResolutions } =
+    useScreenshotUrls(screenshots ?? [])
+  // Models are resolved once at the route level so trade rows render with
+  // the right name on first paint instead of flashing "gambling" → real.
+  const models = useLiveQuery(
+    () => db.models.where('account_id').equals(accountId).toArray(),
+    [accountId],
+  )
+  const modelNameById = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const p of models ?? []) m.set(p.id, p.name)
+    return m
+  }, [models])
+  const loaded =
+    trades !== undefined &&
+    news !== undefined &&
+    note !== undefined &&
+    screenshots !== undefined &&
+    models !== undefined &&
+    screenshotsResolved
 
   // Every distinct day that has trades for this account — used to skip empty
   // days in prev/next navigation. `uniqueKeys()` walks the compound index
@@ -86,6 +133,7 @@ export function DayRoute() {
   return (
     <div className="pt-1 space-y-8">
       <PageHeader
+        back
         title={pretty}
         prev={prevDate ? `/day/${prevDate}` : null}
         next={nextDate ? `/day/${nextDate}` : null}
@@ -101,35 +149,49 @@ export function DayRoute() {
         }
       />
 
-      <StatsGrid stats={stats} />
+      {/* Everything below the header is gated on ALL day-scoped queries so
+          the page renders as a single unit. Children receive their data
+          as props — no per-section live queries that would each settle
+          asynchronously and produce a multi-stage flicker. */}
+      {loaded ? (
+        <>
+          <StatsGrid stats={stats} />
 
-      <DayNewsSection date={date} />
+          <DayNewsSection events={news} />
 
-      <DayNoteSection accountId={accountId} date={date} />
+          <DayNoteSection accountId={accountId} date={date} stored={note} />
 
-      <DayScreenshotSection accountId={accountId} date={date} />
-
-      <section className="space-y-2">
-        <h2 className="text-sm font-medium">
-          Trades{' '}
-          <span className="text-(--color-text-dim) font-normal">
-            ({trades?.length ?? 0})
-          </span>{' '}
-          <span className="text-(--color-win) font-normal">{stats.wins}W</span>{' '}
-          <span className="text-(--color-loss) font-normal">{stats.losses}L</span>
-        </h2>
-        {trades && trades.length > 0 ? (
-          <TradeTable
-            trades={trades}
-            expandedIds={expandedIds}
-            onToggle={toggleExpanded}
+          <DayScreenshotSection
+            accountId={accountId}
+            date={date}
+            screenshots={screenshots}
+            resolved={screenshotResolutions}
           />
-        ) : (
-          <div className="text-sm text-(--color-text-dim) text-center py-12 border border-dashed border-(--color-border) rounded-(--radius)">
-            No trades on this day yet.
-          </div>
-        )}
-      </section>
+
+          <section className="space-y-2">
+            <h2 className="text-sm font-medium">
+              Trades{' '}
+              <span className="text-(--color-text-dim) font-normal">
+                ({trades.length})
+              </span>{' '}
+              <span className="text-(--color-win) font-normal">{stats.wins}W</span>{' '}
+              <span className="text-(--color-loss) font-normal">{stats.losses}L</span>
+            </h2>
+            {trades.length > 0 ? (
+              <TradeTable
+                trades={trades}
+                expandedIds={expandedIds}
+                onToggle={toggleExpanded}
+                modelNameById={modelNameById}
+              />
+            ) : (
+              <div className="text-sm text-(--color-text-dim) text-center py-12 border border-dashed border-(--color-border) rounded-(--radius)">
+                No trades on this day yet.
+              </div>
+            )}
+          </section>
+        </>
+      ) : null}
     </div>
   )
 }

@@ -1,19 +1,21 @@
 import { useState } from 'react'
-import { useLiveQuery } from 'dexie-react-hooks'
 import { Trash2 } from 'lucide-react'
 import {
   countAccountData,
   createAccount,
   deleteAccount,
-  listAccounts,
 } from '@/db/queries'
+import type { Account } from '@/db/types'
 import { useActiveAccountId } from '@/lib/active-account'
 import { useConfirm } from '@/components/ConfirmDialog'
 import { inputClassCompact as inputClass } from '@/components/form/Field'
 import { cn } from '@/lib/utils'
 
-export function AccountsPanel() {
-  const accounts = useLiveQuery(() => listAccounts(), [], [])
+interface AccountsPanelProps {
+  accounts: Account[]
+}
+
+export function AccountsPanel({ accounts }: AccountsPanelProps) {
   const activeId = useActiveAccountId()
   const confirm = useConfirm()
   const [newName, setNewName] = useState('')
@@ -47,7 +49,7 @@ export function AccountsPanel() {
     }
   }
 
-  const list = accounts ?? []
+  const list = accounts
 
   return (
     <section className="space-y-3">
