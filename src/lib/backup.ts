@@ -58,7 +58,7 @@ export async function exportBackup(): Promise<void> {
     exported_at: new Date().toISOString(),
   }
   SPECS.forEach((s, i) => {
-    ;(file as Record<string, unknown>)[s.fileKey] = arrays[i]
+    ;(file as unknown as Record<string, unknown>)[s.fileKey] = arrays[i]
   })
   const blob = new Blob([JSON.stringify(file, null, 2)], { type: 'application/json' })
   const url = URL.createObjectURL(blob)

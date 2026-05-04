@@ -1,8 +1,6 @@
 import { Link } from 'react-router-dom'
-import { useLiveQuery } from 'dexie-react-hooks'
 import { Check, ExternalLink, Pencil, Trash2, X } from 'lucide-react'
-import type { TradeRecord } from '@/db/types'
-import { db } from '@/db/schema'
+import type { Model, TradeRecord } from '@/db/types'
 import { deleteTrade } from '@/db/queries'
 import { useConfirm } from '@/components/ConfirmDialog'
 import { computeAhpc, totalContracts } from '@/lib/trade-math'
@@ -13,6 +11,10 @@ import { cn } from '@/lib/utils'
 
 interface TradeExpandedDetailsProps {
   trade: TradeRecord
+  /** Resolved model record (or null if the trade has no model). Threaded
+   *  in from the route so each expanded row doesn't open its own
+   *  `db.models.get` subscription. */
+  model: Model | null
 }
 
 const ACTION_BTN_BASE =
@@ -21,7 +23,7 @@ const EDIT_BTN_CLASS = `${ACTION_BTN_BASE} text-(--color-accent)`
 const DELETE_BTN_CLASS = `${ACTION_BTN_BASE} text-(--color-loss)`
 const NEUTRAL_BTN_CLASS = `${ACTION_BTN_BASE} text-(--color-text-dim) hover:text-(--color-text)`
 
-export function TradeExpandedDetails({ trade }: TradeExpandedDetailsProps) {
+export function TradeExpandedDetails({ trade, model }: TradeExpandedDetailsProps) {
   const confirm = useConfirm()
   const contracts = totalContracts(trade)
   const ahpc = computeAhpc(trade)
@@ -31,10 +33,6 @@ export function TradeExpandedDetails({ trade }: TradeExpandedDetailsProps) {
     (a, b) => Date.parse(a.time) - Date.parse(b.time),
   )
   const driveUrl = driveViewUrlFromRef(parseScreenshotRef(trade.screenshot))
-  const model = useLiveQuery(
-    () => (trade.model_id ? db.models.get(trade.model_id) : undefined),
-    [trade.model_id],
-  )
   const followed = new Set(trade.model_rules_followed ?? [])
 
   async function handleDelete() {

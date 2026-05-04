@@ -15,8 +15,10 @@ import {
 } from 'date-fns'
 import { bucketNavTarget, drillDownRange, timeframeFromParams } from '@/lib/stats-nav'
 import { ChevronRight, X } from 'lucide-react'
-import { nyToday } from '@/lib/tz'
+import { dateKeyToDate, nyToday } from '@/lib/tz'
 import { db } from '@/db/schema'
+import type { Model } from '@/db/types'
+import { listAdjustments, listAllTrades } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
 import {
   applyFilters,
@@ -96,20 +98,9 @@ export function StatsRoute() {
   // we can suppress the empty-state placeholder + downstream sections
   // until the real data arrives. Without this, "No trades yet" shows for
   // a single frame and then snaps to the actual content.
-  const allTrades = useLiveQuery(
-    () =>
-      db.trades
-        .where('[account_id+date]')
-        .between([accountId, ''], [accountId, '￿'], true, true)
-        .toArray(),
-    [accountId],
-  )
+  const allTrades = useLiveQuery(() => listAllTrades(accountId), [accountId])
   const allAdjustments = useLiveQuery(
-    () =>
-      db.adjustments
-        .where('[account_id+date]')
-        .between([accountId, ''], [accountId, '￿'], true, true)
-        .toArray(),
+    () => listAdjustments(accountId),
     [accountId],
     [],
   )
@@ -120,9 +111,9 @@ export function StatsRoute() {
     () => db.models.where('account_id').equals(accountId).toArray(),
     [accountId],
   )
-  const modelNameById = useMemo(() => {
-    const m = new Map<string, string>()
-    for (const p of models ?? []) m.set(p.id, p.name)
+  const modelById = useMemo(() => {
+    const m = new Map<string, Model>()
+    for (const p of models ?? []) m.set(p.id, p)
     return m
   }, [models])
   const loaded = allTrades !== undefined && models !== undefined
@@ -218,8 +209,8 @@ export function StatsRoute() {
     for (const a of allAdjustments ?? []) dates.push(a.date)
     if (dates.length === 0) return null
     dates.sort()
-    const s = new Date(dates[0] + 'T00:00:00')
-    const e = new Date(dates[dates.length - 1] + 'T00:00:00')
+    const s = dateKeyToDate(dates[0])
+    const e = dateKeyToDate(dates[dates.length - 1])
     switch (timeframe) {
       case 'D': return { start: s, end: e }
       case 'W': return { start: startOfWeek(s, WEEK_OPTS), end: endOfWeek(e, WEEK_OPTS) }
@@ -397,7 +388,7 @@ export function StatsRoute() {
             trades={tradesDesc}
             expandedIds={tableExpandedIds}
             onToggle={toggleTableRow}
-            modelNameById={modelNameById}
+            modelById={modelById}
           />
         </details>
       )}

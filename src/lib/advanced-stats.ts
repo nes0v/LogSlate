@@ -17,6 +17,7 @@ import {
   tradeMetrics,
   type TradeOutcome,
 } from '@/lib/trade-math'
+import { dateKeyToDate } from '@/lib/tz'
 
 // ---------- profit factor / payoff / expectancy ---------------------
 
@@ -515,7 +516,7 @@ const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 export function pnlByWeekday(trades: TradeRecord[]): Array<{ name: string; pnl: number; count: number; wins: number; losses: number }> {
   const arr = WEEKDAYS.map(name => ({ name, pnl: 0, count: 0, wins: 0, losses: 0 }))
   for (const t of trades) {
-    const day = new Date(t.date + 'T00:00:00').getDay()
+    const day = dateKeyToDate(t.date).getDay()
     const { pnl, outcome } = tradeMetrics(t)
     arr[day].pnl += pnl ?? 0
     arr[day].count++
@@ -533,7 +534,7 @@ export function pnlByWeek(
 ): Array<{ weekStart: string; pnl: number; count: number; wins: number; losses: number }> {
   const m = new Map<string, { pnl: number; count: number; wins: number; losses: number }>()
   for (const t of trades) {
-    const d = new Date(t.date + 'T00:00:00')
+    const d = dateKeyToDate(t.date)
     // Shift to Monday: getDay() returns 0..6 with 0 = Sunday.
     const dow = d.getDay()
     const offset = dow === 0 ? -6 : 1 - dow

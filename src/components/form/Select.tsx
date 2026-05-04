@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import { ChevronDown } from 'lucide-react'
+import { useOutsideClick } from '@/lib/use-outside-click'
 import { cn } from '@/lib/utils'
 
 export interface SelectOption {
@@ -30,14 +31,7 @@ export function Select({
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    if (!open) return
-    function onDoc(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', onDoc)
-    return () => document.removeEventListener('mousedown', onDoc)
-  }, [open])
+  useOutsideClick(ref, open, () => setOpen(false))
 
   const selected = options.find(o => o.value === value) ?? null
 

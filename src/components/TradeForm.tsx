@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Controller, useFieldArray, useForm, useWatch, type Control } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
+import type { z } from 'zod'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { Plus, Trash2 } from 'lucide-react'
 import { detectSession, emptyForm, formToDraft, tradeFormSchema, type TradeFormValues } from '@/lib/form-schema'
@@ -98,7 +99,7 @@ export function TradeForm({
     handleSubmit,
     formState: { errors, isSubmitting },
     setValue,
-  } = useForm<TradeFormValues>({
+  } = useForm<TradeFormValues, unknown, z.output<typeof tradeFormSchema>>({
     resolver: zodResolver(tradeFormSchema),
     defaultValues: initialValues ?? emptyForm(initialDate),
     mode: 'onSubmit',

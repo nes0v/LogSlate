@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/db/schema'
+import { listAdjustments, listAllTrades } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
 import { signedAdjustment } from '@/lib/trade-stats'
 import { computeNetPnl } from '@/lib/trade-math'
@@ -25,22 +26,8 @@ import { computeNetPnl } from '@/lib/trade-math'
  */
 export function useCurrentEquity(): number | undefined {
   const accountId = useActiveAccountId()
-  const adjustments = useLiveQuery(
-    () =>
-      db.adjustments
-        .where('[account_id+date]')
-        .between([accountId, ''], [accountId, '￿'], true, true)
-        .toArray(),
-    [accountId],
-  )
-  const trades = useLiveQuery(
-    () =>
-      db.trades
-        .where('[account_id+date]')
-        .between([accountId, ''], [accountId, '￿'], true, true)
-        .toArray(),
-    [accountId],
-  )
+  const adjustments = useLiveQuery(() => listAdjustments(accountId), [accountId])
+  const trades = useLiveQuery(() => listAllTrades(accountId), [accountId])
   return useMemo(() => {
     if (!adjustments || !trades) return undefined
     let eq = 0

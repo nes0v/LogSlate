@@ -8,7 +8,7 @@ import { useActiveAccountId } from '@/lib/active-account'
 import { Checkbox } from '@/components/form/Checkbox'
 import { useConfirm } from '@/components/ConfirmDialog'
 import { inputClass, inputClassCompact } from '@/components/form/Field'
-import { nyToday } from '@/lib/tz'
+import { dateKeyToDate, nyToday } from '@/lib/tz'
 import { cn } from '@/lib/utils'
 
 function newId(): string {
@@ -48,7 +48,7 @@ export function ProgressRoute() {
   // Last 30 days of checks for the streak / heatmap.
   const recent = useLiveQuery(
     () => {
-      const start = format(addDays(new Date(date + 'T00:00:00'), -29), 'yyyy-MM-dd')
+      const start = format(addDays(dateKeyToDate(date), -29), 'yyyy-MM-dd')
       return db.progress_checks
         .where('[account_id+date]')
         .between([accountId, start], [accountId, date], true, true)
@@ -79,7 +79,7 @@ export function ProgressRoute() {
   const heat = useMemo(() => {
     const days: string[] = []
     for (let i = 29; i >= 0; i--) {
-      days.push(format(addDays(new Date(date + 'T00:00:00'), -i), 'yyyy-MM-dd'))
+      days.push(format(addDays(dateKeyToDate(date), -i), 'yyyy-MM-dd'))
     }
     const byDay = new Map<string, ProgressCheck[]>()
     for (const c of recent ?? []) {
@@ -160,7 +160,7 @@ export function ProgressRoute() {
   }
 
   function shiftDate(delta: number) {
-    setDate(format(addDays(new Date(date + 'T00:00:00'), delta), 'yyyy-MM-dd'))
+    setDate(format(addDays(dateKeyToDate(date), delta), 'yyyy-MM-dd'))
   }
 
   const isToday = date === today
@@ -301,7 +301,7 @@ export function ProgressRoute() {
                     <span
                       className={cn(
                         'text-sm',
-                        checked && 'line-through text-(--color-text-dim)',
+                        checked && 'text-(--color-text-dim)',
                       )}
                     >
                       {r.text}

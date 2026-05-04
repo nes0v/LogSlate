@@ -6,6 +6,7 @@ import type { TradeRecord } from '@/db/types'
 import { EMOTIONS, DEFAULT_MODEL_NAME } from '@/db/types'
 import { nyToday } from '@/lib/tz'
 import { db } from '@/db/schema'
+import { listAllTrades } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
 import {
   applyFilters,
@@ -84,14 +85,7 @@ export function ReportsRoute() {
   // No default value — `allTrades` stays undefined while Dexie resolves so
   // we can suppress the empty-state placeholder until the real data lands
   // (otherwise "No trades yet" flashes for one frame on navigation).
-  const allTrades = useLiveQuery(
-    () =>
-      db.trades
-        .where('[account_id+date]')
-        .between([accountId, ''], [accountId, '￿'], true, true)
-        .toArray(),
-    [accountId],
-  )
+  const allTrades = useLiveQuery(() => listAllTrades(accountId), [accountId])
   const loaded = allTrades !== undefined
 
   const lastTradeDate = useMemo(() => {

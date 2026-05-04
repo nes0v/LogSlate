@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/db/schema'
 import { useActiveAccountId } from '@/lib/active-account'
@@ -41,15 +42,20 @@ export function StatsFilterBar({
     [],
   )
 
-  const modelOpts = (models ?? [])
-    .slice()
-    .sort((a, b) => (a.name < b.name ? -1 : 1))
-    .map(m => ({ value: m.id, label: m.name }))
-  // Always offer the "no model" sentinel so the user can find untracked
-  // (gambling) trades even on accounts that have no Model rows yet.
-  modelOpts.push({ value: MODEL_NONE, label: DEFAULT_MODEL_NAME })
+  // Memoised so child FilterDropdowns don't see fresh array identity on every
+  // keystroke / unrelated render.
+  const modelOpts = useMemo(() => {
+    const opts = (models ?? [])
+      .slice()
+      .sort((a, b) => (a.name < b.name ? -1 : 1))
+      .map(m => ({ value: m.id, label: m.name }))
+    // Always offer the "no model" sentinel so the user can find untracked
+    // (gambling) trades even on accounts that have no Model rows yet.
+    opts.push({ value: MODEL_NONE, label: DEFAULT_MODEL_NAME })
+    return opts
+  }, [models])
 
-  const emotionOpts = EMOTIONS.map(e => ({ value: e, label: e }))
+  const emotionOpts = useMemo(() => EMOTIONS.map(e => ({ value: e, label: e })), [])
 
   return (
     <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3 space-y-3">

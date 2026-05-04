@@ -19,7 +19,7 @@ import {
   startOfYear,
 } from 'date-fns'
 import type { TradeRecord } from '@/db/types'
-import { nyDateKey } from '@/lib/tz'
+import { dateKeyToDate, nyDateKey } from '@/lib/tz'
 
 export type Timeframe = 'D' | 'W' | 'M' | 'Q' | 'Y'
 
@@ -172,7 +172,7 @@ export function bucketByTimeframe(
 
 /** Maps a YYYY-MM-DD date string to the bucket key for the given timeframe. */
 export function dateToBucketKey(dateKey: string, tf: Timeframe): string {
-  const d = new Date(dateKey + 'T00:00:00')
+  const d = dateKeyToDate(dateKey)
   switch (tf) {
     case 'D': return dateKey
     case 'W': return format(startOfWeek(d, WEEK_OPTS), DATE_KEY)
@@ -221,7 +221,7 @@ export function bucketKeyToTs(key: string): number {
  * month keeps the month prefix so the axis still anchors which month we're in.
  */
 export function chartDayLabel(dateKey: string): string {
-  const d = new Date(dateKey + 'T00:00:00')
+  const d = dateKeyToDate(dateKey)
   return d.getDate() === 1 ? format(d, 'MMM d') : format(d, 'd')
 }
 

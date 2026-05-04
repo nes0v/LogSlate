@@ -35,22 +35,15 @@ type LoadState =
 // onRemove wires up an X button in the top-right corner.
 export function ScreenshotThumb({ value, onRemove, size = 'md', prefetched }: ScreenshotThumbProps) {
   const confirm = useConfirm()
-  // When the parent has pre-resolved the ref via `useScreenshotUrls`,
-  // seed local state from that so the thumb skips its own async fetch
-  // entirely. Falls back to the standalone in-component fetch when the
-  // prop isn't provided (e.g. ScreenshotField in the trade form).
+  // Local fetch state — only used when the parent didn't pre-resolve the
+  // ref. When `prefetched` is set, the render path reads from props
+  // directly so the thumb paints in its final state on first frame.
   const [fetched, setFetched] = useState<
     { ref: string; url: string; error: null } | { ref: string; url: null; error: string } | null
-  >(() => prefetchedToState(value, prefetched))
+  >(null)
 
   useEffect(() => {
-    // If a pre-resolved value is supplied, sync local state to it whenever
-    // the upstream value changes (e.g. retry, ref change) and skip the
-    // network path.
-    if (prefetched) {
-      setFetched(prefetchedToState(value, prefetched))
-      return
-    }
+    if (prefetched) return
     if (fetched?.ref === value) return
     let cancelled = false
     void (async () => {
@@ -68,11 +61,12 @@ export function ScreenshotThumb({ value, onRemove, size = 'md', prefetched }: Sc
     }
   }, [value, fetched?.ref, prefetched])
 
+  const effective = prefetched ? prefetchedToState(value, prefetched) : fetched
   const load: LoadState =
-    fetched?.ref === value
-      ? fetched.url
-        ? { status: 'loaded', ref: value, url: fetched.url }
-        : { status: 'failed', ref: value, error: fetched.error ?? 'Unknown error' }
+    effective?.ref === value
+      ? effective.url
+        ? { status: 'loaded', ref: value, url: effective.url }
+        : { status: 'failed', ref: value, error: effective.error ?? 'Unknown error' }
       : { status: 'loading', ref: value }
 
   const ref = parseScreenshotRef(value)

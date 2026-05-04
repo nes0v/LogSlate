@@ -6,7 +6,7 @@ import { PageHeader } from '@/components/PageHeader'
 import { TradeForm } from '@/components/TradeForm'
 import { useConfirm } from '@/components/ConfirmDialog'
 import { db } from '@/db/schema'
-import { deleteTrade, getTrade, updateTrade } from '@/db/queries'
+import { deleteTrade, getTrade, listAllTrades, updateTrade } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
 import { useArrowNavigation } from '@/lib/use-arrow-navigation'
 import { recordToForm, type TradeFormValues } from '@/lib/form-schema'
@@ -40,10 +40,7 @@ export function TradeEditRoute() {
   // jump to adjacent trades without going back to the day/stats view.
   const orderedIds = useLiveQuery(
     async () => {
-      const rows = await db.trades
-        .where('[account_id+date]')
-        .between([accountId, ''], [accountId, '￿'], true, true)
-        .toArray()
+      const rows = await listAllTrades(accountId)
       rows.sort((a, b) => {
         if (a.date !== b.date) return a.date < b.date ? -1 : 1
         return a.created_at < b.created_at ? -1 : 1

@@ -47,3 +47,11 @@ export function nyMonthKey(d: Date = new Date()): string {
 export function nyTimeHHmm(d: Date): string {
   return nyTimeFmt.format(d)
 }
+
+/** Parse a `YYYY-MM-DD` key as midnight local time, the date-only convention
+ *  used everywhere in the app for trade dates / day rows / calendar cells.
+ *  date-fns and getDay() expect a Date, not a string, so we go through this
+ *  helper rather than scattering `new Date(key + 'T00:00:00')` everywhere. */
+export function dateKeyToDate(dateKey: string): Date {
+  return new Date(dateKey + 'T00:00:00')
+}

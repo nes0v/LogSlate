@@ -1,4 +1,5 @@
 import { addDays, endOfMonth, format } from 'date-fns'
+import { dateKeyToDate } from '@/lib/tz'
 import type { Timeframe } from './buckets'
 
 /**
@@ -43,7 +44,7 @@ export function drillDownRange(
 ): { from: string; to: string; tf: Timeframe } | null {
   if (tf === 'W') {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return null
-    const ws = new Date(key + 'T00:00:00')
+    const ws = dateKeyToDate(key)
     return {
       from: format(ws, 'yyyy-MM-dd'),
       to: format(addDays(ws, 6), 'yyyy-MM-dd'),
@@ -52,7 +53,7 @@ export function drillDownRange(
   }
   if (tf === 'M') {
     if (!/^\d{4}-\d{2}$/.test(key)) return null
-    const ms = new Date(key + '-01T00:00:00')
+    const ms = dateKeyToDate(key + '-01')
     return {
       from: format(ms, 'yyyy-MM-dd'),
       to: format(endOfMonth(ms), 'yyyy-MM-dd'),
@@ -63,8 +64,8 @@ export function drillDownRange(
     const m = /^(\d{4})-Q([1-4])$/.exec(key)
     if (!m) return null
     const firstMonth = (Number(m[2]) - 1) * 3 + 1
-    const qs = new Date(`${m[1]}-${String(firstMonth).padStart(2, '0')}-01T00:00:00`)
-    const qeStart = new Date(`${m[1]}-${String(firstMonth + 2).padStart(2, '0')}-01T00:00:00`)
+    const qs = dateKeyToDate(`${m[1]}-${String(firstMonth).padStart(2, '0')}-01`)
+    const qeStart = dateKeyToDate(`${m[1]}-${String(firstMonth + 2).padStart(2, '0')}-01`)
     return {
       from: format(qs, 'yyyy-MM-dd'),
       to: format(endOfMonth(qeStart), 'yyyy-MM-dd'),

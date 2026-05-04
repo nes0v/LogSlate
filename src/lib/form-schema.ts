@@ -107,7 +107,11 @@ export const tradeFormSchema = z
     }
   })
 
-export type TradeFormValues = z.infer<typeof tradeFormSchema>
+// Use `z.input<>` (not `z.infer<>`/`z.output<>`) so partially-filled
+// form state is valid — required-positive fields are nullable on input
+// (the user hasn't typed yet) and only narrow to `number` after parse.
+// `formToDraft` runs after validation succeeds and casts where needed.
+export type TradeFormValues = z.input<typeof tradeFormSchema>
 
 // Combine a calendar date and a NY wallclock time into a single ISO string.
 // The app treats every typed time as NY — no timezone conversion happens at

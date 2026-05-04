@@ -13,7 +13,7 @@ import {
   subMonths,
 } from 'date-fns'
 import { Image as ImageIcon, StickyNote } from 'lucide-react'
-import { nyDateKey } from '@/lib/tz'
+import { dateKeyToDate, nyDateKey } from '@/lib/tz'
 import { db } from '@/db/schema'
 import { useActiveAccountId } from '@/lib/active-account'
 import { classifyTrade, computeNetPnl } from '@/lib/trade-math'
@@ -107,7 +107,7 @@ export function CalendarRoute() {
   const monthNet = useMemo(() => {
     let total = 0
     for (const t of trades ?? []) {
-      if (isSameMonth(new Date(t.date + 'T00:00:00'), month)) {
+      if (isSameMonth(dateKeyToDate(t.date), month)) {
         total += computeNetPnl(t) ?? 0
       }
     }

@@ -5,6 +5,7 @@
 // hydrate from this slot.
 
 import { addDays, format } from 'date-fns'
+import { dateKeyToDate } from '@/lib/tz'
 import type { TradeFilters } from '@/lib/filters'
 
 const KEY = 'logslate.shared-filters.v1'
@@ -14,7 +15,7 @@ const KEY = 'logslate.shared-filters.v1'
  *  on the user's actual trading window instead of a probably-empty
  *  trailing 30 days. */
 export function defaultRange(baseDate: string): { from: string; to: string } {
-  const base = new Date(baseDate + 'T00:00:00')
+  const base = dateKeyToDate(baseDate)
   return {
     from: format(addDays(base, -29), 'yyyy-MM-dd'),
     to: baseDate,

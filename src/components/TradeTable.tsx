@@ -1,6 +1,6 @@
 import { Fragment, memo } from 'react'
 import { ArrowDown, ArrowRight, ArrowUp, ArrowUpDown } from 'lucide-react'
-import { DEFAULT_MODEL_NAME, type TradeRecord } from '@/db/types'
+import { DEFAULT_MODEL_NAME, type Model, type TradeRecord } from '@/db/types'
 import {
   computeDuration,
   computePlannedRr,
@@ -21,10 +21,10 @@ interface TradeTableProps {
   trades: TradeRecord[]
   expandedIds: Set<string>
   onToggle: (id: string) => void
-  /** Resolved model name lookup. Lifted to the parent route so the page
-   *  reveals with full model names already filled in — without this,
-   *  rows briefly showed "gambling" before the model query resolved. */
-  modelNameById: Map<string, string>
+  /** Resolved model lookup. Lifted to the parent route so rows render with
+   *  the full model record (name + rule groups) on first paint, without
+   *  each row opening its own `db.models.get` subscription. */
+  modelById: Map<string, Model>
 }
 
 const COLS = 12
@@ -33,7 +33,7 @@ export const TradeTable = memo(function TradeTable({
   trades,
   expandedIds,
   onToggle,
-  modelNameById,
+  modelById,
 }: TradeTableProps) {
   return (
     <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) overflow-hidden">
@@ -43,6 +43,7 @@ export const TradeTable = memo(function TradeTable({
             const expanded = expandedIds.has(t.id)
             const prev = i > 0 ? trades[i - 1] : null
             const reversed = prev ? isReversal(prev, t) : false
+            const model = t.model_id ? modelById.get(t.model_id) ?? null : null
             return (
               <Fragment key={t.id}>
                 <TradeTableRow
@@ -51,9 +52,7 @@ export const TradeTable = memo(function TradeTable({
                   expanded={expanded}
                   reversedFromPrev={reversed}
                   onToggle={() => onToggle(t.id)}
-                  modelName={
-                    t.model_id ? modelNameById.get(t.model_id) ?? null : null
-                  }
+                  modelName={model?.name ?? null}
                 />
                 <tr>
                   <td colSpan={COLS} className="p-0 bg-(--color-panel-2)/40">
@@ -65,7 +64,7 @@ export const TradeTable = memo(function TradeTable({
                     >
                       <div className="overflow-hidden">
                         <div className="p-3">
-                          <TradeExpandedDetails trade={t} />
+                          <TradeExpandedDetails trade={t} model={model} />
                         </div>
                       </div>
                     </div>

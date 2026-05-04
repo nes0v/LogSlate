@@ -23,6 +23,7 @@ import {
 import { format } from 'date-fns'
 import type { CandlePoint } from '@/lib/trade-stats'
 import { bucketKeyToTs, dateToBucketKey, type Timeframe } from '@/lib/buckets'
+import { dateKeyToDate } from '@/lib/tz'
 import { useColorScheme } from '@/lib/color-scheme-preference'
 import { themeColor } from '@/lib/theme-colors'
 import { formatUsd } from '@/lib/money'
@@ -1603,12 +1604,12 @@ function InfoCell({
 function formatInfoDate(key: string, tf: Timeframe): string {
   if (tf === 'D' || tf === 'W') {
     return /^\d{4}-\d{2}-\d{2}$/.test(key)
-      ? format(new Date(key + 'T00:00:00'), 'MMM d')
+      ? format(dateKeyToDate(key), 'MMM d')
       : key
   }
   if (tf === 'M') {
     return /^\d{4}-\d{2}$/.test(key)
-      ? format(new Date(key + '-01T00:00:00'), 'MMM yyyy')
+      ? format(dateKeyToDate(key + '-01'), 'MMM yyyy')
       : key
   }
   return key

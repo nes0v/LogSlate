@@ -31,10 +31,9 @@ export function useScreenshotUrls(refs: string[]): UseScreenshotUrlsResult {
   const refsKey = refs.join('|')
 
   useEffect(() => {
-    if (refs.length === 0) {
-      setResolved(new Map())
-      return
-    }
+    // No-op for empty input — `loaded` already reads `true` when there are
+    // no refs to wait on, so leaving the previous Map in place is harmless.
+    if (refs.length === 0) return
     let cancelled = false
     void Promise.all(
       refs.map(async (ref): Promise<[string, ResolvedScreenshot]> => {

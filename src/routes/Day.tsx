@@ -4,6 +4,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { format, parseISO } from 'date-fns'
 import { Plus } from 'lucide-react'
 import { db } from '@/db/schema'
+import type { Model } from '@/db/types'
 import { getDayNote, listDayScreenshotsFor } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
 import { firstExecutionMs } from '@/lib/trade-math'
@@ -70,9 +71,9 @@ export function DayRoute() {
     () => db.models.where('account_id').equals(accountId).toArray(),
     [accountId],
   )
-  const modelNameById = useMemo(() => {
-    const m = new Map<string, string>()
-    for (const p of models ?? []) m.set(p.id, p.name)
+  const modelById = useMemo(() => {
+    const m = new Map<string, Model>()
+    for (const p of models ?? []) m.set(p.id, p)
     return m
   }, [models])
   const loaded =
@@ -182,7 +183,7 @@ export function DayRoute() {
                 trades={trades}
                 expandedIds={expandedIds}
                 onToggle={toggleExpanded}
-                modelNameById={modelNameById}
+                modelById={modelById}
               />
             ) : (
               <div className="text-sm text-(--color-text-dim) text-center py-12 border border-dashed border-(--color-border) rounded-(--radius)">

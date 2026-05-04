@@ -19,6 +19,7 @@ import {
   TRADE_OUTCOMES,
   type TradeOutcome,
 } from '@/lib/trade-math'
+import { dateKeyToDate } from '@/lib/tz'
 
 export const WEEKDAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const
 export type Weekday = (typeof WEEKDAYS)[number]
@@ -110,7 +111,7 @@ export function applyFilters(trades: TradeRecord[], f: TradeFilters): TradeRecor
     if (f.session && t.session !== f.session) return false
     if (f.rating && t.rating !== f.rating) return false
     if (f.weekday) {
-      const wd = WEEKDAYS[new Date(t.date + 'T00:00:00').getDay()]
+      const wd = WEEKDAYS[dateKeyToDate(t.date).getDay()]
       if (wd !== f.weekday) return false
     }
     if (f.outcome && classifyTrade(t) !== f.outcome) return false

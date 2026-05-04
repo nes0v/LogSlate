@@ -3,8 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { formatDistanceToNow } from 'date-fns'
 import { CheckCircle2, CloudDownload, CloudUpload, LogIn, LogOut, RefreshCw } from 'lucide-react'
 import { requestManualSync } from '@/lib/auto-sync'
-import { db } from '@/db/schema'
-import { listAccounts } from '@/db/queries'
+import { listAccounts, listAdjustments } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
 import { isConfigured, signIn, signOut, useDriveState } from '@/lib/drive'
 import { clearSyncState, lastSyncAt, type SyncResult } from '@/lib/sync'
@@ -38,14 +37,7 @@ export function SettingsRoute() {
   // they need is available.
   const accountId = useActiveAccountId()
   const accounts = useLiveQuery(() => listAccounts(), [])
-  const adjustments = useLiveQuery(
-    () =>
-      db.adjustments
-        .where('[account_id+date]')
-        .between([accountId, ''], [accountId, '￿'], true, true)
-        .toArray(),
-    [accountId],
-  )
+  const adjustments = useLiveQuery(() => listAdjustments(accountId), [accountId])
   const loaded = accounts !== undefined && adjustments !== undefined
 
   async function handleSync() {

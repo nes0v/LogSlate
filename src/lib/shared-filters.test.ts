@@ -39,6 +39,7 @@ describe('saveSharedFilters / loadSharedFilters', () => {
 
   it('round-trips a populated filter', () => {
     const f: TradeFilters = {
+      ...EMPTY_FILTERS,
       from: '2026-04-01',
       to: '2026-04-30',
       symbol: 'NQ',

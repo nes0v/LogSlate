@@ -14,7 +14,6 @@ function validForm(overrides: Partial<TradeFormValues> = {}): TradeFormValues {
     ...emptyForm('2026-04-15'),
     symbol: 'NQ',
     contract_type: 'micro',
-    session: 'am',
     rating: 'good',
     stop_loss: 100,
     profit_target: 200,
