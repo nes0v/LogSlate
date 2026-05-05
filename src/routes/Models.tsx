@@ -9,6 +9,7 @@ import { Checkbox } from '@/components/form/Checkbox'
 import { useConfirm } from '@/components/ConfirmDialog'
 import { inputClass, insetTileClass } from '@/components/form/Field'
 import { useAutosizeTextarea } from '@/lib/use-autosize-textarea'
+import { SESSION_BG, SESSION_FG } from '@/lib/session-colors'
 import { cn } from '@/lib/utils'
 
 function newId(): string {
@@ -281,9 +282,6 @@ function ModelEditor({ model, onChange, onDelete }: ModelEditorProps) {
         {/* Same visual track as `Pills`, but each item is independently
             toggleable so multiple sessions can be active. No "All" option
             here — leaving every pill off means "any session" implicitly. */}
-        {/* Same visual track as `Pills`, but each item is independently
-            toggleable so multiple sessions can be active. No "All" option
-            here — leaving every pill off means "any session" implicitly. */}
         <div className="inline-flex gap-0.5 rounded-(--radius) bg-(--color-bg) p-0.5">
           {SESSIONS.map(s => {
             const active = sessions.includes(s)
@@ -293,10 +291,15 @@ function ModelEditor({ model, onChange, onDelete }: ModelEditorProps) {
                 type="button"
                 onClick={() => toggleSession(s, !active)}
                 aria-pressed={active}
+                style={
+                  active
+                    ? { backgroundColor: SESSION_BG[s], color: SESSION_FG[s] }
+                    : undefined
+                }
                 className={cn(
                   'inline-flex items-center gap-1.5 rounded-[6px] cursor-pointer transition-colors whitespace-nowrap px-2.5 py-1 text-sm',
                   active
-                    ? 'bg-(--color-panel) text-(--color-text) shadow-(--shadow-xs)'
+                    ? 'shadow-(--shadow-xs)'
                     : 'text-(--color-text-dim) hover:text-(--color-text)',
                 )}
               >

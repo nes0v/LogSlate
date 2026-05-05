@@ -4,6 +4,8 @@ import { createAdjustment, deleteAdjustment } from '@/db/queries'
 import type { AdjustmentKind, EquityAdjustment } from '@/db/types'
 import { useConfirm } from '@/components/ConfirmDialog'
 import { inputClassCompact as inputClass } from '@/components/form/Field'
+import { DatePicker } from '@/components/form/DatePicker'
+import { NumberInput } from '@/components/form/NumberInput'
 import { Select } from '@/components/form/Select'
 import { formatUsd } from '@/lib/money'
 import { nyToday } from '@/lib/tz'
@@ -24,14 +26,13 @@ export function EquityAdjustmentsPanel({ adjustments }: EquityAdjustmentsPanelPr
 
   const [date, setDate] = useState(() => nyToday())
   const [kind, setKind] = useState<AdjustmentKind>('deposit')
-  const [amount, setAmount] = useState('')
+  const [amount, setAmount] = useState<number | null>(null)
   const [note, setNote] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    const n = Number(amount)
-    if (!Number.isFinite(n) || n <= 0) {
+    if (amount === null || !Number.isFinite(amount) || amount <= 0) {
       setError('Amount must be a positive number.')
       return
     }
@@ -40,8 +41,8 @@ export function EquityAdjustmentsPanel({ adjustments }: EquityAdjustmentsPanelPr
       return
     }
     setError(null)
-    await createAdjustment({ date, kind, amount: n, note: note.trim() })
-    setAmount('')
+    await createAdjustment({ date, kind, amount, note: note.trim() })
+    setAmount(null)
     setNote('')
   }
 
@@ -69,15 +70,15 @@ export function EquityAdjustmentsPanel({ adjustments }: EquityAdjustmentsPanelPr
         onSubmit={handleSubmit}
         className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3 grid grid-cols-[auto_auto_1fr_1fr_auto] gap-3 items-end"
       >
-        <label className="text-xs text-(--color-text-dim) space-y-2">
+        <div className="text-xs text-(--color-text-dim) space-y-2">
           <div>Date</div>
-          <input
-            type="date"
+          <DatePicker
             value={date}
-            onChange={e => setDate(e.target.value)}
-            className={inputClass}
+            onChange={v => v && setDate(v)}
+            compact
+            ariaLabel="Adjustment date"
           />
-        </label>
+        </div>
         <label className="text-xs text-(--color-text-dim) space-y-2">
           <div>Type</div>
           <Select
@@ -92,13 +93,9 @@ export function EquityAdjustmentsPanel({ adjustments }: EquityAdjustmentsPanelPr
         </label>
         <label className="text-xs text-(--color-text-dim) space-y-2">
           <div>Amount (USD)</div>
-          <input
-            type="number"
-            inputMode="decimal"
-            step="0.01"
-            min="0"
+          <NumberInput
             value={amount}
-            onChange={e => setAmount(e.target.value)}
+            onChange={setAmount}
             placeholder="1000"
             className={inputClass}
           />

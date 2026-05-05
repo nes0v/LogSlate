@@ -14,6 +14,7 @@ import { HOLD_BUCKETS, holdBucketOf } from '@/lib/filters'
 import { cn } from '@/lib/utils'
 import type { Session, TradeRecord } from '@/db/types'
 import { EMOTIONS, DEFAULT_MODEL_NAME } from '@/db/types'
+import { SESSION_BG } from '@/lib/session-colors'
 import {
   compositeScore,
   dailyEquitySeries,
@@ -192,11 +193,11 @@ export const DistributionDonuts = memo(function DistributionDonuts({
 
   const sessionDonut = useMemo(
     () => [
-      { label: 'pre', value: donutCounts.session.pre, color: '#c4b5fd' },
-      { label: 'am', value: donutCounts.session.am, color: '#7dd3fc' },
-      { label: 'lunch', value: donutCounts.session.lunch, color: '#fbbf24' },
-      { label: 'pm', value: donutCounts.session.pm, color: '#2563eb' },
-      { label: 'aft', value: donutCounts.session.aft, color: '#7e22ce' },
+      { label: 'pre', value: donutCounts.session.pre, color: SESSION_BG.pre },
+      { label: 'am', value: donutCounts.session.am, color: SESSION_BG.am },
+      { label: 'lunch', value: donutCounts.session.lunch, color: SESSION_BG.lunch },
+      { label: 'pm', value: donutCounts.session.pm, color: SESSION_BG.pm },
+      { label: 'aft', value: donutCounts.session.aft, color: SESSION_BG.aft },
     ],
     [donutCounts],
   )

@@ -3,22 +3,18 @@ import { Link, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
   addMonths,
-  eachDayOfInterval,
-  endOfMonth,
-  endOfWeek,
   format,
   isSameMonth,
-  startOfMonth,
-  startOfWeek,
   subMonths,
 } from 'date-fns'
+import { monthDayGrid } from '@/lib/calendar-grid'
 import { Image as ImageIcon, StickyNote } from 'lucide-react'
 import { dateKeyToDate, nyDateKey } from '@/lib/tz'
 import { db } from '@/db/schema'
 import { useActiveAccountId } from '@/lib/active-account'
 import { classifyTrade, computeNetPnl } from '@/lib/trade-math'
 import { formatUsd } from '@/lib/money'
-import { parseYearMonth, WEEK_OPTS } from '@/lib/buckets'
+import { parseYearMonth } from '@/lib/buckets'
 import { ForexFactoryNews } from '@/components/ForexFactoryNews'
 import { PageHeader } from '@/components/PageHeader'
 import { cn } from '@/lib/utils'
@@ -31,11 +27,7 @@ export function CalendarRoute() {
   // Memoize date derivations so `useMemo` deps compare by stable reference.
   const { month, gridStart, gridEnd, days } = useMemo(() => {
     const month = parseYearMonth(ym)
-    const ms = startOfMonth(month)
-    const me = endOfMonth(month)
-    const gridStart = startOfWeek(ms, WEEK_OPTS)
-    const gridEnd = endOfWeek(me, WEEK_OPTS)
-    const days = eachDayOfInterval({ start: gridStart, end: gridEnd })
+    const { start: gridStart, end: gridEnd, days } = monthDayGrid(month)
     return { month, gridStart, gridEnd, days }
   }, [ym])
 

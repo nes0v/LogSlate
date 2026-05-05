@@ -20,7 +20,8 @@ import {
 import { Pills } from '@/components/form/Pills'
 import { RatingFilter } from '@/components/form/RatingFilter'
 import { FilterDropdown } from '@/components/form/FilterDropdown'
-import { Field, inputClass } from '@/components/form/Field'
+import { DatePicker } from '@/components/form/DatePicker'
+import { Field } from '@/components/form/Field'
 
 /**
  * Shared Stats/Reports filter bar. Two visual rows — symbol/contract/session/
@@ -61,19 +62,21 @@ export function StatsFilterBar({
     <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3 space-y-3">
       <div className="flex flex-wrap items-end gap-3">
         <Field label="From" className="w-[135px]">
-          <input
-            type="date"
-            className={inputClass}
-            value={filters.from ?? ''}
-            onChange={e => update({ from: e.target.value || null })}
+          <DatePicker
+            value={filters.from}
+            onChange={v => update({ from: v })}
+            placeholder="Any"
+            clearable
+            ariaLabel="From date"
           />
         </Field>
         <Field label="To" className="w-[135px]">
-          <input
-            type="date"
-            className={inputClass}
-            value={filters.to ?? ''}
-            onChange={e => update({ to: e.target.value || null })}
+          <DatePicker
+            value={filters.to}
+            onChange={v => update({ to: v })}
+            placeholder="Any"
+            clearable
+            ariaLabel="To date"
           />
         </Field>
         <Field label="Symbol">

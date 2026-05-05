@@ -4,6 +4,8 @@ import { createAdjustment, deleteAdjustment } from '@/db/queries'
 import type { EquityAdjustment } from '@/db/types'
 import { useConfirm } from '@/components/ConfirmDialog'
 import { inputClassCompact as inputClass } from '@/components/form/Field'
+import { MonthPicker } from '@/components/form/MonthPicker'
+import { NumberInput } from '@/components/form/NumberInput'
 import { formatUsd } from '@/lib/money'
 import { nyMonthKey } from '@/lib/tz'
 
@@ -21,14 +23,13 @@ export function BrokerFeesPanel({ adjustments }: BrokerFeesPanelProps) {
   )
 
   const [month, setMonth] = useState(() => nyMonthKey())
-  const [amount, setAmount] = useState('')
+  const [amount, setAmount] = useState<number | null>(null)
   const [note, setNote] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    const n = Number(amount)
-    if (!Number.isFinite(n) || n <= 0) {
+    if (amount === null || !Number.isFinite(amount) || amount <= 0) {
       setError('Amount must be a positive number.')
       return
     }
@@ -40,10 +41,10 @@ export function BrokerFeesPanel({ adjustments }: BrokerFeesPanelProps) {
     await createAdjustment({
       date: `${month}-01`,
       kind: 'fee',
-      amount: n,
+      amount,
       note: note.trim(),
     })
-    setAmount('')
+    setAmount(null)
     setNote('')
   }
 
@@ -66,24 +67,20 @@ export function BrokerFeesPanel({ adjustments }: BrokerFeesPanelProps) {
         onSubmit={handleSubmit}
         className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3 grid grid-cols-[auto_1fr_1fr_auto] gap-3 items-end"
       >
-        <label className="text-xs text-(--color-text-dim) space-y-2">
+        <div className="text-xs text-(--color-text-dim) space-y-2">
           <div>Month</div>
-          <input
-            type="month"
+          <MonthPicker
             value={month}
-            onChange={e => setMonth(e.target.value)}
-            className={inputClass}
+            onChange={v => v && setMonth(v)}
+            compact
+            ariaLabel="Fee month"
           />
-        </label>
+        </div>
         <label className="text-xs text-(--color-text-dim) space-y-2">
           <div>Amount (USD)</div>
-          <input
-            type="number"
-            inputMode="decimal"
-            step="0.01"
-            min="0"
+          <NumberInput
             value={amount}
-            onChange={e => setAmount(e.target.value)}
+            onChange={setAmount}
             placeholder="15"
             className={inputClass}
           />

@@ -6,8 +6,9 @@ import { db } from '@/db/schema'
 import type { ProgressCheck, ProgressRule } from '@/db/types'
 import { useActiveAccountId } from '@/lib/active-account'
 import { Checkbox } from '@/components/form/Checkbox'
+import { DatePicker } from '@/components/form/DatePicker'
 import { useConfirm } from '@/components/ConfirmDialog'
-import { inputClass, inputClassCompact } from '@/components/form/Field'
+import { inputClass } from '@/components/form/Field'
 import { dateKeyToDate, nyToday } from '@/lib/tz'
 import { cn } from '@/lib/utils'
 
@@ -177,11 +178,11 @@ export function ProgressRoute() {
           >
             <ChevronLeft className="size-4" />
           </button>
-          <input
-            type="date"
+          <DatePicker
             value={date}
-            onChange={e => e.target.value && setDate(e.target.value)}
-            className={inputClassCompact}
+            onChange={v => v && setDate(v)}
+            compact
+            ariaLabel="Selected date"
           />
           <button
             type="button"
