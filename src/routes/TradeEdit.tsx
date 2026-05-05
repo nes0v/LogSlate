@@ -37,6 +37,17 @@ export function TradeEditRoute() {
     }
   }, [id])
 
+  // Switching accounts while viewing a trade leaves the URL pinned to a
+  // foreign id. Bounce back to the calendar root so the user lands in the
+  // newly-active account's context instead of seeing a trade that isn't
+  // theirs.
+  useEffect(() => {
+    if (state.status !== 'ready') return
+    if (state.record.account_id !== accountId) {
+      navigate('/', { replace: true })
+    }
+  }, [state, accountId, navigate])
+
   // Every trade id in the active account, ordered chronologically — used to
   // jump to adjacent trades without going back to the day/stats view.
   const orderedIds = useLiveQuery(

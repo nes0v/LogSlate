@@ -564,7 +564,7 @@ function LiveStatsSection({ control }: { control: Control<TradeFormValues> }) {
       if (t > latest) latest = t
     }
     const duration = earliest === latest ? null : timeToMs(latest) - timeToMs(earliest)
-    return { session: detectSession(earliest), durationMs: duration }
+    return { session: detectSession(earliest, latest), durationMs: duration }
   }, [executions])
 
   return (

@@ -18,8 +18,6 @@ interface PageHeaderProps {
   next?: string | null
   prevLabel?: string
   nextLabel?: string
-  /** URL for the optional "Today" button rendered after the next arrow. */
-  todayTo?: string
   /** Whether to render a browser-history back button as the leftmost
    *  control. Set on every non-root page; the calendar (root) leaves it off. */
   back?: boolean
@@ -32,7 +30,6 @@ export function PageHeader({
   next,
   prevLabel = 'Previous',
   nextLabel = 'Next',
-  todayTo,
   back,
   rightSlot,
 }: PageHeaderProps) {
@@ -43,14 +40,6 @@ export function PageHeader({
         {prev !== undefined && <Arrow to={prev} direction="prev" label={prevLabel} />}
         <h1 className="text-lg font-semibold min-w-56 text-center">{title}</h1>
         {next !== undefined && <Arrow to={next} direction="next" label={nextLabel} />}
-        {todayTo && (
-          <Link
-            to={todayTo}
-            className="ml-2 px-2 py-1 text-xs rounded-(--radius) border border-(--color-border) text-(--color-text-dim) hover:text-(--color-text)"
-          >
-            Today
-          </Link>
-        )}
       </div>
       {rightSlot}
     </div>

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { SESSIONS } from '@/db/types'
 import {
   detectSession,
   emptyForm,
@@ -105,28 +106,91 @@ describe('formToDraft', () => {
   })
 })
 
-describe('detectSession', () => {
-  // Returns lowercase enum values after the AM/LT/PM rename. Boundaries
-  // are inclusive at the start and end of each band per the source.
+describe('detectSession — bands (no promotion when close === open)', () => {
+  // Boundaries are inclusive at the start and exclusive at the end of
+  // each band; passing close === open means the promotion check fails
+  // trivially so each call exercises only the band classifier.
   it('classifies pre-market times', () => {
-    expect(detectSession('00:00')).toBe('pre')
-    expect(detectSession('09:29')).toBe('pre')
+    expect(detectSession('00:00', '00:00')).toBe('pre')
+    expect(detectSession('09:29', '09:29')).toBe('pre')
   })
   it('classifies the morning band as am', () => {
-    expect(detectSession('09:30')).toBe('am')
-    expect(detectSession('11:29')).toBe('am')
+    expect(detectSession('09:30', '09:30')).toBe('am')
+    expect(detectSession('11:29', '11:29')).toBe('am')
   })
   it('classifies midday as lunch', () => {
-    expect(detectSession('11:30')).toBe('lunch')
-    expect(detectSession('13:29')).toBe('lunch')
+    expect(detectSession('11:30', '11:30')).toBe('lunch')
+    expect(detectSession('13:29', '13:29')).toBe('lunch')
   })
   it('classifies the afternoon band as pm', () => {
-    expect(detectSession('13:30')).toBe('pm')
-    expect(detectSession('16:59')).toBe('pm')
+    expect(detectSession('13:30', '13:30')).toBe('pm')
+    expect(detectSession('16:59', '16:59')).toBe('pm')
   })
   it('classifies evening times as aft', () => {
-    expect(detectSession('17:00')).toBe('aft')
-    expect(detectSession('23:59')).toBe('aft')
+    expect(detectSession('17:00', '17:00')).toBe('aft')
+    expect(detectSession('23:59', '23:59')).toBe('aft')
+  })
+})
+
+describe('detectSession — next-session promotion', () => {
+  it('promotes lunch → pm when open is in last 15 min and close is 30+ min past pm start', () => {
+    expect(detectSession('13:18', '14:05')).toBe('pm')
+  })
+
+  it('keeps lunch when open is more than 15 min before the next session', () => {
+    expect(detectSession('13:13', '14:30')).toBe('lunch')
+  })
+
+  it('keeps lunch when close is less than 30 min after pm start', () => {
+    expect(detectSession('13:18', '13:55')).toBe('lunch')
+  })
+
+  it('promotes pre → am at the boundary (open 15 min before, close 30 min after)', () => {
+    // open=09:14 → 9:29 - 9:14 = 15 min ≤ 15. close=10:00 → 10:00 - 9:30 = 30 min ≥ 30.
+    expect(detectSession('09:14', '10:00')).toBe('am')
+  })
+
+  it('does not promote at 16-min-before / 30-min-after (open just outside the grace window)', () => {
+    expect(detectSession('09:13', '10:00')).toBe('pre')
+  })
+
+  it('does not promote at 15-min-before / 29-min-after (close just inside)', () => {
+    expect(detectSession('09:14', '09:59')).toBe('pre')
+  })
+
+  it('promotes one step only — open 09:25 / close 14:00 lands in am, not lunch or pm', () => {
+    expect(detectSession('09:25', '14:00')).toBe('am')
+  })
+
+  it('promotes am → lunch when conditions hold', () => {
+    expect(detectSession('11:25', '12:05')).toBe('lunch')
+  })
+
+  it('promotes pm → aft when conditions hold', () => {
+    expect(detectSession('16:50', '17:35')).toBe('aft')
+  })
+
+  it('aft never promotes (last band, no next)', () => {
+    expect(detectSession('17:05', '23:55')).toBe('aft')
+  })
+
+  it('zero-duration trade (close === open) keeps the open session even at the tail', () => {
+    expect(detectSession('13:25', '13:25')).toBe('lunch')
+  })
+
+  it('truncates seconds — 09:30:45 classifies as am, not pre', () => {
+    expect(detectSession('09:30:45', '09:30:45')).toBe('am')
+  })
+
+  it('every Session in the union is reachable (drift-guard if a new band is added)', () => {
+    const reached = new Set([
+      detectSession('06:00', '06:00'),
+      detectSession('10:00', '10:00'),
+      detectSession('12:00', '12:00'),
+      detectSession('14:30', '14:30'),
+      detectSession('20:00', '20:00'),
+    ])
+    for (const s of SESSIONS) expect(reached.has(s)).toBe(true)
   })
 })
 

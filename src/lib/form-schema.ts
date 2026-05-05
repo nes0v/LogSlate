@@ -11,18 +11,58 @@ import {
   type TradeRecord,
 } from '@/db/types'
 
-// Auto-detect a trade's session from its first (earliest) execution. Times
-// are interpreted as NY-local HH:MM since the user enters times in NY time.
-// 17:00–17:59 (the daily settlement break) is folded into "aft" so any
-// stray execution there still classifies cleanly.
-export function detectSession(time: string): Session {
-  const [h, m] = time.split(':').map(Number)
-  const mins = h * 60 + m
-  if (mins >= 9 * 60 + 30 && mins <= 11 * 60 + 29) return 'am'
-  if (mins >= 11 * 60 + 30 && mins <= 13 * 60 + 29) return 'lunch'
-  if (mins >= 13 * 60 + 30 && mins <= 16 * 60 + 59) return 'pm'
-  if (mins >= 17 * 60) return 'aft'
-  return 'pre'
+// Session bands as half-open intervals [previous endMin, endMin) of minutes
+// since midnight, NY-local. The implicit start of each band is the previous
+// row's `endMin`; pre starts at 0, aft runs to end-of-day.
+const SESSION_BANDS: ReadonlyArray<{ session: Session; endMin: number }> = [
+  { session: 'pre',   endMin: 9 * 60 + 30 },   // [00:00, 09:30)
+  { session: 'am',    endMin: 11 * 60 + 30 },  // [09:30, 11:30)
+  { session: 'lunch', endMin: 13 * 60 + 30 },  // [11:30, 13:30)
+  { session: 'pm',    endMin: 17 * 60 },       // [13:30, 17:00)
+  { session: 'aft',   endMin: 24 * 60 },       // [17:00, 24:00)
+]
+
+// Promote to the next session if the trade opened within the last
+// `PROMOTE_OPEN_GRACE_MIN` minutes of its session AND closed at least
+// `PROMOTE_CLOSE_THRESHOLD_MIN` minutes past the next session's start.
+const PROMOTE_OPEN_GRACE_MIN = 15
+const PROMOTE_CLOSE_THRESHOLD_MIN = 30
+
+function timeToMin(t: string): number {
+  const [hh, mm = '0'] = t.split(':')
+  return Number(hh) * 60 + Number(mm)
+}
+
+// Decides which session a trade "belongs to". Default = the session the
+// trade opened in. Promoted one step to the next session when the open
+// happened in the last 15 minutes of its session AND the close happened
+// ≥ 30 minutes past the next session's start.
+//
+// Why: traders often anticipate the upcoming session and front-run it
+// with a position opened in the tail of the current session — that trade
+// is logically "the next session's", not the one it timestamped into.
+//
+// Promotion never chains — even a trade spanning multiple sessions only
+// checks the open's immediate next session. `aft` has no next, so it
+// never promotes. Times are HH:MM[:SS]; seconds are truncated.
+export function detectSession(openTime: string, closeTime: string): Session {
+  const openMin = timeToMin(openTime)
+  const closeMin = timeToMin(closeTime)
+  const idx = SESSION_BANDS.findIndex(b => openMin < b.endMin)
+  if (idx < 0) return 'aft'
+  const open = SESSION_BANDS[idx]
+  const next = SESSION_BANDS[idx + 1]
+  if (!next) return open.session
+
+  // Inclusive distance from openMin to the session's last minute (endMin-1).
+  const minsBeforeSessionEnd = open.endMin - 1 - openMin
+  if (minsBeforeSessionEnd > PROMOTE_OPEN_GRACE_MIN) return open.session
+
+  // Next session starts at the current session's endMin (bands are contiguous).
+  const minsAfterNextStart = closeMin - open.endMin
+  if (minsAfterNextStart < PROMOTE_CLOSE_THRESHOLD_MIN) return open.session
+
+  return next.session
 }
 
 // `null` is used as the "blank" form state so number inputs render empty
@@ -148,10 +188,16 @@ export function formToDraft(v: TradeFormValues): TradeDraft {
     }))
     .sort((a, b) => Date.parse(a.time) - Date.parse(b.time))
 
-  // Session is auto-detected from the earliest HH:MM (lexical sort works
-  // since all executions share the same date).
-  const earliest = v.executions.reduce((acc, e) => (e.time < acc ? e.time : acc), v.executions[0]!.time)
-  const session = detectSession(earliest)
+  // Session is auto-detected from the open + close times (earliest +
+  // latest of the executions). Lexical sort on HH:MM:SS works because
+  // they all share the same date.
+  let earliest = v.executions[0]!.time
+  let latest = v.executions[0]!.time
+  for (const e of v.executions) {
+    if (e.time < earliest) earliest = e.time
+    if (e.time > latest) latest = e.time
+  }
+  const session = detectSession(earliest, latest)
 
   return {
     date: v.date,

@@ -145,7 +145,6 @@ export function CalendarRoute() {
         next={`/month/${format(addMonths(month, 1), 'yyyy-MM')}`}
         prevLabel="Previous month"
         nextLabel="Next month"
-        todayTo={`/month/${nyDateKey().slice(0, 7)}`}
         rightSlot={
           loaded ? (
             <div className="flex items-baseline gap-2">
