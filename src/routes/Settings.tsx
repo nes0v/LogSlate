@@ -128,7 +128,7 @@ export function SettingsRoute() {
               {drive.status === 'signed-in' ? (
                 <button
                   onClick={handleSignOut}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-(--radius) border border-(--color-border) text-(--color-text-dim) hover:text-(--color-text)"
+                  className="inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-(--radius) border border-(--color-border) text-(--color-text-dim) hover:text-(--color-text)"
                 >
                   <LogOut className="size-4" /> Disconnect
                 </button>
@@ -136,7 +136,7 @@ export function SettingsRoute() {
                 <button
                   onClick={signIn}
                   disabled={drive.status === 'signing-in'}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-(--radius) border border-transparent bg-(--color-accent) text-(--color-accent-fg) hover:opacity-90 disabled:opacity-50"
+                  className="inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-(--radius) border border-transparent bg-(--color-accent) text-(--color-accent-fg) hover:opacity-90 disabled:opacity-50"
                 >
                   <LogIn className="size-4" /> Connect Google Drive
                 </button>
@@ -156,7 +156,7 @@ export function SettingsRoute() {
                   <button
                     onClick={handleSync}
                     disabled={syncing}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-(--radius) border border-(--color-border) text-(--color-text) hover:bg-(--color-panel-2) disabled:opacity-50"
+                    className="inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-(--radius) border border-(--color-border) text-(--color-text) hover:bg-(--color-panel-2) disabled:opacity-50"
                   >
                     <RefreshCw className={'size-4 ' + (syncing ? 'animate-spin' : '')} />
                     {syncing ? 'Syncing…' : 'Sync now'}
@@ -252,13 +252,13 @@ export function SettingsRoute() {
         <div className="flex items-center gap-2">
           <button
             onClick={exportBackup}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-(--radius) border border-(--color-border) text-(--color-text) hover:bg-(--color-panel-2)"
+            className="inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-(--radius) border border-(--color-border) text-(--color-text) hover:bg-(--color-panel-2)"
           >
             <CloudDownload className="size-4" /> Export JSON
           </button>
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-(--radius) border border-(--color-border) text-(--color-text) hover:bg-(--color-panel-2)"
+            className="inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-(--radius) border border-(--color-border) text-(--color-text) hover:bg-(--color-panel-2)"
           >
             <CloudUpload className="size-4" /> Import JSON
           </button>

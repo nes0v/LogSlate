@@ -40,7 +40,7 @@ export function ScreenshotUploadButton({
 
   return (
     <div className="inline-flex flex-col gap-1">
-      <label className="inline-flex items-center gap-2 px-3 py-1.5 text-sm rounded-(--radius) bg-(--color-bg) text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2) transition-colors cursor-pointer">
+      <label className="inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-(--radius) bg-(--color-bg) text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2) transition-colors cursor-pointer">
         <Upload className="size-4" />
         <span>{busy ? 'Uploading…' : label}</span>
         <input

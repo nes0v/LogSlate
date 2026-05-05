@@ -5,6 +5,7 @@ import type {
   AdjustmentDraft,
   Day,
   EquityAdjustment,
+  Model,
   TradeDraft,
   TradeRecord,
 } from '@/db/types'
@@ -65,6 +66,16 @@ export async function listAllTrades(accountId: string): Promise<TradeRecord[]> {
     .where('[account_id+date]')
     .between([accountId, ''], [accountId, '￿'], true, true)
     .toArray()
+}
+
+// ---------- models ----------
+
+// Canonical model list for an account — always sorted alphabetically by
+// name (case-insensitive) so the sidebar / filter dropdowns / trade-form
+// pickers all read the same order.
+export async function listModels(accountId: string): Promise<Model[]> {
+  const rows = await db.models.where('account_id').equals(accountId).toArray()
+  return rows.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
 }
 
 // ---------- equity adjustments ----------

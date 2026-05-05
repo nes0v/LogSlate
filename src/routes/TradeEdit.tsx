@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { format, parseISO } from 'date-fns'
+import { Trash2 } from 'lucide-react'
 import { PageHeader } from '@/components/PageHeader'
 import { TradeForm } from '@/components/TradeForm'
 import { useConfirm } from '@/components/ConfirmDialog'
@@ -117,9 +118,9 @@ export function TradeEditRoute() {
               type="button"
               onClick={handleDelete}
               disabled={!record}
-              className="px-3 py-1.5 text-sm rounded-(--radius) border border-(--color-border) text-(--color-loss) hover:bg-(--color-panel-2) disabled:opacity-50 disabled:hover:bg-transparent"
+              className="inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-(--radius) border border-(--color-border) text-(--color-text-dim) hover:text-(--color-loss) disabled:opacity-50 transition-colors"
             >
-              Delete
+              <Trash2 className="size-4" /> Delete
             </button>
           </div>
         }
@@ -131,7 +132,6 @@ export function TradeEditRoute() {
           initialDate={record.date}
           onSubmit={handleSubmit}
           onCancel={() => navigate(`/day/${record.date}`)}
-          submitLabel="Save changes"
           getTradeOrdinal={async () => {
             const rows = await db.trades
               .where('[account_id+date]')

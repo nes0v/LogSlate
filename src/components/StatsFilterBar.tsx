@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db } from '@/db/schema'
+import { listModels } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
 import { DEFAULT_MODEL_NAME, EMOTIONS, type Emotion } from '@/db/types'
 import {
@@ -37,19 +37,12 @@ export function StatsFilterBar({
   update: (next: Partial<TradeFilters>) => void
 }) {
   const accountId = useActiveAccountId()
-  const models = useLiveQuery(
-    () => db.models.where('account_id').equals(accountId).toArray(),
-    [accountId],
-    [],
-  )
+  const models = useLiveQuery(() => listModels(accountId), [accountId], [])
 
   // Memoised so child FilterDropdowns don't see fresh array identity on every
-  // keystroke / unrelated render.
+  // keystroke / unrelated render. `listModels` already returns alphabetical.
   const modelOpts = useMemo(() => {
-    const opts = (models ?? [])
-      .slice()
-      .sort((a, b) => (a.name < b.name ? -1 : 1))
-      .map(m => ({ value: m.id, label: m.name }))
+    const opts = (models ?? []).map(m => ({ value: m.id, label: m.name }))
     // Always offer the "no model" sentinel so the user can find untracked
     // (gambling) trades even on accounts that have no Model rows yet.
     opts.push({ value: MODEL_NONE, label: DEFAULT_MODEL_NAME })

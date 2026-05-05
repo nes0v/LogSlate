@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 
 const BTN_CLASS =
-  'inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-(--radius) border border-(--color-border) text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)'
+  'inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-(--radius) bg-(--color-panel) text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2) transition-colors'
 
 /**
  * Browser-history back button for non-root pages. Always sits as the

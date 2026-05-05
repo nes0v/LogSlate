@@ -34,7 +34,6 @@ export function TradeNewRoute() {
         initialDate={date}
         onSubmit={handleSubmit}
         onCancel={() => navigate(`/day/${date}`)}
-        submitLabel="Save trade"
         getTradeOrdinal={async () => {
           const count = await db.trades
             .where('[account_id+date]')

@@ -18,10 +18,9 @@ interface TradeExpandedDetailsProps {
 }
 
 const ACTION_BTN_BASE =
-  'inline-flex items-center gap-2 px-3 py-1.5 text-sm rounded-(--radius) border border-(--color-border) hover:bg-(--color-panel-2) transition-colors cursor-pointer'
-const EDIT_BTN_CLASS = `${ACTION_BTN_BASE} text-(--color-accent)`
-const DELETE_BTN_CLASS = `${ACTION_BTN_BASE} text-(--color-loss)`
-const NEUTRAL_BTN_CLASS = `${ACTION_BTN_BASE} text-(--color-text-dim) hover:text-(--color-text)`
+  'inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-(--radius) border border-(--color-border) text-(--color-text-dim) transition-colors cursor-pointer'
+const NEUTRAL_BTN_CLASS = `${ACTION_BTN_BASE} hover:text-(--color-text)`
+const DELETE_BTN_CLASS = `${ACTION_BTN_BASE} hover:text-(--color-loss)`
 
 export function TradeExpandedDetails({ trade, model }: TradeExpandedDetailsProps) {
   const confirm = useConfirm()
@@ -59,7 +58,7 @@ export function TradeExpandedDetails({ trade, model }: TradeExpandedDetailsProps
           <ModelChecklist groups={model.groups} followed={followed} />
         )}
         <div className="flex items-center gap-2 shrink-0 ml-auto">
-          <Link to={`/trade/${trade.id}/edit`} className={EDIT_BTN_CLASS}>
+          <Link to={`/trade/${trade.id}/edit`} className={NEUTRAL_BTN_CLASS}>
             <Pencil className="size-4" /> Edit
           </Link>
           <button type="button" onClick={handleDelete} className={DELETE_BTN_CLASS}>

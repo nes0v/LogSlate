@@ -3,10 +3,10 @@ import { Controller, useFieldArray, useForm, useWatch, type Control } from 'reac
 import { zodResolver } from '@hookform/resolvers/zod'
 import type { z } from 'zod'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Plus, Trash2 } from 'lucide-react'
+import { Plus, Save, Trash2 } from 'lucide-react'
 import { detectSession, emptyForm, formToDraft, tradeFormSchema, type TradeFormValues } from '@/lib/form-schema'
 import { SESSION_BADGE, SESSION_BADGE_CLASS } from '@/lib/session-badge'
-import { db } from '@/db/schema'
+import { listModels } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
 import { EMOTIONS, type Emotion, type TradeDraft } from '@/db/types'
 import { Pills } from '@/components/form/Pills'
@@ -46,7 +46,6 @@ interface TradeFormProps {
   initialDate: string // YYYY-MM-DD
   onSubmit: (draft: TradeDraft) => Promise<void> | void
   onCancel: () => void
-  submitLabel?: string
   /** Resolves the trade's 1-based ordinal within its day when an upload
    *  happens. Called lazily so the count reflects the DB at upload time.
    */
@@ -63,7 +62,6 @@ export function TradeForm({
   initialDate,
   onSubmit,
   onCancel,
-  submitLabel = 'Save trade',
   getTradeOrdinal,
   onScreenshotPersist,
 }: TradeFormProps) {
@@ -74,7 +72,7 @@ export function TradeForm({
   // mistake tag rows downward.
   const models = useLiveQuery(
     async () => {
-      const rows = await db.models.where('account_id').equals(accountId).toArray()
+      const rows = await listModels(accountId)
       return rows.filter(m => !m.archived)
     },
     [accountId],
@@ -372,7 +370,6 @@ export function TradeForm({
             <div className="hidden lg:flex items-center gap-2">
               <ActionButtons
                 isSubmitting={isSubmitting}
-                submitLabel={submitLabel}
                 onCancel={onCancel}
               />
             </div>
@@ -463,7 +460,6 @@ export function TradeForm({
           <div className="flex lg:hidden items-center gap-2">
             <ActionButtons
               isSubmitting={isSubmitting}
-              submitLabel={submitLabel}
               onCancel={onCancel}
             />
           </div>
@@ -475,23 +471,22 @@ export function TradeForm({
 
 interface ActionButtonsProps {
   isSubmitting: boolean
-  submitLabel: string
   onCancel: () => void
 }
-function ActionButtons({ isSubmitting, submitLabel, onCancel }: ActionButtonsProps) {
+function ActionButtons({ isSubmitting, onCancel }: ActionButtonsProps) {
   return (
     <>
       <button
         type="submit"
         disabled={isSubmitting}
-        className="px-4 py-1.5 text-sm rounded-(--radius) bg-(--color-accent) text-(--color-accent-fg) hover:opacity-90 disabled:opacity-50"
+        className="inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-(--radius) bg-(--color-accent) text-(--color-accent-fg) hover:opacity-90 disabled:opacity-50"
       >
-        {submitLabel}
+        <Save className="size-4" /> Save
       </button>
       <button
         type="button"
         onClick={onCancel}
-        className="px-4 py-1.5 text-sm rounded-(--radius) border border-(--color-border) text-(--color-text-dim) hover:text-(--color-text)"
+        className="px-3 py-1.5 text-sm rounded-(--radius) border border-(--color-border) text-(--color-text-dim) hover:text-(--color-text)"
       >
         Cancel
       </button>

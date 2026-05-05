@@ -143,7 +143,7 @@ export function DayRoute() {
         rightSlot={
           <Link
             to={`/trade/new?date=${date}`}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-(--radius) bg-(--color-accent) text-(--color-accent-fg) hover:opacity-90"
+            className="inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-(--radius) bg-(--color-accent) text-(--color-accent-fg) hover:opacity-90"
           >
             <Plus className="size-4" /> New trade
           </Link>
