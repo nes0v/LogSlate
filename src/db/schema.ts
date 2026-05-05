@@ -26,13 +26,15 @@ class LogslateDB extends Dexie {
   constructor() {
     super('logslate')
 
-    // Single-version schema. The app has been pre-release with no real user
-    // data — every prior version (v1–v26) was rolled into this one fresh
-    // shape on the next reload.
+    // Pre-release schema. Every prior version (v1–v26) was rolled into a
+    // single fresh shape; v2 added the `[account_id+model_id]` compound
+    // index on trades so the Models editor's "in use" check is O(log n)
+    // instead of a full scan.
     //
     // Index notes:
     //   - `[account_id+date]` compounds let date-range queries scoped to an
     //     account hit the index directly.
+    //   - `[account_id+model_id]` powers `countTradesUsingModel`.
     //   - `*screenshots` on `days` is multi-entry so the pending-upload
     //     drainer can locate rows by ref the same way it does for trades.
     //   - `&id` is the primary key.
@@ -52,6 +54,10 @@ class LogslateDB extends Dexie {
       progress_checks:
         '&id, [account_id+date], account_id, date, rule_id, updated_at',
       news: '&id, date, updated_at',
+    })
+    this.version(2).stores({
+      trades:
+        '&id, [account_id+date], [account_id+model_id], account_id, date, symbol, session, model_id, screenshot, updated_at, created_at',
     })
   }
 }

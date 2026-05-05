@@ -5,7 +5,7 @@ import { ChevronRight } from 'lucide-react'
 import { DonutChart } from '@/components/DonutChart'
 import { insetTileClass } from '@/components/form/Field'
 import { RatingStars } from '@/components/RatingStars'
-import { db } from '@/db/schema'
+import { listModels } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
 import type { AggregateStats } from '@/lib/trade-stats'
 import { formatUsd } from '@/lib/money'
@@ -120,7 +120,7 @@ export const DistributionDonuts = memo(function DistributionDonuts({
 }) {
   const accountId = useActiveAccountId()
   const models = useLiveQuery(
-    () => db.models.where('account_id').equals(accountId).toArray(),
+    () => listModels(accountId),
     [accountId],
     [],
   )

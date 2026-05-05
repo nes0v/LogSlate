@@ -75,8 +75,12 @@ export function TradeEditRoute() {
   async function handleDelete() {
     if (state.status !== 'ready') return
     if (!(await confirm({ title: 'Delete this trade?' }))) return
-    await deleteTrade(id)
-    navigate(`/day/${state.record.date}`)
+    try {
+      await deleteTrade(id)
+      navigate(`/day/${state.record.date}`)
+    } catch (e) {
+      alert(`Failed to delete trade: ${(e as Error).message ?? String(e)}`)
+    }
   }
 
   // Treat "we have a record but it's for a different id" as still loading.

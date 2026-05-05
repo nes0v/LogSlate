@@ -22,8 +22,8 @@ export function RatingStars({ rating, size = 14, className }: RatingStarsProps) 
             style={{
               width: size,
               height: size,
-              fill: on ? '#FFD700' : 'var(--color-bg)',
-              color: on ? '#FFD700' : 'var(--color-bg)',
+              fill: on ? 'var(--color-star)' : 'var(--color-bg)',
+              color: on ? 'var(--color-star)' : 'var(--color-bg)',
             }}
           />
         )

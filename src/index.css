@@ -62,6 +62,10 @@
    * Defaults are the "classic" green/red. */
   --color-win:  #22c55e;
   --color-loss: #ef4444;
+  /* Filled rating stars (RatingStars). Distinct from --color-win/loss so
+   * the rating glyph keeps its gold tone regardless of the trading-color
+   * palette the user picks. */
+  --color-star: #ffd700;
   /* Calendar win/loss-cell backgrounds + matching outline rings. Deep
    * pine/wine bgs with a lighter shade for the border. Independent of
    * --color-win/loss so the win/loss palette picker doesn't drag the

@@ -5,7 +5,7 @@ import { format, parseISO } from 'date-fns'
 import { Plus } from 'lucide-react'
 import { db } from '@/db/schema'
 import type { Model } from '@/db/types'
-import { getDayNote, listDayScreenshotsFor } from '@/db/queries'
+import { getDayNote, listDayScreenshotsFor, listModels } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
 import { firstExecutionMs } from '@/lib/trade-math'
 import { aggregate } from '@/lib/trade-stats'
@@ -68,7 +68,7 @@ export function DayRoute() {
   // Models are resolved once at the route level so trade rows render with
   // the right name on first paint instead of flashing "gambling" → real.
   const models = useLiveQuery(
-    () => db.models.where('account_id').equals(accountId).toArray(),
+    () => listModels(accountId),
     [accountId],
   )
   const modelById = useMemo(() => {

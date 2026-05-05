@@ -25,6 +25,7 @@ export function SettingsRoute() {
   const drive = useDriveState()
   const configured = isConfigured()
   const [syncing, setSyncing] = useState(false)
+  const [importing, setImporting] = useState(false)
   const [lastResult, setLastResult] = useState<SyncResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -61,6 +62,8 @@ export function SettingsRoute() {
   }
 
   async function handleImport(file: File) {
+    if (importing) return
+    setImporting(true)
     try {
       const r = await importBackup(file)
       setError(null)
@@ -72,6 +75,8 @@ export function SettingsRoute() {
       alert(`Imported ${summary || 'nothing'}. Local DB replaced.`)
     } catch (e) {
       setError((e as Error).message ?? String(e))
+    } finally {
+      setImporting(false)
     }
   }
 
@@ -258,9 +263,10 @@ export function SettingsRoute() {
           </button>
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-(--radius) border border-(--color-border) text-(--color-text) hover:bg-(--color-panel-2)"
+            disabled={importing}
+            className="inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-(--radius) border border-(--color-border) text-(--color-text) hover:bg-(--color-panel-2) disabled:opacity-50"
           >
-            <CloudUpload className="size-4" /> Import JSON
+            <CloudUpload className="size-4" /> {importing ? 'Importing…' : 'Import JSON'}
           </button>
           <input
             ref={fileInputRef}

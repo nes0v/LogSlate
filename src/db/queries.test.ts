@@ -3,6 +3,7 @@ import { db, ensureMainAccount } from './schema'
 import {
   addDayScreenshot,
   countAccountData,
+  countTradesUsingModel,
   createAccount,
   createAdjustment,
   createTrade,
@@ -16,6 +17,7 @@ import {
   listAdjustments,
   listAllTrades,
   listDayScreenshotsFor,
+  listModels,
   removeDayScreenshot,
   setDayNote,
   slugifyAccountName,
@@ -31,6 +33,7 @@ beforeEach(async () => {
   await db.accounts.clear()
   await db.days.clear()
   await db.pending_uploads.clear()
+  await db.models.clear()
   await ensureMainAccount()
 })
 afterEach(async () => {
@@ -39,6 +42,7 @@ afterEach(async () => {
   await db.accounts.clear()
   await db.days.clear()
   await db.pending_uploads.clear()
+  await db.models.clear()
 })
 
 describe('trade queries', () => {
@@ -394,5 +398,55 @@ describe('ensureMainAccount', () => {
     await ensureMainAccount()
     const all = await listAccounts()
     expect(all.map(a => a.name)).toEqual(['Alpha'])
+  })
+})
+
+describe('model queries', () => {
+  async function putModel(id: string, name: string, accountId = MAIN_ACCOUNT_ID) {
+    const ts = new Date().toISOString()
+    await db.models.put({
+      id,
+      account_id: accountId,
+      name,
+      description: '',
+      sessions: [],
+      groups: [],
+      archived: false,
+      created_at: ts,
+      updated_at: ts,
+    })
+  }
+
+  it('listModels returns models scoped to the account, sorted alphabetically (case-insensitive)', async () => {
+    await putModel('m1', 'beta')
+    await putModel('m2', 'Alpha')
+    await putModel('m3', 'gamma', 'other-account')
+    const rows = await listModels(MAIN_ACCOUNT_ID)
+    expect(rows.map(m => m.name)).toEqual(['Alpha', 'beta'])
+  })
+
+  it('listModels returns an empty array when the account has no models', async () => {
+    const rows = await listModels(MAIN_ACCOUNT_ID)
+    expect(rows).toEqual([])
+  })
+
+  it('countTradesUsingModel hits the [account_id+model_id] index', async () => {
+    await putModel('m-target', 'target')
+    await createTrade(tradeDraft({ model_id: 'm-target' }))
+    await createTrade(tradeDraft({ model_id: 'm-target' }))
+    await createTrade(tradeDraft({ model_id: 'm-other' }))
+    await createTrade(tradeDraft({ model_id: null }))
+    expect(await countTradesUsingModel(MAIN_ACCOUNT_ID, 'm-target')).toBe(2)
+    expect(await countTradesUsingModel(MAIN_ACCOUNT_ID, 'm-other')).toBe(1)
+    expect(await countTradesUsingModel(MAIN_ACCOUNT_ID, 'm-missing')).toBe(0)
+  })
+
+  it('countTradesUsingModel scopes by account', async () => {
+    await createAccount({ name: 'Alt' })
+    const altId = (await listAccounts()).find(a => a.name === 'Alt')!.id
+    await createTrade(tradeDraft({ model_id: 'shared' }))
+    await createTrade(tradeDraft({ model_id: 'shared' }), altId)
+    expect(await countTradesUsingModel(MAIN_ACCOUNT_ID, 'shared')).toBe(1)
+    expect(await countTradesUsingModel(altId, 'shared')).toBe(1)
   })
 })

@@ -78,6 +78,19 @@ export async function listModels(accountId: string): Promise<Model[]> {
   return rows.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
 }
 
+// Count of trades on `accountId` that reference `modelId`. Used by the
+// Models editor to gate destructive edits with an "in use" warning. Hits
+// the `[account_id+model_id]` compound index directly.
+export async function countTradesUsingModel(
+  accountId: string,
+  modelId: string,
+): Promise<number> {
+  return db.trades
+    .where('[account_id+model_id]')
+    .equals([accountId, modelId])
+    .count()
+}
+
 // ---------- equity adjustments ----------
 
 export async function createAdjustment(

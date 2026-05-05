@@ -21,7 +21,7 @@ interface DayNoteSectionProps {
  */
 export function DayNoteSection({ accountId, date, stored }: DayNoteSectionProps) {
   const [value, setValue] = useState(stored)
-  const textareaRef = useAutosizeTextarea(value)
+  const textareaRef = useAutosizeTextarea()
 
   useEffect(() => {
     if (document.activeElement === textareaRef.current) return
@@ -38,14 +38,14 @@ export function DayNoteSection({ accountId, date, stored }: DayNoteSectionProps)
   return (
     <section className="space-y-2">
       <h2 className="text-sm font-medium">Notes</h2>
-      <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3">
+      <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs)">
         <textarea
           ref={textareaRef}
           value={value}
           onChange={e => setValue(e.target.value)}
           onBlur={handleBlur}
           placeholder="What did you notice today?"
-          className="block w-full bg-(--color-bg) rounded-(--radius) px-2.5 py-1.5 text-sm font-sans text-(--color-text) placeholder:text-(--color-text-faint) min-h-[95px] resize-none overflow-hidden focus:outline-none focus:ring-2 focus:ring-(--color-accent-soft)"
+          className="block w-full bg-(--color-panel) rounded-(--radius) px-2.5 py-1.5 text-sm font-sans text-(--color-text-dim) placeholder:text-(--color-text-faint) min-h-[95px] resize-none overflow-hidden focus:outline-none"
         />
       </div>
     </section>

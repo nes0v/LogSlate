@@ -106,8 +106,8 @@ export function TradeForm({
 
   const executions = useFieldArray({ control, name: 'executions' })
   const values = useWatch({ control }) as TradeFormValues
-  const ideaRef = useAutosizeTextarea(values.idea)
-  const notesRef = useAutosizeTextarea(values.notes)
+  const ideaRef = useAutosizeTextarea()
+  const notesRef = useAutosizeTextarea()
   const ideaReg = register('idea')
   const notesReg = register('notes')
   const activeModel = useMemo(
@@ -256,6 +256,19 @@ export function TradeForm({
                             formatted = digits.slice(0, 2) + ':' + digits.slice(2)
                           }
                           field.onChange(formatted)
+                        }}
+                        onBlur={() => {
+                          // Pad partial input to canonical HH:MM:SS so the form
+                          // state matches what gets persisted: "13:30" → "13:30:00",
+                          // "13:30:4" → "13:30:40". Padding is right-aligned (a
+                          // single second digit reads as tens, like minute notation).
+                          const t = field.value ?? ''
+                          const m = /^(\d\d):(\d\d)(?::(\d{1,2}))?$/.exec(t)
+                          if (m) {
+                            const ss = (m[3] ?? '').padEnd(2, '0')
+                            field.onChange(`${m[1]}:${m[2]}:${ss}`)
+                          }
+                          field.onBlur()
                         }}
                       />
                     )}
@@ -522,7 +535,7 @@ function LiveStatsSection({ control }: { control: Control<TradeFormValues> }) {
   const session = useMemo(() => {
     const times = (executions ?? [])
       .map(e => e?.time)
-      .filter((t): t is string => typeof t === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(t))
+      .filter((t): t is string => typeof t === 'string' && /^([01]\d|2[0-3]):[0-5]\d/.test(t))
     if (times.length === 0) return null
     const earliest = times.reduce((min, t) => (t < min ? t : min))
     return detectSession(earliest)

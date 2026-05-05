@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react'
 import { nyMonthKey } from '@/lib/tz'
 import { useOutsideClick } from '@/lib/use-outside-click'
@@ -43,9 +43,10 @@ export function MonthPicker({
   ariaLabel,
 }: MonthPickerProps) {
   const [open, setOpen] = useState(false)
-  const seed = parseYearMonth(value)
-  const today = parseYearMonth(nyMonthKey())!
-  const [viewYear, setViewYear] = useState<number>(seed?.year ?? today.year)
+  const today = useMemo(() => parseYearMonth(nyMonthKey())!, [])
+  const [viewYear, setViewYear] = useState<number>(
+    () => parseYearMonth(value)?.year ?? today.year,
+  )
   const ref = useRef<HTMLDivElement>(null)
 
   useOutsideClick(ref, open, () => setOpen(false))

@@ -16,9 +16,8 @@ import {
 import { bucketNavTarget, drillDownRange, timeframeFromParams } from '@/lib/stats-nav'
 import { ChevronRight, X } from 'lucide-react'
 import { dateKeyToDate, nyToday } from '@/lib/tz'
-import { db } from '@/db/schema'
 import type { Model } from '@/db/types'
-import { listAdjustments, listAllTrades } from '@/db/queries'
+import { listAdjustments, listAllTrades, listModels } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
 import {
   applyFilters,
@@ -108,7 +107,7 @@ export function StatsRoute() {
   // with the right name on first paint (instead of flashing "gambling"
   // before the lookup map populates).
   const models = useLiveQuery(
-    () => db.models.where('account_id').equals(accountId).toArray(),
+    () => listModels(accountId),
     [accountId],
   )
   const modelById = useMemo(() => {

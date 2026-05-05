@@ -5,8 +5,7 @@ import { X } from 'lucide-react'
 import type { TradeRecord } from '@/db/types'
 import { EMOTIONS, DEFAULT_MODEL_NAME } from '@/db/types'
 import { nyToday } from '@/lib/tz'
-import { db } from '@/db/schema'
-import { listAllTrades } from '@/db/queries'
+import { listAllTrades, listModels } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
 import {
   applyFilters,
@@ -666,7 +665,7 @@ function CompareReport({
   // Only fetch model names when actually needed for the rendered axis;
   // useLiveQuery still subscribes either way, but the cost is negligible.
   const models = useLiveQuery(
-    () => db.models.where('account_id').equals(accountId).toArray(),
+    () => listModels(accountId),
     [accountId],
     [],
   )

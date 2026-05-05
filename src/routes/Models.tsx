@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { Archive, ArchiveRestore, Plus, Save, Trash2, X } from 'lucide-react'
 import { db } from '@/db/schema'
-import { listModels } from '@/db/queries'
+import { countTradesUsingModel, listModels } from '@/db/queries'
 import type { Model, ModelRuleGroup, Session } from '@/db/types'
 import { SESSIONS } from '@/db/types'
 import { useActiveAccountId } from '@/lib/active-account'
@@ -170,19 +170,18 @@ interface ModelEditorProps {
   onDelete: () => void
 }
 function ModelEditor({ model, onSave, onDelete }: ModelEditorProps) {
+  const accountId = useActiveAccountId()
   const confirm = useConfirm()
   const [name, setName] = useState(model.name)
   const [description, setDescription] = useState(model.description)
   const [groups, setGroups] = useState<ModelRuleGroup[]>(model.groups)
   const [sessions, setSessions] = useState<Session[]>(model.sessions)
   const [archived, setArchived] = useState(model.archived)
-  const descriptionRef = useAutosizeTextarea(description)
+  const descriptionRef = useAutosizeTextarea()
 
-  // The editor holds a working draft locally — nothing persists until the
-  // user clicks Save. The parent passes `key={selected.id}`, so switching
-  // to a different model unmounts this component and re-seeds the draft
-  // from props. Group/rule additions and deletions therefore live in this
-  // state only and don't need confirmation prompts.
+  // Working draft — only persists on Save. Parent's `key={selected.id}`
+  // resets drafts on model switch, so group/rule mutations don't need
+  // confirmation prompts.
   const isDirty = useMemo(
     () =>
       name !== model.name ||
@@ -240,9 +239,7 @@ function ModelEditor({ model, onSave, onDelete }: ModelEditorProps) {
 
   async function handleSave() {
     if (!isDirty) return
-    const usageCount = await db.trades
-      .filter(t => t.model_id === model.id)
-      .count()
+    const usageCount = await countTradesUsingModel(accountId, model.id)
     if (usageCount > 0) {
       const ok = await confirm({
         title: 'This model is already in use',

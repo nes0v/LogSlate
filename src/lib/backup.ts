@@ -76,8 +76,31 @@ export async function importBackup(
   file: File,
 ): Promise<Record<string, number>> {
   const text = await file.text()
-  const parsed = JSON.parse(text) as Partial<BackupFile> & Record<string, unknown>
-  if (!parsed || !Array.isArray(parsed.trades)) {
+  let parsed: Partial<BackupFile> & Record<string, unknown>
+  try {
+    parsed = JSON.parse(text) as Partial<BackupFile> & Record<string, unknown>
+  } catch {
+    throw new Error('Backup file is not valid JSON.')
+  }
+  if (!parsed || typeof parsed !== 'object') {
+    throw new Error('Backup file is malformed (not an object).')
+  }
+  // Validate the entire structure up front. The transaction below is
+  // destructive (truncates every table), so we refuse anything that
+  // isn't shaped like a real backup before touching local data.
+  for (const s of SPECS) {
+    const v = parsed[s.fileKey]
+    if (v === undefined) continue
+    if (!Array.isArray(v)) {
+      throw new Error(`Backup file is malformed (${s.fileKey} is not an array).`)
+    }
+    for (const row of v) {
+      if (!row || typeof row !== 'object' || typeof (row as Row).id !== 'string') {
+        throw new Error(`Backup file is malformed (${s.fileKey} has rows missing a string id).`)
+      }
+    }
+  }
+  if (!Array.isArray(parsed.trades)) {
     throw new Error('Backup file is malformed (no trades array).')
   }
 

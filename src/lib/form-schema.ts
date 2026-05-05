@@ -46,7 +46,19 @@ const executionSchema = z.object({
   price: requiredPositive('price must be > 0'),
   time: z
     .string()
-    .regex(/^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$/, 'time must be HH:MM:SS (24h)'),
+    .regex(
+      /^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d?)?$/,
+      'time must be HH:MM (24h, optional :SS)',
+    )
+    // Pad partial input to canonical HH:MM:SS so downstream (`formToDraft`,
+    // duration math) always sees a complete time. Right-aligned padding
+    // matches the input's onBlur behavior: "13:30" → "13:30:00", "13:30:4"
+    // → "13:30:40".
+    .transform(t => {
+      const parts = t.split(':')
+      const ss = (parts[2] ?? '').padEnd(2, '0')
+      return `${parts[0]}:${parts[1]}:${ss}`
+    }),
   contracts: requiredPositiveInt('contracts must be a positive integer'),
 })
 

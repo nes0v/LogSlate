@@ -67,6 +67,42 @@ describe('importBackup', () => {
     const file = new File(['{"foo": 1}'], 'bad.json', { type: 'application/json' })
     await expect(importBackup(file)).rejects.toThrow(/malformed/)
   })
+
+  it('rejects non-JSON content before touching the DB', async () => {
+    await createTrade(tradeDraft({ idea: 'must survive' }))
+    const file = new File(['not json {{{'], 'bad.json', { type: 'application/json' })
+    await expect(importBackup(file)).rejects.toThrow(/not valid JSON/)
+    const trades = await listAllTrades(MAIN_ACCOUNT_ID)
+    expect(trades).toHaveLength(1)
+    expect(trades[0].idea).toBe('must survive')
+  })
+
+  it('rejects when a known table is not an array', async () => {
+    await createTrade(tradeDraft({ idea: 'must survive' }))
+    const payload = {
+      version: 6,
+      exported_at: new Date().toISOString(),
+      trades: [],
+      models: 'oops',
+    }
+    const file = new File([JSON.stringify(payload)], 'bad.json', { type: 'application/json' })
+    await expect(importBackup(file)).rejects.toThrow(/models is not an array/)
+    const trades = await listAllTrades(MAIN_ACCOUNT_ID)
+    expect(trades).toHaveLength(1) // pre-import data preserved
+  })
+
+  it('rejects rows without a string id', async () => {
+    await createTrade(tradeDraft({ idea: 'must survive' }))
+    const payload = {
+      version: 6,
+      exported_at: new Date().toISOString(),
+      trades: [{ id: 42, idea: 'wrong-type id' }],
+    }
+    const file = new File([JSON.stringify(payload)], 'bad.json', { type: 'application/json' })
+    await expect(importBackup(file)).rejects.toThrow(/missing a string id/)
+    const trades = await listAllTrades(MAIN_ACCOUNT_ID)
+    expect(trades).toHaveLength(1)
+  })
 })
 
 describe('exportBackup', () => {
