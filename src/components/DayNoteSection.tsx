@@ -21,6 +21,7 @@ interface DayNoteSectionProps {
  */
 export function DayNoteSection({ accountId, date, stored }: DayNoteSectionProps) {
   const [value, setValue] = useState(stored)
+  const [error, setError] = useState<string | null>(null)
   const textareaRef = useAutosizeTextarea()
 
   useEffect(() => {
@@ -30,9 +31,14 @@ export function DayNoteSection({ accountId, date, stored }: DayNoteSectionProps)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stored])
 
-  function handleBlur() {
+  async function handleBlur() {
     if (value === stored) return
-    void setDayNote(accountId, date, value)
+    try {
+      await setDayNote(accountId, date, value)
+      setError(null)
+    } catch (e) {
+      setError(`Couldn't save note: ${(e as Error).message ?? String(e)}`)
+    }
   }
 
   return (
@@ -48,6 +54,7 @@ export function DayNoteSection({ accountId, date, stored }: DayNoteSectionProps)
           className="block w-full bg-(--color-panel) rounded-(--radius) px-2.5 py-1.5 text-sm font-sans text-(--color-text-dim) placeholder:text-(--color-text-faint) min-h-[95px] resize-none overflow-hidden focus:outline-none"
         />
       </div>
+      {error && <div className="text-xs text-(--color-loss)">{error}</div>}
     </section>
   )
 }

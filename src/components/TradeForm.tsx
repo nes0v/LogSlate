@@ -19,6 +19,7 @@ import { Select } from '@/components/form/Select'
 import { Checkbox } from '@/components/form/Checkbox'
 import { ScreenshotField } from '@/components/ScreenshotField'
 import { computeAhpc, computeNetPnl } from '@/lib/trade-math'
+import { formatDuration } from '@/lib/duration'
 import { formatUsd } from '@/lib/money'
 import { useAutosizeTextarea } from '@/lib/use-autosize-textarea'
 import { useScreenshotUrls } from '@/lib/use-screenshot-urls'
@@ -40,6 +41,14 @@ const ORDER_TYPE_OPTIONS = [
   { value: 'limit', label: 'limit' },
   { value: 'market', label: 'market' },
 ] as const
+
+// Parses a partial-or-full HH:MM[:SS] wallclock into ms-within-day.
+// Used by the live-stats duration calculation; assumes the regex
+// `^([01]\d|2[0-3]):[0-5]\d` has already matched.
+function timeToMs(t: string): number {
+  const [hh, mm, ss = '0'] = t.split(':')
+  return ((Number(hh) * 60 + Number(mm)) * 60 + Number(ss)) * 1000
+}
 
 interface TradeFormProps {
   initialValues?: TradeFormValues
@@ -363,9 +372,20 @@ export function TradeForm({
           <Field label="Screenshot">
             <ScreenshotField
               value={values.screenshot ?? null}
-              onChange={ref => {
+              onChange={async ref => {
                 setValue('screenshot', ref, { shouldDirty: true })
-                if (onScreenshotPersist) void onScreenshotPersist(ref)
+                if (!onScreenshotPersist) return
+                try {
+                  await onScreenshotPersist(ref)
+                } catch (e) {
+                  // Surface the failure rather than letting the form silently
+                  // drift away from the persisted record. The user can re-pick
+                  // the screenshot once they've resolved the cause (no Drive,
+                  // quota, etc.).
+                  alert(
+                    `Failed to save screenshot reference: ${(e as Error).message ?? String(e)}`,
+                  )
+                }
               }}
               date={values.date}
               getFilenameSuffix={async () => `trade-${await getTradeOrdinal()}`}
@@ -532,13 +552,19 @@ function LiveStatsSection({ control }: { control: Control<TradeFormValues> }) {
     return { ahpc, pnl, rr }
   }, [executions, symbol, contract_type, stop_loss])
 
-  const session = useMemo(() => {
+  const { session, durationMs } = useMemo(() => {
     const times = (executions ?? [])
       .map(e => e?.time)
       .filter((t): t is string => typeof t === 'string' && /^([01]\d|2[0-3]):[0-5]\d/.test(t))
-    if (times.length === 0) return null
-    const earliest = times.reduce((min, t) => (t < min ? t : min))
-    return detectSession(earliest)
+    if (times.length === 0) return { session: null, durationMs: null }
+    let earliest = times[0]
+    let latest = times[0]
+    for (const t of times) {
+      if (t < earliest) earliest = t
+      if (t > latest) latest = t
+    }
+    const duration = earliest === latest ? null : timeToMs(latest) - timeToMs(earliest)
+    return { session: detectSession(earliest), durationMs: duration }
   }, [executions])
 
   return (
@@ -554,6 +580,7 @@ function LiveStatsSection({ control }: { control: Control<TradeFormValues> }) {
             <div className="text-sm font-mono tabular-nums">—</div>
           )}
         </div>
+        <Stat label="Duration" value={formatDuration(durationMs)} />
         <Stat label="AHPC" value={stats.ahpc !== null ? stats.ahpc.toFixed(2) : '—'} />
         <Stat
           label="PNL"
