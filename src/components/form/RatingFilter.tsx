@@ -24,7 +24,7 @@ export function RatingFilter({ value, onChange, className }: RatingFilterProps) 
         className={cn(
           'inline-flex items-center rounded-[6px] px-2.5 py-1 text-sm cursor-pointer transition-colors whitespace-nowrap',
           isAll
-            ? 'bg-(--color-panel) text-(--color-text) shadow-(--shadow-xs)'
+            ? 'bg-(--color-panel) text-(--color-text) shadow-(--shadow-drop-xs)'
             : 'text-(--color-text-dim) hover:text-(--color-text)',
         )}
       >

@@ -3,7 +3,6 @@ import { eachDayOfInterval, format, parseISO } from 'date-fns'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { ChevronRight } from 'lucide-react'
 import { DonutChart } from '@/components/DonutChart'
-import { insetTileClass } from '@/components/form/Field'
 import { RatingStars } from '@/components/RatingStars'
 import { listModels } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
@@ -47,7 +46,7 @@ export const HeroNetPnl = memo(function HeroNetPnl({
   return (
     <section className="flex flex-col gap-2 h-full">
       <h2 className="text-sm font-medium">Net PNL</h2>
-      <div className="flex-1 flex flex-col items-center justify-center text-center py-6 rounded-(--radius) bg-(--color-panel) shadow-(--shadow-xs)">
+      <div className="flex-1 flex flex-col items-center justify-center text-center py-6 rounded-(--radius) bg-(--color-panel) shadow-(--shadow-drop-xs)">
         <div
           className={cn(
             'text-5xl font-mono font-medium tabular-nums',
@@ -408,7 +407,7 @@ export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
         Metrics{' '}
         <span className="text-(--color-text-dim) font-normal">({metricCount})</span>
       </summary>
-      <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3 space-y-6">
+      <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-drop-xs) p-3 space-y-6">
       <MetricGroup title="Performance">
         <KpiTile
           label="Win rate"
@@ -640,8 +639,7 @@ function KpiTile({ label, value, caption, tone, tooltip }: KpiTileProps) {
   return (
     <div
       className={cn(
-        insetTileClass,
-        'transition-colors',
+        'bg-(--color-panel-2) shadow-(--shadow-drop-sm) rounded-(--radius) p-3 transition-colors',
         tooltip && 'cursor-help',
       )}
       title={tooltip}
@@ -719,7 +717,7 @@ function CompositeScoreCard({ score }: { score: ReturnType<typeof compositeScore
   return (
     <section className="flex flex-col gap-2 h-full">
       <h2 className="text-sm font-medium">Composite score</h2>
-      <div className="flex-1 flex items-center justify-center bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-4">
+      <div className="flex-1 flex items-center justify-center bg-(--color-panel) rounded-(--radius) shadow-(--shadow-drop-xs) p-4">
         <div
           className="relative mx-auto w-full max-w-[520px]"
           style={{ aspectRatio: `${VB_W} / ${VB_H}` }}

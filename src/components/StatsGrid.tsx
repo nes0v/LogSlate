@@ -58,7 +58,7 @@ function Stat({
   big?: boolean
 }) {
   return (
-    <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3">
+    <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-drop-xs) p-3">
       <div className="text-xs text-(--color-text-dim) uppercase tracking-wider">{label}</div>
       <div
         className={cn(

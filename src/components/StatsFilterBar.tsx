@@ -52,7 +52,7 @@ export function StatsFilterBar({
   const emotionOpts = useMemo(() => EMOTIONS.map(e => ({ value: e, label: e })), [])
 
   return (
-    <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3 space-y-3">
+    <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-drop-xs) p-3 space-y-3">
       <div className="flex flex-wrap items-end gap-3">
         <Field label="From" className="w-[135px]">
           <DatePicker

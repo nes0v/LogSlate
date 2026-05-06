@@ -45,7 +45,7 @@ export function DayNoteSection({ accountId, date, stored }: DayNoteSectionProps)
   return (
     <section className="space-y-2">
       <h2 className="text-sm font-medium">Notes</h2>
-      <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs)">
+      <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-drop-xs)">
         <textarea
           ref={textareaRef}
           value={value}

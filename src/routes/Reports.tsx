@@ -104,7 +104,6 @@ export function ReportsRoute() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params, lastTradeDate])
 
-  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const filtered = useMemo(
     () => applyFilters(allTrades ?? [], filters),
     [allTrades, filters],
@@ -272,7 +271,7 @@ function DaysAndTimeReport({ trades }: { trades: TradeRecord[] }) {
             )
           })}
         </div>
-        <div className="bg-(--color-panel) rounded-(--radius) rounded-tr-none shadow-(--shadow-xs) p-3">
+        <div className="bg-(--color-panel) rounded-(--radius) rounded-tr-none shadow-(--shadow-drop-xs) p-3">
           <h3 className="text-sm font-medium mb-3">P&L by hour</h3>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-2">
             <ReportTable rows={hourRowsLeft} />
@@ -696,7 +695,7 @@ function CompareReport({
           )
         })}
       </div>
-      <div className="bg-(--color-panel) rounded-(--radius) rounded-tl-none shadow-(--shadow-xs) p-3 space-y-3">
+      <div className="bg-(--color-panel) rounded-(--radius) rounded-tl-none shadow-(--shadow-drop-xs) p-3 space-y-3">
         {groups.length === 0 ? (
           <EmptyState>Nothing to compare on this axis.</EmptyState>
         ) : (
@@ -860,7 +859,7 @@ function Card({
   children: React.ReactNode
 }) {
   return (
-    <div className="bg-(--color-panel) rounded-(--radius) p-3 shadow-(--shadow-xs)">
+    <div className="bg-(--color-panel) rounded-(--radius) p-3 shadow-(--shadow-drop-xs)">
       <div className="flex justify-between gap-2 mb-1.5">
         <div>
           <h3 className="text-sm font-medium">{title}</h3>
@@ -887,7 +886,7 @@ function Stat({
   tone?: 'win' | 'loss' | 'dim'
 }) {
   return (
-    <div className="bg-(--color-panel-2) rounded-(--radius) p-2">
+    <div className="bg-(--color-panel-2) shadow-(--shadow-drop-sm) rounded-(--radius) p-2">
       <div className="text-xs uppercase tracking-wider text-(--color-text-dim)">
         {label}
       </div>

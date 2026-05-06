@@ -68,7 +68,7 @@ export function EquityAdjustmentsPanel({ adjustments }: EquityAdjustmentsPanelPr
 
       <form
         onSubmit={handleSubmit}
-        className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3 grid grid-cols-[auto_auto_1fr_1fr_auto] gap-3 items-end"
+        className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-drop-xs) p-3 grid grid-cols-[auto_auto_1fr_1fr_auto] gap-3 items-end"
       >
         <div className="text-xs text-(--color-text-dim) space-y-2">
           <div>Date</div>
@@ -120,7 +120,7 @@ export function EquityAdjustmentsPanel({ adjustments }: EquityAdjustmentsPanelPr
 
       {list.length > 0 && (
         <>
-          <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) divide-y divide-(--color-border)">
+          <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-drop-xs) divide-y divide-(--color-border)">
             {list.map(a => (
               <div
                 key={a.id}

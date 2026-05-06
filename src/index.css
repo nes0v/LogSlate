@@ -38,7 +38,7 @@
   --color-bg:        #0b0d12;
   --color-panel:     #1b1d27;
   --color-panel-2:   #242631;
-  --color-panel-3:   #2a2d3a;
+  --color-panel-3:   #30333f;
 
   /* Borders — `border` is the everyday subtle line; `border-strong` is for
    * emphasis (focus, the active edge of a control). */
@@ -91,14 +91,20 @@
    * than active data. */
   --color-chart-muted: var(--color-fee);
 
-  /* Elevation — with the borderless design these need to do the heavy
-   * lifting of making panels read as separate from the page bg. A tinted
-   * ring (subtle inset highlight at the top) plus a deeper drop shadow. */
-  --shadow-xs:
-    0 0 0 1px rgba(255, 255, 255, 0.02), 0 1px 2px rgba(0, 0, 0, 0.35);
-  --shadow-sm:
-    0 0 0 1px rgba(255, 255, 255, 0.025), 0 1px 2px rgba(0, 0, 0, 0.30),
-    0 4px 12px rgba(0, 0, 0, 0.32);
+  /* Elevation. Two families:
+   *  - `--shadow-drop-*` — pure drop shadow on a flat surface. Default
+   *    for panels and tiles since the borderless design relies on the
+   *    drop alone to lift the surface off the page bg.
+   *  - `--shadow-md/lg` — drop + 1px tinted ring. Reserved for popovers,
+   *    menus, and modals so they read as floating above arbitrary
+   *    content (the ring carries the edge when the drop is hidden by
+   *    a busy backdrop). */
+  --shadow-drop-xs: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-drop-sm:
+    0 1px 2px rgba(0, 0, 0, 0.30), 0 4px 12px rgba(0, 0, 0, 0.32);
+  --shadow-drop-md:
+    0 4px 8px rgba(0, 0, 0, 0.30), 0 8px 24px rgba(0, 0, 0, 0.40);
+
   --shadow-md:
     0 0 0 1px rgba(255, 255, 255, 0.03), 0 4px 8px rgba(0, 0, 0, 0.30),
     0 8px 24px rgba(0, 0, 0, 0.40);

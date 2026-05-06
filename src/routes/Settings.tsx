@@ -98,7 +98,7 @@ export function SettingsRoute() {
         </p>
 
         {!configured && (
-          <div className="rounded-(--radius) bg-(--color-panel) shadow-(--shadow-xs) p-3 text-sm space-y-2">
+          <div className="rounded-(--radius) bg-(--color-panel) shadow-(--shadow-drop-xs) p-3 text-sm space-y-2">
             <p className="text-(--color-loss)">Google OAuth client ID is not configured.</p>
             <ol className="list-decimal list-inside space-y-1 text-(--color-text-dim)">
               <li>Go to Google Cloud Console → <em>APIs & Services → Credentials</em></li>
@@ -111,7 +111,7 @@ export function SettingsRoute() {
         )}
 
         {configured && (
-          <div className="rounded-(--radius) bg-(--color-panel) shadow-(--shadow-xs) p-3 space-y-3">
+          <div className="rounded-(--radius) bg-(--color-panel) shadow-(--shadow-drop-xs) p-3 space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 {drive.status === 'signed-in' ? (
@@ -196,7 +196,7 @@ export function SettingsRoute() {
 
       <section className="space-y-3">
         <h2 className="text-sm font-medium">Appearance</h2>
-        <div className="rounded-(--radius) bg-(--color-panel) shadow-(--shadow-xs) p-3 space-y-5">
+        <div className="rounded-(--radius) bg-(--color-panel) shadow-(--shadow-drop-xs) p-3 space-y-5">
           <div className="space-y-2">
             <div className="space-y-1">
               <div className="text-sm">Default chart view</div>

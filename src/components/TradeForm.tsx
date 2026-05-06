@@ -12,11 +12,11 @@ import { EMOTIONS, type Emotion, type TradeDraft } from '@/db/types'
 import { Pills } from '@/components/form/Pills'
 import { StarRating } from '@/components/form/StarRating'
 import { RATING_TO_STARS, STARS_TO_RATING } from '@/lib/rating'
-import { Field, inputClass, insetTileClass } from '@/components/form/Field'
+import { Field, inputClass } from '@/components/form/Field'
+import { RuleCheck } from '@/components/form/RuleCheck'
 import { NumberInput } from '@/components/form/NumberInput'
 import { QtyInput } from '@/components/form/QtyInput'
 import { Select } from '@/components/form/Select'
-import { Checkbox } from '@/components/form/Checkbox'
 import { ScreenshotField } from '@/components/ScreenshotField'
 import { computeAhpc, computeNetPnl } from '@/lib/trade-math'
 import { formatDuration } from '@/lib/duration'
@@ -155,7 +155,7 @@ export function TradeForm({
       <div className="space-y-3">
         <div className="grid lg:grid-cols-2 gap-3 items-start">
           <div className="space-y-3">
-            <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3 space-y-3">
+            <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-drop-xs) p-3 space-y-3">
           <div className="flex flex-wrap items-start gap-3">
             <Field label="Symbol" error={errors.symbol?.message}>
               <Controller
@@ -409,7 +409,7 @@ export function TradeForm({
           </div>
 
           <div className="space-y-3">
-            <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3 space-y-3">
+            <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-drop-xs) p-3 space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <Field label="Model">
               <Controller
@@ -568,7 +568,7 @@ function LiveStatsSection({ control }: { control: Control<TradeFormValues> }) {
   }, [executions])
 
   return (
-    <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3">
+    <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-drop-xs) p-3">
       <div className="flex flex-wrap items-center justify-between gap-6">
         <div className="flex items-center gap-2">
           <div className="text-xs text-(--color-text-dim)">Session</div>
@@ -701,7 +701,7 @@ function ModelRuleChecklist({
     )
   }
   return (
-    <div className={cn(insetTileClass, 'space-y-2')}>
+    <div className="bg-(--color-panel-2) rounded-(--radius) p-3 space-y-2">
       <div className="text-xs uppercase tracking-wider text-(--color-text-dim) flex items-center justify-between">
         <span>Rules followed</span>
         <span className="font-mono normal-case">
@@ -712,19 +712,12 @@ function ModelRuleChecklist({
         <div key={g.id} className="space-y-0.5">
           <div className="text-xs text-(--color-text-dim)">{g.name}</div>
           {g.rules.map((r, i) => (
-            <label
+            <RuleCheck
               key={`${g.id}-${i}`}
-              className="flex items-start gap-2 px-1 py-1 rounded-sm hover:bg-(--color-panel-3) cursor-pointer"
-            >
-              <Checkbox
-                checked={set.has(r)}
-                onChange={e => toggle(r, e.target.checked)}
-                className="mt-0.5"
-              />
-              <span className={cn('text-sm', set.has(r) && 'text-(--color-text-dim)')}>
-                {r}
-              </span>
-            </label>
+              checked={set.has(r)}
+              onChange={ok => toggle(r, ok)}
+              label={r}
+            />
           ))}
         </div>
       ))}

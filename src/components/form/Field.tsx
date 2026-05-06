@@ -42,16 +42,3 @@ export const inputClassCompact =
   'w-full rounded-(--radius) bg-(--color-bg) px-2 py-1.5 text-sm ' +
   'text-(--color-text) placeholder:text-(--color-text-faint) transition-colors ' +
   'outline-none focus:ring-2 focus:ring-(--color-accent-soft)'
-
-// Canonical "card" surface — borderless panel with the standard radius +
-// drop shadow + interior padding. Used by 20+ section containers across
-// Stats / Reports / Settings / Day so the visual rhythm stays consistent.
-export const panelClass =
-  'bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3'
-
-// Inset tile — sits ON TOP of `panelClass` (KPI cards inside the Metrics
-// section, group rule cards inside Models, the Rules-followed checklist on
-// the trade form). Slightly lighter bg with a hairline border in the page
-// bg color so the tile reads as nested.
-export const insetTileClass =
-  'bg-(--color-panel-2) border border-(--color-bg) rounded-(--radius) p-3'

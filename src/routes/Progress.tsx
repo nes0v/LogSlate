@@ -1,14 +1,14 @@
 import { useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { addDays, format } from 'date-fns'
-import { ChevronLeft, ChevronRight, Plus, Trash2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus, X } from 'lucide-react'
 import { db } from '@/db/schema'
 import type { ProgressCheck, ProgressRule } from '@/db/types'
 import { useActiveAccountId } from '@/lib/active-account'
 import { Checkbox } from '@/components/form/Checkbox'
 import { DatePicker } from '@/components/form/DatePicker'
+import { RuleCheck } from '@/components/form/RuleCheck'
 import { useConfirm } from '@/components/ConfirmDialog'
-import { inputClass } from '@/components/form/Field'
 import { dateKeyToDate, nyToday } from '@/lib/tz'
 import { cn } from '@/lib/utils'
 
@@ -99,26 +99,30 @@ export function ProgressRoute() {
     })
   }, [recent, date, activeRules])
 
-  // Current streak — consecutive trailing days at 100%.
+  // Current streak — consecutive trailing days at 100%. `total` is the
+  // *current* active rule count for every cell, so once that's zero
+  // there's nothing to streak on.
   const streak = useMemo(() => {
+    if (activeRules.length === 0) return 0
     let s = 0
     for (let i = heat.length - 1; i >= 0; i--) {
-      if (heat[i].total > 0 && heat[i].pct >= 1) s++
+      if (heat[i].pct >= 1) s++
       else break
     }
     return s
-  }, [heat])
+  }, [heat, activeRules.length])
 
-  async function addRule(text: string) {
-    const trimmed = text.trim()
-    if (!trimmed) return
+  async function addRule() {
     const ts = new Date().toISOString()
-    const sort = ((rules ?? []).reduce((m, r) => Math.max(m, r.sort), 0) ?? 0) + 1
+    const sort = (rules ?? []).reduce((m, r) => Math.max(m, r.sort), 0) + 1
+    // New rules start empty + inactive — the user fills the text in
+    // place and toggles the rule on when they're ready to commit it
+    // to today's checklist.
     const r: ProgressRule = {
       id: newId(),
       account_id: accountId,
-      text: trimmed,
-      active: true,
+      text: '',
+      active: false,
       sort,
       created_at: ts,
       updated_at: ts,
@@ -206,7 +210,7 @@ export function ProgressRoute() {
       {!loaded ? null : (
         <>
       {/* Score band */}
-      <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-drop-xs) p-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
         <ScoreTile
           label="Today's adherence"
           value={
@@ -228,12 +232,10 @@ export function ProgressRoute() {
         <ScoreTile
           label="30-day average"
           value={
-            heat.filter(d => d.total > 0).length === 0
+            activeRules.length === 0
               ? '—'
               : `${Math.round(
-                  (heat.reduce((s, d) => s + d.pct, 0) /
-                    Math.max(1, heat.filter(d => d.total > 0).length)) *
-                    100,
+                  (heat.reduce((s, d) => s + d.pct, 0) / heat.length) * 100,
                 )}%`
           }
           caption="rolling discipline"
@@ -241,20 +243,20 @@ export function ProgressRoute() {
       </section>
 
       {/* 30-day heat strip */}
-      <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3">
+      <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-drop-xs) p-3">
         <div className="text-xs uppercase tracking-wider text-(--color-text-dim) mb-2">
           Last 30 days
         </div>
-        <div className="grid grid-cols-30 gap-1" style={{ gridTemplateColumns: 'repeat(30, minmax(0, 1fr))' }}>
+        <div className="grid gap-1" style={{ gridTemplateColumns: 'repeat(30, minmax(0, 1fr))' }}>
           {heat.map(h => {
+            // panel-2 is the default cell bg; the heatmap mixes the win
+            // colour over it for days where rules were checked.
             const tone =
-              h.total === 0
-                ? 'transparent'
+              h.total === 0 || h.pct === 0
+                ? 'var(--color-panel-2)'
                 : h.pct >= 1
-                  ? `color-mix(in oklab, var(--color-win) 80%, transparent)`
-                  : h.pct > 0
-                    ? `color-mix(in oklab, var(--color-win) ${10 + h.pct * 60}%, transparent)`
-                    : 'var(--color-panel-2)'
+                  ? `color-mix(in oklab, var(--color-win) 80%, var(--color-panel-2))`
+                  : `color-mix(in oklab, var(--color-win) ${10 + h.pct * 60}%, var(--color-panel-2))`
             return (
               <button
                 key={h.date}
@@ -262,10 +264,10 @@ export function ProgressRoute() {
                 onClick={() => setDate(h.date)}
                 title={`${h.date} · ${h.checked}/${h.total}`}
                 className={cn(
-                  'aspect-square rounded-sm text-xs font-mono text-(--color-text-dim) hover:opacity-80 border',
+                  'aspect-square rounded-sm text-xs font-mono hover:opacity-80',
                   h.date === date
-                    ? 'border-(--color-accent)'
-                    : 'border-(--color-bg)',
+                    ? 'text-(--color-text) font-medium'
+                    : 'text-(--color-text-dim)',
                 )}
                 style={{ backgroundColor: tone }}
               >
@@ -278,40 +280,22 @@ export function ProgressRoute() {
 
       {/* Rule list / today's checklist */}
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3 space-y-2">
-          <div className="text-sm font-medium mb-1">Today's checklist</div>
+        <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-drop-xs) p-3 space-y-2">
+          <div className="text-sm font-medium mb-2">Today's checklist</div>
           {activeRules.length === 0 ? (
             <div className="text-xs text-(--color-text-dim) text-center py-6">
               No active rules. Add some on the right →
             </div>
           ) : (
             <div className="space-y-1">
-              {activeRules.map(r => {
-                const checked = checkMap.get(r.id) ?? false
-                return (
-                  <label
-                    key={r.id}
-                    className={cn(
-                      'flex items-start gap-2 px-1 py-1 rounded-sm cursor-pointer hover:bg-(--color-panel-3)',
-                      checked && 'opacity-60',
-                    )}
-                  >
-                    <Checkbox
-                      checked={checked}
-                      onChange={() => toggleCheck(r)}
-                      className="mt-0.5"
-                    />
-                    <span
-                      className={cn(
-                        'text-sm',
-                        checked && 'text-(--color-text-dim)',
-                      )}
-                    >
-                      {r.text}
-                    </span>
-                  </label>
-                )
-              })}
+              {activeRules.map(r => (
+                <RuleCheck
+                  key={r.id}
+                  checked={checkMap.get(r.id) ?? false}
+                  onChange={() => toggleCheck(r)}
+                  label={r.text}
+                />
+              ))}
             </div>
           )}
         </div>
@@ -356,68 +340,21 @@ function RuleManager({
   onDelete,
 }: {
   rules: ProgressRule[]
-  onAdd: (text: string) => void
+  onAdd: () => void
   onUpdate: (id: string, patch: Partial<ProgressRule>) => void
   onDelete: (id: string) => void
 }) {
-  const [draft, setDraft] = useState('')
   return (
-    <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3 space-y-2">
-      <div className="text-sm font-medium mb-1">Rules</div>
-      <form
-        onSubmit={e => {
-          e.preventDefault()
-          onAdd(draft)
-          setDraft('')
-        }}
-        className="flex items-center gap-1"
-      >
-        <input
-          value={draft}
-          onChange={e => setDraft(e.target.value)}
-          placeholder="Add a rule…"
-          className={cn(inputClass, 'flex-1')}
-        />
-        <button
-          type="submit"
-          disabled={!draft.trim()}
-          className="p-1.5 rounded text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2) disabled:opacity-40"
-          title="Add"
-        >
-          <Plus className="size-4" />
-        </button>
-      </form>
+    <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-drop-xs) p-3 space-y-2">
+      <div className="text-sm font-medium mb-2">Rules</div>
       <div className="space-y-1">
         {rules.map(r => (
-          <div
+          <RuleRow
             key={r.id}
-            className="flex items-center gap-2 px-1 py-1 rounded-sm hover:bg-(--color-panel-3)"
-          >
-            <Checkbox
-              checked={r.active}
-              onChange={e => onUpdate(r.id, { active: e.target.checked })}
-              title={r.active ? 'Active — uncheck to pause' : 'Inactive'}
-            />
-            <input
-              defaultValue={r.text}
-              onBlur={e => {
-                const v = e.target.value.trim()
-                if (v && v !== r.text) onUpdate(r.id, { text: v })
-              }}
-              className={cn(
-                'flex-1 bg-transparent border-0 outline-none text-sm',
-                !r.active && 'text-(--color-text-dim) italic',
-              )}
-            />
-            <button
-              type="button"
-              onClick={() => onDelete(r.id)}
-              className="p-1 rounded text-(--color-text-dim) hover:text-(--color-loss)"
-              title="Delete"
-            >
-              <Trash2 className="size-3.5" />
-            </button>
-          </div>
+            rule={r}
+            onUpdate={onUpdate}
+            onDelete={onDelete}
+          />
         ))}
         {rules.length === 0 && (
           <div className="text-xs text-(--color-text-dim) text-center py-3">
@@ -426,6 +363,56 @@ function RuleManager({
           </div>
         )}
       </div>
+      <button
+        type="button"
+        onClick={onAdd}
+        className="text-xs text-(--color-text-dim) hover:text-(--color-text) inline-flex items-center gap-1 mt-1"
+      >
+        <Plus className="size-3" /> Add rule
+      </button>
+    </div>
+  )
+}
+
+function RuleRow({
+  rule,
+  onUpdate,
+  onDelete,
+}: {
+  rule: ProgressRule
+  onUpdate: (id: string, patch: Partial<ProgressRule>) => void
+  onDelete: (id: string) => void
+}) {
+  return (
+    <div className="flex items-start gap-2 px-1 py-1 rounded-sm">
+      <span className="size-4 inline-flex items-center justify-center shrink-0 mt-px">
+        <Checkbox
+          size="sm"
+          checked={rule.active}
+          onChange={e => onUpdate(rule.id, { active: e.target.checked })}
+          title={rule.active ? 'Active — uncheck to pause' : 'Inactive'}
+        />
+      </span>
+      <input
+        defaultValue={rule.text}
+        placeholder="Rule…"
+        onBlur={e => {
+          const v = e.target.value.trim()
+          if (v !== rule.text) onUpdate(rule.id, { text: v })
+        }}
+        className={cn(
+          'flex-1 bg-transparent border-0 outline-none text-sm leading-tight p-0 placeholder:text-(--color-text-faint)',
+          !rule.active && 'text-(--color-text-dim)',
+        )}
+      />
+      <button
+        type="button"
+        onClick={() => onDelete(rule.id)}
+        className="rounded text-(--color-text-dim) hover:text-(--color-loss) shrink-0"
+        title="Delete"
+      >
+        <X className="size-3.5" />
+      </button>
     </div>
   )
 }

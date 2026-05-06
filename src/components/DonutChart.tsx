@@ -101,7 +101,7 @@ function DonutChartImpl({ title, segments, centerLabel, className, legendColumns
   return (
     <div
       className={cn(
-        'rounded-(--radius) bg-(--color-panel) shadow-(--shadow-xs) p-3 space-y-3',
+        'rounded-(--radius) bg-(--color-panel) shadow-(--shadow-drop-xs) p-3 space-y-3',
         className,
       )}
     >

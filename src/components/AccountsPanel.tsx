@@ -63,7 +63,7 @@ export function AccountsPanel({ accounts }: AccountsPanelProps) {
       </p>
 
       {list.length > 0 && (
-        <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) divide-y divide-(--color-border)">
+        <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-drop-xs) divide-y divide-(--color-border)">
           {list.map(a => {
             const isActive = a.id === activeId
             return (
@@ -102,7 +102,7 @@ export function AccountsPanel({ accounts }: AccountsPanelProps) {
 
       <form
         onSubmit={handleCreate}
-        className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3 grid grid-cols-[1fr_auto] gap-3 items-end"
+        className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-drop-xs) p-3 grid grid-cols-[1fr_auto] gap-3 items-end"
       >
         <label className="text-xs text-(--color-text-dim) space-y-2">
           <div>New account name</div>

@@ -27,8 +27,11 @@ export function Checkbox({ className, size = 'md', ...props }: Props) {
         className={cn(
           box,
           'border bg-(--color-bg) border-(--color-border-strong) transition-colors',
-          'peer-hover:border-(--color-accent)/60',
+          'peer-hover:border-(--color-text)',
           'peer-checked:bg-(--color-accent) peer-checked:border-(--color-accent)',
+          // Higher-specificity override so a checked-AND-hovered box
+          // stays accent-bordered instead of switching to text-bright.
+          'peer-checked:peer-hover:border-(--color-accent)',
           'peer-focus-visible:ring-2 peer-focus-visible:ring-(--color-accent-soft)',
           'peer-disabled:opacity-40',
         )}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { Archive, ArchiveRestore, Plus, Save, Trash2, X } from 'lucide-react'
 import { db } from '@/db/schema'
@@ -8,7 +8,7 @@ import { SESSIONS } from '@/db/types'
 import { useActiveAccountId } from '@/lib/active-account'
 import { Checkbox } from '@/components/form/Checkbox'
 import { useConfirm } from '@/components/ConfirmDialog'
-import { inputClass, insetTileClass } from '@/components/form/Field'
+import { inputClass } from '@/components/form/Field'
 import { useAutosizeTextarea } from '@/lib/use-autosize-textarea'
 import { SESSION_BG, SESSION_FG } from '@/lib/session-colors'
 import { cn } from '@/lib/utils'
@@ -34,6 +34,10 @@ type DragState = {
   startY: number
   currentY: number
   itemHeight: number
+  /** Sticky promotion to "real drag" — flips to `true` the first move
+   *  past `CLICK_THRESHOLD` and never flips back, so passing the cursor
+   *  back over the original position mid-drag doesn't drop the shadow. */
+  active: boolean
 }
 
 // Pixel movement below which we treat pointerdown→pointerup as a click,
@@ -117,21 +121,29 @@ export function ModelsRoute() {
     setSelectedId(p.id)
   }
 
-  async function save(patch: Partial<Model>) {
-    if (!selected) return
-    await db.models.update(selected.id, {
-      ...patch,
-      updated_at: new Date().toISOString(),
-    })
-  }
+  // Callbacks are stabilized so the memoized `ModelEditor` doesn't
+  // re-render on every cursor move during a sidebar drag — fresh
+  // function references would defeat the memo. They depend on `selected`,
+  // which is itself memoized, so identity only flips on selection
+  // change. See ModelEditor's `memo()` wrapper at the bottom of the file.
+  const save = useCallback(
+    async (patch: Partial<Model>) => {
+      if (!selected) return
+      await db.models.update(selected.id, {
+        ...patch,
+        updated_at: new Date().toISOString(),
+      })
+    },
+    [selected],
+  )
 
-  async function remove() {
+  const remove = useCallback(async () => {
     if (!selected) return
     if (!(await confirm({ title: `Delete "${selected.name}" permanently?` }))) return
     const id = selected.id
     setSelectedId(null)
     await db.models.delete(id)
-  }
+  }, [selected, confirm])
 
   // Pointer-driven sortable. Inspired by @dnd-kit/sortable: measure row
   // geometry once on pointerdown, dragged row's transform follows cursor
@@ -142,10 +154,10 @@ export function ModelsRoute() {
   // corrupt the user's chosen layout.
   const [drag, setDrag] = useState<DragState | null>(null)
   const isDragging = drag !== null
-  // Distinct from `isDragging` — true only after the pointer has moved
-  // past the click threshold, so a plain click doesn't flip the cursor.
-  const isActiveDrag =
-    drag !== null && Math.abs(drag.currentY - drag.startY) >= CLICK_THRESHOLD
+  // True once a drag has crossed the click threshold; sticky for the
+  // rest of the drag so swinging the cursor back through the start
+  // point doesn't drop the shadow / cursor / select-lock for a frame.
+  const isActiveDrag = drag !== null && drag.active
 
   // Latest values for the pointerup closure (registered once when
   // isDragging flips true; can't capture state that changes mid-drag).
@@ -161,7 +173,12 @@ export function ModelsRoute() {
   useEffect(() => {
     if (!isDragging) return
     const onMove = (e: PointerEvent) => {
-      setDrag(d => (d ? { ...d, currentY: e.clientY } : null))
+      setDrag(d => {
+        if (!d) return null
+        const active =
+          d.active || Math.abs(e.clientY - d.startY) >= CLICK_THRESHOLD
+        return { ...d, currentY: e.clientY, active }
+      })
     }
     const onUp = () => {
       const d = dragRef.current
@@ -170,9 +187,13 @@ export function ModelsRoute() {
       const vis = visibleRef.current
       const all = modelsRef.current
       if (!all) return
-      // Tiny pointer movement = treat as a click so pointerdown-up
-      // without dragging still selects the row.
-      if (Math.abs(d.currentY - d.startY) < CLICK_THRESHOLD) {
+      // Click vs drag: a click selects the released row; a drag commits
+      // the reorder but leaves the previously selected model active so
+      // the editor pane stays put. We use the sticky `active` flag (not
+      // the live distance) so a wiggly drag that ends back near the
+      // origin still commits — matching the visual cursor/shadow that
+      // already followed `active`.
+      if (!d.active) {
         setSelectedId(d.id)
         return
       }
@@ -216,6 +237,10 @@ export function ModelsRoute() {
   }, [isActiveDrag])
 
   // Clear the optimistic order only once the live query has caught up.
+  // The cascading render is the point: we want one frame with optimistic
+  // ordering applied, then a second once persisted matches and we drop
+  // the override. Deriving this during render would require holding the
+  // override forever even after the live query catches up.
   useEffect(() => {
     if (!optimisticIds || !models) return
     const persistedOrder = models
@@ -225,6 +250,7 @@ export function ModelsRoute() {
       persistedOrder.length === optimisticIds.length &&
       persistedOrder.every((id, i) => id === optimisticIds[i])
     ) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setOptimisticIds(null)
     }
   }, [models, showArchived, optimisticIds])
@@ -257,7 +283,7 @@ export function ModelsRoute() {
         <EmptyPanel>No models yet.</EmptyPanel>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-3">
-          <aside className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3 max-h-[80vh] overflow-y-auto">
+          <aside className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-drop-xs) p-3 max-h-[80vh] overflow-y-auto">
             <div className={ROW_GAP_CLASS}>
               {visible.map((p, i) => {
                 const isDragged = drag?.id === p.id
@@ -292,6 +318,7 @@ export function ModelsRoute() {
                         startY: e.clientY,
                         currentY: e.clientY,
                         itemHeight: rect.height + ROW_GAP_PX,
+                        active: false,
                       })
                     }}
                     style={{
@@ -313,10 +340,9 @@ export function ModelsRoute() {
                     className={cn(
                       'block w-full text-left p-3 rounded-sm text-sm select-none',
                       selected?.id === p.id
-                        ? 'bg-(--color-panel-2) text-(--color-text)'
-                        : 'bg-(--color-panel) text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)',
-                      isDragged &&
-                        'shadow-(--shadow-md) bg-(--color-panel-2) text-(--color-text)',
+                        ? 'bg-(--color-panel-3) text-(--color-text)'
+                        : 'bg-(--color-panel-2) text-(--color-text-dim)',
+                      isDragged && isActiveDrag && 'shadow-(--shadow-drop-md)',
                     )}
                   >
                     <div className="truncate flex items-center justify-between">
@@ -366,7 +392,7 @@ interface ModelEditorProps {
   onSave: (patch: Partial<Model>) => void
   onDelete: () => void
 }
-function ModelEditor({ model, onSave, onDelete }: ModelEditorProps) {
+function ModelEditorImpl({ model, onSave, onDelete }: ModelEditorProps) {
   const accountId = useActiveAccountId()
   const confirm = useConfirm()
   const [name, setName] = useState(model.name)
@@ -450,7 +476,7 @@ function ModelEditor({ model, onSave, onDelete }: ModelEditorProps) {
   }
 
   return (
-    <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3 space-y-3">
+    <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-drop-xs) p-3 space-y-3">
       <div className="flex items-center gap-2">
         <input
           value={name}
@@ -517,7 +543,7 @@ function ModelEditor({ model, onSave, onDelete }: ModelEditorProps) {
                 className={cn(
                   'inline-flex items-center gap-1.5 rounded-[6px] cursor-pointer transition-colors whitespace-nowrap px-2.5 py-1 text-sm',
                   active
-                    ? 'shadow-(--shadow-xs)'
+                    ? 'shadow-(--shadow-drop-xs)'
                     : 'text-(--color-text-dim) hover:text-(--color-text)',
                 )}
               >
@@ -532,7 +558,7 @@ function ModelEditor({ model, onSave, onDelete }: ModelEditorProps) {
         {groups.map(g => (
           <div
             key={g.id}
-            className={insetTileClass}
+            className="bg-(--color-panel-2) rounded-(--radius) p-3"
           >
             <div className="flex items-center justify-between mb-2">
               <input
@@ -598,3 +624,9 @@ function ModelEditor({ model, onSave, onDelete }: ModelEditorProps) {
     </div>
   )
 }
+
+// Memoized so the parent re-rendering on every pointermove during a
+// sidebar drag doesn't cascade into the entire form pane. Default
+// shallow compare is enough — `model` is a memoized record, `onSave`
+// and `onDelete` are useCallback'd in `ModelsRoute`.
+const ModelEditor = memo(ModelEditorImpl)
