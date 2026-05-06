@@ -70,12 +70,32 @@ export async function listAllTrades(accountId: string): Promise<TradeRecord[]> {
 
 // ---------- models ----------
 
-// Canonical model list for an account — always sorted alphabetically by
-// name (case-insensitive) so the sidebar / filter dropdowns / trade-form
-// pickers all read the same order.
+// Canonical model list for an account — ordered by the user's manual
+// `sort` if set (drag-and-drop in the Models sidebar), with rows that
+// have no sort value falling through to alphabetical at the bottom.
+// The sidebar / filter dropdowns / trade-form pickers all read this so
+// they stay in sync with the user's chosen order.
 export async function listModels(accountId: string): Promise<Model[]> {
   const rows = await db.models.where('account_id').equals(accountId).toArray()
-  return rows.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+  return rows.sort((a, b) => {
+    const sa = a.sort ?? Number.MAX_SAFE_INTEGER
+    const sb = b.sort ?? Number.MAX_SAFE_INTEGER
+    if (sa !== sb) return sa - sb
+    return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+  })
+}
+
+// Persists the user's drag-and-drop order. Renumbers from 1..N in a
+// single transaction so the stored values stay dense and the list reads
+// the same way after reload.
+export async function reorderModels(orderedIds: string[]): Promise<void> {
+  if (orderedIds.length === 0) return
+  const ts = new Date().toISOString()
+  await db.transaction('rw', db.models, async () => {
+    for (let i = 0; i < orderedIds.length; i++) {
+      await db.models.update(orderedIds[i], { sort: i + 1, updated_at: ts })
+    }
+  })
 }
 
 // Count of trades on `accountId` that reference `modelId`. Used by the

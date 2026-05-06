@@ -159,6 +159,11 @@ export interface Model {
   sessions: Session[] // sessions this model is meant for; empty = any
   groups: ModelRuleGroup[]
   archived: boolean
+  /** User-controlled ordinal — drag-and-drop in the Models sidebar
+   *  rewrites this to match the new visible order. Lower = higher up.
+   *  Optional so existing rows back-fill lazily on first reorder;
+   *  missing values fall through to alphabetical at the bottom. */
+  sort?: number
   created_at: string
   updated_at: string
 }

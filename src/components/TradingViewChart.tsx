@@ -868,10 +868,14 @@ export function TradingViewChart({
     feesSeries.attachPrimitive(feesHoverPrim)
     feesHoverPrimRef.current = feesHoverPrim
 
-    // Cursor flips to `grabbing` while the user is panning the chart, and
-    // stays pinned there until mouseup — the crosshair handler would
-    // otherwise overwrite it on every mousemove.
+    // Cursor flips to `grabbing` while the user is panning the chart.
+    // Gated on actual pointer movement past `DRAG_THRESHOLD_PX` so a
+    // plain click on a candle doesn't briefly flash the grabbing cursor.
+    // Once flipped, it stays pinned until mouseup — the crosshair
+    // handler would otherwise overwrite it on every mousemove.
+    const DRAG_THRESHOLD_PX = 5
     let isDragging = false
+    let pendingDrag: { x: number; y: number } | null = null
     const handleCrosshair = (param: {
       point?: { x: number; y: number }
       time?: Time
@@ -906,19 +910,31 @@ export function TradingViewChart({
     }
     chart.subscribeCrosshairMove(handleCrosshair)
 
-    const handleMouseDown = () => {
+    const handleMouseDown = (e: MouseEvent) => {
+      pendingDrag = { x: e.clientX, y: e.clientY }
+    }
+    // Promote to a drag once the pointer crosses the threshold; before
+    // that, the cursor stays default so a plain click doesn't flash.
+    const handleMouseMove = (e: MouseEvent) => {
+      if (isDragging || !pendingDrag) return
+      const dx = e.clientX - pendingDrag.x
+      const dy = e.clientY - pendingDrag.y
+      if (dx * dx + dy * dy < DRAG_THRESHOLD_PX * DRAG_THRESHOLD_PX) return
       isDragging = true
+      pendingDrag = null
       if (containerRef.current) containerRef.current.style.cursor = 'grabbing'
     }
     // Listen on window so releasing outside the chart still clears the
     // grabbing cursor (lightweight-charts captures the drag, so mouseup
     // often fires over other elements).
     const handleMouseUp = () => {
+      pendingDrag = null
       if (!isDragging) return
       isDragging = false
       if (containerRef.current) containerRef.current.style.cursor = ''
     }
     container.addEventListener('mousedown', handleMouseDown)
+    window.addEventListener('mousemove', handleMouseMove)
     window.addEventListener('mouseup', handleMouseUp)
 
     const handleClick = (param: { time?: Time; point?: { x: number; y: number } }) => {
@@ -1029,6 +1045,7 @@ export function TradingViewChart({
       chart.unsubscribeClick(handleClick)
       chart.unsubscribeCrosshairMove(handleCrosshair)
       container.removeEventListener('mousedown', handleMouseDown)
+      window.removeEventListener('mousemove', handleMouseMove)
       window.removeEventListener('mouseup', handleMouseUp)
       if (feesCrosshairPrimRef.current) {
         feesSeries.detachPrimitive(feesCrosshairPrimRef.current)

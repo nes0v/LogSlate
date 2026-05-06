@@ -19,6 +19,7 @@ import {
   listDayScreenshotsFor,
   listModels,
   removeDayScreenshot,
+  reorderModels,
   setDayNote,
   slugifyAccountName,
   updateAdjustment,
@@ -402,27 +403,84 @@ describe('ensureMainAccount', () => {
 })
 
 describe('model queries', () => {
-  async function putModel(id: string, name: string, accountId = MAIN_ACCOUNT_ID) {
+  async function putModel(
+    id: string,
+    name: string,
+    opts: { accountId?: string; sort?: number } = {},
+  ) {
     const ts = new Date().toISOString()
     await db.models.put({
       id,
-      account_id: accountId,
+      account_id: opts.accountId ?? MAIN_ACCOUNT_ID,
       name,
       description: '',
       sessions: [],
       groups: [],
       archived: false,
+      sort: opts.sort,
       created_at: ts,
       updated_at: ts,
     })
   }
 
-  it('listModels returns models scoped to the account, sorted alphabetically (case-insensitive)', async () => {
+  it('listModels falls back to alphabetical (case-insensitive) when no sort is set', async () => {
     await putModel('m1', 'beta')
     await putModel('m2', 'Alpha')
-    await putModel('m3', 'gamma', 'other-account')
+    await putModel('m3', 'gamma', { accountId: 'other-account' })
     const rows = await listModels(MAIN_ACCOUNT_ID)
     expect(rows.map(m => m.name)).toEqual(['Alpha', 'beta'])
+  })
+
+  it('listModels respects the user-set sort order', async () => {
+    await putModel('m1', 'beta', { sort: 2 })
+    await putModel('m2', 'Alpha', { sort: 3 })
+    await putModel('m3', 'gamma', { sort: 1 })
+    const rows = await listModels(MAIN_ACCOUNT_ID)
+    expect(rows.map(m => m.name)).toEqual(['gamma', 'beta', 'Alpha'])
+  })
+
+  it('listModels puts rows with no sort at the bottom, alphabetical among themselves', async () => {
+    await putModel('m1', 'sorted-2', { sort: 2 })
+    await putModel('m2', 'sorted-1', { sort: 1 })
+    await putModel('m3', 'unsorted-zeta')
+    await putModel('m4', 'unsorted-alpha')
+    const rows = await listModels(MAIN_ACCOUNT_ID)
+    expect(rows.map(m => m.name)).toEqual([
+      'sorted-1',
+      'sorted-2',
+      'unsorted-alpha',
+      'unsorted-zeta',
+    ])
+  })
+
+  it('reorderModels assigns 1..N to each id in the supplied order', async () => {
+    await putModel('m1', 'first')
+    await putModel('m2', 'second')
+    await putModel('m3', 'third')
+    await reorderModels(['m3', 'm1', 'm2'])
+    const rows = await listModels(MAIN_ACCOUNT_ID)
+    expect(rows.map(m => m.id)).toEqual(['m3', 'm1', 'm2'])
+    expect(rows.map(m => m.sort)).toEqual([1, 2, 3])
+  })
+
+  it('reorderModels bumps updated_at on every renumbered row', async () => {
+    await putModel('m1', 'a')
+    await putModel('m2', 'b')
+    const before = await listModels(MAIN_ACCOUNT_ID)
+    await new Promise(r => setTimeout(r, 5))
+    await reorderModels(['m2', 'm1'])
+    const after = await listModels(MAIN_ACCOUNT_ID)
+    for (const m of after) {
+      const prev = before.find(b => b.id === m.id)!
+      expect(m.updated_at > prev.updated_at).toBe(true)
+    }
+  })
+
+  it('reorderModels is a no-op for an empty list', async () => {
+    await putModel('m1', 'unchanged', { sort: 7 })
+    await reorderModels([])
+    const rows = await listModels(MAIN_ACCOUNT_ID)
+    expect(rows[0].sort).toBe(7)
   })
 
   it('listModels returns an empty array when the account has no models', async () => {

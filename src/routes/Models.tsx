@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { Archive, ArchiveRestore, Plus, Save, Trash2, X } from 'lucide-react'
 import { db } from '@/db/schema'
-import { countTradesUsingModel, listModels } from '@/db/queries'
+import { countTradesUsingModel, listModels, reorderModels } from '@/db/queries'
 import type { Model, ModelRuleGroup, Session } from '@/db/types'
 import { SESSIONS } from '@/db/types'
 import { useActiveAccountId } from '@/lib/active-account'
@@ -28,6 +28,31 @@ const DEFAULT_GROUPS = (): ModelRuleGroup[] => [
   { id: newId(), name: 'Risk', rules: [] },
 ]
 
+type DragState = {
+  id: string
+  fromIdx: number
+  startY: number
+  currentY: number
+  itemHeight: number
+}
+
+// Pixel movement below which we treat pointerdown→pointerup as a click,
+// not a drag. Also gates the `grabbing` cursor so a plain click doesn't
+// flicker the cursor visual.
+const CLICK_THRESHOLD = 5
+
+// Visible gap between sidebar rows. Must match the Tailwind class on
+// the row container — `targetSlot` adds it to row height to compute
+// the slot pitch.
+const ROW_GAP_PX = 6
+const ROW_GAP_CLASS = 'space-y-1.5'
+
+// Slot the dragged row currently occupies, clamped to the list bounds.
+function targetSlot(d: DragState, listLen: number): number {
+  const slots = Math.round((d.currentY - d.startY) / d.itemHeight)
+  return Math.max(0, Math.min(listLen - 1, d.fromIdx + slots))
+}
+
 export function ModelsRoute() {
   const accountId = useActiveAccountId()
   const confirm = useConfirm()
@@ -39,10 +64,29 @@ export function ModelsRoute() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [showArchived, setShowArchived] = useState(false)
 
-  const visible = useMemo(
-    () => (models ?? []).filter(p => showArchived || !p.archived),
-    [models, showArchived],
-  )
+  // Locally-applied order for the brief window between a drag commit
+  // and the live query refresh. Lets the post-drop frame render rows
+  // in their final positions so translateY=0 doesn't visibly snap back
+  // through the old order.
+  const [optimisticIds, setOptimisticIds] = useState<string[] | null>(null)
+
+  const visible = useMemo(() => {
+    const base = (models ?? []).filter(p => showArchived || !p.archived)
+    if (!optimisticIds) return base
+    const byId = new Map(base.map(m => [m.id, m]))
+    const optimisticSet = new Set(optimisticIds)
+    const ordered: Model[] = []
+    for (const id of optimisticIds) {
+      const m = byId.get(id)
+      if (m) ordered.push(m)
+    }
+    // Defensive: append any rows missing from `optimisticIds` (e.g. a
+    // model added between commit and live-query refresh).
+    for (const m of base) {
+      if (!optimisticSet.has(m.id)) ordered.push(m)
+    }
+    return ordered
+  }, [models, showArchived, optimisticIds])
   const selected = useMemo(() => {
     const list = visible
     if (selectedId) {
@@ -54,6 +98,9 @@ export function ModelsRoute() {
 
   async function createModel() {
     const ts = new Date().toISOString()
+    // Slot the new row below every existing one so it lands at the
+    // bottom of the user-controlled order.
+    const maxSort = Math.max(0, ...(models ?? []).map(m => m.sort ?? 0))
     const p: Model = {
       id: newId(),
       account_id: accountId,
@@ -62,6 +109,7 @@ export function ModelsRoute() {
       sessions: [],
       groups: DEFAULT_GROUPS(),
       archived: false,
+      sort: maxSort + 1,
       created_at: ts,
       updated_at: ts,
     }
@@ -84,6 +132,104 @@ export function ModelsRoute() {
     setSelectedId(null)
     await db.models.delete(id)
   }
+
+  // Pointer-driven sortable. Inspired by @dnd-kit/sortable: measure row
+  // geometry once on pointerdown, dragged row's transform follows cursor
+  // Y, non-dragged rows shift by ±itemHeight as the live target index
+  // sweeps past them. Reorders persist over the FULL list — visible
+  // rows are spliced into their new order while archived-when-hidden
+  // rows keep their slot indices, so toggling Show archived doesn't
+  // corrupt the user's chosen layout.
+  const [drag, setDrag] = useState<DragState | null>(null)
+  const isDragging = drag !== null
+  // Distinct from `isDragging` — true only after the pointer has moved
+  // past the click threshold, so a plain click doesn't flip the cursor.
+  const isActiveDrag =
+    drag !== null && Math.abs(drag.currentY - drag.startY) >= CLICK_THRESHOLD
+
+  // Latest values for the pointerup closure (registered once when
+  // isDragging flips true; can't capture state that changes mid-drag).
+  const dragRef = useRef(drag)
+  const visibleRef = useRef(visible)
+  const modelsRef = useRef(models)
+  useEffect(() => {
+    dragRef.current = drag
+    visibleRef.current = visible
+    modelsRef.current = models
+  })
+
+  useEffect(() => {
+    if (!isDragging) return
+    const onMove = (e: PointerEvent) => {
+      setDrag(d => (d ? { ...d, currentY: e.clientY } : null))
+    }
+    const onUp = () => {
+      const d = dragRef.current
+      setDrag(null)
+      if (!d) return
+      const vis = visibleRef.current
+      const all = modelsRef.current
+      if (!all) return
+      // Tiny pointer movement = treat as a click so pointerdown-up
+      // without dragging still selects the row.
+      if (Math.abs(d.currentY - d.startY) < CLICK_THRESHOLD) {
+        setSelectedId(d.id)
+        return
+      }
+      const newIdx = targetSlot(d, vis.length)
+      if (newIdx === d.fromIdx) return
+      const reorderedVisible = vis.slice()
+      const [m] = reorderedVisible.splice(d.fromIdx, 1)
+      reorderedVisible.splice(newIdx, 0, m)
+      const visibleSet = new Set(vis.map(v => v.id))
+      let vi = 0
+      const ids = all.map(row =>
+        visibleSet.has(row.id) ? reorderedVisible[vi++].id : row.id,
+      )
+      // Apply locally first so the post-drop render lands items in
+      // their final positions. The clear runs in the effect below,
+      // gated on the live query catching up — clearing on the Dexie
+      // promise can race the live query and flash the old order.
+      setOptimisticIds(reorderedVisible.map(v => v.id))
+      reorderModels(ids).catch(() => setOptimisticIds(null))
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
+    return () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
+    }
+  }, [isDragging])
+
+  // Body cursor + select lock follow `isActiveDrag` (post-threshold)
+  // so a plain click doesn't briefly flip the cursor to grabbing.
+  useEffect(() => {
+    if (!isActiveDrag) return
+    document.body.style.cursor = 'grabbing'
+    document.body.style.userSelect = 'none'
+    return () => {
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+  }, [isActiveDrag])
+
+  // Clear the optimistic order only once the live query has caught up.
+  useEffect(() => {
+    if (!optimisticIds || !models) return
+    const persistedOrder = models
+      .filter(p => showArchived || !p.archived)
+      .map(p => p.id)
+    if (
+      persistedOrder.length === optimisticIds.length &&
+      persistedOrder.every((id, i) => id === optimisticIds[i])
+    ) {
+      setOptimisticIds(null)
+    }
+  }, [models, showArchived, optimisticIds])
+
+  const dragNewIdx = drag ? targetSlot(drag, visible.length) : -1
 
   return (
     <div className="pt-1 space-y-8">
@@ -114,35 +260,85 @@ export function ModelsRoute() {
               No models yet — start with "New model".
             </div>
           ) : (
-            <div className="space-y-0.5">
-              {visible.map(p => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => setSelectedId(p.id)}
-                  className={cn(
-                    'block w-full text-left p-3 rounded-sm text-sm transition-colors',
-                    selected?.id === p.id
-                      ? 'bg-(--color-panel-2) text-(--color-text)'
-                      : 'text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)/50',
-                  )}
-                >
-                  <div className="truncate flex items-center justify-between">
-                    <span>{p.name}</span>
-                    {p.archived && (
-                      <span className="text-xs uppercase tracking-wider text-(--color-text-dim)">
-                        archived
-                      </span>
+            <div className={ROW_GAP_CLASS}>
+              {visible.map((p, i) => {
+                const isDragged = drag?.id === p.id
+                let translateY = 0
+                if (drag) {
+                  if (isDragged) {
+                    translateY = drag.currentY - drag.startY
+                  } else if (
+                    drag.fromIdx < dragNewIdx &&
+                    i > drag.fromIdx &&
+                    i <= dragNewIdx
+                  ) {
+                    translateY = -drag.itemHeight
+                  } else if (
+                    drag.fromIdx > dragNewIdx &&
+                    i < drag.fromIdx &&
+                    i >= dragNewIdx
+                  ) {
+                    translateY = drag.itemHeight
+                  }
+                }
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onPointerDown={e => {
+                      if (e.button !== 0) return
+                      const rect = e.currentTarget.getBoundingClientRect()
+                      setDrag({
+                        id: p.id,
+                        fromIdx: i,
+                        startY: e.clientY,
+                        currentY: e.clientY,
+                        itemHeight: rect.height + ROW_GAP_PX,
+                      })
+                    }}
+                    style={{
+                      transform: `translateY(${translateY}px)`,
+                      // Animate only while a drag is active. On drop
+                      // every row's natural index AND translateY change
+                      // in the same frame — a transition would catch
+                      // that transform reset and re-animate it from the
+                      // pre-drop displacement, jumping the rows.
+                      transition:
+                        drag && !isDragged
+                          ? 'transform 150ms var(--ease)'
+                          : 'none',
+                      zIndex: isDragged ? 10 : undefined,
+                      position: 'relative',
+                      cursor: isActiveDrag ? 'grabbing' : undefined,
+                      touchAction: 'none',
+                    }}
+                    className={cn(
+                      'block w-full text-left p-3 rounded-sm text-sm select-none',
+                      selected?.id === p.id
+                        ? 'bg-(--color-panel-2) text-(--color-text)'
+                        : 'bg-(--color-panel) text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)',
+                      isDragged &&
+                        'shadow-(--shadow-md) bg-(--color-panel-2) text-(--color-text)',
                     )}
-                  </div>
-                  <div className="text-xs text-(--color-text-dim) truncate">
-                    {p.sessions.length === 0 || p.sessions.length === SESSIONS.length
-                      ? 'any session'
-                      : p.sessions.join(', ')}{' '}
-                    · {p.groups.reduce((n, g) => n + g.rules.length, 0)} rules
-                  </div>
-                </button>
-              ))}
+                  >
+                    <div className="truncate flex items-center justify-between">
+                      <span>{p.name}</span>
+                      {p.archived && (
+                        <span className="text-xs uppercase tracking-wider text-(--color-text-dim)">
+                          archived
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-(--color-text-dim) truncate">
+                      {p.sessions.length === 0 ||
+                      p.sessions.length === SESSIONS.length
+                        ? 'any session'
+                        : p.sessions.join(', ')}{' '}
+                      · {p.groups.reduce((n, g) => n + g.rules.length, 0)} rules
+                    </div>
+                  </button>
+                )
+              })}
             </div>
           )}
         </aside>
@@ -261,7 +457,16 @@ function ModelEditor({ model, onSave, onDelete }: ModelEditorProps) {
           placeholder="Model name"
           className="flex-1 bg-transparent border-0 outline-none text-lg font-medium"
         />
-        <button type="button" onClick={handleSave} className={NEUTRAL_BTN_CLASS}>
+        <button
+          type="button"
+          onClick={handleSave}
+          className={cn(
+            'inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-(--radius) transition-colors',
+            isDirty
+              ? 'bg-(--color-accent) text-(--color-accent-fg) hover:opacity-90'
+              : 'border border-(--color-border) text-(--color-text-dim) hover:text-(--color-text)',
+          )}
+        >
           <Save className="size-4" /> Save
         </button>
         <button
