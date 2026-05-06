@@ -3,6 +3,7 @@ import {
   resolveScreenshotUrl,
   type ResolvedScreenshot,
 } from '@/lib/drive-images'
+import { errorMessage } from '@/lib/utils'
 
 interface UseScreenshotUrlsResult {
   /** True once every ref in the input has settled (success or error). An
@@ -41,7 +42,7 @@ export function useScreenshotUrls(refs: string[]): UseScreenshotUrlsResult {
           const url = await resolveScreenshotUrl(ref)
           return [ref, { url }]
         } catch (e) {
-          return [ref, { error: (e as Error).message ?? String(e) }]
+          return [ref, { error: errorMessage(e) }]
         }
       }),
     ).then(entries => {

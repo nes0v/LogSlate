@@ -9,7 +9,7 @@ import {
 } from '@/lib/forex-factory'
 import { syncWeekNews } from '@/lib/news-sync'
 import { NY_TZ, nyDateKey, nyTimeHHmm } from '@/lib/tz'
-import { cn } from '@/lib/utils'
+import { cn, errorMessage } from '@/lib/utils'
 
 const nyDayHeader = new Intl.DateTimeFormat('en-US', {
   timeZone: NY_TZ,
@@ -90,7 +90,7 @@ export function ForexFactoryNews() {
         // Only surface the primary feed's failure. A 404 on next/last week
         // just means that window isn't available — leave the UI to show
         // "No events." when the user pages there.
-        if (week === 'thisweek') setError((err as Error).message ?? String(err))
+        if (week === 'thisweek') setError(errorMessage(err))
       })
       .finally(() => inflightRef.current.delete(week))
   }, [])
@@ -132,7 +132,7 @@ export function ForexFactoryNews() {
       )))
       setError(null)
     } catch (e) {
-      setError((e as Error).message ?? String(e))
+      setError(errorMessage(e))
     } finally {
       setRefreshing(false)
     }

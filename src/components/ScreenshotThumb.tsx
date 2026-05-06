@@ -7,6 +7,7 @@ import {
   type ResolvedScreenshot,
 } from '@/lib/drive-images'
 import { useConfirm } from '@/components/ConfirmDialog'
+import { errorMessage } from '@/lib/utils'
 
 interface ScreenshotThumbProps {
   value: string
@@ -52,7 +53,7 @@ export function ScreenshotThumb({ value, onRemove, size = 'md', prefetched }: Sc
         if (!cancelled) setFetched({ ref: value, url, error: null })
       } catch (e) {
         if (!cancelled) {
-          setFetched({ ref: value, url: null, error: (e as Error).message ?? String(e) })
+          setFetched({ ref: value, url: null, error: errorMessage(e) })
         }
       }
     })()

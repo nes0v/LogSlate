@@ -334,4 +334,34 @@ describe('syncNow', () => {
     expect(result.perTable.trades.merged).toBe(0)
     expect(await db.trades.toArray()).toHaveLength(0)
   })
+
+  it('aborts the push when Drive modifiedTime advances between pull and push', async () => {
+    // Local has a new row that needs pushing.
+    await db.trades.add(tradeRecord({ id: 't1', idea: 'queued for push' }))
+    // findFile is called twice during a sync that pushes:
+    //   1. initial pull metadata
+    //   2. stale-write recheck right before upload
+    // Return a different modifiedTime on the second call to simulate
+    // another device pushing in the gap.
+    findFile
+      .mockResolvedValueOnce({
+        id: 'fid',
+        name: 'logslate.json',
+        modifiedTime: '2026-04-15T11:00:00Z',
+      })
+      .mockResolvedValueOnce({
+        id: 'fid',
+        name: 'logslate.json',
+        modifiedTime: '2026-04-15T11:05:00Z',
+      })
+    downloadFile.mockResolvedValue(
+      JSON.stringify({ version: 6, exported_at: '2026-04-15T11:00:00Z', trades: [] }),
+    )
+
+    await expect(syncNow()).rejects.toThrow(/Drive file changed during sync/)
+    expect(uploadFile).not.toHaveBeenCalled()
+    // lastSyncedIds were NOT updated — next sync re-merges with the
+    // fresh remote and pushes the union.
+    expect(localStorage.getItem('logslate:sync:trade_ids')).toBeNull()
+  })
 })

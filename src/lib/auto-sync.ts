@@ -1,17 +1,16 @@
-// Drives Drive sync from local state changes. Every trade/adjustment/account
-// write debounces a push; any transition into `signed-in` (app boot with a
-// valid token, fresh sign-in) plus every `online` event triggers a pull+push.
+// Drives Drive sync from local state changes. Every write to a synced table
+// debounces a push; any transition into `signed-in` (app boot with a valid
+// token, fresh sign-in) plus every `online` event triggers a pull+push.
 //
 // The `isSyncing` guard stops the sync's own DB writes (`clear` + `bulkAdd`
 // on merge) from re-scheduling a follow-up sync — otherwise bulkAdd on 100
 // trades would fire 100 creating hooks and loop.
 
 import { useSyncExternalStore } from 'react'
-import { db } from '@/db/schema'
 import { DriveScopeError, getDriveState, subscribeDrive, type DriveStatus } from '@/lib/drive'
 import { drainPendingUploads } from '@/lib/drive-images'
 import { pushError } from '@/lib/notifications'
-import { syncNow, type SyncResult } from '@/lib/sync'
+import { syncedTables, syncNow, type SyncResult } from '@/lib/sync'
 
 export type AutoSyncStatus = 'idle' | 'syncing' | 'error'
 
@@ -76,7 +75,7 @@ async function runSync(): Promise<SyncResult | null> {
     update({ status: 'idle', error: null })
     return result
   } catch (e) {
-    const message = (e as Error).message ?? String(e)
+    const message = e instanceof Error ? e.message : String(e)
     update({ status: 'error', error: message })
     if (e instanceof DriveScopeError) {
       pushError(message, { label: 'Reconnect', to: '/settings' })
@@ -123,7 +122,7 @@ export function initAutoSync(): void {
     schedulePush()
   }
 
-  for (const table of [db.trades, db.adjustments, db.accounts]) {
+  for (const table of syncedTables()) {
     table.hook('creating', onWrite)
     table.hook('updating', onWrite)
     table.hook('deleting', onWrite)

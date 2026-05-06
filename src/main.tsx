@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { RouterProvider } from 'react-router-dom'
 import { cleanOrphanedPendingRefs, ensureMainAccount } from '@/db/schema'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { initAutoSync } from '@/lib/auto-sync'
 import { applyColorScheme, getColorScheme } from '@/lib/color-scheme-preference'
 import { router } from '@/router'
@@ -15,6 +16,8 @@ applyColorScheme(getColorScheme())
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <RouterProvider router={router} />
+    <ErrorBoundary>
+      <RouterProvider router={router} />
+    </ErrorBoundary>
   </StrictMode>,
 )

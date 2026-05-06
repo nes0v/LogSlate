@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { AccountSwitcher } from '@/components/AccountSwitcher'
 import { ConfirmProvider } from '@/components/ConfirmDialog'
 import { NotificationBanner } from '@/components/NotificationBanner'
+import { PendingUploadBanner } from '@/components/PendingUploadBanner'
 import { SyncStatusIndicator } from '@/components/SyncStatusIndicator'
 import { listAccounts } from '@/db/queries'
 import { useNewsSync } from '@/lib/use-news-sync'
@@ -71,6 +72,7 @@ export function Layout() {
       </header>
       <main className="flex-1 mx-auto max-w-7xl w-full px-4 pt-6 pb-40">
         <NotificationBanner />
+        <PendingUploadBanner />
         <Outlet />
       </main>
     </div>

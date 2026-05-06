@@ -11,6 +11,7 @@ import { deleteTrade, getTrade, listAllTrades, updateTrade } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
 import { useArrowNavigation } from '@/lib/use-arrow-navigation'
 import { recordToForm, type TradeFormValues } from '@/lib/form-schema'
+import { errorMessage } from '@/lib/utils'
 import type { TradeDraft, TradeRecord } from '@/db/types'
 
 export function TradeEditRoute() {
@@ -90,7 +91,7 @@ export function TradeEditRoute() {
       await deleteTrade(id)
       navigate(`/day/${state.record.date}`)
     } catch (e) {
-      alert(`Failed to delete trade: ${(e as Error).message ?? String(e)}`)
+      alert(`Failed to delete trade: ${errorMessage(e)}`)
     }
   }
 

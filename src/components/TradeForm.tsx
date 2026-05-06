@@ -23,7 +23,7 @@ import { formatDuration } from '@/lib/duration'
 import { formatUsd } from '@/lib/money'
 import { useAutosizeTextarea } from '@/lib/use-autosize-textarea'
 import { useScreenshotUrls } from '@/lib/use-screenshot-urls'
-import { cn, mergeRefs } from '@/lib/utils'
+import { cn, errorMessage, mergeRefs } from '@/lib/utils'
 
 const SYMBOLS = [
   { value: 'NQ', label: 'NQ' },
@@ -383,7 +383,7 @@ export function TradeForm({
                   // the screenshot once they've resolved the cause (no Drive,
                   // quota, etc.).
                   alert(
-                    `Failed to save screenshot reference: ${(e as Error).message ?? String(e)}`,
+                    `Failed to save screenshot reference: ${errorMessage(e)}`,
                   )
                 }
               }}

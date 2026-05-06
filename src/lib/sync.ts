@@ -46,6 +46,13 @@ const SPECS: SyncSpec[] = [
   { fileKey: 'news',            idsKey: 'logslate:sync:news_ids',           table: () => db.news as unknown as EntityTable<SyncItem, 'id'> },
 ]
 
+/** Tables the sync engine pushes/pulls. auto-sync.ts hooks every table in
+ *  this list so a write anywhere triggers a debounced push — keeping the
+ *  hooked-table set and the synced-table set from drifting. */
+export function syncedTables(): EntityTable<SyncItem, 'id'>[] {
+  return SPECS.map(s => s.table())
+}
+
 interface SyncFile {
   version: number
   exported_at: string
@@ -171,6 +178,25 @@ export async function syncNow(): Promise<SyncResult> {
   if (remoteSameAsMerged && meta) {
     uploaded = meta
   } else {
+    // Stale-write check. Between our pull (line ~145) and this push,
+    // another device could have written to Drive. If so, blindly pushing
+    // would silently clobber their changes — `lastSyncedIds` would then
+    // mark our merge as "synced" and the next sync would mistake the
+    // other device's missing rows for "deleted on this device".
+    //
+    // Refetch the metadata; if `modifiedTime` advanced past what we
+    // pulled, abort. The caller (auto-sync) leaves the local DB merged
+    // (still safe — it's a superset that includes our pulled-then-merged
+    // remote view), and the next scheduled run will re-pull, re-merge
+    // against the new remote, and push the union.
+    if (meta) {
+      const fresh = await findAppDataFile(FILE_NAME)
+      if (fresh && fresh.modifiedTime !== meta.modifiedTime) {
+        throw new Error(
+          'Drive file changed during sync (another device pushed). Retry pending.',
+        )
+      }
+    }
     const file: SyncFile = {
       version: FILE_VERSION,
       exported_at: new Date().toISOString(),

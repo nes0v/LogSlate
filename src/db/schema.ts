@@ -27,17 +27,29 @@ class LogslateDB extends Dexie {
     super('logslate')
 
     // Pre-release schema. Every prior version (v1–v26) was rolled into a
-    // single fresh shape; v2 added the `[account_id+model_id]` compound
-    // index on trades so the Models editor's "in use" check is O(log n)
-    // instead of a full scan.
+    // single fresh shape (v1 here); v2 added `[account_id+model_id]` for
+    // the Models editor's "in use" check; v3 dropped a pile of indexes
+    // that nothing actually queried — pure write amplification.
     //
-    // Index notes:
-    //   - `[account_id+date]` compounds let date-range queries scoped to an
-    //     account hit the index directly.
-    //   - `[account_id+model_id]` powers `countTradesUsingModel`.
-    //   - `*screenshots` on `days` is multi-entry so the pending-upload
-    //     drainer can locate rows by ref the same way it does for trades.
-    //   - `&id` is the primary key.
+    // Index policy: only fields that appear in `db.<table>.where(...)` /
+    // `orderBy(...)` get an index. Standalone indexes covered by an
+    // existing compound (e.g. `date` when `[account_id+date]` is here)
+    // are redundant — Dexie can satisfy the unscoped query through the
+    // compound's first key.
+    //
+    // Surviving indexes:
+    //   - `&id` is the primary key (mandatory).
+    //   - `[account_id+date]` — calendar/date-range queries scoped to one account.
+    //   - `[account_id+model_id]` — powers `countTradesUsingModel`.
+    //   - `account_id` — `deleteAccount` + `countAccountData` cascade scans.
+    //   - `screenshot` — `cleanOrphanedPendingRefs` + the upload drainer.
+    //   - `*screenshots` on `days` is multi-entry so the drainer locates
+    //     rows by ref the same way it does for trades.
+    //   - `news.date` — Day page looks up news by date.
+    //   - `progress_rules.sort` — `sortBy('sort')` in the rule list.
+    //   - `updated_at` everywhere is kept for sync ergonomics — sync
+    //     currently calls `.toArray()` but indexed updated_at lets us
+    //     migrate to incremental pulls without another schema bump.
     this.version(1).stores({
       trades:
         '&id, [account_id+date], account_id, date, symbol, session, screenshot, updated_at, created_at',
@@ -58,6 +70,18 @@ class LogslateDB extends Dexie {
     this.version(2).stores({
       trades:
         '&id, [account_id+date], [account_id+model_id], account_id, date, symbol, session, model_id, screenshot, updated_at, created_at',
+    })
+    this.version(3).stores({
+      trades:
+        '&id, [account_id+date], [account_id+model_id], account_id, screenshot, updated_at',
+      adjustments: '&id, [account_id+date], account_id, updated_at',
+      accounts: '&id, updated_at',
+      pending_uploads: '&id, account_id',
+      days: '&id, [account_id+date], account_id, *screenshots, updated_at',
+      models: '&id, account_id, updated_at',
+      progress_rules: '&id, account_id, sort, updated_at',
+      progress_checks: '&id, [account_id+date], account_id, updated_at',
+      news: '&id, date, updated_at',
     })
   }
 }

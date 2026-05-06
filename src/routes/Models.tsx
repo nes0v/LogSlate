@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { Archive, ArchiveRestore, Plus, Save, Trash2, X } from 'lucide-react'
 import { db } from '@/db/schema'
@@ -253,13 +253,11 @@ export function ModelsRoute() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-3">
-        <aside className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3 max-h-[80vh] overflow-y-auto">
-          {!loaded ? null : visible.length === 0 ? (
-            <div className="text-xs text-(--color-text-dim) text-center py-6">
-              No models yet — start with "New model".
-            </div>
-          ) : (
+      {!loaded ? null : visible.length === 0 ? (
+        <EmptyPanel>No models yet.</EmptyPanel>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-3">
+          <aside className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-3 max-h-[80vh] overflow-y-auto">
             <div className={ROW_GAP_CLASS}>
               {visible.map((p, i) => {
                 const isDragged = drag?.id === p.id
@@ -340,22 +338,25 @@ export function ModelsRoute() {
                 )
               })}
             </div>
+          </aside>
+          {selected && (
+            <ModelEditor
+              key={selected.id}
+              model={selected}
+              onSave={save}
+              onDelete={remove}
+            />
           )}
-        </aside>
+        </div>
+      )}
+    </div>
+  )
+}
 
-        {!loaded ? null : selected ? (
-          <ModelEditor
-            key={selected.id}
-            model={selected}
-            onSave={save}
-            onDelete={remove}
-          />
-        ) : (
-          <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-xs) p-12 text-center text-sm text-(--color-text-dim)">
-            Select a model on the left, or create one.
-          </div>
-        )}
-      </div>
+function EmptyPanel({ children }: { children: ReactNode }) {
+  return (
+    <div className="text-sm text-(--color-text-dim) text-center py-12 border border-dashed border-(--color-border) rounded-(--radius)">
+      {children}
     </div>
   )
 }

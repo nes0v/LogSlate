@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Upload } from 'lucide-react'
 import { storeScreenshot } from '@/lib/drive-images'
+import { errorMessage } from '@/lib/utils'
 
 interface ScreenshotUploadButtonProps {
   /** YYYY-MM-DD — drives the month subfolder and filename. */
@@ -32,7 +33,7 @@ export function ScreenshotUploadButton({
       const ref = await storeScreenshot(file, { date, filenameSuffix: suffix })
       await onUpload(ref)
     } catch (e) {
-      setError((e as Error).message ?? String(e))
+      setError(errorMessage(e))
     } finally {
       setBusy(false)
     }

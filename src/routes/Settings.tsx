@@ -13,12 +13,12 @@ import { EquityAdjustmentsPanel } from '@/components/EquityAdjustmentsPanel'
 import { BrokerFeesPanel } from '@/components/BrokerFeesPanel'
 import { CandleGlyph, LineGlyph } from '@/components/EquityChartToggle'
 import { Pills } from '@/components/form/Pills'
+import { entries, errorMessage } from '@/lib/utils'
 import { setDefaultEquityView, useDefaultEquityView } from '@/lib/equity-view-preference'
 import {
   COLOR_SCHEMES,
   setColorScheme,
   useColorScheme,
-  type ColorScheme,
 } from '@/lib/color-scheme-preference'
 
 export function SettingsRoute() {
@@ -49,7 +49,7 @@ export function SettingsRoute() {
       if (r) setLastResult(r)
       else setError('A sync is already running — try again in a moment.')
     } catch (e) {
-      setError((e as Error).message ?? String(e))
+      setError(errorMessage(e))
     } finally {
       setSyncing(false)
     }
@@ -74,7 +74,7 @@ export function SettingsRoute() {
         .join(', ')
       alert(`Imported ${summary || 'nothing'}. Local DB replaced.`)
     } catch (e) {
-      setError((e as Error).message ?? String(e))
+      setError(errorMessage(e))
     } finally {
       setImporting(false)
     }
@@ -225,9 +225,7 @@ export function SettingsRoute() {
             <Pills
               value={colorScheme}
               onChange={setColorScheme}
-              options={(Object.entries(COLOR_SCHEMES) as Array<
-                [ColorScheme, typeof COLOR_SCHEMES[ColorScheme]]
-              >).map(([key, palette]) => ({
+              options={entries(COLOR_SCHEMES).map(([key, palette]) => ({
                 value: key,
                 label: palette.label,
                 prefix: (

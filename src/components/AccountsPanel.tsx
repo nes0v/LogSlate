@@ -9,7 +9,7 @@ import type { Account } from '@/db/types'
 import { useActiveAccountId } from '@/lib/active-account'
 import { useConfirm } from '@/components/ConfirmDialog'
 import { inputClassCompact as inputClass } from '@/components/form/Field'
-import { cn } from '@/lib/utils'
+import { cn, errorMessage } from '@/lib/utils'
 
 interface AccountsPanelProps {
   accounts: Account[]
@@ -28,7 +28,7 @@ export function AccountsPanel({ accounts }: AccountsPanelProps) {
       setNewName('')
       setError(null)
     } catch (err) {
-      setError((err as Error).message)
+      setError(errorMessage(err))
     }
   }
 
@@ -45,7 +45,7 @@ export function AccountsPanel({ accounts }: AccountsPanelProps) {
       await deleteAccount(id)
       setError(null)
     } catch (err) {
-      setError((err as Error).message)
+      setError(errorMessage(err))
     }
   }
 

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { setDayNote } from '@/db/queries'
 import { useAutosizeTextarea } from '@/lib/use-autosize-textarea'
+import { errorMessage } from '@/lib/utils'
 
 interface DayNoteSectionProps {
   accountId: string
@@ -37,7 +38,7 @@ export function DayNoteSection({ accountId, date, stored }: DayNoteSectionProps)
       await setDayNote(accountId, date, value)
       setError(null)
     } catch (e) {
-      setError(`Couldn't save note: ${(e as Error).message ?? String(e)}`)
+      setError(`Couldn't save note: ${errorMessage(e)}`)
     }
   }
 

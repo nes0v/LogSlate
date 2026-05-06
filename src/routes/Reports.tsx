@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { X } from 'lucide-react'
 import type { TradeRecord } from '@/db/types'
@@ -61,21 +61,20 @@ export function ReportsRoute() {
   const [params, setParams] = useSearchParams()
   const navigate = useNavigate()
   const urlFilters = filtersFromParams(params)
-  const tab = (params.get('tab') as ReportTab) || 'days'
-  const compareAxis = (params.get('axis') as CompareAxis) || 'symbol'
+  // Tab + compare-axis selection are local UI state, not filters: changing
+  // them shouldn't pollute the URL or arm the "Clear filters" button.
+  const [tab, setTab] = useState<ReportTab>('days')
+  const [compareAxis, setCompareAxis] = useState<CompareAxis>('symbol')
 
-  // Hydrate filters from the shared slot on first mount when the URL is bare
-  // (excluding the tab/axis params which are page-local). Lets the user
-  // arrive on /reports with the filter they last set on /stats.
+  // Hydrate filters from the shared slot on first mount when the URL is
+  // bare. Lets the user arrive on /reports with the filter they last set
+  // on /stats.
   useEffect(() => {
     const hasFilterParam = FILTER_PARAM_KEYS.some(k => params.has(k))
     if (hasFilterParam) return
     const stored = loadSharedFilters()
     if (stored && hasAnyFilter(stored)) {
-      const p = paramsFromFilters(stored)
-      if (tab !== 'days') p.set('tab', tab)
-      if (tab === 'compare' && compareAxis !== 'symbol') p.set('axis', compareAxis)
-      setParams(p, { replace: true })
+      setParams(paramsFromFilters(stored), { replace: true })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -117,23 +116,7 @@ export function ReportsRoute() {
     if (merged.from === d.from) merged.from = null
     if (merged.to === d.to) merged.to = null
     saveSharedFilters(hasAnyFilter(merged) ? merged : null)
-    const p = paramsFromFilters(merged)
-    if (tab !== 'days') p.set('tab', tab)
-    if (tab === 'compare' && compareAxis !== 'symbol') p.set('axis', compareAxis)
-    setParams(p)
-  }
-  function tabSearch(t: ReportTab): string {
-    const p = paramsFromFilters(urlFilters)
-    if (t !== 'days') p.set('tab', t)
-    if (t === 'compare' && compareAxis !== 'symbol') p.set('axis', compareAxis)
-    const qs = p.toString()
-    return qs ? `?${qs}` : ''
-  }
-  function setCompareAxis(a: CompareAxis) {
-    const p = paramsFromFilters(urlFilters)
-    p.set('tab', 'compare')
-    if (a !== 'symbol') p.set('axis', a)
-    setParams(p)
+    setParams(paramsFromFilters(merged))
   }
   function clear() {
     saveSharedFilters(null)
@@ -158,23 +141,28 @@ export function ReportsRoute() {
 
       <StatsFilterBar filters={filters} update={update} />
 
-      {/* Tab bar — same style as the main app nav for visual consistency. */}
-      <nav className="flex items-center gap-1 text-sm overflow-x-auto">
-        {TABS.map(t => (
-          <Link
-            key={t.value}
-            to={{ search: tabSearch(t.value) }}
-            className={cn(
-              'px-2.5 py-1.5 rounded-(--radius) transition-colors whitespace-nowrap',
-              tab === t.value
-                ? 'text-(--color-text) bg-(--color-panel)'
-                : 'text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)/60',
-            )}
-          >
-            {t.label}
-          </Link>
-        ))}
-      </nav>
+      {/* Tab bar — same style as the main app nav for visual consistency.
+          Hidden when the empty state is showing — there's nothing for the
+          tabs to switch between. */}
+      {loaded && filtered.length > 0 && (
+        <nav className="flex items-center gap-1 text-sm overflow-x-auto">
+          {TABS.map(t => (
+            <button
+              key={t.value}
+              type="button"
+              onClick={() => setTab(t.value)}
+              className={cn(
+                'px-2.5 py-1.5 rounded-(--radius) transition-colors whitespace-nowrap',
+                tab === t.value
+                  ? 'text-(--color-text) bg-(--color-panel)'
+                  : 'text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)/60',
+              )}
+            >
+              {t.label}
+            </button>
+          ))}
+        </nav>
+      )}
 
       {!loaded ? null : filtered.length === 0 ? (
         <EmptyState>

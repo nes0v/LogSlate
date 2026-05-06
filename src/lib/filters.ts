@@ -57,14 +57,28 @@ export function holdMinutes(t: TradeRecord): number | null {
   return (Math.max(...times) - Math.min(...times)) / 60000
 }
 
+// Memoized — `applyFilters` calls this for every trade on every filter
+// change, and `holdMinutes` re-parses every execution timestamp each
+// call. Keyed off the trade record reference: a trade is replaced (not
+// mutated in place) on edit, so a fresh ref invalidates naturally.
+const holdBucketCache = new WeakMap<TradeRecord, HoldBucket | null>()
+
 export function holdBucketOf(t: TradeRecord): HoldBucket | null {
+  const cached = holdBucketCache.get(t)
+  if (cached !== undefined) return cached
   const m = holdMinutes(t)
-  if (m === null) return null
-  for (const b of HOLD_BUCKETS) {
-    const [lo, hi] = HOLD_BUCKET_RANGES_MIN[b]
-    if (m >= lo && m < hi) return b
+  let bucket: HoldBucket | null = null
+  if (m !== null) {
+    for (const b of HOLD_BUCKETS) {
+      const [lo, hi] = HOLD_BUCKET_RANGES_MIN[b]
+      if (m >= lo && m < hi) {
+        bucket = b
+        break
+      }
+    }
   }
-  return null
+  holdBucketCache.set(t, bucket)
+  return bucket
 }
 
 /** Sentinel model id for trades with no `model_id` set. UUIDs never

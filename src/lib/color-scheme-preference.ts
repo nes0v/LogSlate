@@ -6,6 +6,7 @@
 // visual preference, not data scoped to a trading account.
 
 import { useSyncExternalStore } from 'react'
+import { clearThemeColorCache } from '@/lib/theme-colors'
 
 export type ColorScheme = 'classic' | 'azure'
 
@@ -44,6 +45,9 @@ export function applyColorScheme(scheme: ColorScheme): void {
   const root = document.documentElement
   root.style.setProperty('--color-win', colors.win)
   root.style.setProperty('--color-loss', colors.loss)
+  // Themed colors are memoized — bust the cache so the next chart probe
+  // re-resolves win/loss instead of returning the previous scheme's hex.
+  clearThemeColorCache()
 }
 
 export function setColorScheme(scheme: ColorScheme): void {

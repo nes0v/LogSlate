@@ -244,7 +244,7 @@ export function recordToForm(r: TradeRecord): TradeFormValues {
     buildup: r.buildup,
     rating: r.rating,
     screenshot: r.screenshot,
-    profit_target: r.profit_target ?? 0,
+    profit_target: r.profit_target,
     notes: r.notes ?? '',
     setup_tags: r.setup_tags ?? [],
     mistake_tags: r.mistake_tags ?? [],

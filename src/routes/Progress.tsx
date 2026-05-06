@@ -262,8 +262,10 @@ export function ProgressRoute() {
                 onClick={() => setDate(h.date)}
                 title={`${h.date} · ${h.checked}/${h.total}`}
                 className={cn(
-                  'aspect-square rounded-sm text-xs font-mono text-(--color-text-dim) hover:opacity-80',
-                  h.date === date && 'ring-1 ring-(--color-accent)',
+                  'aspect-square rounded-sm text-xs font-mono text-(--color-text-dim) hover:opacity-80 border',
+                  h.date === date
+                    ? 'border-(--color-accent)'
+                    : 'border-(--color-bg)',
                 )}
                 style={{ backgroundColor: tone }}
               >

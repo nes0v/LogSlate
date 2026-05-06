@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { cn } from '@/lib/utils'
 
@@ -38,7 +38,7 @@ interface Tip {
   value: number
 }
 
-export function DonutChart({ title, segments, centerLabel, className, legendColumns = 1 }: DonutChartProps) {
+function DonutChartImpl({ title, segments, centerLabel, className, legendColumns = 1 }: DonutChartProps) {
   const total = segments.reduce((n, s) => n + s.value, 0)
   const R = 50
   const visible = segments.filter(s => s.value > 0)
@@ -173,3 +173,9 @@ export function DonutChart({ title, segments, centerLabel, className, legendColu
     </div>
   )
 }
+
+// Memoized so the 6 donuts inside a memoized `DistributionDonuts`
+// don't unmount/remount when sibling segments change. Default shallow
+// compare on props is enough — `segments` arrays are derived from
+// memoized parent state, so reference stability already holds.
+export const DonutChart = memo(DonutChartImpl)
