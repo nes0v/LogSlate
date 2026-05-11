@@ -12,7 +12,7 @@ import { formatUsd } from '@/lib/money'
 import { cn } from '@/lib/utils'
 
 const links = [
-  { to: '/stats', label: 'Stats' },
+  { to: '/overview', label: 'Overview' },
   { to: '/reports', label: 'Reports' },
   { to: '/models', label: 'Models' },
   { to: '/progress', label: 'Progress' },

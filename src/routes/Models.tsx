@@ -488,10 +488,10 @@ function ModelEditorImpl({ model, onSave, onDelete }: ModelEditorProps) {
           type="button"
           onClick={handleSave}
           className={cn(
-            'inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-(--radius) transition-colors',
+            'inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-(--radius) border transition-colors',
             isDirty
-              ? 'bg-(--color-accent) text-(--color-accent-fg) hover:opacity-90'
-              : 'border border-(--color-border) text-(--color-text-dim) hover:text-(--color-text)',
+              ? 'bg-(--color-accent) border-(--color-accent) text-(--color-accent-fg) hover:opacity-90'
+              : 'border-(--color-border) text-(--color-text-dim) hover:text-(--color-text)',
           )}
         >
           <Save className="size-4" /> Save

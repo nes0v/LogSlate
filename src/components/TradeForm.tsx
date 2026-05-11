@@ -3,7 +3,7 @@ import { Controller, useFieldArray, useForm, useWatch, type Control } from 'reac
 import { zodResolver } from '@hookform/resolvers/zod'
 import type { z } from 'zod'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Plus, Save, Trash2 } from 'lucide-react'
+import { Plus, Save, Trash2, X } from 'lucide-react'
 import { detectSession, emptyForm, formToDraft, tradeFormSchema, type TradeFormValues } from '@/lib/form-schema'
 import { SESSION_BADGE, SESSION_BADGE_CLASS } from '@/lib/session-badge'
 import { listModels } from '@/db/queries'
@@ -77,8 +77,8 @@ export function TradeForm({
   const accountId = useActiveAccountId()
   // No default — the form's right column waits on the model list so the
   // checklist (which only renders when an existing trade has a `model_id`
-  // matching a live model) doesn't pop in late and shove the setup /
-  // mistake tag rows downward.
+  // matching a live model) doesn't pop in late and shove the tags row
+  // downward.
   const models = useLiveQuery(
     async () => {
       const rows = await listModels(accountId)
@@ -104,7 +104,9 @@ export function TradeForm({
     register,
     control,
     handleSubmit,
-    formState: { errors, isSubmitting },
+    formState: { errors, isSubmitting, isDirty },
+    getValues,
+    reset,
     setValue,
   } = useForm<TradeFormValues, unknown, z.output<typeof tradeFormSchema>>({
     resolver: zodResolver(tradeFormSchema),
@@ -114,24 +116,32 @@ export function TradeForm({
   })
 
   const executions = useFieldArray({ control, name: 'executions' })
-  const values = useWatch({ control }) as TradeFormValues
+  // Scope the top-level subscription to just the fields the form shell needs.
+  // The Idea/Notes textareas re-render on every keystroke; subscribing to the
+  // whole form (`useWatch({ control })`) would re-render the entire shell each
+  // time. LiveStatsSection has its own scoped subscription for stats.
+  const [modelIdValue, screenshotValue, dateValue] = useWatch({
+    control,
+    name: ['model_id', 'screenshot', 'date'],
+  })
   const ideaRef = useAutosizeTextarea()
   const notesRef = useAutosizeTextarea()
   const ideaReg = register('idea')
   const notesReg = register('notes')
   const activeModel = useMemo(
-    () => (models ?? []).find(m => m.id === values.model_id) ?? null,
-    [models, values.model_id],
+    () => (models ?? []).find(m => m.id === modelIdValue) ?? null,
+    [models, modelIdValue],
   )
 
   async function submit(v: TradeFormValues) {
     await onSubmit(formToDraft(v))
+    reset(getValues(), { keepValues: true })
   }
 
   // Default a new row's kind to whichever is currently under-represented;
   // keeps scaling flows natural (add buys to enter, then sells to exit).
   function addExecution() {
-    const current = values.executions ?? []
+    const current = getValues('executions') ?? []
     const buys = current.filter(e => e?.kind === 'buy').length
     const sells = current.filter(e => e?.kind === 'sell').length
     executions.append({
@@ -371,7 +381,7 @@ export function TradeForm({
 
           <Field label="Screenshot">
             <ScreenshotField
-              value={values.screenshot ?? null}
+              value={screenshotValue ?? null}
               onChange={async ref => {
                 setValue('screenshot', ref, { shouldDirty: true })
                 if (!onScreenshotPersist) return
@@ -387,11 +397,11 @@ export function TradeForm({
                   )
                 }
               }}
-              date={values.date}
+              date={dateValue}
               getFilenameSuffix={async () => `trade-${await getTradeOrdinal()}`}
               prefetched={
-                values.screenshot
-                  ? screenshotResolutions.get(values.screenshot)
+                screenshotValue
+                  ? screenshotResolutions.get(screenshotValue)
                   : undefined
               }
             />
@@ -403,6 +413,7 @@ export function TradeForm({
             <div className="hidden lg:flex items-center gap-2">
               <ActionButtons
                 isSubmitting={isSubmitting}
+                isDirty={isDirty}
                 onCancel={onCancel}
               />
             </div>
@@ -455,26 +466,15 @@ export function TradeForm({
             />
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Field label="Setup tags">
-              <Controller
-                control={control}
-                name="setup_tags"
-                render={({ field }) => (
-                  <TagInput value={field.value ?? []} onChange={field.onChange} tone="neutral" />
-                )}
-              />
-            </Field>
-            <Field label="Mistake tags">
-              <Controller
-                control={control}
-                name="mistake_tags"
-                render={({ field }) => (
-                  <TagInput value={field.value ?? []} onChange={field.onChange} tone="loss" />
-                )}
-              />
-            </Field>
-          </div>
+          <Field label="Tags">
+            <Controller
+              control={control}
+              name="setup_tags"
+              render={({ field }) => (
+                <TagInput value={field.value ?? []} onChange={field.onChange} tone="neutral" />
+              )}
+            />
+          </Field>
 
           <Field label="Notes">
             <textarea
@@ -493,6 +493,7 @@ export function TradeForm({
           <div className="flex lg:hidden items-center gap-2">
             <ActionButtons
               isSubmitting={isSubmitting}
+              isDirty={isDirty}
               onCancel={onCancel}
             />
           </div>
@@ -504,15 +505,21 @@ export function TradeForm({
 
 interface ActionButtonsProps {
   isSubmitting: boolean
+  isDirty: boolean
   onCancel: () => void
 }
-function ActionButtons({ isSubmitting, onCancel }: ActionButtonsProps) {
+function ActionButtons({ isSubmitting, isDirty, onCancel }: ActionButtonsProps) {
   return (
     <>
       <button
         type="submit"
         disabled={isSubmitting}
-        className="inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-(--radius) bg-(--color-accent) text-(--color-accent-fg) hover:opacity-90 disabled:opacity-50"
+        className={cn(
+          'inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-(--radius) border transition-colors disabled:opacity-50',
+          isDirty
+            ? 'bg-(--color-accent) border-(--color-accent) text-(--color-accent-fg) hover:opacity-90'
+            : 'border-(--color-border) text-(--color-text-dim) hover:text-(--color-text)',
+        )}
       >
         <Save className="size-4" /> Save
       </button>
@@ -638,12 +645,17 @@ function TagInput({ value, onChange, tone = 'neutral' }: TagInputProps) {
     onChange(value.filter(v => v !== t))
   }
   return (
-    <div className="min-h-8 flex flex-wrap items-center gap-1 bg-(--color-bg) rounded-(--radius) px-2.5 py-1 focus-within:ring-2 focus-within:ring-(--color-accent-soft) transition-colors">
+    <div
+      className={cn(
+        'min-h-8 flex flex-wrap items-center gap-1 bg-(--color-bg) rounded-(--radius) py-1 pr-2.5 focus-within:ring-2 focus-within:ring-(--color-accent-soft) transition-colors',
+        value.length > 0 ? 'pl-1' : 'pl-2.5',
+      )}
+    >
       {value.map(t => (
         <span
           key={t}
           className={cn(
-            'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs',
+            'inline-flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-[4px] text-xs',
             tone === 'loss' && 'bg-(--color-loss)/15 text-(--color-loss)',
             tone === 'win' && 'bg-(--color-win)/15 text-(--color-win)',
             tone === 'neutral' && 'bg-(--color-panel-2) text-(--color-text)',
@@ -653,10 +665,10 @@ function TagInput({ value, onChange, tone = 'neutral' }: TagInputProps) {
           <button
             type="button"
             onClick={() => remove(t)}
-            className="cursor-pointer text-(--color-text-dim) hover:text-(--color-text)"
+            className="inline-flex items-center justify-center cursor-pointer text-(--color-text-dim) hover:text-(--color-text)"
             aria-label={`Remove tag ${t}`}
           >
-            ×
+            <X size={12} strokeWidth={2.5} />
           </button>
         </span>
       ))}

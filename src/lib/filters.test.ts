@@ -121,6 +121,7 @@ describe('filtersFromParams ↔ paramsFromFilters round-trip', () => {
       hold: '5-15m' as const,
       emotion: 'calm' as const,
       model: 'abc-123',
+      tag: 'breakout',
     }
     expect(filtersFromParams(paramsFromFilters(filters))).toEqual(filters)
   })
@@ -183,6 +184,25 @@ describe('applyFilters — newer filter dimensions', () => {
     expect(
       applyFilters([calm, fomo], { ...EMPTY_FILTERS, emotion: 'calm' }),
     ).toEqual([calm])
+  })
+
+  it('tag filter matches when the tag is in setup_tags', () => {
+    const breakout = tradeRecord({ setup_tags: ['breakout', 'trend-cont'] })
+    const reversal = tradeRecord({ setup_tags: ['reversal'] })
+    const untagged = tradeRecord({ setup_tags: [] })
+    const noField = tradeRecord({ setup_tags: undefined })
+    expect(
+      applyFilters([breakout, reversal, untagged, noField], {
+        ...EMPTY_FILTERS,
+        tag: 'breakout',
+      }),
+    ).toEqual([breakout])
+    expect(
+      applyFilters([breakout, reversal], {
+        ...EMPTY_FILTERS,
+        tag: 'trend-cont',
+      }),
+    ).toEqual([breakout])
   })
 
   it('hold filter matches the bucket of first→last span', () => {

@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { listModels } from '@/db/queries'
+import { listAllTrades, listModels } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
 import { DEFAULT_MODEL_NAME, EMOTIONS, type Emotion } from '@/db/types'
 import {
@@ -38,6 +38,7 @@ export function StatsFilterBar({
 }) {
   const accountId = useActiveAccountId()
   const models = useLiveQuery(() => listModels(accountId), [accountId], [])
+  const trades = useLiveQuery(() => listAllTrades(accountId), [accountId], [])
 
   // Memoised so child FilterDropdowns don't see fresh array identity on every
   // keystroke / unrelated render. `listModels` already returns alphabetical.
@@ -50,6 +51,15 @@ export function StatsFilterBar({
   }, [models])
 
   const emotionOpts = useMemo(() => EMOTIONS.map(e => ({ value: e, label: e })), [])
+
+  // Distinct setup_tags from all trades for the current account, alphabetical.
+  const tagOpts = useMemo(() => {
+    const set = new Set<string>()
+    for (const t of trades ?? []) {
+      for (const tag of t.setup_tags ?? []) set.add(tag)
+    }
+    return Array.from(set).sort().map(tag => ({ value: tag, label: tag }))
+  }, [trades])
 
   return (
     <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-drop-xs) p-3 space-y-3">
@@ -102,6 +112,13 @@ export function StatsFilterBar({
             options={HOLD_OPTS.filter(o => o.value !== null) as Array<{ value: HoldBucket; label: string }>}
           />
         </Field>
+        <Field label="Model">
+          <FilterDropdown<string>
+            value={filters.model}
+            onChange={v => update({ model: v })}
+            options={modelOpts}
+          />
+        </Field>
         <Field label="Emotion">
           <FilterDropdown<Emotion>
             value={filters.emotion}
@@ -109,11 +126,11 @@ export function StatsFilterBar({
             options={emotionOpts}
           />
         </Field>
-        <Field label="Model">
+        <Field label="Tags">
           <FilterDropdown<string>
-            value={filters.model}
-            onChange={v => update({ model: v })}
-            options={modelOpts}
+            value={filters.tag}
+            onChange={v => update({ tag: v })}
+            options={tagOpts}
           />
         </Field>
       </div>

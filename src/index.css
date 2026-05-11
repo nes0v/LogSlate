@@ -25,6 +25,12 @@
   --font-mono:
     "Segoe UI Variable", "Segoe UI", -apple-system, BlinkMacSystemFont,
     system-ui, Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  /* Project-wide defaults for Tailwind's `transition-*` utilities — keeps
+   * every `transition-colors` button on the same curve/duration. Matches
+   * the global `transition` rule on interactive elements below. */
+  --default-transition-duration: 220ms;
+  --default-transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 :root {
@@ -74,15 +80,15 @@
   --color-cal-win-ring:       #155947;
   --color-cal-loss-bg:        #5c1f1d;
   --color-cal-loss-ring:      #8b3d3a;
-  --color-cal-breakeven-bg:   #4d4d4d;
-  --color-cal-breakeven-ring: #6b6b6b;
+  --color-cal-breakeven-bg:   #4c4b45;
+  --color-cal-breakeven-ring: #666259;
   /* Week summary cards + weekday header labels. Solid surface with a
    * visible outline. */
   --color-cal-week-card-bg:     #181a23;
   --color-cal-week-card-border: #3e414e;
   /* Out-of-month padding cells in the calendar grid — a notch lighter
    * than `--color-panel` so they read as faint placeholders. */
-  --color-cal-pad-border: #21232e;
+  --color-cal-pad-border: var(--color-panel-2);
   /* Fee bars. */
   --color-fee:  #9ca3af;
   --color-line: #6892ff;
@@ -123,8 +129,8 @@
 
   /* Motion — kept short and consistent. Use `var(--ease)` for non-trivial
    * transitions so they all share the same curve. */
-  --duration-fast: 120ms;
-  --duration-base: 180ms;
+  --duration-fast: 220ms;
+  --duration-base: 220ms;
   --ease: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -193,6 +199,19 @@ h1, h2, h3, h4 {
 /* Interactive defaults */
 button:not(:disabled), [role="button"]:not([aria-disabled="true"]) {
   cursor: pointer;
+}
+
+/* Default color/opacity/filter transitions on interactive elements so
+ * hover/active state changes are smooth without each component having to
+ * remember `transition-colors`. Components can override with their own
+ * `transition-*` utilities when finer control is needed. */
+button, [role="button"], a, label, summary, input, textarea, select {
+  transition:
+    background-color var(--duration-fast) var(--ease),
+    border-color var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease),
+    opacity var(--duration-fast) var(--ease),
+    filter var(--duration-fast) var(--ease);
 }
 
 input, textarea, select, button {

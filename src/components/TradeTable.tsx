@@ -27,7 +27,7 @@ interface TradeTableProps {
   modelById: Map<string, Model>
 }
 
-const COLS = 12
+const COLS = 13
 
 export const TradeTable = memo(function TradeTable({
   trades,
@@ -156,8 +156,25 @@ function TradeTableRow({
       <td className={cn('pl-0 pr-9 py-2 text-xs truncate max-w-32 w-px', !trade.model_id && 'text-amber-600')}>
         {modelName ?? DEFAULT_MODEL_NAME}
       </td>
-      <td className="pl-0 pr-2 py-2 text-xs text-(--color-text-dim) truncate max-w-28">
+      <td className="pl-0 pr-9 py-2 text-xs text-(--color-text-dim) truncate max-w-28 w-px whitespace-nowrap">
         {trade.emotion ?? ''}
+      </td>
+      <td className="pl-0 pr-9 py-2 max-w-[18rem]">
+        {trade.setup_tags && trade.setup_tags.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-1">
+            {trade.setup_tags.map(t => (
+              <span
+                key={t}
+                className={cn(
+                  SESSION_BADGE_CLASS,
+                  'bg-(--color-panel-3) text-(--color-text) pb-0.5 px-1.5',
+                )}
+              >
+                {t}
+              </span>
+            ))}
+          </div>
+        ) : null}
       </td>
       <td className="pl-0 pr-9 py-2 text-xs font-mono tabular-nums text-(--color-text-dim) whitespace-nowrap w-px">
         <span className="inline-flex items-center justify-end gap-1">

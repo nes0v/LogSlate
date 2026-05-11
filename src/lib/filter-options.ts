@@ -31,7 +31,7 @@ export const OUTCOME_OPTS = [
   { value: null, label: 'All' },
   { value: 'win' as const, label: 'win' },
   { value: 'loss' as const, label: 'loss' },
-  { value: 'breakeven' as const, label: 'breakeven' },
+  { value: 'breakeven' as const, label: 'even' },
 ] satisfies Array<{ value: TradeOutcome | null; label: string }>
 
 export const SIDE_OPTS = [

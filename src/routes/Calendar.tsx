@@ -5,6 +5,7 @@ import {
   addMonths,
   format,
   isSameMonth,
+  isWeekend,
   subMonths,
 } from 'date-fns'
 import { monthDayGrid } from '@/lib/calendar-grid'
@@ -174,15 +175,23 @@ export function CalendarRoute() {
               16px aisle between the day grid and the weekly summary
               column, matching the gap-4 spacing used between sections on
               the new-trade page. */}
-          <div className="grid grid-cols-[repeat(7,minmax(0,1fr))_4px_minmax(96px,140px)] gap-1.5">
-            {weekdayLabels.map(lbl => (
-              <div
-                key={lbl}
-                className="rounded-(--radius) border border-(--color-cal-week-card-border) bg-(--color-cal-week-card-bg) text-xs font-bold text-(--color-text) text-center py-2"
-              >
-                {lbl}
-              </div>
-            ))}
+          <div className="grid grid-cols-[repeat(7,minmax(0,1fr))_24px_minmax(0,1.2fr)] gap-1.5">
+            {weekdayLabels.map(lbl => {
+              const isWeekendLabel = lbl === 'Sat' || lbl === 'Sun'
+              return (
+                <div
+                  key={lbl}
+                  className={cn(
+                    'rounded-full text-xs font-bold text-center py-2',
+                    isWeekendLabel
+                      ? 'bg-transparent border border-[#16181f] text-(--color-text-faint)'
+                      : 'bg-(--color-panel) text-(--color-text)',
+                  )}
+                >
+                  {lbl}
+                </div>
+              )
+            })}
             <div aria-hidden />
             <div aria-hidden />
             {weeks.flatMap((week, weekIdx) => [
@@ -227,18 +236,41 @@ export function CalendarRoute() {
     const winRate = decided > 0 ? Math.round((cell!.wins / decided) * 100) : null
     const hasScreenshot = inMonth && screenshotDays.has(key)
     const hasNote = inMonth && noteDays.has(key)
+    // Weekends are non-tradable for futures — render with the out-of-month
+    // padding tone plus a diagonal hatch pattern so they read as "closed"
+    // surfaces at a glance. Non-interactive `<div>` so they can't be clicked.
+    const weekend = isWeekend(d)
+    if (weekend) {
+      return (
+        <div
+          key={`${weekIdx}-${key}`}
+          aria-hidden
+          className="rounded-(--radius) border border-[#16181f] bg-transparent h-[80px] sm:h-[100px] p-2 flex flex-col gap-1 text-(--color-text-faint)"
+          style={{
+            backgroundImage:
+              'repeating-linear-gradient(135deg, var(--color-bg) 0, var(--color-bg) 10px, #0e1016 10px, #0e1016 20px)',
+          }}
+        >
+          <div className="flex items-center justify-end">
+            <span className="text-xs size-[26px] inline-flex items-center justify-center leading-none rounded-full -mt-1.5 -mr-1.5 text-(--color-text-faint)">
+              {format(d, 'd')}
+            </span>
+          </div>
+        </div>
+      )
+    }
     return (
       <Link
         key={`${weekIdx}-${key}`}
         to={`/day/${key}`}
         className={cn(
-          'rounded border transition-colors min-h-[88px] sm:min-h-[104px] p-2 flex flex-col gap-1',
+          'rounded-(--radius) border transition-colors h-[80px] sm:h-[100px] p-2 flex flex-col gap-1',
           inMonth && tone === 'win' &&
-            'bg-(--color-cal-win-bg) border-(--color-cal-win-ring) hover:brightness-110',
+            'bg-(--color-cal-win-bg) border-(--color-cal-win-ring) hover:brightness-125',
           inMonth && tone === 'loss' &&
-            'bg-(--color-cal-loss-bg) border-(--color-cal-loss-ring) hover:brightness-110',
+            'bg-(--color-cal-loss-bg) border-(--color-cal-loss-ring) hover:brightness-125',
           inMonth && tone === 'dim' && cell &&
-            'bg-(--color-cal-breakeven-bg) border-(--color-cal-breakeven-ring) hover:brightness-110',
+            'bg-(--color-cal-breakeven-bg) border-(--color-cal-breakeven-ring) hover:brightness-125',
           inMonth && tone === 'dim' && !cell &&
             'bg-(--color-panel) border-transparent hover:bg-(--color-panel-2)',
           // Out-of-month days are transparent with a border matching
@@ -304,8 +336,16 @@ function WeekCard({
 }) {
   const tone: 'win' | 'loss' | 'dim' =
     pnl > 0 ? 'win' : pnl < 0 ? 'loss' : 'dim'
+  if (tradedDays === 0) {
+    return (
+      <div
+        aria-hidden
+        className="rounded-[22px] border border-(--color-cal-pad-border) bg-transparent h-[80px] sm:h-[100px]"
+      />
+    )
+  }
   return (
-    <div className="rounded-(--radius) border border-(--color-cal-week-card-border) bg-(--color-cal-week-card-bg) p-3.5 min-h-[88px] sm:min-h-[104px] flex flex-col justify-center gap-0.5">
+    <div className="rounded-[22px] bg-(--color-panel) p-3.5 h-[80px] sm:h-[100px] flex flex-col justify-center gap-0.5">
       <div className="text-xs tracking-wider text-(--color-text-dim)">
         Week {index}
       </div>
@@ -320,7 +360,7 @@ function WeekCard({
         {formatUsd(pnl)}
       </div>
       <div>
-        <span className="inline-flex h-5 items-center justify-center rounded-full bg-(--color-accent-deep) text-(--color-accent-fg) text-xs leading-none px-2.5 pb-px">
+        <span className="inline-flex h-5 items-center justify-center rounded-full bg-(--color-panel-3) text-(--color-text) text-xs leading-none px-2.5 pb-px">
           {tradedDays} day{tradedDays === 1 ? '' : 's'}
         </span>
       </div>

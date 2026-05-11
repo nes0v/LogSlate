@@ -55,12 +55,13 @@ export function BrokerFeesPanel({ adjustments }: BrokerFeesPanelProps) {
   const total = list.reduce((s, a) => s + a.amount, 0)
 
   return (
-    <section className="space-y-3">
-      <h2 className="text-sm font-medium">Monthly broker fees</h2>
+    <div className="space-y-3">
       <p className="text-sm text-(--color-text-dim)">
-        Recurring broker charges (live data feed, platform, etc.). Posted on
-        the 1st of the chosen month and subtracted from equity, but kept out
-        of the deposits/withdrawals view.
+        Recurring broker charges (live data feed, platform, etc.).
+        <br />
+        Posted on the 1st of the chosen month and subtracted from equity.
+        <br />
+        Kept out of the deposits/withdrawals view.
       </p>
 
       <form
@@ -105,31 +106,40 @@ export function BrokerFeesPanel({ adjustments }: BrokerFeesPanelProps) {
 
       {list.length > 0 && (
         <>
-          <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-drop-xs) divide-y divide-(--color-border)">
-            {list.map(a => (
-              <div
-                key={a.id}
-                className="grid grid-cols-[auto_auto_1fr_auto] gap-3 items-center px-3 py-2"
-              >
-                <span className="text-xs font-mono tabular-nums text-(--color-text-dim)">
-                  {a.date.slice(0, 7)}
-                </span>
-                <span className="text-sm font-mono font-medium tabular-nums text-(--color-loss)">
-                  -{formatUsd(a.amount)}
-                </span>
-                <span className="text-xs text-(--color-text-dim) truncate" title={a.note}>
-                  {a.note}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => handleDelete(a.id)}
-                  aria-label="Delete fee"
-                  className="p-1 rounded-(--radius) text-(--color-text-dim) hover:text-(--color-loss) hover:bg-(--color-panel-2)"
-                >
-                  <Trash2 className="size-3.5" />
-                </button>
-              </div>
-            ))}
+          <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-drop-xs) overflow-hidden">
+            <table className="w-full text-sm border-collapse">
+              <tbody>
+                {list.map(a => (
+                  <tr
+                    key={a.id}
+                    className="border-t border-(--color-bg) first:border-t-0 hover:bg-(--color-panel-2)/60"
+                  >
+                    <td className="px-3 py-2 text-xs font-mono tabular-nums text-(--color-text-dim) whitespace-nowrap">
+                      {a.date.slice(0, 7)}
+                    </td>
+                    <td className="px-3 py-2 font-mono font-medium tabular-nums text-(--color-loss) whitespace-nowrap">
+                      -{formatUsd(a.amount)}
+                    </td>
+                    <td
+                      className="px-3 py-2 text-xs text-(--color-text-dim) max-w-0 truncate"
+                      title={a.note}
+                    >
+                      {a.note}
+                    </td>
+                    <td className="px-3 py-2 w-10 text-right">
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(a.id)}
+                        aria-label="Delete fee"
+                        className="p-1 rounded-(--radius) text-(--color-text-dim) hover:text-(--color-loss) hover:bg-(--color-panel-2)"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
           <div className="text-xs text-(--color-text-dim) font-mono">
             {list.length} fee{list.length === 1 ? '' : 's'} · total{' '}
@@ -137,6 +147,6 @@ export function BrokerFeesPanel({ adjustments }: BrokerFeesPanelProps) {
           </div>
         </>
       )}
-    </section>
+    </div>
   )
 }

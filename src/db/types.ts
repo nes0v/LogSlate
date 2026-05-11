@@ -77,7 +77,6 @@ export interface TradeRecord {
   profit_target: number // USD planned profit target
   notes?: string // post-trade notes (markdown)
   setup_tags?: string[] // ["breakout", "trend-cont", ...]
-  mistake_tags?: string[] // ["FOMO", "moved stop", ...]
   emotion?: Emotion | null
   model_id?: string | null
   model_rules_followed?: string[] // rule strings that were honoured

@@ -50,7 +50,7 @@ export function TradeEditRoute() {
   }, [state, accountId, navigate])
 
   // Every trade id in the active account, ordered chronologically — used to
-  // jump to adjacent trades without going back to the day/stats view.
+  // jump to adjacent trades without going back to the day/overview view.
   const orderedIds = useLiveQuery(
     async () => {
       const rows = await listAllTrades(accountId)

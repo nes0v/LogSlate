@@ -1475,10 +1475,7 @@ export function TradingViewChart({
 
   return (
     <section className="space-y-2">
-      {/* `items-center` + fixed min-height keep the title anchored when the
-          hover info row mounts/unmounts — the row is taller than the
-          title alone, and `items-end` made the title drift upward. */}
-      <div className="flex items-center justify-between gap-4 min-h-[28px]">
+      <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3 min-w-0">
           <h2 className="text-sm font-medium shrink-0">{title}</h2>
           <CandleInfoRow point={hoveredPoint} timeframe={timeframe} />

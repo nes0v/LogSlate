@@ -9,8 +9,7 @@ import { isConfigured, signIn, signOut, useDriveState } from '@/lib/drive'
 import { clearSyncState, lastSyncAt, type SyncResult } from '@/lib/sync'
 import { exportBackup, importBackup } from '@/lib/backup'
 import { AccountsPanel } from '@/components/AccountsPanel'
-import { EquityAdjustmentsPanel } from '@/components/EquityAdjustmentsPanel'
-import { BrokerFeesPanel } from '@/components/BrokerFeesPanel'
+import { AdjustmentsPanel } from '@/components/AdjustmentsPanel'
 import { CandleGlyph, LineGlyph } from '@/components/EquityChartToggle'
 import { Pills } from '@/components/form/Pills'
 import { entries, errorMessage } from '@/lib/utils'
@@ -93,8 +92,11 @@ export function SettingsRoute() {
       <section className="space-y-3">
         <h2 className="text-sm font-medium">Google Drive sync</h2>
         <p className="text-sm text-(--color-text-dim)">
-          Trades sync to a hidden file in your own Google Drive (app-specific folder —
-          not visible in the Drive UI, only this app can read it). No server in the middle.
+          Trades sync to a hidden file in your own Google Drive — only this app can read it.
+          <br />
+          Screenshots go into a visible folder per account, so you can browse them in Drive too.
+          <br />
+          No server in the middle.
         </p>
 
         {!configured && (
@@ -190,9 +192,7 @@ export function SettingsRoute() {
 
       <AccountsPanel accounts={accounts} />
 
-      <EquityAdjustmentsPanel adjustments={adjustments} />
-
-      <BrokerFeesPanel adjustments={adjustments} />
+      <AdjustmentsPanel adjustments={adjustments} />
 
       <section className="space-y-3">
         <h2 className="text-sm font-medium">Appearance</h2>
@@ -249,8 +249,9 @@ export function SettingsRoute() {
       <section className="space-y-3">
         <h2 className="text-sm font-medium">Backup &amp; restore</h2>
         <p className="text-sm text-(--color-text-dim)">
-          Download a JSON file of everything. Import will replace all local trades with
-          the contents of a backup.
+          Download a JSON file of everything.
+          <br />
+          Import will replace all local trades with the contents of a backup.
         </p>
         <div className="flex items-center gap-2">
           <button

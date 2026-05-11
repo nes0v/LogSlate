@@ -42,14 +42,16 @@ import {
   type ScatterPoint,
 } from '@/lib/advanced-stats'
 import { formatUsd } from '@/lib/money'
-import { Pills } from '@/components/form/Pills'
 import { StatsFilterBar } from '@/components/StatsFilterBar'
+import { AdvancedMetricsSections } from '@/components/AdvancedStats'
+import { Pills } from '@/components/form/Pills'
 import { cn } from '@/lib/utils'
 
-type ReportTab = 'days' | 'symbol' | 'risk' | 'cohort' | 'compare'
+type ReportTab = 'general' | 'days' | 'symbol' | 'risk' | 'cohort' | 'compare'
 const TABS: Array<{ value: ReportTab; label: string }> = [
-  { value: 'days', label: 'Days & time' },
+  { value: 'general', label: 'General' },
   { value: 'symbol', label: 'Symbol' },
+  { value: 'days', label: 'Days & time' },
   { value: 'risk', label: 'Risk' },
   { value: 'cohort', label: 'Wins vs losses' },
   { value: 'compare', label: 'Compare' },
@@ -63,12 +65,12 @@ export function ReportsRoute() {
   const urlFilters = filtersFromParams(params)
   // Tab + compare-axis selection are local UI state, not filters: changing
   // them shouldn't pollute the URL or arm the "Clear filters" button.
-  const [tab, setTab] = useState<ReportTab>('days')
+  const [tab, setTab] = useState<ReportTab>('general')
   const [compareAxis, setCompareAxis] = useState<CompareAxis>('symbol')
 
   // Hydrate filters from the shared slot on first mount when the URL is
   // bare. Lets the user arrive on /reports with the filter they last set
-  // on /stats.
+  // on /overview.
   useEffect(() => {
     const hasFilterParam = FILTER_PARAM_KEYS.some(k => params.has(k))
     if (hasFilterParam) return
@@ -108,6 +110,16 @@ export function ReportsRoute() {
     () => applyFilters(allTrades ?? [], filters),
     [allTrades, filters],
   )
+  const stats = useMemo(() => aggregate(filtered), [filtered])
+  const { rangeStart, rangeEnd } = useMemo(() => {
+    if (filters.from && filters.to) return { rangeStart: filters.from, rangeEnd: filters.to }
+    if (filtered.length === 0) return { rangeStart: null, rangeEnd: null }
+    const dates = filtered.map(t => t.date).sort()
+    return {
+      rangeStart: filters.from ?? dates[0],
+      rangeEnd: filters.to ?? dates[dates.length - 1],
+    }
+  }, [filtered, filters.from, filters.to])
 
   function update(next: Partial<TradeFilters>) {
     const d = defaultRange(lastTradeDate)
@@ -144,23 +156,9 @@ export function ReportsRoute() {
           Hidden when the empty state is showing — there's nothing for the
           tabs to switch between. */}
       {loaded && filtered.length > 0 && (
-        <nav className="flex items-center gap-1 text-sm overflow-x-auto">
-          {TABS.map(t => (
-            <button
-              key={t.value}
-              type="button"
-              onClick={() => setTab(t.value)}
-              className={cn(
-                'px-2.5 py-1.5 rounded-(--radius) transition-colors whitespace-nowrap',
-                tab === t.value
-                  ? 'text-(--color-text) bg-(--color-panel)'
-                  : 'text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)/60',
-              )}
-            >
-              {t.label}
-            </button>
-          ))}
-        </nav>
+        <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-drop-xs) p-3">
+          <Pills value={tab} onChange={setTab} options={TABS} />
+        </section>
       )}
 
       {!loaded ? null : filtered.length === 0 ? (
@@ -169,6 +167,13 @@ export function ReportsRoute() {
             ? 'No trades yet.'
             : 'No trades match the current filters.'}
         </EmptyState>
+      ) : tab === 'general' ? (
+        <AdvancedMetricsSections
+          filtered={filtered}
+          stats={stats}
+          rangeStart={rangeStart}
+          rangeEnd={rangeEnd}
+        />
       ) : tab === 'days' ? (
         <DaysAndTimeReport trades={filtered} />
       ) : tab === 'symbol' ? (
@@ -239,46 +244,42 @@ function DaysAndTimeReport({ trades }: { trades: TradeRecord[] }) {
   const hourRowsRight = hourRows.slice(hourSplit)
 
   return (
-    <div className="space-y-3">
-      <section>
-        {/* Browser-tab style on the right edge — mirrors the Compare-tab
-            switcher but flush-right. Active tab takes the panel bg and
-            merges seamlessly into the body below; the rightmost tab
-            supplies the panel's top-right corner, so the panel has
-            `rounded-tr-none`. */}
-        <div role="tablist" className="flex justify-end gap-1 text-sm">
-          {[
-            { value: 'first' as const, label: 'First execution' },
-            { value: 'last' as const, label: 'Last execution' },
-          ].map(opt => {
-            const active = opt.value === hourMode
-            return (
-              <button
-                key={opt.value}
-                type="button"
-                role="tab"
-                aria-selected={active}
-                onClick={() => setHourMode(opt.value)}
-                className={cn(
-                  'px-2.5 py-1.5 rounded-t-(--radius) transition-colors whitespace-nowrap',
-                  active
-                    ? 'text-(--color-text) bg-(--color-panel)'
-                    : 'text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)/60',
-                )}
-              >
-                {opt.label}
-              </button>
-            )
-          })}
-        </div>
-        <div className="bg-(--color-panel) rounded-(--radius) rounded-tr-none shadow-(--shadow-drop-xs) p-3">
-          <h3 className="text-sm font-medium mb-3">P&L by hour</h3>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-2">
-            <ReportTable rows={hourRowsLeft} />
-            {hourRowsRight.length > 0 ? <ReportTable rows={hourRowsRight} /> : null}
+    <div className="space-y-8">
+      <Card
+        title="P&L by hour"
+        right={
+          <div role="tablist" className="flex gap-1 text-sm">
+            {[
+              { value: 'first' as const, label: 'First execution' },
+              { value: 'last' as const, label: 'Last execution' },
+            ].map(opt => {
+              const active = opt.value === hourMode
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => setHourMode(opt.value)}
+                  className={cn(
+                    'px-2.5 py-1.5 rounded-t-(--radius) transition-colors whitespace-nowrap',
+                    active
+                      ? 'text-(--color-text) bg-(--color-panel)'
+                      : 'text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)/60',
+                  )}
+                >
+                  {opt.label}
+                </button>
+              )
+            })}
           </div>
+        }
+      >
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-2">
+          <ReportTable rows={hourRowsLeft} />
+          {hourRowsRight.length > 0 ? <ReportTable rows={hourRowsRight} /> : null}
         </div>
-      </section>
+      </Card>
 
       <SectionGrid>
         <Card title="Day of week">
@@ -356,12 +357,18 @@ function SymbolReport({ trades }: { trades: TradeRecord[] }) {
     return <div className="text-sm text-(--color-text-dim) text-center py-12">No data.</div>
   }
   return (
-    <div className="space-y-3">
+    <div className="space-y-8">
       {groups.map(([key, list]) => {
         const stats = aggregate(list)
         const cohort = cohortStats(list)
         return (
-          <Card key={key} title={key} caption={`${stats.count} trades`}>
+          <div key={key}>
+            <h3 className="text-sm font-medium mb-2">
+              {key}{' '}
+              <span className="text-(--color-text-dim) font-normal">
+                ({stats.count})
+              </span>
+            </h3>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
               <Stat
                 label="Net P&L"
@@ -393,7 +400,7 @@ function SymbolReport({ trades }: { trades: TradeRecord[] }) {
               />
               <Stat label="Total fees" value={formatUsd(-stats.fees)} />
             </div>
-          </Card>
+          </div>
         )
       })}
     </div>
@@ -490,7 +497,7 @@ function RiskReport({
   }, [trades])
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-8">
       <SectionGrid>
         <Card title="R-multiple distribution">
           <RDistRows buckets={rDist} />
@@ -503,15 +510,31 @@ function RiskReport({
               : 'how much heat each trade took'
           }
           right={
-            <Pills
-              size="sm"
-              value={scatter}
-              onChange={setScatter}
-              options={[
+            <div role="tablist" className="flex gap-1 text-sm">
+              {[
                 { value: 'mfe' as const, label: 'MFE' },
                 { value: 'mae' as const, label: 'MAE' },
-              ]}
-            />
+              ].map(opt => {
+                const active = opt.value === scatter
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => setScatter(opt.value)}
+                    className={cn(
+                      'px-2.5 py-1.5 rounded-t-(--radius) transition-colors whitespace-nowrap',
+                      active
+                        ? 'text-(--color-text) bg-(--color-panel)'
+                        : 'text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)/60',
+                    )}
+                  >
+                    {opt.label}
+                  </button>
+                )
+              })}
+            </div>
           }
         >
           <Scatter
@@ -592,7 +615,7 @@ function CohortReport({ trades }: { trades: TradeRecord[] }) {
     },
   ]
   return (
-    <div className="space-y-3">
+    <div className="space-y-8">
       <Card title="Winners vs Losers">
         <div className="text-sm">
           <div className="grid grid-cols-[1fr_120px_120px] gap-2 py-1 mb-2 border-b border-(--color-border) text-(--color-text-dim) text-xs">
@@ -859,17 +882,31 @@ function Card({
   children: React.ReactNode
 }) {
   return (
-    <div className="bg-(--color-panel) rounded-(--radius) p-3 shadow-(--shadow-drop-xs)">
-      <div className="flex justify-between gap-2 mb-1.5">
-        <div>
-          <h3 className="text-sm font-medium">{title}</h3>
+    <div className="flex flex-col h-full">
+      {/* Title row uses h3's natural height (no Pills inflation) so
+          side-by-side Cards share an identical title-row height even
+          when only one of them has a `right` slot. The right slot is
+          absolute-positioned with its bottom flush against the panel's
+          top edge, so it visually sits on top of the section. */}
+      <div className="relative mb-2">
+        <h3 className="text-sm font-medium">
+          {title}
           {caption ? (
-            <div className="text-xs text-(--color-text-dim) mt-0.5">{caption}</div>
+            <span className="text-(--color-text-dim) font-normal"> ({caption})</span>
           ) : null}
-        </div>
-        {right}
+        </h3>
+        {right ? (
+          <div className="absolute right-0 -bottom-2">{right}</div>
+        ) : null}
       </div>
-      {children}
+      <div
+        className={cn(
+          'flex-1 bg-(--color-panel) rounded-(--radius) p-3 shadow-(--shadow-drop-xs)',
+          right && 'rounded-tr-none',
+        )}
+      >
+        {children}
+      </div>
     </div>
   )
 }
@@ -886,13 +923,13 @@ function Stat({
   tone?: 'win' | 'loss' | 'dim'
 }) {
   return (
-    <div className="bg-(--color-panel-2) shadow-(--shadow-drop-sm) rounded-(--radius) p-2">
-      <div className="text-xs uppercase tracking-wider text-(--color-text-dim)">
+    <div className="bg-(--color-panel) shadow-(--shadow-drop-sm) rounded-(--radius) p-3">
+      <div className="text-xs uppercase tracking-[0.08em] font-medium text-(--color-text-dim)">
         {label}
       </div>
       <div
         className={cn(
-          'text-base font-mono tabular-nums mt-1',
+          'text-xl font-mono font-medium tabular-nums mt-1.5',
           tone === 'win' && 'text-(--color-win)',
           tone === 'loss' && 'text-(--color-loss)',
           tone === 'dim' && 'text-(--color-text-dim)',
@@ -901,7 +938,7 @@ function Stat({
         {value}
       </div>
       {caption ? (
-        <div className="text-xs text-(--color-text-dim) mt-0.5">{caption}</div>
+        <div className="text-xs text-(--color-text-dim) mt-1">{caption}</div>
       ) : null}
     </div>
   )
@@ -1092,7 +1129,7 @@ function Scatter({
   onClick?: (p: ScatterPoint) => void
 }) {
   const W = 480
-  const H = 220
+  const H = 240
   const PAD = 28
   if (points.length === 0) {
     return <div className="text-xs text-(--color-text-dim) text-center py-6">No trades.</div>
@@ -1104,7 +1141,7 @@ function Scatter({
   const x = (v: number) => PAD + (v / xMax) * (W - PAD * 2)
   const y = (v: number) => H / 2 - (v / yMax) * (H / 2 - PAD)
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-[220px]">
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-[240px]">
       <line
         x1={PAD}
         x2={W - PAD}

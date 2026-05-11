@@ -99,6 +99,8 @@ export interface TradeFilters {
   emotion: Emotion | null
   /** Model id, or `MODEL_NONE` for trades with no model. */
   model: string | null
+  /** Single setup_tag string. */
+  tag: string | null
 }
 
 export const EMPTY_FILTERS: TradeFilters = {
@@ -114,6 +116,7 @@ export const EMPTY_FILTERS: TradeFilters = {
   hold: null,
   emotion: null,
   model: null,
+  tag: null,
 }
 
 export function applyFilters(trades: TradeRecord[], f: TradeFilters): TradeRecord[] {
@@ -139,6 +142,9 @@ export function applyFilters(trades: TradeRecord[], f: TradeFilters): TradeRecor
       if (f.model === MODEL_NONE) {
         if (t.model_id) return false
       } else if (t.model_id !== f.model) return false
+    }
+    if (f.tag) {
+      if (!t.setup_tags || !t.setup_tags.includes(f.tag)) return false
     }
     return true
   })
@@ -166,6 +172,7 @@ export function filtersFromParams(p: URLSearchParams): TradeFilters {
     // Validation against the user's actual model list happens in the UI;
     // a stale/invalid id just produces no matching trades.
     model: rawModel && rawModel.length > 0 ? rawModel : null,
+    tag: p.get('tag'),
   }
 }
 
@@ -185,6 +192,7 @@ export const FILTER_PARAM_KEYS = [
   'hold',
   'emotion',
   'model',
+  'tag',
 ] as const
 
 export function paramsFromFilters(f: TradeFilters): URLSearchParams {
@@ -201,5 +209,6 @@ export function paramsFromFilters(f: TradeFilters): URLSearchParams {
   if (f.hold) p.set('hold', f.hold)
   if (f.emotion) p.set('emotion', f.emotion)
   if (f.model) p.set('model', f.model)
+  if (f.tag) p.set('tag', f.tag)
   return p
 }

@@ -6,7 +6,7 @@ import { useConfirm } from '@/components/ConfirmDialog'
 import { inputClassCompact as inputClass } from '@/components/form/Field'
 import { DatePicker } from '@/components/form/DatePicker'
 import { NumberInput } from '@/components/form/NumberInput'
-import { Select } from '@/components/form/Select'
+import { Pills } from '@/components/form/Pills'
 import { formatUsd } from '@/lib/money'
 import { nyToday } from '@/lib/tz'
 import { cn } from '@/lib/utils'
@@ -27,7 +27,6 @@ export function EquityAdjustmentsPanel({ adjustments }: EquityAdjustmentsPanelPr
   const [date, setDate] = useState(() => nyToday())
   const [kind, setKind] = useState<AdjustmentKind>('deposit')
   const [amount, setAmount] = useState<number | null>(null)
-  const [note, setNote] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   async function handleSubmit(e: React.FormEvent) {
@@ -41,9 +40,8 @@ export function EquityAdjustmentsPanel({ adjustments }: EquityAdjustmentsPanelPr
       return
     }
     setError(null)
-    await createAdjustment({ date, kind, amount, note: note.trim() })
+    await createAdjustment({ date, kind, amount, note: '' })
     setAmount(null)
-    setNote('')
   }
 
   async function handleDelete(id: string) {
@@ -59,16 +57,18 @@ export function EquityAdjustmentsPanel({ adjustments }: EquityAdjustmentsPanelPr
   const net = totalDeposits - totalWithdraws
 
   return (
-    <section className="space-y-3">
-      <h2 className="text-sm font-medium">Deposits &amp; withdrawals</h2>
+    <div className="space-y-3">
       <p className="text-sm text-(--color-text-dim)">
-        Cash in/out of the trading account. Deposits grow equity, withdrawals shrink it.
+        Cash in/out of the trading account.
+        <br />
+        Deposits grow equity, withdrawals shrink it.
+        <br />
         These show up on the equity curve but don&rsquo;t affect trade stats.
       </p>
 
       <form
         onSubmit={handleSubmit}
-        className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-drop-xs) p-3 grid grid-cols-[auto_auto_1fr_1fr_auto] gap-3 items-end"
+        className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-drop-xs) p-3 grid grid-cols-[auto_auto_1fr_auto] gap-3 items-end"
       >
         <div className="text-xs text-(--color-text-dim) space-y-2">
           <div>Date</div>
@@ -79,18 +79,17 @@ export function EquityAdjustmentsPanel({ adjustments }: EquityAdjustmentsPanelPr
             ariaLabel="Adjustment date"
           />
         </div>
-        <label className="text-xs text-(--color-text-dim) space-y-2">
+        <div className="text-xs text-(--color-text-dim) space-y-2">
           <div>Type</div>
-          <Select
+          <Pills
             value={kind}
-            onChange={v => v && setKind(v as AdjustmentKind)}
+            onChange={v => setKind(v as AdjustmentKind)}
             options={[
               { value: 'deposit', label: 'Deposit' },
               { value: 'withdraw', label: 'Withdraw' },
             ]}
-            ariaLabel="Adjustment type"
           />
-        </label>
+        </div>
         <label className="text-xs text-(--color-text-dim) space-y-2">
           <div>Amount (USD)</div>
           <NumberInput
@@ -100,67 +99,63 @@ export function EquityAdjustmentsPanel({ adjustments }: EquityAdjustmentsPanelPr
             className={inputClass}
           />
         </label>
-        <label className="text-xs text-(--color-text-dim) space-y-2">
-          <div>Note (optional)</div>
-          <input
-            type="text"
-            value={note}
-            onChange={e => setNote(e.target.value)}
-            className={inputClass}
-          />
-        </label>
         <button
           type="submit"
           className="inline-flex items-center justify-center px-3 py-1.5 text-sm rounded-(--radius) border border-transparent bg-(--color-accent) text-(--color-accent-fg) hover:opacity-90"
         >
           Add
         </button>
-        {error && <div className="col-span-5 text-xs text-(--color-loss)">{error}</div>}
+        {error && <div className="col-span-4 text-xs text-(--color-loss)">{error}</div>}
       </form>
 
       {list.length > 0 && (
         <>
-          <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-drop-xs) divide-y divide-(--color-border)">
-            {list.map(a => (
-              <div
-                key={a.id}
-                className="grid grid-cols-[auto_auto_auto_1fr_auto] gap-3 items-center px-3 py-2"
-              >
-                <span className="text-xs font-mono tabular-nums text-(--color-text-dim)">
-                  {a.date}
-                </span>
-                <span
-                  className={cn(
-                    'inline-block w-[4.5rem] text-center text-xs font-mono px-2 py-0.5 rounded-sm',
-                    a.kind === 'deposit'
-                      ? 'bg-(--color-win)/20 text-(--color-win)'
-                      : 'bg-(--color-loss)/20 text-(--color-loss)',
-                  )}
+          <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-drop-xs) overflow-hidden">
+          <table className="w-full text-sm border-collapse">
+            <tbody>
+              {list.map(a => (
+                <tr
+                  key={a.id}
+                  className="border-t border-(--color-bg) first:border-t-0 hover:bg-(--color-panel-2)/60"
                 >
-                  {a.kind}
-                </span>
-                <span
-                  className={cn(
-                    'text-sm font-mono font-medium tabular-nums',
-                    a.kind === 'deposit' ? 'text-(--color-win)' : 'text-(--color-loss)',
-                  )}
-                >
-                  {a.kind === 'deposit' ? '+' : '-'}
-                  {formatUsd(a.amount)}
-                </span>
-                <span className="text-xs text-(--color-text-dim) truncate" title={a.note}>
-                  {a.note}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => handleDelete(a.id)}
-                  aria-label="Delete adjustment"
-                  className="p-1 rounded-(--radius) text-(--color-text-dim) hover:text-(--color-loss) hover:bg-(--color-panel-2)"
-                >
-                  <Trash2 className="size-3.5" />
-                </button>
-              </div>
-            ))}
+                  <td className="px-3 py-2 text-xs font-mono tabular-nums text-(--color-text-dim) whitespace-nowrap">
+                    {a.date}
+                  </td>
+                  <td className="px-3 py-2">
+                    <span
+                      className={cn(
+                        'inline-block w-[4.5rem] text-center text-xs font-mono px-2 py-0.5 rounded-sm',
+                        a.kind === 'deposit'
+                          ? 'bg-(--color-win)/20 text-(--color-win)'
+                          : 'bg-(--color-loss)/20 text-(--color-loss)',
+                      )}
+                    >
+                      {a.kind}
+                    </span>
+                  </td>
+                  <td
+                    className={cn(
+                      'px-3 py-2 font-mono font-medium tabular-nums whitespace-nowrap',
+                      a.kind === 'deposit' ? 'text-(--color-win)' : 'text-(--color-loss)',
+                    )}
+                  >
+                    {a.kind === 'deposit' ? '+' : '-'}
+                    {formatUsd(a.amount)}
+                  </td>
+                  <td className="px-3 py-2 w-10 text-right">
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(a.id)}
+                      aria-label="Delete adjustment"
+                      className="p-1 rounded-(--radius) text-(--color-text-dim) hover:text-(--color-loss) hover:bg-(--color-panel-2)"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
           </div>
           <div className="text-xs text-(--color-text-dim) font-mono">
             {list.length} adjustment{list.length === 1 ? '' : 's'} · deposits{' '}
@@ -176,6 +171,6 @@ export function EquityAdjustmentsPanel({ adjustments }: EquityAdjustmentsPanelPr
           </div>
         </>
       )}
-    </section>
+    </div>
   )
 }

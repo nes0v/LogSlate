@@ -1,7 +1,6 @@
 import { Children, memo, useMemo } from 'react'
 import { eachDayOfInterval, format, parseISO } from 'date-fns'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { ChevronRight } from 'lucide-react'
 import { DonutChart } from '@/components/DonutChart'
 import { RatingStars } from '@/components/RatingStars'
 import { listModels } from '@/db/queries'
@@ -396,18 +395,8 @@ export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
   const totalDays =
     dayStats.greenDays + dayStats.redDays + dayStats.breakevenDays
 
-  // Sum of KpiTiles rendered below: Performance (5) + Risk metrics (6) +
-  // Excursion (4) + Daily (4) + Extremes & streaks (6). Update if tiles
-  // are added/removed.
-  const metricCount = 5 + 6 + 4 + 4 + 6
   return (
-    <details className="space-y-2 group">
-      <summary className="text-sm font-medium cursor-pointer text-(--color-text) hover:text-(--color-accent) list-none flex items-center gap-1 transition-colors">
-        <ChevronRight className="size-4 transition-transform group-open:rotate-90" />
-        Metrics{' '}
-        <span className="text-(--color-text-dim) font-normal">({metricCount})</span>
-      </summary>
-      <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-drop-xs) p-3 space-y-6">
+    <div className="space-y-8">
       <MetricGroup title="Performance">
         <KpiTile
           label="Win rate"
@@ -594,8 +583,7 @@ export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
           tone={streaks.current > 0 ? 'win' : streaks.current < 0 ? 'loss' : 'dim'}
         />
       </MetricGroup>
-      </div>
-    </details>
+    </div>
   )
 })
 
@@ -614,17 +602,15 @@ function MetricGroup({
   // instead of forcing the column wider than its share.
   const count = Math.max(1, Children.count(children))
   return (
-    <section className="space-y-2">
-      <h3 className="text-xs uppercase tracking-[0.08em] font-medium text-(--color-text-dim)">
-        {title}
-      </h3>
+    <div>
+      <h3 className="text-sm font-medium mb-2">{title}</h3>
       <div
-        className="grid grid-cols-2 sm:grid-cols-3 gap-2 lg:[grid-template-columns:var(--cols)]"
+        className="grid grid-cols-2 sm:grid-cols-3 gap-3 lg:[grid-template-columns:var(--cols)]"
         style={{ ['--cols' as string]: `repeat(${count}, minmax(0, 1fr))` }}
       >
         {children}
       </div>
-    </section>
+    </div>
   )
 }
 
@@ -639,7 +625,7 @@ function KpiTile({ label, value, caption, tone, tooltip }: KpiTileProps) {
   return (
     <div
       className={cn(
-        'bg-(--color-panel-2) shadow-(--shadow-drop-sm) rounded-(--radius) p-3 transition-colors',
+        'bg-(--color-panel) shadow-(--shadow-drop-sm) rounded-(--radius) p-3 transition-colors',
         tooltip && 'cursor-help',
       )}
       title={tooltip}

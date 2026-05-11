@@ -47,14 +47,13 @@ import { EquityChartToggle, type EquityView } from '@/components/EquityChartTogg
 import { getDefaultEquityView } from '@/lib/equity-view-preference'
 import { TradeTable } from '@/components/TradeTable'
 import {
-  AdvancedMetricsSections,
   CompositeScoreSection,
   DistributionDonuts,
   HeroNetPnl,
 } from '@/components/AdvancedStats'
 import { StatsFilterBar } from '@/components/StatsFilterBar'
 
-export function StatsRoute() {
+export function OverviewRoute() {
   const [params, setParams] = useSearchParams()
   const navigate = useNavigate()
   const urlFilters = filtersFromParams(params)
@@ -144,8 +143,8 @@ export function StatsRoute() {
 
   const filtered = useMemo(() => applyFilters(allTrades ?? [], filters), [allTrades, filters])
   // Aggregate once at the route level and pass down. Previously each
-  // memo'd child (HeroNetPnl, CompositeScoreSection, AdvancedMetricsSections)
-  // computed `aggregate(filtered)` independently — same data, three
+  // memo'd child (HeroNetPnl, CompositeScoreSection) computed
+  // `aggregate(filtered)` independently — same data, multiple
   // full-array passes per render.
   const stats = useMemo(() => aggregate(filtered), [filtered])
 
@@ -346,7 +345,7 @@ export function StatsRoute() {
     setShowSetRangeBtn(prev => (prev === off ? prev : off))
   }, [filterFromKey, filterToKey])
 
-  // "Clear" returns to the bare /stats URL and restores the chart's
+  // "Clear" returns to the bare /overview URL and restores the chart's
   // default state: filter back to the last-30-days default, timeframe
   // back to D (URL clear handles tf), Line/Candles back to the
   // per-account stored preference, and viewport snapped to the new
@@ -363,7 +362,7 @@ export function StatsRoute() {
   return (
     <div className="pt-1 space-y-8">
       <div className="flex items-center justify-between mb-8">
-        <h1 className="h-8 flex items-center text-lg font-semibold">Stats</h1>
+        <h1 className="h-8 flex items-center text-lg font-semibold">Overview</h1>
         {!isDefault && (
           <button
             onClick={clear}
@@ -393,15 +392,6 @@ export function StatsRoute() {
       )}
 
       {filtered.length > 0 && (
-        <AdvancedMetricsSections
-          filtered={filtered}
-          stats={stats}
-          rangeStart={rangeStart}
-          rangeEnd={rangeEnd}
-        />
-      )}
-
-      {filtered.length > 0 && (
         <>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             <HeroNetPnl stats={stats} />
@@ -426,7 +416,7 @@ export function StatsRoute() {
           viewportEpoch={viewportEpoch}
           onVisibleRangeChange={handleVisibleRangeChange}
           onPointClick={key => {
-            // W/M/Q/Y clicks drill into the bucket on /stats;
+            // W/M/Q/Y clicks drill into the bucket on /overview;
             // D clicks navigate to the day page.
             const drill = drillDownRange(timeframe, key)
             if (drill) update(drill)

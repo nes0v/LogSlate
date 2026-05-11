@@ -13,9 +13,9 @@ export function timeframeFromParams(p: URLSearchParams): Timeframe {
 
 /**
  * Navigation target for a candle click when the click should leave
- * Stats — daily candles go to the day page; the rest map to the
- * containing month on the calendar. For W/M/Q/Y on Stats we drill down
- * via `drillDownRange` instead, keeping the user on /stats.
+ * Overview — daily candles go to the day page; the rest map to the
+ * containing month on the calendar. For W/M/Q/Y on Overview we drill down
+ * via `drillDownRange` instead, keeping the user on /overview.
  */
 export function bucketNavTarget(key: string, tf: Timeframe): string {
   switch (tf) {
@@ -33,7 +33,7 @@ export function bucketNavTarget(key: string, tf: Timeframe): string {
 }
 
 /**
- * For a W/M/Q/Y candle click on Stats, returns the filter range to
+ * For a W/M/Q/Y candle click on Overview, returns the filter range to
  * apply (`from`/`to`) and the timeframe to switch the chart to. W→D,
  * M→D, Q→D, Y→W. Returns `null` for D (use `bucketNavTarget` instead)
  * and for unparseable keys.
