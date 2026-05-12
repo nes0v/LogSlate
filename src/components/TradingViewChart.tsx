@@ -779,6 +779,16 @@ export function TradingViewChart({
         barSpacing: BAR_SPACING,
         rightOffset: 3,
       },
+      // Wheel handling is fully owned by the custom `wheel` listener
+      // installed below. Disabling the built-in mouseWheel scale stops
+      // lightweight-charts from also reacting (which would double-zoom
+      // or zoom around the cursor instead of the right edge).
+      handleScale: {
+        mouseWheel: false,
+        pinch: true,
+        axisPressedMouseMove: { time: true, price: true },
+        axisDoubleClickReset: { time: true, price: true },
+      },
       crosshair: {
         mode: CrosshairMode.Normal,
         // Lines hidden — we draw our own via CrosshairPrimitive so they
@@ -937,6 +947,52 @@ export function TradingViewChart({
     window.addEventListener('mousemove', handleMouseMove)
     window.addEventListener('mouseup', handleMouseUp)
 
+    // Wheel handling — replaces lightweight-charts' default (which
+    // anchored zoom at the cursor and ignored the price scale entirely):
+    //  - over the right price scale (main pane only): vertical zoom by
+    //    shrinking/growing the visible price range around its centre.
+    //  - anywhere else: time-axis zoom that keeps the RIGHT edge of the
+    //    visible range fixed and grows/shrinks from the left, matching
+    //    how scrolling on the right-edge "expands" the chart.
+    const WHEEL_ZOOM_FACTOR = 1.1
+    const handleWheel = (e: WheelEvent) => {
+      const chart = chartRef.current
+      if (!chart) return
+      e.preventDefault()
+      const factor = e.deltaY > 0 ? WHEEL_ZOOM_FACTOR : 1 / WHEEL_ZOOM_FACTOR
+      const rect = container.getBoundingClientRect()
+      const x = e.clientX - rect.left
+      const y = e.clientY - rect.top
+      const priceScaleW = chart.priceScale('right').width()
+      const overPriceScale = priceScaleW > 0 && x >= rect.width - priceScaleW
+      // The main equity pane is pane 0 and sits on top — the fees pane
+      // (1) lives below it. Only forward price-axis wheel zoom to the
+      // main pane so spinning the wheel over the fees price labels
+      // doesn't yank the equity scale.
+      const mainPaneH = chart.panes()[0]?.getHeight() ?? rect.height
+      if (overPriceScale && y < mainPaneH) {
+        const series = seriesRef.current
+        const priceScale = series?.priceScale()
+        const range = priceScale?.getVisibleRange()
+        if (!priceScale || !range) return
+        const mid = (range.from + range.to) / 2
+        const half = ((range.to - range.from) / 2) * factor
+        priceScale.setVisibleRange({ from: mid - half, to: mid + half })
+        return
+      }
+      // Right-anchored time zoom — keep `to` fixed, move `from` so the
+      // visible window grows (zoom out) or shrinks (zoom in) from the
+      // LEFT only. This is the same effect lightweight-charts produces
+      // when the cursor naturally sits at the chart's right edge.
+      const ts = chart.timeScale()
+      const lr = ts.getVisibleLogicalRange()
+      if (!lr) return
+      const span = lr.to - lr.from
+      const newSpan = span * factor
+      ts.setVisibleLogicalRange({ from: lr.to - newSpan, to: lr.to })
+    }
+    container.addEventListener('wheel', handleWheel, { passive: false })
+
     const handleClick = (param: { time?: Time; point?: { x: number; y: number } }) => {
       if (!isOverCandle(param)) return
       const t = param.time
@@ -1047,6 +1103,7 @@ export function TradingViewChart({
       container.removeEventListener('mousedown', handleMouseDown)
       window.removeEventListener('mousemove', handleMouseMove)
       window.removeEventListener('mouseup', handleMouseUp)
+      container.removeEventListener('wheel', handleWheel)
       if (feesCrosshairPrimRef.current) {
         feesSeries.detachPrimitive(feesCrosshairPrimRef.current)
         feesCrosshairPrimRef.current = null

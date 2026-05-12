@@ -428,14 +428,14 @@ export function OverviewRoute() {
           headerRight={
             <div className="flex items-center gap-2">
               {showSetRangeBtn && (
-                  <button
-                    type="button"
-                    onClick={setFilterToVisible}
-                    className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono rounded-(--radius) bg-(--color-panel) shadow-(--shadow-drop-xs) text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2) transition-colors"
-                  >
-                    Set date to range
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={setFilterToVisible}
+                  className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono rounded-(--radius) bg-(--color-panel) shadow-(--shadow-drop-xs) text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2) transition-colors"
+                >
+                  Set date to range
+                </button>
+              )}
               <EquityChartToggle value={equityView} onChange={setEquityView} />
               <ChartTimeframeToggle value={timeframe} onChange={setTimeframe} />
             </div>
