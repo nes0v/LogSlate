@@ -243,6 +243,78 @@ describe('account queries', () => {
     expect(await db.pending_uploads.where('account_id').equals(MAIN_ACCOUNT_ID).count()).toBe(1)
   })
 
+  it('deleteAccount cascades to models, progress_rules, and progress_checks', async () => {
+    const a = await createAccount({ name: 'Alpha' })
+    const now = new Date().toISOString()
+    await db.models.put({
+      id: 'm-alpha',
+      account_id: a.id,
+      name: 'Alpha model',
+      description: '',
+      sessions: [],
+      groups: [],
+      archived: false,
+      created_at: now,
+      updated_at: now,
+    })
+    await db.models.put({
+      id: 'm-main',
+      account_id: MAIN_ACCOUNT_ID,
+      name: 'Main model',
+      description: '',
+      sessions: [],
+      groups: [],
+      archived: false,
+      created_at: now,
+      updated_at: now,
+    })
+    await db.progress_rules.put({
+      id: 'r-alpha',
+      account_id: a.id,
+      text: 'Review yesterday',
+      active: true,
+      sort: 1,
+      created_at: now,
+      updated_at: now,
+    })
+    await db.progress_rules.put({
+      id: 'r-main',
+      account_id: MAIN_ACCOUNT_ID,
+      text: 'Review yesterday',
+      active: true,
+      sort: 1,
+      created_at: now,
+      updated_at: now,
+    })
+    await db.progress_checks.put({
+      id: `${a.id}:2026-04-20:r-alpha`,
+      account_id: a.id,
+      date: '2026-04-20',
+      rule_id: 'r-alpha',
+      checked: true,
+      created_at: now,
+      updated_at: now,
+    })
+    await db.progress_checks.put({
+      id: `${MAIN_ACCOUNT_ID}:2026-04-20:r-main`,
+      account_id: MAIN_ACCOUNT_ID,
+      date: '2026-04-20',
+      rule_id: 'r-main',
+      checked: true,
+      created_at: now,
+      updated_at: now,
+    })
+
+    await deleteAccount(a.id)
+
+    expect(await db.models.where('account_id').equals(a.id).count()).toBe(0)
+    expect(await db.models.where('account_id').equals(MAIN_ACCOUNT_ID).count()).toBe(1)
+    expect(await db.progress_rules.where('account_id').equals(a.id).count()).toBe(0)
+    expect(await db.progress_rules.where('account_id').equals(MAIN_ACCOUNT_ID).count()).toBe(1)
+    expect(await db.progress_checks.where('account_id').equals(a.id).count()).toBe(0)
+    expect(await db.progress_checks.where('account_id').equals(MAIN_ACCOUNT_ID).count()).toBe(1)
+  })
+
   it('deleteAccount clears the account-scoped localStorage keys', async () => {
     const a = await createAccount({ name: 'Alpha' })
     localStorage.setItem(`logslate:equity_view_default:${a.id}`, 'candles')

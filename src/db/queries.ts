@@ -187,12 +187,24 @@ export async function deleteAccount(id: string): Promise<void> {
   if (total <= 1) throw new Error('At least one account must remain.')
   await db.transaction(
     'rw',
-    [db.accounts, db.trades, db.adjustments, db.days, db.pending_uploads],
+    [
+      db.accounts,
+      db.trades,
+      db.adjustments,
+      db.days,
+      db.pending_uploads,
+      db.models,
+      db.progress_rules,
+      db.progress_checks,
+    ],
     async () => {
       await db.trades.where('account_id').equals(id).delete()
       await db.adjustments.where('account_id').equals(id).delete()
       await db.days.where('account_id').equals(id).delete()
       await db.pending_uploads.where('account_id').equals(id).delete()
+      await db.models.where('account_id').equals(id).delete()
+      await db.progress_rules.where('account_id').equals(id).delete()
+      await db.progress_checks.where('account_id').equals(id).delete()
       await db.accounts.delete(id)
     },
   )
