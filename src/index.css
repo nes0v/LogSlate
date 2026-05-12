@@ -72,20 +72,20 @@
    * the rating glyph keeps its gold tone regardless of the trading-color
    * palette the user picks. */
   --color-star: #ffd700;
-  /* Calendar win/loss-cell backgrounds + matching outline rings. Deep
-   * pine/wine bgs with a lighter shade for the border. Independent of
-   * --color-win/loss so the win/loss palette picker doesn't drag the
-   * calendar along with it. */
+  /* Calendar day-cell backgrounds. Deep pine/wine for win/loss, warm
+   * stone for breakeven (scratches), near-black for closed weekend
+   * cells. Independent of --color-win/loss so the win/loss palette
+   * picker doesn't drag the calendar along with it. */
   --color-cal-win-bg:         #073d29;
-  --color-cal-win-ring:       #155947;
   --color-cal-loss-bg:        #5c1f1d;
-  --color-cal-loss-ring:      #8b3d3a;
-  --color-cal-breakeven-bg:   #4c4b45;
-  --color-cal-breakeven-ring: #666259;
-  /* Week summary cards + weekday header labels. Solid surface with a
-   * visible outline. */
-  --color-cal-week-card-bg:     #181a23;
-  --color-cal-week-card-border: #3e414e;
+  --color-cal-breakeven-bg:   #a8a29e;
+  --color-cal-weekend-bg:     #13151d;
+  /* Corner-icon tints, paired with each card bg — a lighter neighbour
+   * for win/loss (so the icon reads against the dark surface), a darker
+   * neighbour for breakeven (against the light surface). */
+  --color-cal-win-icon:       #0c5e3f;
+  --color-cal-loss-icon:      #823834;
+  --color-cal-breakeven-icon: #645d59;
   /* Out-of-month padding cells in the calendar grid — a notch lighter
    * than `--color-panel` so they read as faint placeholders. */
   --color-cal-pad-border: var(--color-panel-2);
