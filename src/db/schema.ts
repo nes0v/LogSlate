@@ -132,7 +132,10 @@ export async function cleanOrphanedPendingRefs(): Promise<void> {
         return live.has(ref.slice('pending:'.length))
       })
       if (filtered.length === d.screenshots.length) continue
-      if (filtered.length === 0) {
+      // Only delete the row when there's truly nothing left to keep —
+      // an empty screenshots list with no note. A day's note is a
+      // user-authored journal entry and is independent of screenshots.
+      if (filtered.length === 0 && !d.note) {
         await db.days.delete(d.id)
       } else {
         await db.days.update(d.id, { screenshots: filtered, updated_at: now })

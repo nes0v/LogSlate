@@ -34,12 +34,18 @@ export function AccountsPanel({ accounts }: AccountsPanelProps) {
 
   async function handleDelete(id: string, name: string) {
     const counts = await countAccountData(id)
-    const description =
-      counts.trades === 0 && counts.adjustments === 0
-        ? undefined
-        : `This will permanently remove ${counts.trades} trade${
-            counts.trades === 1 ? '' : 's'
-          } and ${counts.adjustments} adjustment${counts.adjustments === 1 ? '' : 's'}.`
+    const parts: string[] = []
+    const push = (n: number, singular: string, plural = `${singular}s`) => {
+      if (n > 0) parts.push(`${n} ${n === 1 ? singular : plural}`)
+    }
+    push(counts.trades, 'trade')
+    push(counts.adjustments, 'adjustment')
+    push(counts.days, 'day note/screenshots entry', 'day note/screenshot entries')
+    push(counts.models, 'model')
+    push(counts.progressRules, 'progress rule')
+    const description = parts.length === 0
+      ? undefined
+      : `This will permanently remove ${parts.join(', ')}.`
     if (!(await confirm({ title: `Delete account "${name}"?`, description }))) return
     try {
       await deleteAccount(id)

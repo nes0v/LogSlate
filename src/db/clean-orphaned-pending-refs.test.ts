@@ -92,6 +92,26 @@ describe('cleanOrphanedPendingRefs', () => {
     expect(d).toBeUndefined()
   })
 
+  it('preserves a day row whose only screenshot is orphaned but has a note', async () => {
+    // Regression: previously the orphan-cleanup deleted the whole day
+    // row when screenshots became empty, wiping the user's journal note
+    // for that day. Notes are independent of screenshots.
+    await db.days.add({
+      id: `${MAIN_ACCOUNT_ID}:2026-04-15`,
+      account_id: MAIN_ACCOUNT_ID,
+      date: '2026-04-15',
+      screenshots: ['pending:gone'],
+      note: 'reviewed the morning session: stayed out of the chop',
+      created_at: '2026-04-15T14:00:00.000Z',
+      updated_at: '2026-04-15T14:00:00.000Z',
+    })
+    await cleanOrphanedPendingRefs()
+    const d = await db.days.get(`${MAIN_ACCOUNT_ID}:2026-04-15`)
+    expect(d).toBeDefined()
+    expect(d?.screenshots).toEqual([])
+    expect(d?.note).toBe('reviewed the morning session: stayed out of the chop')
+  })
+
   it('handles a trade and a day with overlapping pending refs in one pass', async () => {
     await db.pending_uploads.add(pending('p-live'))
     await db.trades.add(tradeRecord({ id: 't1', screenshot: 'pending:p-gone' }))

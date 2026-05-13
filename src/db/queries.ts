@@ -220,15 +220,23 @@ export async function deleteAccount(id: string): Promise<void> {
 }
 
 // Counts the data an account owns — used by the UI confirm dialog before a
-// cascading delete so the user sees what's about to go.
-export async function countAccountData(
-  id: string,
-): Promise<{ trades: number; adjustments: number }> {
-  const [trades, adjustments] = await Promise.all([
+// cascading delete so the user sees what's about to go. Mirrors every
+// table touched by `deleteAccount`'s cascade.
+export async function countAccountData(id: string): Promise<{
+  trades: number
+  adjustments: number
+  days: number
+  models: number
+  progressRules: number
+}> {
+  const [trades, adjustments, days, models, progressRules] = await Promise.all([
     db.trades.where('account_id').equals(id).count(),
     db.adjustments.where('account_id').equals(id).count(),
+    db.days.where('account_id').equals(id).count(),
+    db.models.where('account_id').equals(id).count(),
+    db.progress_rules.where('account_id').equals(id).count(),
   ])
-  return { trades, adjustments }
+  return { trades, adjustments, days, models, progressRules }
 }
 
 // ---------- days ----------

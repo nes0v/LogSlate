@@ -35,6 +35,8 @@ beforeEach(async () => {
   await db.days.clear()
   await db.pending_uploads.clear()
   await db.models.clear()
+  await db.progress_rules.clear()
+  await db.progress_checks.clear()
   await ensureMainAccount()
 })
 afterEach(async () => {
@@ -331,15 +333,56 @@ describe('account queries', () => {
     expect(localStorage.getItem(`logslate:equity_view_default:${MAIN_ACCOUNT_ID}`)).toBe('curve')
   })
 
-  it('countAccountData reports trade + adjustment counts for the given account', async () => {
+  it('countAccountData reports counts for every table the cascade touches', async () => {
     const a = await createAccount({ name: 'Alpha' })
     await createTrade(tradeDraft(), a.id)
     await createTrade(tradeDraft(), a.id)
     await createAdjustment(adjustmentDraft(), a.id)
+    await db.days.put({
+      id: `${a.id}:2026-04-15`,
+      account_id: a.id,
+      date: '2026-04-15',
+      screenshots: [],
+      note: 'rough day',
+      created_at: '2026-04-15T00:00:00Z',
+      updated_at: '2026-04-15T00:00:00Z',
+    })
+    await db.models.put({
+      id: 'm1',
+      account_id: a.id,
+      name: 'breakout',
+      description: '',
+      sessions: [],
+      groups: [],
+      archived: false,
+      created_at: '2026-04-15T00:00:00Z',
+      updated_at: '2026-04-15T00:00:00Z',
+    })
+    await db.progress_rules.put({
+      id: 'pr1',
+      account_id: a.id,
+      text: 'check the news',
+      active: true,
+      sort: 0,
+      created_at: '2026-04-15T00:00:00Z',
+      updated_at: '2026-04-15T00:00:00Z',
+    })
     await createTrade(tradeDraft(), MAIN_ACCOUNT_ID)
 
-    expect(await countAccountData(a.id)).toEqual({ trades: 2, adjustments: 1 })
-    expect(await countAccountData(MAIN_ACCOUNT_ID)).toEqual({ trades: 1, adjustments: 0 })
+    expect(await countAccountData(a.id)).toEqual({
+      trades: 2,
+      adjustments: 1,
+      days: 1,
+      models: 1,
+      progressRules: 1,
+    })
+    expect(await countAccountData(MAIN_ACCOUNT_ID)).toEqual({
+      trades: 1,
+      adjustments: 0,
+      days: 0,
+      models: 0,
+      progressRules: 0,
+    })
   })
 })
 
