@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { addDays, format } from 'date-fns'
 import { ChevronLeft, ChevronRight, Plus, X } from 'lucide-react'
@@ -383,6 +383,18 @@ function RuleRow({
   onUpdate: (id: string, patch: Partial<ProgressRule>) => void
   onDelete: (id: string) => void
 }) {
+  // Local `text` state shadows `rule.text` so typing feels immediate
+  // without re-rendering the whole list per keystroke. We re-sync from
+  // `rule.text` when it changes from a different source (cross-device
+  // sync via Drive) AND the input is not currently focused — matches
+  // the DayNoteSection pattern so the user's in-flight edit isn't
+  // clobbered by an incoming sync.
+  const [text, setText] = useState(rule.text)
+  const inputRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    if (document.activeElement === inputRef.current) return
+    setText(rule.text)
+  }, [rule.text])
   return (
     <div className="flex items-start gap-2 px-1 py-1 rounded-sm">
       <span className="size-4 inline-flex items-center justify-center shrink-0 mt-px">
@@ -394,10 +406,12 @@ function RuleRow({
         />
       </span>
       <input
-        defaultValue={rule.text}
+        ref={inputRef}
+        value={text}
+        onChange={e => setText(e.target.value)}
         placeholder="Rule…"
-        onBlur={e => {
-          const v = e.target.value.trim()
+        onBlur={() => {
+          const v = text.trim()
           if (v !== rule.text) onUpdate(rule.id, { text: v })
         }}
         className={cn(
