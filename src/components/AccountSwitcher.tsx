@@ -22,13 +22,16 @@ export function AccountSwitcher({ accounts }: AccountSwitcherProps) {
   const rootRef = useRef<HTMLDivElement>(null)
 
   // If the active account was deleted (e.g. by a sync from another device),
-  // fall back to Main so the UI doesn't render an empty dataset forever.
+  // fall back to a real account so the UI doesn't render an empty dataset
+  // forever. Prefer MAIN when it exists; otherwise take whichever account
+  // happens to be first (covers the case where the user has deleted MAIN
+  // and only synced other accounts in).
   useEffect(() => {
     if (accounts.length === 0) return
     const current = getActiveAccountId()
-    if (!accounts.some(a => a.id === current)) {
-      setActiveAccountId(MAIN_ACCOUNT_ID)
-    }
+    if (accounts.some(a => a.id === current)) return
+    const main = accounts.find(a => a.id === MAIN_ACCOUNT_ID)
+    setActiveAccountId(main?.id ?? accounts[0].id)
   }, [accounts])
 
   useEffect(() => {
