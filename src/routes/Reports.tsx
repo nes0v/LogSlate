@@ -369,7 +369,7 @@ function SymbolReport({ trades }: { trades: TradeRecord[] }) {
                 ({stats.count})
               </span>
             </h3>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-y-3 gap-x-1.5">
               <Stat
                 label="Net P&L"
                 value={formatUsd(stats.net_pnl)}

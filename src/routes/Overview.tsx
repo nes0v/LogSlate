@@ -43,8 +43,8 @@ import {
 } from '@/lib/buckets'
 import { TradingViewChart } from '@/components/TradingViewChart'
 import { ChartTimeframeToggle } from '@/components/ChartTimeframeToggle'
-import { EquityChartToggle, type EquityView } from '@/components/EquityChartToggle'
-import { getDefaultEquityView } from '@/lib/equity-view-preference'
+import { EquityChartToggle } from '@/components/EquityChartToggle'
+import { setDefaultEquityView, useDefaultEquityView } from '@/lib/equity-view-preference'
 import { TradeTable } from '@/components/TradeTable'
 import {
   CompositeScoreSection,
@@ -57,7 +57,7 @@ export function OverviewRoute() {
   const [params, setParams] = useSearchParams()
   const navigate = useNavigate()
   const urlFilters = filtersFromParams(params)
-  const [equityView, setEquityView] = useState<EquityView>(getDefaultEquityView)
+  const equityView = useDefaultEquityView()
   const [tableExpandedIds, setTableExpandedIds] = useState<Set<string>>(new Set())
   const toggleTableRow = useCallback((id: string) => {
     setTableExpandedIds(prev => {
@@ -347,13 +347,12 @@ export function OverviewRoute() {
 
   // "Clear" returns to the bare /overview URL and restores the chart's
   // default state: filter back to the last-30-days default, timeframe
-  // back to D (URL clear handles tf), Line/Candles back to the
-  // per-account stored preference, and viewport snapped to the new
-  // default range via an epoch bump.
+  // back to D (URL clear handles tf), and viewport snapped to the new
+  // default range via an epoch bump. The Line/Candles toggle is the
+  // persisted preference itself, so it stays where the user left it.
   function clear() {
     saveSharedFilters(null)
     setParams(paramsFromFilters(EMPTY_FILTERS))
-    setEquityView(getDefaultEquityView())
     setViewportEpoch(e => e + 1)
   }
 
@@ -436,7 +435,7 @@ export function OverviewRoute() {
                   Set date to range
                 </button>
               )}
-              <EquityChartToggle value={equityView} onChange={setEquityView} />
+              <EquityChartToggle value={equityView} onChange={setDefaultEquityView} />
               <ChartTimeframeToggle value={timeframe} onChange={setTimeframe} />
             </div>
           }

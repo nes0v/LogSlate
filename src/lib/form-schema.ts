@@ -190,11 +190,17 @@ export function formToDraft(v: TradeFormValues): TradeDraft {
   // Session is auto-detected from the open + close times (earliest +
   // latest of the executions). Lexical sort on HH:MM:SS works because
   // they all share the same date.
-  let earliest = v.executions[0]!.time
-  let latest = v.executions[0]!.time
+  let earliest: string | null = null
+  let latest: string | null = null
   for (const e of v.executions) {
-    if (e.time < earliest) earliest = e.time
-    if (e.time > latest) latest = e.time
+    if (earliest === null || e.time < earliest) earliest = e.time
+    if (latest === null || e.time > latest) latest = e.time
+  }
+  if (earliest === null || latest === null) {
+    // Zod's `.min(2)` upstream guarantees this never happens, but stay
+    // defensive so a regression in validation doesn't crash here.
+    earliest = '00:00:00'
+    latest = '00:00:00'
   }
   const session = detectSession(earliest, latest)
 

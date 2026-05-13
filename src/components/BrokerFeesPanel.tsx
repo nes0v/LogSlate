@@ -58,15 +58,11 @@ export function BrokerFeesPanel({ adjustments }: BrokerFeesPanelProps) {
     <div className="space-y-3">
       <p className="text-sm text-(--color-text-dim)">
         Recurring broker charges (live data feed, platform, etc.).
-        <br />
-        Posted on the 1st of the chosen month and subtracted from equity.
-        <br />
-        Kept out of the deposits/withdrawals view.
       </p>
 
       <form
         onSubmit={handleSubmit}
-        className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-drop-xs) p-3 grid grid-cols-[auto_1fr_1fr_auto] gap-3 items-end"
+        className="bg-(--color-panel) border border-(--color-bg) rounded-(--radius) p-3 grid grid-cols-[auto_1fr_1fr_auto] gap-3 items-end"
       >
         <div className="text-xs text-(--color-text-dim) space-y-2">
           <div>Month</div>
@@ -106,13 +102,13 @@ export function BrokerFeesPanel({ adjustments }: BrokerFeesPanelProps) {
 
       {list.length > 0 && (
         <>
-          <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-drop-xs) overflow-hidden">
+          <div className="bg-(--color-panel) border border-(--color-bg) rounded-(--radius) overflow-hidden">
             <table className="w-full text-sm border-collapse">
               <tbody>
                 {list.map(a => (
                   <tr
                     key={a.id}
-                    className="border-t border-(--color-bg) first:border-t-0 hover:bg-(--color-panel-2)/60"
+                    className="transition-colors duration-300 ease-out border-t border-(--color-bg) first:border-t-0 hover:bg-(--color-panel-2)/60"
                   >
                     <td className="px-3 py-2 text-xs font-mono tabular-nums text-(--color-text-dim) whitespace-nowrap">
                       {a.date.slice(0, 7)}
@@ -131,7 +127,7 @@ export function BrokerFeesPanel({ adjustments }: BrokerFeesPanelProps) {
                         type="button"
                         onClick={() => handleDelete(a.id)}
                         aria-label="Delete fee"
-                        className="p-1 rounded-(--radius) text-(--color-text-dim) hover:text-(--color-loss) hover:bg-(--color-panel-2)"
+                        className="p-1 rounded-(--radius) text-(--color-text-dim) hover:text-(--color-loss) hover:bg-(--color-panel-3)"
                       >
                         <Trash2 className="size-3.5" />
                       </button>

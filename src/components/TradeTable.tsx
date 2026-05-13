@@ -110,9 +110,18 @@ function TradeTableRow({
   return (
     <tr
       onClick={onToggle}
+      onKeyDown={e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onToggle()
+        }
+      }}
+      role="button"
+      tabIndex={0}
+      aria-expanded={expanded}
       title={trade.idea}
       className={cn(
-        'cursor-pointer transition-colors duration-300 ease-out border-t border-(--color-bg) [&>td]:align-middle [&>td]:pt-[7px] [&>td]:pb-[9px]',
+        'cursor-pointer transition-colors duration-300 ease-out border-t border-(--color-bg) [&>td]:align-middle [&>td]:pt-[7px] [&>td]:pb-[9px] focus:outline-none focus-visible:bg-(--color-panel-2)/40',
         expanded ? 'bg-(--color-panel-2)' : 'hover:bg-(--color-panel-2)/60',
       )}
     >

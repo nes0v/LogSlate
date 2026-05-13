@@ -4,7 +4,6 @@ import { RouterProvider } from 'react-router-dom'
 import { cleanOrphanedPendingRefs, ensureMainAccount } from '@/db/schema'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { initAutoSync } from '@/lib/auto-sync'
-import { applyColorScheme, getColorScheme } from '@/lib/color-scheme-preference'
 import { router } from '@/router'
 import '@/index.css'
 import '@/db/seed' // registers dev helpers on window in dev builds; no-op in prod
@@ -12,7 +11,6 @@ import '@/db/seed' // registers dev helpers on window in dev builds; no-op in pr
 void ensureMainAccount()
 void cleanOrphanedPendingRefs()
 initAutoSync()
-applyColorScheme(getColorScheme())
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

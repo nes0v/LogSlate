@@ -18,6 +18,7 @@ import { NumberInput } from '@/components/form/NumberInput'
 import { QtyInput } from '@/components/form/QtyInput'
 import { Select } from '@/components/form/Select'
 import { ScreenshotField } from '@/components/ScreenshotField'
+import { computeOrphanRules } from '@/lib/model-rules'
 import { computeAhpc, computeNetPnl } from '@/lib/trade-math'
 import { formatDuration } from '@/lib/duration'
 import { formatUsd } from '@/lib/money'
@@ -704,8 +705,14 @@ function ModelRuleChecklist({
     if (on) onChange([...new Set([...followed, rule])])
     else onChange(followed.filter(r => r !== rule))
   }
+  // Rules the user logged that the model no longer contains (deleted or
+  // renamed since the trade was saved). Surfaced as a trailing group so
+  // the user can uncheck — once unchecked + saved, the string drops off
+  // `model_rules_followed` and won't reappear.
+  const orphans = useMemo(() => computeOrphanRules(groups, followed), [groups, followed])
   const total = groups.reduce((n, g) => n + g.rules.length, 0)
-  if (total === 0) {
+  const inModelFollowed = followed.length - orphans.length
+  if (total === 0 && orphans.length === 0) {
     return (
       <div className="text-xs text-(--color-text-dim) italic px-2">
         This model has no rules yet.
@@ -717,7 +724,10 @@ function ModelRuleChecklist({
       <div className="text-xs uppercase tracking-wider text-(--color-text-dim) flex items-center justify-between">
         <span>Rules followed</span>
         <span className="font-mono normal-case">
-          {set.size} / {total}
+          {inModelFollowed} / {total}
+          {orphans.length > 0 && (
+            <span className="text-(--color-text-faint)"> (+{orphans.length} removed)</span>
+          )}
         </span>
       </div>
       {groups.map(g => (
@@ -733,6 +743,19 @@ function ModelRuleChecklist({
           ))}
         </div>
       ))}
+      {orphans.length > 0 && (
+        <div className="space-y-0.5">
+          <div className="text-xs text-(--color-text-dim) italic">Removed from model</div>
+          {orphans.map((r, i) => (
+            <RuleCheck
+              key={`orphan-${i}`}
+              checked
+              onChange={ok => toggle(r, ok)}
+              label={r}
+            />
+          ))}
+        </div>
+      )}
     </div>
   )
 }

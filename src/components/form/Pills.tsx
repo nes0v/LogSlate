@@ -1,11 +1,11 @@
 import type { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 
-// Canonical "select one of N" control. Used everywhere a user picks from a
-// short, mutually-exclusive set: form fields (Symbol/Contract/Session/...)
-// AND settings pickers (theme, color scheme). Visual: an iOS-style segmented
-// control — recessed track on the parent card, active item lifts out on
-// `panel` with a subtle shadow.
+// Canonical "select one of N" control. Used wherever the user picks from a
+// short, mutually-exclusive set (form fields like Symbol/Contract/Session,
+// filter bars, etc.). Visual: an iOS-style segmented control — recessed
+// track on the parent card, active item lifts out on `panel` with a subtle
+// shadow.
 //
 // `prefix` is rendered before the label inside each pill (typically an
 // icon swatch). Pass it on the option, not as JSX label, so the layout
@@ -25,6 +25,8 @@ interface PillsProps<T extends string | number | null> {
   className?: string
   /** Tighter padding for use inside form rows. */
   size?: 'md' | 'sm'
+  /** Group label announced to assistive tech. */
+  ariaLabel?: string
 }
 
 export function Pills<T extends string | number | null>({
@@ -33,12 +35,13 @@ export function Pills<T extends string | number | null>({
   options,
   className,
   size = 'md',
+  ariaLabel,
 }: PillsProps<T>) {
   return (
     <div
+      role="group"
+      aria-label={ariaLabel}
       className={cn(
-        // Track = `bg` (recessed inside its parent card); active item lifts
-        // out on `panel` with a small shadow. iOS-style segmented control.
         'inline-flex rounded-(--radius) bg-(--color-bg) p-0.5',
         className,
       )}
@@ -50,6 +53,7 @@ export function Pills<T extends string | number | null>({
             key={String(opt.value)}
             type="button"
             onClick={() => onChange(opt.value)}
+            aria-pressed={active}
             className={cn(
               'inline-flex items-center gap-1.5 rounded-[6px] cursor-pointer transition-colors whitespace-nowrap',
               size === 'sm' ? 'px-2.5 py-1 text-xs' : 'px-2.5 py-1 text-sm',

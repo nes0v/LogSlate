@@ -605,7 +605,7 @@ function MetricGroup({
     <div>
       <h3 className="text-sm font-medium mb-2">{title}</h3>
       <div
-        className="grid grid-cols-2 sm:grid-cols-3 gap-3 lg:[grid-template-columns:var(--cols)]"
+        className="grid grid-cols-2 sm:grid-cols-3 gap-y-3 gap-x-1.5 lg:[grid-template-columns:var(--cols)]"
         style={{ ['--cols' as string]: `repeat(${count}, minmax(0, 1fr))` }}
       >
         {children}

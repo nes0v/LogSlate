@@ -3,6 +3,7 @@ import { Check, ExternalLink, Pencil, Trash2, X } from 'lucide-react'
 import type { Model, TradeRecord } from '@/db/types'
 import { deleteTrade } from '@/db/queries'
 import { useConfirm } from '@/components/ConfirmDialog'
+import { computeOrphanRules } from '@/lib/model-rules'
 import { computeAhpc, totalContracts } from '@/lib/trade-math'
 import { driveViewUrlFromRef, parseScreenshotRef } from '@/lib/drive-images'
 import { handleValue } from '@/lib/symbols'
@@ -151,7 +152,9 @@ function ModelChecklist({
   followed: Set<string>
 }) {
   const total = groups.reduce((n, g) => n + g.rules.length, 0)
-  if (total === 0) return null
+  // Strings still saved on the trade that the model no longer contains.
+  const orphans = computeOrphanRules(groups, followed)
+  if (total === 0 && orphans.length === 0) return null
   return (
     <div className="shrink-0 max-w-xs space-y-0.5">
       {groups.flatMap(g =>
@@ -177,6 +180,21 @@ function ModelChecklist({
             </div>
           )
         }),
+      )}
+      {orphans.length > 0 && (
+        <>
+          <div className="text-xs text-(--color-text-faint) italic pt-1">
+            Removed from model
+          </div>
+          {orphans.map((r, i) => (
+            <div key={`orphan-${i}`} className="flex items-start gap-1.5">
+              <Check className="size-3.5 shrink-0 mt-[3px] text-(--color-text-faint)" />
+              <span className="text-sm leading-tight text-(--color-text-dim)">
+                {r}
+              </span>
+            </div>
+          ))}
+        </>
       )}
     </div>
   )

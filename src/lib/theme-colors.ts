@@ -14,8 +14,7 @@
  * string the canvas understands.
  *
  * Results are memoized per token name — chart redraws hit this 10× per
- * effect run and the DOM probe is non-trivial. Cache is busted from
- * `applyColorScheme` whenever `--color-win` / `--color-loss` change.
+ * effect run and the DOM probe is non-trivial.
  *
  * Call this inside effects (not during SSR).
  */
@@ -37,10 +36,4 @@ export function themeColor(name: string, fallback = '#000'): string {
   const value = resolved || fallback
   cache.set(name, value)
   return value
-}
-
-/** Clear the memoization cache. Call after mutating any `--color-*`
- *  custom property at runtime so the next `themeColor()` call re-probes. */
-export function clearThemeColorCache(): void {
-  cache.clear()
 }

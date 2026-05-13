@@ -59,16 +59,12 @@ export function EquityAdjustmentsPanel({ adjustments }: EquityAdjustmentsPanelPr
   return (
     <div className="space-y-3">
       <p className="text-sm text-(--color-text-dim)">
-        Cash in/out of the trading account.
-        <br />
-        Deposits grow equity, withdrawals shrink it.
-        <br />
         These show up on the equity curve but don&rsquo;t affect trade stats.
       </p>
 
       <form
         onSubmit={handleSubmit}
-        className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-drop-xs) p-3 grid grid-cols-[auto_auto_1fr_auto] gap-3 items-end"
+        className="bg-(--color-panel) border border-(--color-bg) rounded-(--radius) p-3 grid grid-cols-[auto_auto_1fr_auto] gap-3 items-end"
       >
         <div className="text-xs text-(--color-text-dim) space-y-2">
           <div>Date</div>
@@ -110,13 +106,13 @@ export function EquityAdjustmentsPanel({ adjustments }: EquityAdjustmentsPanelPr
 
       {list.length > 0 && (
         <>
-          <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-drop-xs) overflow-hidden">
+          <div className="bg-(--color-panel) border border-(--color-bg) rounded-(--radius) overflow-hidden">
           <table className="w-full text-sm border-collapse">
             <tbody>
               {list.map(a => (
                 <tr
                   key={a.id}
-                  className="border-t border-(--color-bg) first:border-t-0 hover:bg-(--color-panel-2)/60"
+                  className="transition-colors duration-300 ease-out border-t border-(--color-bg) first:border-t-0 hover:bg-(--color-panel-2)/60"
                 >
                   <td className="px-3 py-2 text-xs font-mono tabular-nums text-(--color-text-dim) whitespace-nowrap">
                     {a.date}
@@ -147,7 +143,7 @@ export function EquityAdjustmentsPanel({ adjustments }: EquityAdjustmentsPanelPr
                       type="button"
                       onClick={() => handleDelete(a.id)}
                       aria-label="Delete adjustment"
-                      className="p-1 rounded-(--radius) text-(--color-text-dim) hover:text-(--color-loss) hover:bg-(--color-panel-2)"
+                      className="p-1 rounded-(--radius) text-(--color-text-dim) hover:text-(--color-loss) hover:bg-(--color-panel-3)"
                     >
                       <Trash2 className="size-3.5" />
                     </button>

@@ -2,12 +2,7 @@
 
 /* ============================================================================
  * Theme tokens — dark-only.
- * ============================================================================
- * The win/loss pair is set at runtime by the color-scheme picker
- * (src/lib/color-scheme-preference.ts) — those inline styles take precedence
- * over the defaults below. That picker swaps trading-colors only; it doesn't
- * touch the surrounding surface palette.
- */
+ * ============================================================================ */
 
 @theme {
   /* Font stacks — system-first, with refined feature defaults applied on
@@ -64,8 +59,7 @@
    * need to read as "dark purple". */
   --color-accent-deep: #2c2759;
 
-  /* Trading colors — overridden at runtime by color-scheme-preference.ts.
-   * Defaults are the "classic" green/red. */
+  /* Trading colors. */
   --color-win:  #22c55e;
   --color-loss: #ef4444;
   /* Filled rating stars (RatingStars). Distinct from --color-win/loss so
