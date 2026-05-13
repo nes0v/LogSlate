@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { getDefaultEquityView, setDefaultEquityView } from './equity-view-preference'
+import { renderHook } from '@testing-library/react'
+import {
+  getDefaultEquityView,
+  setDefaultEquityView,
+  useDefaultEquityView,
+} from './equity-view-preference'
+import { setActiveAccountId } from './active-account'
+import { MAIN_ACCOUNT_ID } from '@/db/types'
 
 beforeEach(() => {
   localStorage.clear()
@@ -51,5 +58,35 @@ describe('equity view preference', () => {
     setDefaultEquityView('candles', 'acct-1') // same value
     expect(writeSpy).not.toHaveBeenCalled()
     writeSpy.mockRestore()
+  })
+
+  it('defaults the account arg to the currently active account', () => {
+    setActiveAccountId('acct-1')
+    setDefaultEquityView('candles')
+    expect(getDefaultEquityView()).toBe('candles')
+    // Reset back so it doesn't leak into other suites.
+    setActiveAccountId(MAIN_ACCOUNT_ID)
+  })
+})
+
+describe('useDefaultEquityView', () => {
+  it('returns the current value and re-renders when it changes', () => {
+    setActiveAccountId('acct-1')
+    const { result, rerender } = renderHook(() => useDefaultEquityView())
+    expect(result.current).toBe('curve')
+    setDefaultEquityView('candles', 'acct-1')
+    rerender()
+    expect(result.current).toBe('candles')
+    setActiveAccountId(MAIN_ACCOUNT_ID)
+  })
+
+  it('cleanly unsubscribes on unmount', () => {
+    setActiveAccountId('acct-2')
+    const { unmount } = renderHook(() => useDefaultEquityView())
+    unmount()
+    // After unmount, mutating the value must not throw — exercises the
+    // listener-removal branch in `subscribe`.
+    expect(() => setDefaultEquityView('candles', 'acct-2')).not.toThrow()
+    setActiveAccountId(MAIN_ACCOUNT_ID)
   })
 })
