@@ -37,6 +37,7 @@ import {
   uploadDriveFile,
 } from '@/lib/drive'
 import { pushError } from '@/lib/notifications'
+import { loadJsonFromStorage, removeFromStorage, saveJsonToStorage } from '@/lib/storage'
 
 const TOP_FOLDER_NAME = 'LogSlate'
 
@@ -57,10 +58,11 @@ interface CachedAccountFolder {
 }
 
 function loadCachedAccountFolder(accountId: string): CachedAccountFolder | null {
+  // Back-compat: old cache stored the bare id string — has to be sniffed
+  // before JSON.parse, so this one can't use loadJsonFromStorage.
   try {
     const raw = localStorage.getItem(accountFolderKey(accountId))
     if (!raw) return null
-    // Back-compat: old cache stored the bare id string.
     if (!raw.startsWith('{')) return { id: raw, name: '' }
     const parsed = JSON.parse(raw) as unknown
     if (
@@ -81,36 +83,28 @@ function saveCachedAccountFolder(
   accountId: string,
   entry: CachedAccountFolder | null,
 ): void {
-  try {
-    if (entry) localStorage.setItem(accountFolderKey(accountId), JSON.stringify(entry))
-    else localStorage.removeItem(accountFolderKey(accountId))
-  } catch {
-    // localStorage unavailable — we'll find the folder again next time.
-  }
+  const key = accountFolderKey(accountId)
+  if (entry) saveJsonToStorage(key, entry)
+  else removeFromStorage(key)
 }
 
 function loadMonthFolderMap(accountId: string): Record<string, string> {
-  try {
-    const raw = localStorage.getItem(monthFolderMapKey(accountId))
-    if (!raw) return {}
-    const parsed = JSON.parse(raw) as unknown
-    if (!parsed || typeof parsed !== 'object') return {}
-    const out: Record<string, string> = {}
-    for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
-      if (typeof v === 'string') out[k] = v
-    }
-    return out
-  } catch {
-    return {}
-  }
+  return loadJsonFromStorage(
+    monthFolderMapKey(accountId),
+    raw => {
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+      const out: Record<string, string> = {}
+      for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+        if (typeof v === 'string') out[k] = v
+      }
+      return out
+    },
+    {} as Record<string, string>,
+  )
 }
 
 function saveMonthFolderMap(accountId: string, map: Record<string, string>): void {
-  try {
-    localStorage.setItem(monthFolderMapKey(accountId), JSON.stringify(map))
-  } catch {
-    // localStorage unavailable — we'll re-resolve on each session.
-  }
+  saveJsonToStorage(monthFolderMapKey(accountId), map)
 }
 
 // Top-level "LogSlate" folder — same for every account, so we memoise it at

@@ -16,6 +16,7 @@ import {
   uploadAppDataFile,
   type DriveFileMeta,
 } from '@/lib/drive'
+import { loadJsonFromStorage, saveJsonToStorage, removeFromStorage } from '@/lib/storage'
 
 const FILE_NAME = 'logslate.json'
 const LAST_SYNC_AT_KEY = 'logslate:sync:at'
@@ -61,19 +62,18 @@ interface SyncFile {
 }
 
 function loadIdSet(key: string): Set<string> {
-  try {
-    const s = localStorage.getItem(key)
-    if (!s) return new Set()
-    const arr = JSON.parse(s) as unknown
-    if (!Array.isArray(arr)) return new Set()
-    return new Set(arr.filter((x): x is string => typeof x === 'string'))
-  } catch {
-    return new Set()
-  }
+  return loadJsonFromStorage(
+    key,
+    raw =>
+      Array.isArray(raw)
+        ? new Set(raw.filter((x): x is string => typeof x === 'string'))
+        : null,
+    new Set<string>(),
+  )
 }
 
 function saveIdSet(key: string, ids: Set<string>): void {
-  localStorage.setItem(key, JSON.stringify(Array.from(ids)))
+  saveJsonToStorage(key, Array.from(ids))
 }
 
 export function lastSyncAt(): Date | null {
@@ -244,6 +244,6 @@ export async function syncNow(): Promise<SyncResult> {
 // Clear the last-synced state locally — useful when the user signs out and we
 // want the next sign-in to treat this as a fresh sync (union of both sides).
 export function clearSyncState(): void {
-  for (const s of SPECS) localStorage.removeItem(s.idsKey)
-  localStorage.removeItem(LAST_SYNC_AT_KEY)
+  for (const s of SPECS) removeFromStorage(s.idsKey)
+  removeFromStorage(LAST_SYNC_AT_KEY)
 }

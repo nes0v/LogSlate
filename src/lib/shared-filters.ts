@@ -7,6 +7,7 @@
 import { addDays, format } from 'date-fns'
 import { dateKeyToDate } from '@/lib/tz'
 import type { TradeFilters } from '@/lib/filters'
+import { loadJsonFromStorage, removeFromStorage, saveJsonToStorage } from '@/lib/storage'
 
 const KEY = 'logslate.shared-filters.v1'
 
@@ -23,22 +24,19 @@ export function defaultRange(baseDate: string): { from: string; to: string } {
 }
 
 export function loadSharedFilters(): TradeFilters | null {
-  try {
-    const raw = localStorage.getItem(KEY)
-    if (!raw) return null
-    return JSON.parse(raw) as TradeFilters
-  } catch {
-    return null
-  }
+  return loadJsonFromStorage<TradeFilters | null>(
+    KEY,
+    raw =>
+      raw !== null && typeof raw === 'object' && !Array.isArray(raw)
+        ? (raw as TradeFilters)
+        : null,
+    null,
+  )
 }
 
 export function saveSharedFilters(f: TradeFilters | null) {
-  try {
-    if (f) localStorage.setItem(KEY, JSON.stringify(f))
-    else localStorage.removeItem(KEY)
-  } catch {
-    /* ignore quota / privacy-mode errors */
-  }
+  if (f) saveJsonToStorage(KEY, f)
+  else removeFromStorage(KEY)
 }
 
 export function hasAnyFilter(f: TradeFilters): boolean {
