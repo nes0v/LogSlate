@@ -207,10 +207,16 @@ async function authFetch(url: string, init?: RequestInit): Promise<Response> {
   const headers = new Headers(init?.headers)
   headers.set('Authorization', `Bearer ${token}`)
   const resp = await fetch(url, { ...init, headers })
-  // 401 → token invalid; drop it and flip to signed-out.
+  // 401 → token invalid (expired/revoked). Drop it, flip the local state
+  // to signed-out, and throw `DriveScopeError` so the sync coordinator
+  // surfaces a "Reconnect" notification instead of leaking through as a
+  // generic HTTP error.
   if (resp.status === 401) {
     saveToken(null)
-    update({ status: 'signed-out', error: null })
+    update({ status: 'signed-out', error: 'Google sign-in expired.' })
+    throw new DriveScopeError(
+      'Google sign-in expired. Reconnect in Settings to resume sync.',
+    )
   }
   return resp
 }

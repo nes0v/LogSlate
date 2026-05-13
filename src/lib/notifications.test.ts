@@ -30,6 +30,21 @@ describe('pushError', () => {
     const id = pushError('reconnect needed', { label: 'Settings', to: '/settings' })
     expect(id).toBeTruthy()
   })
+
+  it('does NOT de-dupe two errors with the same message but different actions', () => {
+    const first = pushError('reconnect needed', { label: 'Settings', to: '/settings' })
+    const second = pushError('reconnect needed', { label: 'Help', to: '/help' })
+    expect(first).toBeTruthy()
+    expect(second).toBeTruthy()
+    expect(first).not.toBe(second)
+  })
+
+  it('de-dupes two errors with the same message and matching action', () => {
+    const first = pushError('reconnect needed', { label: 'Settings', to: '/settings' })
+    const second = pushError('reconnect needed', { label: 'Settings', to: '/settings' })
+    expect(first).toBeTruthy()
+    expect(second).toBeNull()
+  })
 })
 
 describe('pushInfo', () => {

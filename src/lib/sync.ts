@@ -208,6 +208,16 @@ export async function syncNow(): Promise<SyncResult> {
     createdRemote = !meta
   }
 
+  // Save lastSyncedIds only after a successful push. The trade-off here:
+  //  - Save BEFORE push: a deletion of a freshly-merged-in row after a
+  //    push failure is correctly tombstoned on retry, BUT a local row
+  //    created before a failed push can be DROPPED on retry if another
+  //    device pushed during the gap (lastSynced says "should be on both
+  //    sides", new remote doesn't have it → treated as remote-deleted).
+  //  - Save AFTER push (this code): a deletion of a freshly-merged-in
+  //    row after push failure can resurrect on retry (visible, user can
+  //    re-delete), BUT no creation is ever silently dropped.
+  // Visible bug > silent data loss, so we save after push.
   SPECS.forEach((s, i) => saveIdSet(s.idsKey, new Set(merged[i].map(m => m.id))))
   const at = new Date().toISOString()
   localStorage.setItem(LAST_SYNC_AT_KEY, at)

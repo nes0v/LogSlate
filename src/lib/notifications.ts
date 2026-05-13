@@ -49,21 +49,35 @@ function newId(): string {
   return crypto.randomUUID()
 }
 
-// De-dupe by (kind, message) — repeated identical pushes (e.g. an error
-// that fires on every tick of some failing loop) shouldn't stack up.
-function exists(kind: NotificationKind, message: string): boolean {
-  return items.some(n => n.kind === kind && n.message === message)
+// De-dupe by (kind, message, action) — repeated identical pushes (e.g. an
+// error that fires on every tick of some failing loop) shouldn't stack
+// up, but two notifications with the same message and *different* action
+// links should coexist so the user can act on each separately.
+function sameAction(a: NotificationAction | undefined, b: NotificationAction | undefined): boolean {
+  if (a === undefined && b === undefined) return true
+  if (a === undefined || b === undefined) return false
+  return a.label === b.label && a.to === b.to && a.onClick === b.onClick
+}
+
+function exists(
+  kind: NotificationKind,
+  message: string,
+  action: NotificationAction | undefined,
+): boolean {
+  return items.some(
+    n => n.kind === kind && n.message === message && sameAction(n.action, action),
+  )
 }
 
 export function pushError(message: string, action?: NotificationAction): string | null {
-  if (exists('error', message)) return null
+  if (exists('error', message, action)) return null
   const id = newId()
   emit([...items, { id, kind: 'error', message, action }])
   return id
 }
 
 export function pushInfo(message: string): string | null {
-  if (exists('info', message)) return null
+  if (exists('info', message, undefined)) return null
   const id = newId()
   emit([...items, { id, kind: 'info', message }])
   setTimeout(() => dismissNotification(id), INFO_DISMISS_MS)
