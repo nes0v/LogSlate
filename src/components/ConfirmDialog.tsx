@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from 'react'
 import { createPortal } from 'react-dom'
+import { BTN_BASE, BTN_GHOST } from '@/components/form/buttonClass'
 import { cn } from '@/lib/utils'
 
 interface ConfirmOptions {
@@ -120,11 +121,7 @@ function ConfirmModal({
           ) : null}
         </div>
         <div className="flex items-center justify-end gap-2">
-          <button
-            type="button"
-            onClick={() => onResult(false)}
-            className="px-3 py-1.5 text-sm rounded-(--radius) text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)"
-          >
+          <button type="button" onClick={() => onResult(false)} className={BTN_GHOST}>
             {cancelLabel}
           </button>
           <button
@@ -132,10 +129,11 @@ function ConfirmModal({
             type="button"
             onClick={() => onResult(true)}
             className={cn(
-              'px-3 py-1.5 text-sm rounded-(--radius) font-medium',
+              BTN_BASE,
+              'font-medium hover:opacity-90',
               destructive
-                ? 'bg-(--color-loss) text-white hover:opacity-90'
-                : 'bg-(--color-accent) text-(--color-accent-fg) hover:opacity-90',
+                ? 'bg-(--color-loss) text-white'
+                : 'bg-(--color-accent) text-(--color-accent-fg)',
             )}
           >
             {confirmLabel}

@@ -11,6 +11,7 @@ import { deleteTrade, getTrade, listAllTrades, updateTrade } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
 import { useArrowNavigation } from '@/lib/use-arrow-navigation'
 import { recordToForm, type TradeFormValues } from '@/lib/form-schema'
+import { BTN_BASE } from '@/components/form/buttonClass'
 import { errorMessage } from '@/lib/utils'
 import type { TradeDraft, TradeRecord } from '@/db/types'
 
@@ -134,7 +135,7 @@ export function TradeEditRoute() {
               type="button"
               onClick={handleDelete}
               disabled={!record}
-              className="inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-(--radius) border border-(--color-border) text-(--color-text-dim) hover:text-(--color-loss) disabled:opacity-50 transition-colors"
+              className={`${BTN_BASE} border border-(--color-border) text-(--color-text-dim) hover:text-(--color-loss) disabled:opacity-50 transition-colors`}
             >
               <Trash2 className="size-4" /> Delete
             </button>

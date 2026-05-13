@@ -10,7 +10,8 @@ import { clearSyncState, lastSyncAt, type SyncResult } from '@/lib/sync'
 import { exportBackup, importBackup } from '@/lib/backup'
 import { AccountsPanel } from '@/components/AccountsPanel'
 import { AdjustmentsPanel } from '@/components/AdjustmentsPanel'
-import { errorMessage } from '@/lib/utils'
+import { BTN_ACCENT, BTN_OUTLINED } from '@/components/form/buttonClass'
+import { cn, errorMessage } from '@/lib/utils'
 
 export function SettingsRoute() {
   const drive = useDriveState()
@@ -89,7 +90,7 @@ export function SettingsRoute() {
           </p>
 
           {!configured && (
-            <div className="rounded-(--radius) bg-(--color-panel) border border-(--color-bg) p-3 text-sm space-y-2">
+            <div className="rounded-(--radius) bg-(--color-panel-2) p-3 text-sm space-y-2">
               <p className="text-(--color-loss)">Google OAuth client ID is not configured.</p>
               <ol className="list-decimal list-inside space-y-1 text-(--color-text-dim)">
                 <li>Go to Google Cloud Console → <em>APIs & Services → Credentials</em></li>
@@ -102,7 +103,7 @@ export function SettingsRoute() {
           )}
 
           {configured && (
-            <div className="rounded-(--radius) bg-(--color-panel) border border-(--color-bg) p-3 space-y-3">
+            <div className="rounded-(--radius) bg-(--color-panel-2) p-3 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   {drive.status === 'signed-in' ? (
@@ -120,17 +121,14 @@ export function SettingsRoute() {
                   )}
                 </div>
                 {drive.status === 'signed-in' ? (
-                  <button
-                    onClick={handleSignOut}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-(--radius) border border-(--color-border) text-(--color-text-dim) hover:text-(--color-text)"
-                  >
+                  <button onClick={handleSignOut} className={BTN_OUTLINED}>
                     <LogOut className="size-4" /> Disconnect
                   </button>
                 ) : (
                   <button
                     onClick={signIn}
                     disabled={drive.status === 'signing-in'}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-(--radius) border border-transparent bg-(--color-accent) text-(--color-accent-fg) hover:opacity-90 disabled:opacity-50"
+                    className={BTN_ACCENT}
                   >
                     <LogIn className="size-4" /> Connect Google Drive
                   </button>
@@ -150,7 +148,7 @@ export function SettingsRoute() {
                     <button
                       onClick={handleSync}
                       disabled={syncing}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-(--radius) border border-(--color-border) text-(--color-text) hover:bg-(--color-panel-2) disabled:opacity-50"
+                      className={cn(BTN_OUTLINED, 'text-(--color-text) hover:bg-(--color-panel-2)')}
                     >
                       <RefreshCw className={'size-4 ' + (syncing ? 'animate-spin' : '')} />
                       {syncing ? 'Syncing…' : 'Sync now'}
@@ -190,17 +188,14 @@ export function SettingsRoute() {
             <br />
             Import will replace all local trades with the contents of a backup.
           </p>
-          <div className="rounded-(--radius) bg-(--color-panel) border border-(--color-bg) p-3 flex items-center gap-2">
-            <button
-              onClick={exportBackup}
-              className="inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-(--radius) border border-transparent bg-(--color-accent) text-(--color-accent-fg) hover:opacity-90"
-            >
+          <div className="rounded-(--radius) bg-(--color-panel-2) p-3 flex items-center gap-2">
+            <button onClick={exportBackup} className={BTN_ACCENT}>
               <CloudDownload className="size-4" /> Export
             </button>
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={importing}
-              className="inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-(--radius) border border-transparent bg-(--color-accent) text-(--color-accent-fg) hover:opacity-90 disabled:opacity-50"
+              className={BTN_ACCENT}
             >
               <CloudUpload className="size-4" /> {importing ? 'Importing…' : 'Import'}
             </button>

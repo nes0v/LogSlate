@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
+import { BTN_ACCENT, BTN_OUTLINED } from '@/components/form/buttonClass'
 import { errorMessage } from '@/lib/utils'
 
 interface Props {
@@ -48,14 +49,14 @@ export class ErrorBoundary extends Component<Props, State> {
                 this.reset()
                 window.location.assign('/')
               }}
-              className="inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-(--radius) bg-(--color-accent) text-(--color-accent-fg) hover:opacity-90"
+              className={BTN_ACCENT}
             >
               Back to calendar
             </button>
             <button
               type="button"
               onClick={() => window.location.reload()}
-              className="inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-(--radius) border border-(--color-border) text-(--color-text-dim) hover:text-(--color-text)"
+              className={BTN_OUTLINED}
             >
               Reload
             </button>

@@ -8,6 +8,7 @@ import { computeAhpc, totalContracts } from '@/lib/trade-math'
 import { driveViewUrlFromRef, parseScreenshotRef } from '@/lib/drive-images'
 import { handleValue } from '@/lib/symbols'
 import { formatUsd } from '@/lib/money'
+import { BTN_BASE } from '@/components/form/buttonClass'
 import { cn } from '@/lib/utils'
 
 interface TradeExpandedDetailsProps {
@@ -19,7 +20,7 @@ interface TradeExpandedDetailsProps {
 }
 
 const ACTION_BTN_BASE =
-  'inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-(--radius) border border-(--color-border) text-(--color-text-dim) transition-colors cursor-pointer'
+  `${BTN_BASE} border border-(--color-border) text-(--color-text-dim) transition-colors cursor-pointer`
 const NEUTRAL_BTN_CLASS = `${ACTION_BTN_BASE} hover:text-(--color-text)`
 const DELETE_BTN_CLASS = `${ACTION_BTN_BASE} hover:text-(--color-loss)`
 

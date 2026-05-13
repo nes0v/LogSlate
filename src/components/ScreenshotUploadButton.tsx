@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Upload } from 'lucide-react'
 import { storeScreenshot } from '@/lib/drive-images'
+import { BTN_GHOST } from '@/components/form/buttonClass'
 import { errorMessage } from '@/lib/utils'
 
 interface ScreenshotUploadButtonProps {
@@ -41,7 +42,7 @@ export function ScreenshotUploadButton({
 
   return (
     <div className="inline-flex flex-col gap-1">
-      <label className="inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-(--radius) bg-(--color-bg) text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2) transition-colors cursor-pointer">
+      <label className={`${BTN_GHOST} bg-(--color-bg) cursor-pointer`}>
         <Upload className="size-4" />
         <span>{busy ? 'Uploading…' : label}</span>
         <input

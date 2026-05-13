@@ -18,6 +18,7 @@ import { NumberInput } from '@/components/form/NumberInput'
 import { QtyInput } from '@/components/form/QtyInput'
 import { Select } from '@/components/form/Select'
 import { ScreenshotField } from '@/components/ScreenshotField'
+import { BTN_BASE, BTN_OUTLINED } from '@/components/form/buttonClass'
 import { computeOrphanRules } from '@/lib/model-rules'
 import { computeAhpc, computeNetPnl } from '@/lib/trade-math'
 import { formatDuration } from '@/lib/duration'
@@ -516,7 +517,7 @@ function ActionButtons({ isSubmitting, isDirty, onCancel }: ActionButtonsProps) 
         type="submit"
         disabled={isSubmitting}
         className={cn(
-          'inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-(--radius) border transition-colors disabled:opacity-50',
+          `${BTN_BASE} border transition-colors disabled:opacity-50`,
           isDirty
             ? 'bg-(--color-accent) border-(--color-accent) text-(--color-accent-fg) hover:opacity-90'
             : 'border-(--color-border) text-(--color-text-dim) hover:text-(--color-text)',
@@ -524,11 +525,7 @@ function ActionButtons({ isSubmitting, isDirty, onCancel }: ActionButtonsProps) 
       >
         <Save className="size-4" /> Save
       </button>
-      <button
-        type="button"
-        onClick={onCancel}
-        className="px-3 py-1.5 text-sm rounded-(--radius) border border-(--color-border) text-(--color-text-dim) hover:text-(--color-text)"
-      >
+      <button type="button" onClick={onCancel} className={BTN_OUTLINED}>
         Cancel
       </button>
     </>

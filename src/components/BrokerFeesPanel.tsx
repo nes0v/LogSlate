@@ -6,6 +6,7 @@ import { useConfirm } from '@/components/ConfirmDialog'
 import { inputClassCompact as inputClass } from '@/components/form/Field'
 import { MonthPicker } from '@/components/form/MonthPicker'
 import { NumberInput } from '@/components/form/NumberInput'
+import { BTN_ACCENT } from '@/components/form/buttonClass'
 import { formatUsd } from '@/lib/money'
 import { nyMonthKey } from '@/lib/tz'
 
@@ -62,7 +63,7 @@ export function BrokerFeesPanel({ adjustments }: BrokerFeesPanelProps) {
 
       <form
         onSubmit={handleSubmit}
-        className="bg-(--color-panel) border border-(--color-bg) rounded-(--radius) p-3 grid grid-cols-[auto_1fr_1fr_auto] gap-3 items-end"
+        className="bg-(--color-panel-2) rounded-(--radius) p-3 grid grid-cols-[auto_1fr_1fr_auto] gap-3 items-end"
       >
         <div className="text-xs text-(--color-text-dim) space-y-2">
           <div>Month</div>
@@ -91,10 +92,7 @@ export function BrokerFeesPanel({ adjustments }: BrokerFeesPanelProps) {
             className={inputClass}
           />
         </label>
-        <button
-          type="submit"
-          className="inline-flex items-center justify-center px-3 py-1.5 text-sm rounded-(--radius) border border-transparent bg-(--color-accent) text-(--color-accent-fg) hover:opacity-90"
-        >
+        <button type="submit" className={BTN_ACCENT}>
           Add
         </button>
         {error && <div className="col-span-4 text-xs text-(--color-loss)">{error}</div>}
@@ -102,13 +100,13 @@ export function BrokerFeesPanel({ adjustments }: BrokerFeesPanelProps) {
 
       {list.length > 0 && (
         <>
-          <div className="bg-(--color-panel) border border-(--color-bg) rounded-(--radius) overflow-hidden">
+          <div className="bg-(--color-panel-2) rounded-(--radius) overflow-hidden">
             <table className="w-full text-sm border-collapse">
               <tbody>
                 {list.map(a => (
                   <tr
                     key={a.id}
-                    className="transition-colors duration-300 ease-out border-t border-(--color-bg) first:border-t-0 hover:bg-(--color-panel-2)/60"
+                    className="transition-colors duration-300 ease-out border-t border-(--color-panel) first:border-t-0 hover:bg-(--color-panel-3)/60"
                   >
                     <td className="px-3 py-2 text-xs font-mono tabular-nums text-(--color-text-dim) whitespace-nowrap">
                       {a.date.slice(0, 7)}

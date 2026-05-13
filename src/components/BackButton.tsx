@@ -1,8 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
-
-const BTN_CLASS =
-  'inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-(--radius) bg-(--color-panel) text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2) transition-colors'
+import { BTN_ACCENT } from '@/components/form/buttonClass'
 
 /**
  * Browser-history back button for non-root pages. Always sits as the
@@ -28,7 +26,7 @@ export function BackButton() {
         if (idx > 0) navigate(-1)
         else navigate('/')
       }}
-      className={BTN_CLASS}
+      className={BTN_ACCENT}
     >
       <ArrowLeft className="size-4" />
       <span>back</span>

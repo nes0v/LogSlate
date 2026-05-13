@@ -49,7 +49,7 @@ describe('cn', () => {
   })
 
   it('skips falsy entries and accepts arrays + objects', () => {
-    expect(cn('a', null, undefined, false && 'b', ['c', 'd'], { e: true, f: false })).toBe(
+    expect(cn('a', null, undefined, false, ['c', 'd'], { e: true, f: false })).toBe(
       'a c d e',
     )
   })

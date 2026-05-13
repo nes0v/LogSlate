@@ -17,6 +17,7 @@ import { DayScreenshotSection } from '@/components/DayScreenshotSection'
 import { PageHeader } from '@/components/PageHeader'
 import { StatsGrid } from '@/components/StatsGrid'
 import { TradeTable } from '@/components/TradeTable'
+import { BTN_ACCENT } from '@/components/form/buttonClass'
 
 export function DayRoute() {
   const { date = '' } = useParams()
@@ -141,10 +142,7 @@ export function DayRoute() {
         prevLabel="Previous day with trades"
         nextLabel="Next day with trades"
         rightSlot={
-          <Link
-            to={`/trade/new?date=${date}`}
-            className="inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-(--radius) bg-(--color-accent) text-(--color-accent-fg) hover:opacity-90"
-          >
+          <Link to={`/trade/new?date=${date}`} className={BTN_ACCENT}>
             <Plus className="size-4" /> New trade
           </Link>
         }

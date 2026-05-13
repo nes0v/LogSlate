@@ -27,6 +27,10 @@ interface PillsProps<T extends string | number | null> {
   size?: 'md' | 'sm'
   /** Group label announced to assistive tech. */
   ariaLabel?: string
+  /** Override the active pill background (defaults to `--color-panel`). Use
+   *  when the surrounding card is already `panel`, so the active pill needs
+   *  to lift to a brighter shade for contrast. */
+  activeBgClass?: string
 }
 
 export function Pills<T extends string | number | null>({
@@ -36,6 +40,7 @@ export function Pills<T extends string | number | null>({
   className,
   size = 'md',
   ariaLabel,
+  activeBgClass = 'bg-(--color-panel)',
 }: PillsProps<T>) {
   return (
     <div
@@ -58,7 +63,7 @@ export function Pills<T extends string | number | null>({
               'inline-flex items-center gap-1.5 rounded-[6px] cursor-pointer transition-colors whitespace-nowrap',
               size === 'sm' ? 'px-2.5 py-1 text-xs' : 'px-2.5 py-1 text-sm',
               active
-                ? 'bg-(--color-panel) text-(--color-text) shadow-(--shadow-drop-xs)'
+                ? `${activeBgClass} text-(--color-text) shadow-(--shadow-drop-xs)`
                 : 'text-(--color-text-dim) hover:text-(--color-text)',
             )}
           >

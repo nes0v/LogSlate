@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Trash2 } from 'lucide-react'
+import { Check, Trash2 } from 'lucide-react'
 import {
   countAccountData,
   createAccount,
@@ -9,7 +9,8 @@ import type { Account } from '@/db/types'
 import { useActiveAccountId } from '@/lib/active-account'
 import { useConfirm } from '@/components/ConfirmDialog'
 import { inputClassCompact as inputClass } from '@/components/form/Field'
-import { cn, errorMessage } from '@/lib/utils'
+import { BTN_ACCENT } from '@/components/form/buttonClass'
+import { errorMessage } from '@/lib/utils'
 
 interface AccountsPanelProps {
   accounts: Account[]
@@ -71,7 +72,7 @@ export function AccountsPanel({ accounts }: AccountsPanelProps) {
 
         <form
           onSubmit={handleCreate}
-          className="bg-(--color-panel) border border-(--color-bg) rounded-(--radius) p-3 grid grid-cols-[1fr_auto] gap-3 items-end"
+          className="bg-(--color-panel-2) rounded-(--radius) p-3 grid grid-cols-[1fr_auto] gap-3 items-end"
         >
           <input
             type="text"
@@ -81,17 +82,14 @@ export function AccountsPanel({ accounts }: AccountsPanelProps) {
             aria-label="New account name"
             className={inputClass}
           />
-          <button
-            type="submit"
-            className="inline-flex items-center justify-center px-3 py-1.5 text-sm rounded-(--radius) border border-transparent bg-(--color-accent) text-(--color-accent-fg) hover:opacity-90"
-          >
+          <button type="submit" className={BTN_ACCENT}>
             Add account
           </button>
           {error && <div className="col-span-2 text-xs text-(--color-loss)">{error}</div>}
         </form>
 
         {list.length > 0 && (
-          <div className="bg-(--color-panel) border border-(--color-bg) rounded-(--radius) overflow-hidden">
+          <div className="bg-(--color-panel-2) rounded-(--radius) overflow-hidden">
             <table className="w-full text-sm border-collapse">
               <tbody>
                 {list.map(a => {
@@ -99,34 +97,31 @@ export function AccountsPanel({ accounts }: AccountsPanelProps) {
                   return (
                     <tr
                       key={a.id}
-                      className="transition-colors duration-300 ease-out border-t border-(--color-bg) first:border-t-0 hover:bg-(--color-panel-2)/60"
+                      className="transition-colors duration-300 ease-out border-t border-(--color-panel) first:border-t-0 hover:bg-(--color-panel-3)/60"
                     >
                       <td className="px-3 py-2">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="truncate">{a.name}</span>
-                          {isActive && (
-                            <span className="text-xs uppercase tracking-wide text-(--color-accent)">
-                              active
-                            </span>
-                          )}
-                        </div>
+                        <span className="truncate">{a.name}</span>
                       </td>
                       <td className="px-3 py-2 w-10 text-right">
-                        <button
-                          type="button"
-                          disabled={isActive}
-                          onClick={() => void handleDelete(a.id, a.name)}
-                          aria-label="Delete account"
-                          title={isActive ? 'Switch to another account to delete this one' : 'Delete account'}
-                          className={cn(
-                            'p-1 rounded-(--radius)',
-                            isActive
-                              ? 'text-(--color-text-dim)/40 cursor-not-allowed'
-                              : 'text-(--color-text-dim) hover:text-(--color-loss) hover:bg-(--color-panel-3)',
-                          )}
-                        >
-                          <Trash2 className="size-3.5" />
-                        </button>
+                        {isActive ? (
+                          <span
+                            aria-label="Active account"
+                            title="Active account"
+                            className="inline-flex items-center justify-center p-1 text-(--color-accent)"
+                          >
+                            <Check className="size-3.5" />
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => void handleDelete(a.id, a.name)}
+                            aria-label="Delete account"
+                            title="Delete account"
+                            className="p-1 rounded-(--radius) text-(--color-text-dim) hover:text-(--color-loss) hover:bg-(--color-panel-3)"
+                          >
+                            <Trash2 className="size-3.5" />
+                          </button>
+                        )}
                       </td>
                     </tr>
                   )

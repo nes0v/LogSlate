@@ -9,6 +9,7 @@ import { useActiveAccountId } from '@/lib/active-account'
 import { Checkbox } from '@/components/form/Checkbox'
 import { useConfirm } from '@/components/ConfirmDialog'
 import { inputClass } from '@/components/form/Field'
+import { BTN_ACCENT, BTN_BASE } from '@/components/form/buttonClass'
 import { useAutosizeTextarea } from '@/lib/use-autosize-textarea'
 import { SESSION_BG, SESSION_FG } from '@/lib/session-colors'
 import { cn } from '@/lib/utils'
@@ -18,7 +19,7 @@ function newId(): string {
 }
 
 const ACTION_BTN_BASE =
-  'inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-(--radius) border border-(--color-border) text-(--color-text-dim) transition-colors'
+  `${BTN_BASE} border border-(--color-border) text-(--color-text-dim) transition-colors`
 const NEUTRAL_BTN_CLASS = `${ACTION_BTN_BASE} hover:text-(--color-text)`
 const DELETE_BTN_CLASS = `${ACTION_BTN_BASE} hover:text-(--color-loss)`
 
@@ -269,11 +270,7 @@ export function ModelsRoute() {
             />
             <span className="text-sm">Show archived</span>
           </label>
-          <button
-            type="button"
-            onClick={createModel}
-            className="inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-(--radius) bg-(--color-accent) text-(--color-accent-fg) hover:opacity-90"
-          >
+          <button type="button" onClick={createModel} className={BTN_ACCENT}>
             <Plus className="size-4" /> New model
           </button>
         </div>
@@ -488,7 +485,7 @@ function ModelEditorImpl({ model, onSave, onDelete }: ModelEditorProps) {
           type="button"
           onClick={handleSave}
           className={cn(
-            'inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-(--radius) border transition-colors',
+            `${BTN_BASE} border transition-colors`,
             isDirty
               ? 'bg-(--color-accent) border-(--color-accent) text-(--color-accent-fg) hover:opacity-90'
               : 'border-(--color-border) text-(--color-text-dim) hover:text-(--color-text)',

@@ -45,6 +45,7 @@ import { formatUsd } from '@/lib/money'
 import { StatsFilterBar } from '@/components/StatsFilterBar'
 import { AdvancedMetricsSections } from '@/components/AdvancedStats'
 import { Pills } from '@/components/form/Pills'
+import { BTN_OUTLINED } from '@/components/form/buttonClass'
 import { cn } from '@/lib/utils'
 
 type ReportTab = 'general' | 'days' | 'symbol' | 'risk' | 'cohort' | 'compare'
@@ -141,11 +142,8 @@ export function ReportsRoute() {
       <div className="flex items-center justify-between mb-8">
         <h1 className="h-8 flex items-center text-lg font-semibold">Reports</h1>
         {!isDefault && (
-          <button
-            onClick={clear}
-            className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-(--radius) border border-(--color-border) text-(--color-text-dim) hover:text-(--color-text)"
-          >
-            <X className="size-3" /> Clear filters
+          <button onClick={clear} className={BTN_OUTLINED}>
+            <X className="size-4" /> Clear filters
           </button>
         )}
       </div>
