@@ -157,7 +157,9 @@ export interface Model {
   description: string
   sessions: Session[] // sessions this model is meant for; empty = any
   groups: ModelRuleGroup[]
-  archived: boolean
+  /** Drafts stay visible in the Models page but are hidden from the
+   *  TradeForm picker so half-finished models can't be selected on a trade. */
+  draft: boolean
   /** User-controlled ordinal — drag-and-drop in the Models sidebar
    *  rewrites this to match the new visible order. Lower = higher up.
    *  Optional so existing rows back-fill lazily on first reorder;

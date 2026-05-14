@@ -255,7 +255,7 @@ describe('account queries', () => {
       description: '',
       sessions: [],
       groups: [],
-      archived: false,
+      draft: false,
       created_at: now,
       updated_at: now,
     })
@@ -266,7 +266,7 @@ describe('account queries', () => {
       description: '',
       sessions: [],
       groups: [],
-      archived: false,
+      draft: false,
       created_at: now,
       updated_at: now,
     })
@@ -354,7 +354,7 @@ describe('account queries', () => {
       description: '',
       sessions: [],
       groups: [],
-      archived: false,
+      draft: false,
       created_at: '2026-04-15T00:00:00Z',
       updated_at: '2026-04-15T00:00:00Z',
     })
@@ -531,7 +531,7 @@ describe('model queries', () => {
       description: '',
       sessions: [],
       groups: [],
-      archived: false,
+      draft: false,
       sort: opts.sort,
       created_at: ts,
       updated_at: ts,

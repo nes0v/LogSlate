@@ -2,7 +2,6 @@ import { Children, memo, useMemo } from 'react'
 import { eachDayOfInterval, format, parseISO } from 'date-fns'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { DonutChart } from '@/components/DonutChart'
-import { RatingStars } from '@/components/RatingStars'
 import { listModels } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
 import type { AggregateStats } from '@/lib/trade-stats'
@@ -182,9 +181,9 @@ export const DistributionDonuts = memo(function DistributionDonuts({
 
   const outcomeDonut = useMemo(
     () => [
-      { label: 'Wins', value: donutCounts.outcome.win, color: 'var(--color-win)' },
-      { label: 'Losses', value: donutCounts.outcome.loss, color: 'var(--color-loss)' },
-      { label: 'Breakeven', value: donutCounts.outcome.be, color: 'var(--color-chart-muted)' },
+      { label: 'win', value: donutCounts.outcome.win, color: 'var(--color-win)' },
+      { label: 'loss', value: donutCounts.outcome.loss, color: 'var(--color-loss)' },
+      { label: 'even', value: donutCounts.outcome.be, color: 'var(--color-chart-muted)' },
     ],
     [donutCounts],
   )
@@ -232,34 +231,16 @@ export const DistributionDonuts = memo(function DistributionDonuts({
         label: 'excellent',
         value: donutCounts.rating.excellent,
         color: 'var(--color-win)',
-        legendNode: (
-          <span className="inline-flex items-center gap-1.5">
-            <RatingStars rating="excellent" />
-            <span className="text-(--color-text-dim)">(excellent)</span>
-          </span>
-        ),
       },
       {
         label: 'good',
         value: donutCounts.rating.good,
         color: 'var(--color-accent)',
-        legendNode: (
-          <span className="inline-flex items-center gap-1.5">
-            <RatingStars rating="good" />
-            <span className="text-(--color-text-dim)">(good)</span>
-          </span>
-        ),
       },
       {
         label: 'poor',
         value: donutCounts.rating.poor,
         color: 'var(--color-chart-muted)',
-        legendNode: (
-          <span className="inline-flex items-center gap-1.5">
-            <RatingStars rating="poor" />
-            <span className="text-(--color-text-dim)">(poor)</span>
-          </span>
-        ),
       },
     ],
     [donutCounts],
@@ -625,7 +606,7 @@ function KpiTile({ label, value, caption, tone, tooltip }: KpiTileProps) {
   return (
     <div
       className={cn(
-        'bg-(--color-panel-2) shadow-(--shadow-drop-sm) rounded-(--radius) p-3 transition-colors',
+        'bg-(--color-panel-2) rounded-(--radius) p-3 transition-colors',
         tooltip && 'cursor-help',
       )}
       title={tooltip}
@@ -717,7 +698,7 @@ function CompositeScoreCard({ score }: { score: ReturnType<typeof compositeScore
                 key={f}
                 d={polyPath(f)}
                 fill="none"
-                stroke="var(--color-border)"
+                stroke="var(--color-panel-3)"
                 strokeWidth={1}
                 strokeOpacity={f === 1 ? 0.7 : 0.35}
               />
@@ -731,7 +712,7 @@ function CompositeScoreCard({ score }: { score: ReturnType<typeof compositeScore
                   y1={C}
                   x2={p.x}
                   y2={p.y}
-                  stroke="var(--color-border)"
+                  stroke="var(--color-panel-3)"
                   strokeWidth={1}
                   strokeOpacity={0.35}
                 />

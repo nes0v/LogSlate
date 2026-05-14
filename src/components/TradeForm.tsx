@@ -84,7 +84,7 @@ export function TradeForm({
   const models = useLiveQuery(
     async () => {
       const rows = await listModels(accountId)
-      return rows.filter(m => !m.archived)
+      return rows.filter(m => !m.draft)
     },
     [accountId],
   )

@@ -1,12 +1,11 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Archive, ArchiveRestore, Plus, Save, Trash2, X } from 'lucide-react'
+import { Check, Pencil, Plus, Save, Trash2, X } from 'lucide-react'
 import { db } from '@/db/schema'
 import { countTradesUsingModel, listModels, reorderModels } from '@/db/queries'
 import type { Model, ModelRuleGroup, Session } from '@/db/types'
 import { SESSIONS } from '@/db/types'
 import { useActiveAccountId } from '@/lib/active-account'
-import { Checkbox } from '@/components/form/Checkbox'
 import { useConfirm } from '@/components/ConfirmDialog'
 import { inputClass } from '@/components/form/Field'
 import { BTN_ACCENT, BTN_BASE } from '@/components/form/buttonClass'
@@ -20,7 +19,6 @@ function newId(): string {
 
 const ACTION_BTN_BASE =
   `${BTN_BASE} border border-(--color-border) text-(--color-text-dim) transition-colors`
-const NEUTRAL_BTN_CLASS = `${ACTION_BTN_BASE} hover:text-(--color-text)`
 const DELETE_BTN_CLASS = `${ACTION_BTN_BASE} hover:text-(--color-loss)`
 
 const DEFAULT_GROUPS = (): ModelRuleGroup[] => [
@@ -67,7 +65,6 @@ export function ModelsRoute() {
   const models = useLiveQuery(() => listModels(accountId), [accountId])
   const loaded = models !== undefined
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [showArchived, setShowArchived] = useState(false)
 
   // Locally-applied order for the brief window between a drag commit
   // and the live query refresh. Lets the post-drop frame render rows
@@ -76,7 +73,7 @@ export function ModelsRoute() {
   const [optimisticIds, setOptimisticIds] = useState<string[] | null>(null)
 
   const visible = useMemo(() => {
-    const base = (models ?? []).filter(p => showArchived || !p.archived)
+    const base = models ?? []
     if (!optimisticIds) return base
     const byId = new Map(base.map(m => [m.id, m]))
     const optimisticSet = new Set(optimisticIds)
@@ -91,7 +88,7 @@ export function ModelsRoute() {
       if (!optimisticSet.has(m.id)) ordered.push(m)
     }
     return ordered
-  }, [models, showArchived, optimisticIds])
+  }, [models, optimisticIds])
   const selected = useMemo(() => {
     const list = visible
     if (selectedId) {
@@ -113,7 +110,7 @@ export function ModelsRoute() {
       description: '',
       sessions: [],
       groups: DEFAULT_GROUPS(),
-      archived: false,
+      draft: false,
       sort: maxSort + 1,
       created_at: ts,
       updated_at: ts,
@@ -149,10 +146,7 @@ export function ModelsRoute() {
   // Pointer-driven sortable. Inspired by @dnd-kit/sortable: measure row
   // geometry once on pointerdown, dragged row's transform follows cursor
   // Y, non-dragged rows shift by ±itemHeight as the live target index
-  // sweeps past them. Reorders persist over the FULL list — visible
-  // rows are spliced into their new order while archived-when-hidden
-  // rows keep their slot indices, so toggling Show archived doesn't
-  // corrupt the user's chosen layout.
+  // sweeps past them.
   const [drag, setDrag] = useState<DragState | null>(null)
   const isDragging = drag !== null
   // True once a drag has crossed the click threshold; sticky for the
@@ -244,9 +238,7 @@ export function ModelsRoute() {
   // override forever even after the live query catches up.
   useEffect(() => {
     if (!optimisticIds || !models) return
-    const persistedOrder = models
-      .filter(p => showArchived || !p.archived)
-      .map(p => p.id)
+    const persistedOrder = models.map(p => p.id)
     if (
       persistedOrder.length === optimisticIds.length &&
       persistedOrder.every((id, i) => id === optimisticIds[i])
@@ -254,7 +246,7 @@ export function ModelsRoute() {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setOptimisticIds(null)
     }
-  }, [models, showArchived, optimisticIds])
+  }, [models, optimisticIds])
 
   const dragNewIdx = drag ? targetSlot(drag, visible.length) : -1
 
@@ -262,18 +254,9 @@ export function ModelsRoute() {
     <div className="pt-1 space-y-8">
       <div className="flex items-center justify-between mb-8">
         <h1 className="h-8 flex items-center text-lg font-semibold">Models</h1>
-        <div className="flex items-center gap-2">
-          <label className="flex items-center gap-2 px-1 py-1 rounded-sm cursor-pointer hover:bg-(--color-panel-3)">
-            <Checkbox
-              checked={showArchived}
-              onChange={e => setShowArchived(e.target.checked)}
-            />
-            <span className="text-sm">Show archived</span>
-          </label>
-          <button type="button" onClick={createModel} className={BTN_ACCENT}>
-            <Plus className="size-4" /> New model
-          </button>
-        </div>
+        <button type="button" onClick={createModel} className={BTN_ACCENT}>
+          <Plus className="size-4" /> New model
+        </button>
       </div>
 
       {!loaded ? null : visible.length === 0 ? (
@@ -344,9 +327,9 @@ export function ModelsRoute() {
                   >
                     <div className="truncate flex items-center justify-between">
                       <span>{p.name}</span>
-                      {p.archived && (
+                      {p.draft && (
                         <span className="text-xs uppercase tracking-wider text-(--color-text-dim)">
-                          archived
+                          draft
                         </span>
                       )}
                     </div>
@@ -396,7 +379,7 @@ function ModelEditorImpl({ model, onSave, onDelete }: ModelEditorProps) {
   const [description, setDescription] = useState(model.description)
   const [groups, setGroups] = useState<ModelRuleGroup[]>(model.groups)
   const [sessions, setSessions] = useState<Session[]>(model.sessions)
-  const [archived, setArchived] = useState(model.archived)
+  const [draft, setDraft] = useState(model.draft)
   const descriptionRef = useAutosizeTextarea()
 
   // Working draft — only persists on Save. Parent's `key={selected.id}`
@@ -406,11 +389,11 @@ function ModelEditorImpl({ model, onSave, onDelete }: ModelEditorProps) {
     () =>
       name !== model.name ||
       description !== model.description ||
-      archived !== model.archived ||
+      draft !== model.draft ||
       sessions.length !== model.sessions.length ||
       sessions.some((s, i) => s !== model.sessions[i]) ||
       JSON.stringify(groups) !== JSON.stringify(model.groups),
-    [name, description, archived, sessions, groups, model],
+    [name, description, draft, sessions, groups, model],
   )
 
   function toggleSession(s: Session, on: boolean) {
@@ -469,7 +452,7 @@ function ModelEditorImpl({ model, onSave, onDelete }: ModelEditorProps) {
       })
       if (!ok) return
     }
-    onSave({ name, description, sessions, groups, archived })
+    onSave({ name, description, sessions, groups, draft })
   }
 
   return (
@@ -495,15 +478,18 @@ function ModelEditorImpl({ model, onSave, onDelete }: ModelEditorProps) {
         </button>
         <button
           type="button"
-          onClick={() => setArchived(a => !a)}
-          className={NEUTRAL_BTN_CLASS}
-        >
-          {archived ? (
-            <ArchiveRestore className="size-4" />
-          ) : (
-            <Archive className="size-4" />
+          onClick={() => setDraft(d => !d)}
+          className={cn(
+            ACTION_BTN_BASE,
+            draft ? 'hover:text-(--color-win)' : 'hover:text-(--color-warn)',
           )}
-          {archived ? 'Unarchive' : 'Archive'}
+        >
+          {draft ? (
+            <Check className="size-4" />
+          ) : (
+            <Pencil className="size-4" />
+          )}
+          {draft ? 'Mark as ready' : 'Mark as draft'}
         </button>
         <button type="button" onClick={onDelete} className={DELETE_BTN_CLASS}>
           <Trash2 className="size-4" /> Delete

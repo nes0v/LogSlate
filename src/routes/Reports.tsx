@@ -193,17 +193,25 @@ export function ReportsRoute() {
                 />
               </div>
             ) : tab === 'days' ? (
-              <DaysAndTimeReport trades={filtered} />
+              <div className="bg-(--color-panel) rounded-(--radius) p-3 h-full">
+                <DaysAndTimeReport trades={filtered} />
+              </div>
             ) : tab === 'symbol' ? (
               <div className="bg-(--color-panel) rounded-(--radius) p-3 h-full">
                 <SymbolReport trades={filtered} />
               </div>
             ) : tab === 'risk' ? (
-              <RiskReport trades={filtered} onTradeClick={id => navigate(`/trade/${id}/edit`)} />
+              <div className="bg-(--color-panel) rounded-(--radius) p-3 h-full">
+                <RiskReport trades={filtered} onTradeClick={id => navigate(`/trade/${id}/edit`)} />
+              </div>
             ) : tab === 'cohort' ? (
-              <CohortReport trades={filtered} />
+              <div className="bg-(--color-panel) rounded-(--radius) p-3 h-full">
+                <CohortReport trades={filtered} />
+              </div>
             ) : (
-              <CompareReport trades={filtered} axis={compareAxis} onAxisChange={setCompareAxis} />
+              <div className="bg-(--color-panel) rounded-(--radius) p-3 h-full">
+                <CompareReport trades={filtered} axis={compareAxis} onAxisChange={setCompareAxis} />
+              </div>
             )}
           </div>
         </div>
@@ -271,7 +279,7 @@ function DaysAndTimeReport({ trades }: { trades: TradeRecord[] }) {
       <Card
         title="P&L by hour"
         right={
-          <div role="tablist" className="flex gap-1 text-sm">
+          <div role="tablist" className="flex gap-1 text-xs">
             {[
               { value: 'first' as const, label: 'First execution' },
               { value: 'last' as const, label: 'Last execution' },
@@ -285,9 +293,9 @@ function DaysAndTimeReport({ trades }: { trades: TradeRecord[] }) {
                   aria-selected={active}
                   onClick={() => setHourMode(opt.value)}
                   className={cn(
-                    'px-2.5 py-1.5 rounded-t-(--radius) transition-colors whitespace-nowrap',
+                    'px-2 py-1.5 rounded-t-(--radius) transition-colors whitespace-nowrap',
                     active
-                      ? 'text-(--color-text) bg-(--color-panel)'
+                      ? 'text-(--color-text) bg-(--color-panel-2)'
                       : 'text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)/60',
                   )}
                 >
@@ -533,7 +541,7 @@ function RiskReport({
               : 'how much heat each trade took'
           }
           right={
-            <div role="tablist" className="flex gap-1 text-sm">
+            <div role="tablist" className="flex gap-1 text-xs">
               {[
                 { value: 'mfe' as const, label: 'MFE' },
                 { value: 'mae' as const, label: 'MAE' },
@@ -547,9 +555,9 @@ function RiskReport({
                     aria-selected={active}
                     onClick={() => setScatter(opt.value)}
                     className={cn(
-                      'px-2.5 py-1.5 rounded-t-(--radius) transition-colors whitespace-nowrap',
+                      'px-2 py-1.5 rounded-t-(--radius) transition-colors whitespace-nowrap',
                       active
-                        ? 'text-(--color-text) bg-(--color-panel)'
+                        ? 'text-(--color-text) bg-(--color-panel-2)'
                         : 'text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)/60',
                     )}
                   >
@@ -641,7 +649,7 @@ function CohortReport({ trades }: { trades: TradeRecord[] }) {
     <div className="space-y-8">
       <Card title="Winners vs Losers">
         <div className="text-sm">
-          <div className="grid grid-cols-[1fr_120px_120px] gap-2 py-1 mb-2 border-b border-(--color-border) text-(--color-text-dim) text-xs">
+          <div className="grid grid-cols-[1fr_120px_120px] gap-2 py-1 mb-2 border-b border-(--color-panel-3) text-(--color-text-dim) text-xs">
             <div></div>
             <div className="text-right text-(--color-win)">Winners</div>
             <div className="text-right text-(--color-loss)">Losers</div>
@@ -732,7 +740,7 @@ function CompareReport({
               className={cn(
                 'px-2.5 py-1.5 rounded-t-(--radius) transition-colors whitespace-nowrap',
                 active
-                  ? 'text-(--color-text) bg-(--color-panel)'
+                  ? 'text-(--color-text) bg-(--color-panel-2)'
                   : 'text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)/60',
               )}
             >
@@ -741,7 +749,7 @@ function CompareReport({
           )
         })}
       </div>
-      <div className="bg-(--color-panel) rounded-(--radius) rounded-tl-none p-3 space-y-3 flex-1">
+      <div className="bg-(--color-panel-2) rounded-(--radius) rounded-tl-none p-3 space-y-3 flex-1">
         {groups.length === 0 ? (
           <EmptyState>Nothing to compare on this axis.</EmptyState>
         ) : (
@@ -828,7 +836,7 @@ function splitByAxis(
 function CompareTable({ groups }: { groups: Array<{ label: string; trades: TradeRecord[] }> }) {
   return (
     <div className="text-xs">
-      <div className="grid grid-cols-[100px_repeat(6,1fr)] gap-2 py-1 mb-2 border-b border-(--color-border) text-(--color-text-dim)">
+      <div className="grid grid-cols-[100px_repeat(6,1fr)] gap-2 py-1 mb-2 border-b border-(--color-panel-3) text-(--color-text-dim)">
         <div></div>
         <div className="text-right">Trades</div>
         <div className="text-right">Win %</div>
@@ -924,7 +932,7 @@ function Card({
       </div>
       <div
         className={cn(
-          'flex-1 bg-(--color-panel) rounded-(--radius) p-3',
+          'flex-1 bg-(--color-panel-2) rounded-(--radius) p-3',
           right && 'rounded-tr-none',
         )}
       >
@@ -946,7 +954,7 @@ function Stat({
   tone?: 'win' | 'loss' | 'dim'
 }) {
   return (
-    <div className="bg-(--color-panel-2) shadow-(--shadow-drop-sm) rounded-(--radius) p-3">
+    <div className="bg-(--color-panel-2) rounded-(--radius) p-3">
       <div className="text-xs uppercase tracking-[0.08em] font-medium text-(--color-text-dim)">
         {label}
       </div>
@@ -986,7 +994,7 @@ function ReportTable({ rows }: { rows: ReportRow[] }) {
   const max = Math.max(0, ...rows.map(r => Math.abs(r.pnl)))
   return (
     <div className="text-xs">
-        <div className="grid grid-cols-[80px_60px_80px_1fr_80px] gap-2 py-1 mb-2 border-b border-(--color-border) text-(--color-text-dim)">
+        <div className="grid grid-cols-[80px_60px_80px_1fr_80px] gap-2 py-1 mb-2 border-b border-(--color-panel-3) text-(--color-text-dim)">
           <div></div>
           <div className="text-right">Trades</div>
           <div className="text-right">W / L</div>
@@ -1049,7 +1057,7 @@ function PlannedRRTable({
   }
   return (
     <div className="text-xs">
-      <div className="grid grid-cols-[60px_60px_80px_80px_1fr] gap-2 py-1 mb-2 border-b border-(--color-border) text-(--color-text-dim)">
+      <div className="grid grid-cols-[60px_60px_80px_80px_1fr] gap-2 py-1 mb-2 border-b border-(--color-panel-3) text-(--color-text-dim)">
         <div>Plan</div>
         <div className="text-right">Trades</div>
         <div className="text-right">Win %</div>
@@ -1089,7 +1097,7 @@ function PlannedRRTable({
 function HoldRow({ data }: { data: ReturnType<typeof holdTimeBuckets> }) {
   const max = Math.max(1, ...data.map(d => d.wins + d.losses))
   return (
-    <div className="grid grid-flow-col auto-cols-fr gap-2 h-[160px] items-end">
+    <div className="grid grid-flow-col auto-cols-fr gap-2 h-[100px] items-end">
       {data.map(d => {
         const total = d.wins + d.losses
         const pct = total === 0 ? 2 : (total / max) * 100
@@ -1170,7 +1178,7 @@ function Scatter({
         x2={W - PAD}
         y1={H / 2}
         y2={H / 2}
-        stroke="var(--color-border)"
+        stroke="var(--color-panel-3)"
         strokeWidth={1}
         vectorEffect="non-scaling-stroke"
         shapeRendering="crispEdges"
@@ -1180,7 +1188,7 @@ function Scatter({
         x2={PAD}
         y1={PAD}
         y2={H - PAD}
-        stroke="var(--color-border)"
+        stroke="var(--color-panel-3)"
         strokeWidth={1}
         vectorEffect="non-scaling-stroke"
         shapeRendering="crispEdges"
@@ -1260,7 +1268,7 @@ function PlannedRealizedScatter({
         x2={W - PAD_R}
         y1={y(0)}
         y2={y(0)}
-        stroke="var(--color-border)"
+        stroke="var(--color-panel-3)"
         strokeWidth={1}
         vectorEffect="non-scaling-stroke"
         shapeRendering="crispEdges"
@@ -1270,7 +1278,7 @@ function PlannedRealizedScatter({
         x2={PAD_L}
         y1={PAD_T}
         y2={H - PAD_B}
-        stroke="var(--color-border)"
+        stroke="var(--color-panel-3)"
         strokeWidth={1}
         vectorEffect="non-scaling-stroke"
         shapeRendering="crispEdges"
@@ -1306,7 +1314,7 @@ function PlannedRealizedScatter({
         y1={y(Math.max(0, yMin))}
         x2={x(Math.min(xMax, yMax))}
         y2={y(Math.min(xMax, yMax))}
-        stroke="var(--color-border)"
+        stroke="var(--color-panel-3)"
         strokeWidth={1}
         vectorEffect="non-scaling-stroke"
       />

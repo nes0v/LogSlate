@@ -62,6 +62,9 @@
   /* Trading colors. */
   --color-win:  #22c55e;
   --color-loss: #ef4444;
+  /* Cautionary tone — used on actions that gate something off (e.g. the
+   *  Models "Mark as draft" button) without being destructive. */
+  --color-warn: #f59e0b;
   /* Filled rating stars (RatingStars). Distinct from --color-win/loss so
    * the rating glyph keeps its gold tone regardless of the trading-color
    * palette the user picks. */

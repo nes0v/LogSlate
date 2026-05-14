@@ -13,6 +13,11 @@ import { useLayoutEffect, useRef } from 'react'
  * The effect runs on every commit so a textarea that mounts in a later
  * render than the hook's first call (e.g. a parent that initially returns
  * null while waiting on async data) still re-fits as soon as it attaches.
+ *
+ * It also attaches a native `input` listener so uncontrolled textareas
+ * (e.g. those wired through react-hook-form's `register()`, where the
+ * parent doesn't re-render on each keystroke) still resize per character.
+ *
  * Spread the returned ref onto the `<textarea>`.
  */
 export function useAutosizeTextarea() {
@@ -23,8 +28,13 @@ export function useAutosizeTextarea() {
     if (!el) return
     // `height: auto` lets `scrollHeight` reflect the intrinsic content
     // height (otherwise the previously set inline pixel height clamps it).
-    el.style.height = 'auto'
-    el.style.height = `${el.scrollHeight}px`
+    const fit = () => {
+      el.style.height = 'auto'
+      el.style.height = `${el.scrollHeight}px`
+    }
+    fit()
+    el.addEventListener('input', fit)
+    return () => el.removeEventListener('input', fit)
   })
 
   return ref
