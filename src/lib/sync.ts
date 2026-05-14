@@ -12,6 +12,7 @@ import type { EntityTable } from 'dexie'
 import { db } from '@/db/schema'
 import {
   downloadAppDataFile,
+  fetchDriveUser,
   findAppDataFile,
   uploadAppDataFile,
   type DriveFileMeta,
@@ -20,7 +21,42 @@ import { loadJsonFromStorage, saveJsonToStorage, removeFromStorage } from '@/lib
 
 const FILE_NAME = 'logslate.json'
 const LAST_SYNC_AT_KEY = 'logslate:sync:at'
+/** Stable Google permissionId of the Drive account the local data was last
+ *  synced to. Compared against the currently signed-in user before every
+ *  sync; mismatch hard-blocks to prevent accidental data wipes when the
+ *  user signs into a different Google account. */
+const DRIVE_USER_KEY = 'logslate:sync:drive_user'
 const FILE_VERSION = 6
+
+/** Raised when the currently signed-in Drive user doesn't match the user
+ *  whose data is stored locally. Blocks the sync entirely — without this,
+ *  the merge would silently treat every local row as "deleted on remote"
+ *  and wipe the local DB, then push nothing back (fresh remote) or
+ *  contaminate the new account's Drive (existing remote). */
+export class DriveAccountMismatchError extends Error {
+  constructor(currentEmail: string | null) {
+    super(
+      currentEmail
+        ? `Connected as ${currentEmail}, but local data was last synced to a different Google account. Disconnect and reconnect with the original account, or export a backup before switching.`
+        : 'Connected to a different Google account than the one your local data was last synced to. Disconnect and reconnect with the original account, or export a backup before switching.',
+    )
+    this.name = 'DriveAccountMismatchError'
+  }
+}
+
+/** Raised when the Drive sync file is missing but `lastSyncedIds` shows we
+ *  previously synced. Without this guard, the merge would tombstone every
+ *  local row (each is in lastSyncedIds, missing from "remote") and wipe
+ *  the local DB. The recoverable answer is to push local up and recreate
+ *  the file — handled by `syncNow({ recreateRemoteIfMissing: true })`. */
+export class DriveFileGoneError extends Error {
+  constructor() {
+    super(
+      'Your Drive sync file is missing — it may have been deleted from Google Drive. Confirm to push your local data and recreate the file.',
+    )
+    this.name = 'DriveFileGoneError'
+  }
+}
 
 interface SyncItem {
   id: string
@@ -46,13 +82,6 @@ const SPECS: SyncSpec[] = [
   { fileKey: 'progress_checks', idsKey: 'logslate:sync:progress_check_ids', table: () => db.progress_checks as unknown as EntityTable<SyncItem, 'id'> },
   { fileKey: 'news',            idsKey: 'logslate:sync:news_ids',           table: () => db.news as unknown as EntityTable<SyncItem, 'id'> },
 ]
-
-/** Tables the sync engine pushes/pulls. auto-sync.ts hooks every table in
- *  this list so a write anywhere triggers a debounced push — keeping the
- *  hooked-table set and the synced-table set from drifting. */
-export function syncedTables(): EntityTable<SyncItem, 'id'>[] {
-  return SPECS.map(s => s.table())
-}
 
 interface SyncFile {
   version: number
@@ -137,12 +166,49 @@ function readArrayField(parsed: Partial<SyncFile> | null, key: string): SyncItem
   return Array.isArray(v) ? (v as SyncItem[]) : []
 }
 
-export async function syncNow(): Promise<SyncResult> {
+export interface SyncOptions {
+  /** Override the file-gone guard. Use when the user has explicitly
+   *  confirmed they want to push local data into a fresh Drive file
+   *  (e.g. after `DriveFileGoneError`). Treats lastSyncedIds as empty
+   *  for the merge so local rows aren't tombstoned. */
+  recreateRemoteIfMissing?: boolean
+}
+
+export async function syncNow(options: SyncOptions = {}): Promise<SyncResult> {
+  // GUARD 1 — Drive account fingerprint. Detect "user signed into a
+  // different Google account since their last sync" before touching any
+  // data. Without this, the merge would interpret every local row as
+  // "deleted on this account's remote" and wipe the local DB.
+  const currentUser = await fetchDriveUser()
+  const storedUserId = localStorage.getItem(DRIVE_USER_KEY)
+  if (storedUserId && storedUserId !== currentUser.permissionId) {
+    throw new DriveAccountMismatchError(currentUser.emailAddress)
+  }
+
   // Per-spec local arrays + last-synced id sets, in parallel.
   const locals: SyncItem[][] = await Promise.all(SPECS.map(s => s.table().toArray()))
   const lastSyncedSets: Set<string>[] = SPECS.map(s => loadIdSet(s.idsKey))
 
   const meta = await findAppDataFile(FILE_NAME)
+
+  // GUARD 2 — Drive file disappeared. lastSyncedIds shows we synced
+  // before, but the file is no longer in appDataFolder (manually deleted,
+  // Drive purge, etc). Without this, the merge tombstones every local
+  // row as "deleted on remote" and wipes the local DB. The recoverable
+  // path is to push local up and recreate; gated behind explicit user
+  // confirmation via `recreateRemoteIfMissing`.
+  const previouslySynced = lastSyncedSets.some(s => s.size > 0)
+  if (!meta && previouslySynced && !options.recreateRemoteIfMissing) {
+    throw new DriveFileGoneError()
+  }
+
+  // When the user has confirmed recreate-remote, drop lastSyncedIds so
+  // the merge keeps every local row instead of tombstoning them.
+  const effectiveLastSynced =
+    !meta && options.recreateRemoteIfMissing
+      ? SPECS.map(() => new Set<string>())
+      : lastSyncedSets
+
   let parsed: Partial<SyncFile> | null = null
   if (meta) {
     const text = await downloadAppDataFile(meta.id)
@@ -156,7 +222,7 @@ export async function syncNow(): Promise<SyncResult> {
 
   const remotes: SyncItem[][] = SPECS.map(s => readArrayField(parsed, s.fileKey))
   const merged: SyncItem[][] = SPECS.map((_, i) =>
-    mergeById(locals[i], remotes[i], lastSyncedSets[i]),
+    mergeById(locals[i], remotes[i], effectiveLastSynced[i]),
   )
 
   // Single transaction: clear every table then bulk-add the merged rows.
@@ -185,10 +251,10 @@ export async function syncNow(): Promise<SyncResult> {
     // other device's missing rows for "deleted on this device".
     //
     // Refetch the metadata; if `modifiedTime` advanced past what we
-    // pulled, abort. The caller (auto-sync) leaves the local DB merged
-    // (still safe — it's a superset that includes our pulled-then-merged
-    // remote view), and the next scheduled run will re-pull, re-merge
-    // against the new remote, and push the union.
+    // pulled, abort. The local DB is left in its merged state (still
+    // safe — a superset that includes our pulled-then-merged remote
+    // view); the next manual sync will re-pull, re-merge against the
+    // new remote, and push the union.
     if (meta) {
       const fresh = await findAppDataFile(FILE_NAME)
       if (fresh && fresh.modifiedTime !== meta.modifiedTime) {
@@ -219,6 +285,11 @@ export async function syncNow(): Promise<SyncResult> {
   //    re-delete), BUT no creation is ever silently dropped.
   // Visible bug > silent data loss, so we save after push.
   SPECS.forEach((s, i) => saveIdSet(s.idsKey, new Set(merged[i].map(m => m.id))))
+  // Stamp the Drive user id so the next sync's GUARD 1 can compare. Saved
+  // here (after push) and not on sign-in: until something is actually
+  // synced, there's nothing to "fingerprint" — fresh sign-ins to a new
+  // account on first install should succeed without a stored id.
+  localStorage.setItem(DRIVE_USER_KEY, currentUser.permissionId)
   const at = new Date().toISOString()
   localStorage.setItem(LAST_SYNC_AT_KEY, at)
 
@@ -241,9 +312,14 @@ export async function syncNow(): Promise<SyncResult> {
   }
 }
 
-// Clear the last-synced state locally — useful when the user signs out and we
-// want the next sign-in to treat this as a fresh sync (union of both sides).
+// Clear the last-synced state locally. Resets the per-table id sets, the
+// Drive user fingerprint, and the last-sync timestamp — used by the tests
+// and reserved for an explicit user-initiated "wipe sync state" action.
+// NOT called on Drive sign-out: keeping the state across a sign-out lets
+// us detect account mismatches AND preserves deletion tombstones for the
+// same-account sign-in case.
 export function clearSyncState(): void {
   for (const s of SPECS) removeFromStorage(s.idsKey)
   removeFromStorage(LAST_SYNC_AT_KEY)
+  removeFromStorage(DRIVE_USER_KEY)
 }

@@ -104,6 +104,18 @@ export async function ensureMainAccount(): Promise<void> {
   })
 }
 
+// One-time cleanup of `progress_checks` rows with `checked: false`. These
+// were written by the old `toggleCheck` path that stored a row even when
+// the user unchecked. Read paths treat missing rows and `checked: false`
+// rows identically, so the false rows are inert — they only inflate row
+// counts (visible in the sync report) and waste a Drive payload byte each.
+// Cheap when there's nothing to do; safe to run on every boot.
+export async function cleanFalseProgressChecks(): Promise<void> {
+  const stale = await db.progress_checks.filter(c => !c.checked).toArray()
+  if (stale.length === 0) return
+  await db.progress_checks.bulkDelete(stale.map(c => c.id))
+}
+
 // Clears trade / day-row references that point at pending uploads which no
 // longer exist in the queue (e.g. blob lost in storage, queue cleared
 // across an app reset). Without this, a stale `pending:foo` ref would show

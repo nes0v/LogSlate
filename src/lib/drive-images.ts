@@ -15,12 +15,13 @@
 // Filenames are built at enqueue time from a caller-supplied date and suffix
 // so they're human-readable when the user browses the folder in Drive.
 //
-// Uploads happen immediately when online; when offline, the blob is stashed in
-// the `pending_uploads` IndexedDB table along with its account, precomputed
-// filename and month_key, and the record's screenshot field is set to
-// `pending:{id}`. A separate drain pass (wired into auto-sync) uploads pending
-// blobs into their owning account's folder and rewrites the reference to
-// `drive:{id}`.
+// Uploads happen immediately when online; when offline (or before the user
+// triggers a manual sync), the blob is stashed in the `pending_uploads`
+// IndexedDB table along with its account, precomputed filename and
+// month_key, and the record's screenshot field is set to `pending:{id}`.
+// `drainPendingUploads` runs at the start of every manual sync, uploading
+// pending blobs into their owning account's folder and rewriting the
+// reference to `drive:{id}`.
 
 import { db } from '@/db/schema'
 import { MAIN_ACCOUNT_ID } from '@/db/types'
@@ -440,13 +441,13 @@ export async function resolveScreenshotUrl(raw: string | null | undefined): Prom
     )
   }
   const url = URL.createObjectURL(blob)
-  // Wait for the image to be fully decoded so the `<img>` element knows
-  // its intrinsic dimensions on first paint. Without this, the thumb
-  // briefly renders at 0px wide before the browser decodes and reflows
-  // — visually that's a "small then big" pop which shifts everything
-  // below the screenshots section. `decode()` is supported in every
-  // evergreen browser; the catch falls back gracefully if a runtime
-  // misses it.
+  // Wait for the image to be fully decoded before resolving so the
+  // consuming `<img>` paints at its intrinsic dimensions in one frame.
+  // Without this, the thumb's loader is replaced by an `<img>` that
+  // briefly renders at 0×0 (then reflows once the browser finishes
+  // decoding) — a visible "collapse then re-expand" layout shift.
+  // Safe to do here since the Day page no longer gates on screenshot
+  // resolution; per-thumb decode time only delays the per-thumb swap.
   try {
     const img = new Image()
     img.src = url
@@ -459,7 +460,7 @@ export async function resolveScreenshotUrl(raw: string | null | undefined): Prom
   return url
 }
 
-// --- queue drain (called from auto-sync when online + signed-in) ---
+// --- queue drain (runs at the start of every manual sync) ---
 
 export async function drainPendingUploads(): Promise<void> {
   if (!canUploadToDrive()) return

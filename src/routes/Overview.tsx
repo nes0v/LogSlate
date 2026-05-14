@@ -399,7 +399,7 @@ export function OverviewRoute() {
               rangeEnd={rangeEnd}
             />
           </div>
-          <DistributionDonuts filtered={filtered} />
+          <DistributionDonuts filtered={filtered} models={models ?? []} />
         </>
       )}
 

@@ -11,6 +11,7 @@ import {
 } from './sync'
 import {
   downloadAppDataFile,
+  fetchDriveUser,
   findAppDataFile,
   uploadAppDataFile,
 } from './drive'
@@ -20,11 +21,15 @@ vi.mock('./drive', () => ({
   findAppDataFile: vi.fn(),
   downloadAppDataFile: vi.fn(),
   uploadAppDataFile: vi.fn(),
+  fetchDriveUser: vi.fn(),
 }))
 
 const findFile = vi.mocked(findAppDataFile)
 const downloadFile = vi.mocked(downloadAppDataFile)
 const uploadFile = vi.mocked(uploadAppDataFile)
+const fetchUser = vi.mocked(fetchDriveUser)
+
+const STUB_USER = { permissionId: 'user-1', emailAddress: 'a@example.com' }
 
 function accountRecord(overrides: Partial<Account> = {}): Account {
   const now = '2026-04-20T00:00:00Z'
@@ -181,6 +186,8 @@ describe('syncNow', () => {
     findFile.mockReset()
     downloadFile.mockReset()
     uploadFile.mockReset()
+    fetchUser.mockReset()
+    fetchUser.mockResolvedValue(STUB_USER)
   })
   afterEach(async () => {
     localStorage.clear()
@@ -363,5 +370,75 @@ describe('syncNow', () => {
     // lastSyncedIds were NOT updated — next sync re-merges with the
     // fresh remote and pushes the union.
     expect(localStorage.getItem('logslate:sync:trade_ids')).toBeNull()
+  })
+
+  it('stamps the Drive user permissionId after a successful push', async () => {
+    await db.trades.add(tradeRecord({ id: 't1' }))
+    findFile.mockResolvedValue(null)
+    uploadFile.mockResolvedValue(uploaded())
+
+    await syncNow()
+
+    expect(localStorage.getItem('logslate:sync:drive_user')).toBe(STUB_USER.permissionId)
+  })
+
+  it('throws DriveAccountMismatchError when the signed-in user differs from the stored fingerprint', async () => {
+    // Prior sync stamped a different user.
+    localStorage.setItem('logslate:sync:drive_user', 'previous-user')
+    await db.trades.add(tradeRecord({ id: 't1' }))
+    findFile.mockResolvedValue(null)
+    uploadFile.mockResolvedValue(uploaded())
+
+    const { DriveAccountMismatchError } = await import('./sync')
+    await expect(syncNow()).rejects.toBeInstanceOf(DriveAccountMismatchError)
+    // No data touched: no upload, lastSyncedIds untouched (still empty).
+    expect(uploadFile).not.toHaveBeenCalled()
+    expect(localStorage.getItem('logslate:sync:trade_ids')).toBeNull()
+    // Local row is still there — the guard fires before any merge/clear.
+    expect(await db.trades.count()).toBe(1)
+  })
+
+  it('throws DriveFileGoneError when the file is missing but lastSyncedIds shows prior sync', async () => {
+    // Seed lastSyncedIds as if a previous sync had pushed t1 + t2.
+    localStorage.setItem('logslate:sync:trade_ids', JSON.stringify(['t1', 't2']))
+    await db.trades.add(tradeRecord({ id: 't1' }))
+    await db.trades.add(tradeRecord({ id: 't2' }))
+    findFile.mockResolvedValue(null) // file gone
+
+    const { DriveFileGoneError } = await import('./sync')
+    await expect(syncNow()).rejects.toBeInstanceOf(DriveFileGoneError)
+    expect(uploadFile).not.toHaveBeenCalled()
+    // Local rows untouched — the guard fires before clear/bulkAdd.
+    expect(await db.trades.count()).toBe(2)
+  })
+
+  it('does NOT throw DriveFileGoneError on a first-ever sync (lastSyncedIds empty + no remote)', async () => {
+    await db.trades.add(tradeRecord({ id: 't1' }))
+    findFile.mockResolvedValue(null)
+    uploadFile.mockResolvedValue(uploaded())
+
+    await expect(syncNow()).resolves.toBeDefined()
+  })
+
+  it('recreateRemoteIfMissing: keeps local rows and pushes a fresh file', async () => {
+    // Same setup as the file-gone test, but the user has confirmed
+    // recreate. Merge must keep all local rows (treat lastSyncedIds as
+    // empty for this run) instead of tombstoning them.
+    localStorage.setItem('logslate:sync:trade_ids', JSON.stringify(['t1', 't2']))
+    await db.trades.add(tradeRecord({ id: 't1' }))
+    await db.trades.add(tradeRecord({ id: 't2' }))
+    findFile.mockResolvedValue(null)
+    uploadFile.mockResolvedValue(uploaded())
+
+    const result = await syncNow({ recreateRemoteIfMissing: true })
+
+    expect(result.createdRemote).toBe(true)
+    expect(result.perTable.trades).toEqual({ local: 2, remote: 0, merged: 2 })
+    expect(await db.trades.count()).toBe(2)
+    // lastSyncedIds re-stamped with the pushed ids.
+    const ids = JSON.parse(
+      localStorage.getItem('logslate:sync:trade_ids') ?? '[]',
+    ) as string[]
+    expect(ids.sort()).toEqual(['t1', 't2'])
   })
 })

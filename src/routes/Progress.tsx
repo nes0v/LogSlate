@@ -151,13 +151,21 @@ export function ProgressRoute() {
   async function toggleCheck(rule: ProgressRule) {
     const id = checkId(accountId, date, rule.id)
     const current = checkMap.get(rule.id) ?? false
+    if (current) {
+      // Unchecking: delete the row outright. Read paths treat a missing
+      // row identically to `checked: false`, so storing the false row is
+      // pure write amplification — the table fills up with rows that
+      // contribute nothing semantically and inflate the sync report.
+      await db.progress_checks.delete(id)
+      return
+    }
     const ts = new Date().toISOString()
     const next: ProgressCheck = {
       id,
       account_id: accountId,
       date,
       rule_id: rule.id,
-      checked: !current,
+      checked: true,
       created_at: ts,
       updated_at: ts,
     }

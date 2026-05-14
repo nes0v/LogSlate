@@ -14,7 +14,6 @@ export type DriveStatus = 'signed-out' | 'signing-in' | 'signed-in' | 'error'
 export interface DriveState {
   status: DriveStatus
   error: string | null
-  userEmail: string | null // best-effort (we don't request profile scope, so this stays null)
 }
 
 // Two scopes:
@@ -67,7 +66,6 @@ function initStatus(): DriveStatus {
 let state: DriveState = {
   status: initStatus(),
   error: null,
-  userEmail: null,
 }
 
 const listeners = new Set<() => void>()
@@ -246,6 +244,34 @@ export async function downloadAppDataFile(id: string): Promise<string> {
   const resp = await authFetch(url)
   if (!resp.ok) throw new Error(`Drive download failed: ${resp.status}`)
   return resp.text()
+}
+
+export interface DriveUser {
+  /** Stable Drive-specific identifier — never changes for a given Google
+   *  account, even if the email is renamed. Used as the sync fingerprint. */
+  permissionId: string
+  /** Best-effort display string for error messages. May be null if the
+   *  Drive `about` response omits it. */
+  emailAddress: string | null
+}
+
+/** Identifies the currently signed-in Google account. Works with our
+ *  existing `drive.appdata` / `drive.file` scopes — no extra profile
+ *  scope required. */
+export async function fetchDriveUser(): Promise<DriveUser> {
+  const url =
+    'https://www.googleapis.com/drive/v3/about?fields=user(permissionId,emailAddress)'
+  const resp = await authFetch(url)
+  if (!resp.ok) throw new Error(`Drive about failed: ${resp.status}`)
+  const body = (await resp.json()) as {
+    user?: { permissionId?: string; emailAddress?: string }
+  }
+  const permissionId = body.user?.permissionId
+  if (!permissionId) throw new Error('Drive about returned no user permissionId')
+  return {
+    permissionId,
+    emailAddress: body.user?.emailAddress ?? null,
+  }
 }
 
 // ---------- Generic Drive helpers (scope: drive.file) ----------

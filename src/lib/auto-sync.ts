@@ -1,27 +1,49 @@
-// Drives Drive sync from local state changes. Every write to a synced table
-// debounces a push; any transition into `signed-in` (app boot with a valid
-// token, fresh sign-in) plus every `online` event triggers a pull+push.
+// Surfaces sync state to the UI and runs the manual sync engine. There is
+// NO auto-sync — no boot sync, no per-write debounce, no online-event push,
+// no Drive-status-change push. The user explicitly chose manual-only.
 //
-// The `isSyncing` guard stops the sync's own DB writes (`clear` + `bulkAdd`
-// on merge) from re-scheduling a follow-up sync — otherwise bulkAdd on 100
-// trades would fire 100 creating hooks and loop.
+// Single device by default; if a second device is ever added the user does
+// a manual sync there too. The Settings page's "Sync now" button is the
+// only entry point.
 
 import { useSyncExternalStore } from 'react'
-import { DriveScopeError, getDriveState, subscribeDrive, type DriveStatus } from '@/lib/drive'
+import { DriveScopeError } from '@/lib/drive'
 import { drainPendingUploads } from '@/lib/drive-images'
 import { pushError } from '@/lib/notifications'
-import { syncedTables, syncNow, type SyncResult } from '@/lib/sync'
+import {
+  DriveAccountMismatchError,
+  DriveFileGoneError,
+  syncNow,
+  type SyncOptions,
+  type SyncResult,
+} from '@/lib/sync'
 
 export type AutoSyncStatus = 'idle' | 'syncing' | 'error'
+
+/** Disambiguates `error` so the Settings UI can render targeted actions
+ *  (hard-block vs offer-recreate) without string-matching the message. */
+export type AutoSyncErrorKind =
+  | 'generic'
+  | 'scope'
+  | 'account-mismatch'
+  | 'file-gone'
 
 export interface AutoSyncState {
   status: AutoSyncStatus
   error: string | null
+  errorKind: AutoSyncErrorKind | null
+  /** Per-table summary from the most recent successful run. Held across
+   *  later runs so the Settings page can keep the previous summary
+   *  visible while the next sync is in flight or has just errored. */
+  lastResult: SyncResult | null
 }
 
-const DEBOUNCE_MS = 3000
-
-let state: AutoSyncState = { status: 'idle', error: null }
+let state: AutoSyncState = {
+  status: 'idle',
+  error: null,
+  errorKind: null,
+  lastResult: null,
+}
 const listeners = new Set<() => void>()
 
 function notify(): void {
@@ -30,8 +52,7 @@ function notify(): void {
 
 function update(patch: Partial<AutoSyncState>): void {
   // Skip when the patch changes no field — every subscriber would otherwise
-  // re-render for an identical state (the sync loop flips status/error to
-  // the same values multiple times under normal operation).
+  // re-render for an identical state.
   let changed = false
   for (const k of Object.keys(patch) as Array<keyof AutoSyncState>) {
     if (state[k] !== patch[k]) {
@@ -60,26 +81,34 @@ export function useAutoSyncState(): AutoSyncState {
 }
 
 let isSyncing = false
-let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
-async function runSync(): Promise<SyncResult | null> {
+async function runSync(options: SyncOptions = {}): Promise<SyncResult | null> {
   if (isSyncing) return null
   isSyncing = true
-  update({ status: 'syncing', error: null })
+  update({ status: 'syncing', error: null, errorKind: null })
   try {
-    // Drain any screenshots that were queued while offline before we push
-    // the sync file — the Drive ids land in trade records and go out with
-    // this same push.
+    // Drain any screenshots queued while offline before pushing the sync
+    // file — the Drive ids land in trade records and go out with this push.
     await drainPendingUploads()
-    const result = await syncNow()
-    update({ status: 'idle', error: null })
+    const result = await syncNow(options)
+    update({ status: 'idle', error: null, errorKind: null, lastResult: result })
     return result
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e)
-    update({ status: 'error', error: message })
-    if (e instanceof DriveScopeError) {
+    if (e instanceof DriveAccountMismatchError) {
+      // Hard-block. NO push notification — the Settings page renders an
+      // inline modal that can't be dismissed by walking away. Auto-routing
+      // through the notification banner could lull the user into clicking
+      // through and triggering a wipe.
+      update({ status: 'error', error: message, errorKind: 'account-mismatch' })
+    } else if (e instanceof DriveFileGoneError) {
+      // Recoverable — the Settings page surfaces a "Recreate" action.
+      update({ status: 'error', error: message, errorKind: 'file-gone' })
+    } else if (e instanceof DriveScopeError) {
+      update({ status: 'error', error: message, errorKind: 'scope' })
       pushError(message, { label: 'Reconnect', to: '/settings' })
     } else {
+      update({ status: 'error', error: message, errorKind: 'generic' })
       pushError(`Drive sync failed: ${message}`, { label: 'Settings', to: '/settings' })
     }
     return null
@@ -88,61 +117,16 @@ async function runSync(): Promise<SyncResult | null> {
   }
 }
 
-async function runSyncIfOnline(): Promise<void> {
-  if (getDriveState().status !== 'signed-in') return
-  if (typeof navigator !== 'undefined' && navigator.onLine === false) return
-  await runSync()
+/** Triggered by the "Sync now" button in Settings. `options` lets the UI
+ *  pass through user-confirmed overrides (e.g. recreate a missing remote). */
+export async function requestManualSync(
+  options: SyncOptions = {},
+): Promise<SyncResult | null> {
+  return runSync(options)
 }
 
-// Used by the manual "Sync now" button in Settings. Shares the isSyncing
-// lock with auto-sync so hook-driven writes from this call don't trigger a
-// follow-up push.
-export async function requestManualSync(): Promise<SyncResult | null> {
-  return runSync()
-}
-
-function schedulePush(): void {
-  if (isSyncing) return
-  if (debounceTimer !== null) clearTimeout(debounceTimer)
-  debounceTimer = setTimeout(() => {
-    debounceTimer = null
-    void runSyncIfOnline()
-  }, DEBOUNCE_MS)
-}
-
-let initialized = false
-let lastDriveStatus: DriveStatus | null = null
-
-export function initAutoSync(): void {
-  if (initialized) return
-  initialized = true
-
-  const onWrite = () => {
-    if (isSyncing) return
-    schedulePush()
-  }
-
-  for (const table of syncedTables()) {
-    table.hook('creating', onWrite)
-    table.hook('updating', onWrite)
-    table.hook('deleting', onWrite)
-  }
-
-  lastDriveStatus = getDriveState().status
-  if (lastDriveStatus === 'signed-in') {
-    void runSyncIfOnline()
-  }
-  subscribeDrive(() => {
-    const s = getDriveState().status
-    if (lastDriveStatus !== 'signed-in' && s === 'signed-in') {
-      void runSyncIfOnline()
-    }
-    lastDriveStatus = s
-  })
-
-  if (typeof window !== 'undefined') {
-    window.addEventListener('online', () => {
-      void runSyncIfOnline()
-    })
-  }
+/** Reset the surfaced auto-sync state. Called on Drive sign-out so a stale
+ *  summary or error from the previous account doesn't linger in the UI. */
+export function clearAutoSyncState(): void {
+  update({ status: 'idle', error: null, errorKind: null, lastResult: null })
 }

@@ -1,12 +1,12 @@
 import { useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { formatDistanceToNow } from 'date-fns'
-import { CheckCircle2, CloudDownload, CloudUpload, LogIn, LogOut, RefreshCw } from 'lucide-react'
-import { requestManualSync } from '@/lib/auto-sync'
+import { AlertTriangle, CheckCircle2, CloudDownload, CloudUpload, LogIn, LogOut, RefreshCw } from 'lucide-react'
+import { clearAutoSyncState, requestManualSync, useAutoSyncState } from '@/lib/auto-sync'
 import { listAccounts, listAdjustments } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
 import { isConfigured, signIn, signOut, useDriveState } from '@/lib/drive'
-import { clearSyncState, lastSyncAt, type SyncResult } from '@/lib/sync'
+import { lastSyncAt } from '@/lib/sync'
 import { exportBackup, importBackup } from '@/lib/backup'
 import { AccountsPanel } from '@/components/AccountsPanel'
 import { AdjustmentsPanel } from '@/components/AdjustmentsPanel'
@@ -16,10 +16,11 @@ import { cn, errorMessage } from '@/lib/utils'
 export function SettingsRoute() {
   const drive = useDriveState()
   const configured = isConfigured()
-  const [syncing, setSyncing] = useState(false)
+  // Surfaced from the sync engine so the spinner/summary keep working
+  // even though sync is now manual-only.
+  const autoSync = useAutoSyncState()
+  const syncing = autoSync.status === 'syncing'
   const [importing, setImporting] = useState(false)
-  const [lastResult, setLastResult] = useState<SyncResult | null>(null)
-  const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Drive the page-level loaded gate so the whole Settings body reveals
@@ -32,23 +33,28 @@ export function SettingsRoute() {
   const loaded = accounts !== undefined && adjustments !== undefined
 
   async function handleSync() {
-    setSyncing(true)
-    setError(null)
-    try {
-      const r = await requestManualSync()
-      if (r) setLastResult(r)
-      else setError('A sync is already running — try again in a moment.')
-    } catch (e) {
-      setError(errorMessage(e))
-    } finally {
-      setSyncing(false)
-    }
+    await requestManualSync()
+  }
+
+  /** Confirms the file-gone recovery — pushes local data into a fresh
+   *  Drive file. Safe (no data loss): the merge is forced to keep all
+   *  local rows since `lastSyncedIds` is treated as empty for this run. */
+  async function handleRecreateRemote() {
+    await requestManualSync({ recreateRemoteIfMissing: true })
   }
 
   async function handleSignOut() {
     signOut()
-    clearSyncState()
-    setLastResult(null)
+    // Intentionally NOT calling `clearSyncState()` — wiping `lastSyncedIds`
+    // here would (a) resurrect any rows the user deleted between this
+    // sign-out and the next sign-in (the merge can no longer tell deletion
+    // from creation) and (b) leak this account's data into another
+    // account's Drive file if the user signs into a different Google
+    // account next. The id sets are harmless to keep across sign-outs:
+    // same account → deletes propagate correctly; different account →
+    // local rows look like remote-side deletions and get cleanly wiped
+    // when the new account's data is pulled in.
+    clearAutoSyncState()
   }
 
   async function handleImport(file: File) {
@@ -56,15 +62,13 @@ export function SettingsRoute() {
     setImporting(true)
     try {
       const r = await importBackup(file)
-      setError(null)
-      setLastResult(null)
       const summary = Object.entries(r)
         .filter(([, n]) => n > 0)
         .map(([name, n]) => `${n} ${name}`)
         .join(', ')
       alert(`Imported ${summary || 'nothing'}. Local DB replaced.`)
     } catch (e) {
-      setError(errorMessage(e))
+      alert(`Import failed: ${errorMessage(e)}`)
     } finally {
       setImporting(false)
     }
@@ -121,7 +125,10 @@ export function SettingsRoute() {
                   )}
                 </div>
                 {drive.status === 'signed-in' ? (
-                  <button onClick={handleSignOut} className={BTN_OUTLINED}>
+                  <button
+                    onClick={handleSignOut}
+                    className={cn(BTN_OUTLINED, 'hover:text-(--color-loss)')}
+                  >
                     <LogOut className="size-4" /> Disconnect
                   </button>
                 ) : (
@@ -148,27 +155,74 @@ export function SettingsRoute() {
                     <button
                       onClick={handleSync}
                       disabled={syncing}
-                      className={cn(BTN_OUTLINED, 'text-(--color-text) hover:bg-(--color-panel-2)')}
+                      className={BTN_ACCENT}
                     >
                       <RefreshCw className={'size-4 ' + (syncing ? 'animate-spin' : '')} />
                       {syncing ? 'Syncing…' : 'Sync now'}
                     </button>
                   </div>
 
-                  {lastResult && !error && (
+                  {autoSync.lastResult && !autoSync.error && (
                     <div className="text-xs text-(--color-text-dim) font-mono space-y-0.5">
-                      {Object.entries(lastResult.perTable).map(([name, c]) => (
+                      {Object.entries(autoSync.lastResult.perTable).map(([name, c]) => (
                         <div key={name}>
                           {name}: merged {c.merged} · local {c.local} · remote {c.remote}
                         </div>
                       ))}
                       <div>
-                        {lastResult.createdRemote ? 'created remote file · ' : ''}
-                        {lastResult.skippedPush ? 'skipped push (no changes)' : ''}
+                        {autoSync.lastResult.createdRemote ? 'created remote file · ' : ''}
+                        {autoSync.lastResult.skippedPush ? 'skipped push (no changes)' : ''}
                       </div>
                     </div>
                   )}
-                  {error && <div className="text-sm text-(--color-loss)">Sync error: {error}</div>}
+
+                  {autoSync.errorKind === 'account-mismatch' ? (
+                    <div className="rounded-(--radius) border border-(--color-loss)/40 bg-(--color-loss)/10 p-3 space-y-2">
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle className="size-4 text-(--color-loss) mt-0.5 shrink-0" />
+                        <div className="text-sm space-y-1">
+                          <div className="font-medium text-(--color-loss)">Wrong Google account</div>
+                          <div className="text-(--color-text-dim)">{autoSync.error}</div>
+                          <div className="text-(--color-text-dim)">
+                            Sync is blocked to prevent overwriting your local data. Export a backup first if you need to switch accounts.
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 pt-1">
+                        <button onClick={exportBackup} className={BTN_OUTLINED}>
+                          <CloudDownload className="size-4" /> Export backup
+                        </button>
+                        <button
+                          onClick={handleSignOut}
+                          className={cn(BTN_OUTLINED, 'hover:text-(--color-loss)')}
+                        >
+                          <LogOut className="size-4" /> Disconnect
+                        </button>
+                      </div>
+                    </div>
+                  ) : autoSync.errorKind === 'file-gone' ? (
+                    <div className="rounded-(--radius) border border-(--color-warn)/40 bg-(--color-warn)/10 p-3 space-y-2">
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle className="size-4 text-(--color-warn) mt-0.5 shrink-0" />
+                        <div className="text-sm space-y-1">
+                          <div className="font-medium text-(--color-warn)">Drive file missing</div>
+                          <div className="text-(--color-text-dim)">{autoSync.error}</div>
+                        </div>
+                      </div>
+                      <div className="pt-1">
+                        <button
+                          onClick={handleRecreateRemote}
+                          disabled={syncing}
+                          className={BTN_ACCENT}
+                        >
+                          <RefreshCw className={'size-4 ' + (syncing ? 'animate-spin' : '')} />
+                          Recreate file from local data
+                        </button>
+                      </div>
+                    </div>
+                  ) : autoSync.error ? (
+                    <div className="text-sm text-(--color-loss)">Sync error: {autoSync.error}</div>
+                  ) : null}
                 </>
               )}
             </div>

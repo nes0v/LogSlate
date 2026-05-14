@@ -1,15 +1,12 @@
 import { Children, memo, useMemo } from 'react'
 import { eachDayOfInterval, format, parseISO } from 'date-fns'
-import { useLiveQuery } from 'dexie-react-hooks'
 import { DonutChart } from '@/components/DonutChart'
-import { listModels } from '@/db/queries'
-import { useActiveAccountId } from '@/lib/active-account'
 import type { AggregateStats } from '@/lib/trade-stats'
 import { formatUsd } from '@/lib/money'
 import { classifyTrade } from '@/lib/trade-math'
 import { HOLD_BUCKETS, holdBucketOf } from '@/lib/filters'
 import { cn } from '@/lib/utils'
-import type { Session, TradeRecord } from '@/db/types'
+import type { Model, Session, TradeRecord } from '@/db/types'
 import { EMOTIONS, DEFAULT_MODEL_NAME } from '@/db/types'
 import { SESSION_BG } from '@/lib/session-colors'
 import {
@@ -112,15 +109,15 @@ const MODEL_PALETTE = [
 
 export const DistributionDonuts = memo(function DistributionDonuts({
   filtered,
+  models,
 }: {
   filtered: TradeRecord[]
+  /** Resolved by the parent route so the Models donut paints with the
+   *  right names on first frame. Without this, a fresh useLiveQuery here
+   *  starts with `[]` for one tick and the donut briefly reads "gambling
+   *  100%" before re-rendering with the real data. */
+  models: Model[]
 }) {
-  const accountId = useActiveAccountId()
-  const models = useLiveQuery(
-    () => listModels(accountId),
-    [accountId],
-    [],
-  )
   // One pass over `filtered` populates every donut's counts. Previously
   // each donut had its own useMemo with its own loop — at 6 donuts and N
   // trades that's 6N work plus per-trade `classifyTrade` / `holdBucketOf`

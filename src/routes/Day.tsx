@@ -10,7 +10,6 @@ import { useActiveAccountId } from '@/lib/active-account'
 import { firstExecutionMs } from '@/lib/trade-math'
 import { aggregate } from '@/lib/trade-stats'
 import { useArrowNavigation } from '@/lib/use-arrow-navigation'
-import { useScreenshotUrls } from '@/lib/use-screenshot-urls'
 import { DayNewsSection } from '@/components/DayNewsSection'
 import { DayNoteSection } from '@/components/DayNoteSection'
 import { DayScreenshotSection } from '@/components/DayScreenshotSection'
@@ -60,12 +59,6 @@ export function DayRoute() {
     () => listDayScreenshotsFor(accountId, date),
     [accountId, date],
   )
-  // Resolve every screenshot ref to a blob URL (or an error) up here so
-  // each `ScreenshotThumb` can render in its final state on first paint.
-  // Without this, thumbs each fire their own async fetch and flash
-  // "loading…" tiles for one-or-more frames before settling.
-  const { loaded: screenshotsResolved, resolved: screenshotResolutions } =
-    useScreenshotUrls(screenshots ?? [])
   // Models are resolved once at the route level so trade rows render with
   // the right name on first paint instead of flashing "gambling" → real.
   const models = useLiveQuery(
@@ -77,13 +70,16 @@ export function DayRoute() {
     for (const p of models ?? []) m.set(p.id, p)
     return m
   }, [models])
+  // Page renders as soon as Dexie queries settle — screenshots resolve
+  // their own blob URLs in `<ScreenshotThumb>` so the page doesn't wait
+  // on image fetches. Each thumb shows its own loading placeholder
+  // until its blob URL is ready.
   const loaded =
     trades !== undefined &&
     news !== undefined &&
     note !== undefined &&
     screenshots !== undefined &&
-    models !== undefined &&
-    screenshotsResolved
+    models !== undefined
 
   // Every distinct day that has trades for this account — used to skip empty
   // days in prev/next navigation. `uniqueKeys()` walks the compound index
@@ -164,7 +160,6 @@ export function DayRoute() {
             accountId={accountId}
             date={date}
             screenshots={screenshots}
-            resolved={screenshotResolutions}
           />
 
           <section className="space-y-2">

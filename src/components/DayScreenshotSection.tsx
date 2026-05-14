@@ -1,8 +1,5 @@
 import { addDayScreenshot, removeDayScreenshot } from '@/db/queries'
-import {
-  discardScreenshotRef,
-  type ResolvedScreenshot,
-} from '@/lib/drive-images'
+import { discardScreenshotRef } from '@/lib/drive-images'
 import { ScreenshotThumb } from '@/components/ScreenshotThumb'
 import { ScreenshotUploadButton } from '@/components/ScreenshotUploadButton'
 
@@ -11,11 +8,6 @@ interface DayScreenshotSectionProps {
   date: string // YYYY-MM-DD
   /** Existing screenshot refs (`drive:...` / `pending:...`). */
   screenshots: string[]
-  /** Pre-resolved blob URL / error per ref. The Day route resolves all
-   *  refs in parallel and gates the page load on completion, so the
-   *  thumbs render in their final state instead of flashing through
-   *  "loading…" tiles one-by-one as Drive responds. */
-  resolved: Map<string, ResolvedScreenshot>
 }
 
 // Per-day screenshots. A day can have any number of them — they live as a
@@ -26,7 +18,6 @@ export function DayScreenshotSection({
   accountId,
   date,
   screenshots,
-  resolved,
 }: DayScreenshotSectionProps) {
   async function handleRemove(ref: string) {
     await discardScreenshotRef(ref)
@@ -43,7 +34,6 @@ export function DayScreenshotSection({
               key={ref}
               value={ref}
               onRemove={() => handleRemove(ref)}
-              prefetched={resolved.get(ref)}
             />
           ))}
           <ScreenshotUploadButton
