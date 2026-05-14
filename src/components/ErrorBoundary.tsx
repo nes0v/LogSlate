@@ -37,7 +37,7 @@ export class ErrorBoundary extends Component<Props, State> {
     if (!this.state.error) return this.props.children
     return (
       <div className="min-h-screen flex items-center justify-center p-6 bg-(--color-bg) text-(--color-text)">
-        <div className="max-w-md w-full bg-(--color-panel) rounded-(--radius) shadow-(--shadow-drop-xs) p-6 space-y-3">
+        <div className="max-w-md w-full bg-(--color-panel) rounded-(--radius) p-6 space-y-3">
           <div className="text-lg font-semibold">Something broke.</div>
           <div className="text-sm text-(--color-text-dim) break-words">
             {errorMessage(this.state.error)}

@@ -36,7 +36,7 @@ export const TradeTable = memo(function TradeTable({
   modelById,
 }: TradeTableProps) {
   return (
-    <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-drop-xs) overflow-hidden">
+    <div className="bg-(--color-panel) rounded-(--radius) overflow-hidden">
       <table className="w-full text-sm border-collapse">
         <tbody>
           {trades.map((t, i) => {

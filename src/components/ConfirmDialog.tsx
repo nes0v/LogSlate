@@ -106,7 +106,7 @@ function ConfirmModal({
         onClick={() => onResult(false)}
         aria-hidden
       />
-      <div className="relative w-full max-w-sm rounded-(--radius) bg-(--color-panel) shadow-(--shadow-lg) p-5 space-y-4">
+      <div className="relative w-full max-w-sm rounded-(--radius) bg-(--color-panel) p-5 space-y-4">
         <div className="space-y-1.5">
           <h2
             id="confirm-title"

@@ -280,7 +280,7 @@ export function ModelsRoute() {
         <EmptyPanel>No models yet.</EmptyPanel>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-3">
-          <aside className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-drop-xs) p-3 max-h-[80vh] overflow-y-auto">
+          <aside className="bg-(--color-panel) rounded-(--radius) p-3 max-h-[80vh] overflow-y-auto">
             <div className={ROW_GAP_CLASS}>
               {visible.map((p, i) => {
                 const isDragged = drag?.id === p.id
@@ -327,19 +327,19 @@ export function ModelsRoute() {
                       // pre-drop displacement, jumping the rows.
                       transition:
                         drag && !isDragged
-                          ? 'transform 150ms var(--ease)'
-                          : 'none',
+                          ? 'transform 150ms var(--ease), background-color 300ms var(--ease), color 300ms var(--ease)'
+                          : 'background-color 300ms var(--ease), color 300ms var(--ease)',
                       zIndex: isDragged ? 10 : undefined,
                       position: 'relative',
                       cursor: isActiveDrag ? 'grabbing' : undefined,
                       touchAction: 'none',
                     }}
                     className={cn(
-                      'block w-full text-left p-3 rounded-sm text-sm select-none',
+                      'block w-full text-left p-3 rounded-sm text-sm select-none transition-colors duration-300 ease-out',
                       selected?.id === p.id
                         ? 'bg-(--color-panel-3) text-(--color-text)'
-                        : 'bg-(--color-panel-2) text-(--color-text-dim)',
-                      isDragged && isActiveDrag && 'shadow-(--shadow-drop-md)',
+                        : 'bg-(--color-panel-2) text-(--color-text-dim) hover:bg-(--color-panel-3) hover:text-(--color-text)',
+                      isDragged && isActiveDrag && 'shadow-(--shadow-drop-sm)',
                     )}
                   >
                     <div className="truncate flex items-center justify-between">
@@ -473,7 +473,7 @@ function ModelEditorImpl({ model, onSave, onDelete }: ModelEditorProps) {
   }
 
   return (
-    <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-drop-xs) p-3 space-y-3">
+    <div className="bg-(--color-panel) rounded-(--radius) p-3 space-y-3">
       <div className="flex items-center gap-2">
         <input
           value={name}
@@ -539,9 +539,7 @@ function ModelEditorImpl({ model, onSave, onDelete }: ModelEditorProps) {
                 }
                 className={cn(
                   'inline-flex items-center gap-1.5 rounded-[6px] cursor-pointer transition-colors whitespace-nowrap px-2.5 py-1 text-sm',
-                  active
-                    ? 'shadow-(--shadow-drop-xs)'
-                    : 'text-(--color-text-dim) hover:text-(--color-text)',
+                  !active && 'text-(--color-text-dim) hover:text-(--color-text)',
                 )}
               >
                 {s}

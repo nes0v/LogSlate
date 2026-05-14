@@ -101,7 +101,7 @@ function DonutChartImpl({ title, segments, centerLabel, className, legendColumns
   return (
     <div
       className={cn(
-        'rounded-(--radius) bg-(--color-panel) shadow-(--shadow-drop-xs) p-3 space-y-3',
+        'rounded-(--radius) bg-(--color-panel) p-3 space-y-3',
         className,
       )}
     >
@@ -162,7 +162,7 @@ function DonutChartImpl({ title, segments, centerLabel, className, legendColumns
       {tip &&
         createPortal(
           <div
-            className="fixed pointer-events-none z-50 rounded-(--radius) bg-(--color-panel-2) shadow-(--shadow-md) px-2 py-1 text-xs text-(--color-text) whitespace-nowrap"
+            className="fixed pointer-events-none z-50 rounded-(--radius) bg-(--color-panel-2) px-2 py-1 text-xs text-(--color-text) whitespace-nowrap"
             style={{ left: tip.x + 12, top: tip.y + 12 }}
           >
             <span className="text-(--color-text-dim)">{tip.label}: </span>

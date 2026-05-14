@@ -102,7 +102,7 @@ export function DatePicker({
         <CalendarIcon className="size-4 shrink-0 text-(--color-text-dim)" />
       </button>
       {open && (
-        <div className="absolute left-0 top-full mt-1 z-30 w-[244px] bg-(--color-panel) border border-(--color-border-strong) rounded-(--radius) shadow-(--shadow-md) p-2">
+        <div className="absolute left-0 top-full mt-1 z-30 w-[244px] bg-(--color-panel) border border-(--color-border-strong) rounded-(--radius) p-2">
           <div className="flex items-center justify-between mb-2">
             <button
               type="button"

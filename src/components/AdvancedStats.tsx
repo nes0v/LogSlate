@@ -45,7 +45,7 @@ export const HeroNetPnl = memo(function HeroNetPnl({
   return (
     <section className="flex flex-col gap-2 h-full">
       <h2 className="text-sm font-medium">Net PNL</h2>
-      <div className="flex-1 flex flex-col items-center justify-center text-center py-6 rounded-(--radius) bg-(--color-panel) shadow-(--shadow-drop-xs)">
+      <div className="flex-1 flex flex-col items-center justify-center text-center py-6 rounded-(--radius) bg-(--color-panel)">
         <div
           className={cn(
             'text-5xl font-mono font-medium tabular-nums',
@@ -605,7 +605,7 @@ function MetricGroup({
     <div>
       <h3 className="text-sm font-medium mb-2">{title}</h3>
       <div
-        className="grid grid-cols-2 sm:grid-cols-3 gap-y-3 gap-x-1.5 lg:[grid-template-columns:var(--cols)]"
+        className="grid grid-cols-2 sm:grid-cols-3 gap-y-3 gap-x-2 lg:[grid-template-columns:var(--cols)]"
         style={{ ['--cols' as string]: `repeat(${count}, minmax(0, 1fr))` }}
       >
         {children}
@@ -625,7 +625,7 @@ function KpiTile({ label, value, caption, tone, tooltip }: KpiTileProps) {
   return (
     <div
       className={cn(
-        'bg-(--color-panel) shadow-(--shadow-drop-sm) rounded-(--radius) p-3 transition-colors',
+        'bg-(--color-panel-2) shadow-(--shadow-drop-sm) rounded-(--radius) p-3 transition-colors',
         tooltip && 'cursor-help',
       )}
       title={tooltip}
@@ -703,7 +703,7 @@ function CompositeScoreCard({ score }: { score: ReturnType<typeof compositeScore
   return (
     <section className="flex flex-col gap-2 h-full">
       <h2 className="text-sm font-medium">Composite score</h2>
-      <div className="flex-1 flex items-center justify-center bg-(--color-panel) rounded-(--radius) shadow-(--shadow-drop-xs) p-4">
+      <div className="flex-1 flex items-center justify-center bg-(--color-panel) rounded-(--radius) p-4">
         <div
           className="relative mx-auto w-full max-w-[520px]"
           style={{ aspectRatio: `${VB_W} / ${VB_H}` }}

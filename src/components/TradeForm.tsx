@@ -167,7 +167,7 @@ export function TradeForm({
       <div className="space-y-3">
         <div className="grid lg:grid-cols-2 gap-3 items-start">
           <div className="space-y-3">
-            <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-drop-xs) p-3 space-y-3">
+            <section className="bg-(--color-panel) rounded-(--radius) p-3 space-y-3">
           <div className="flex flex-wrap items-start gap-3">
             <Field label="Symbol" error={errors.symbol?.message}>
               <Controller
@@ -422,7 +422,7 @@ export function TradeForm({
           </div>
 
           <div className="space-y-3">
-            <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-drop-xs) p-3 space-y-3">
+            <section className="bg-(--color-panel) rounded-(--radius) p-3 space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <Field label="Model">
               <Controller
@@ -573,7 +573,7 @@ function LiveStatsSection({ control }: { control: Control<TradeFormValues> }) {
   }, [executions])
 
   return (
-    <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-drop-xs) p-3">
+    <section className="bg-(--color-panel) rounded-(--radius) p-3">
       <div className="flex flex-wrap items-center justify-between gap-6">
         <div className="flex items-center gap-2">
           <div className="text-xs text-(--color-text-dim)">Session</div>

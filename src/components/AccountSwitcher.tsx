@@ -71,7 +71,7 @@ export function AccountSwitcher({ accounts }: AccountSwitcherProps) {
         <ChevronDown className="size-4 shrink-0 text-(--color-text-dim)" />
       </button>
       {open && (
-        <div className="absolute right-0 top-full mt-1 z-20 bg-(--color-panel) border border-(--color-border-strong) rounded-(--radius) shadow-(--shadow-md) overflow-hidden">
+        <div className="absolute right-0 top-full mt-1 z-20 bg-(--color-panel) border border-(--color-border-strong) rounded-(--radius) overflow-hidden">
           {accounts.map(a => (
             <button
               key={a.id}

@@ -44,7 +44,6 @@ import {
 import { formatUsd } from '@/lib/money'
 import { StatsFilterBar } from '@/components/StatsFilterBar'
 import { AdvancedMetricsSections } from '@/components/AdvancedStats'
-import { Pills } from '@/components/form/Pills'
 import { BTN_OUTLINED } from '@/components/form/buttonClass'
 import { cn } from '@/lib/utils'
 
@@ -52,9 +51,9 @@ type ReportTab = 'general' | 'days' | 'symbol' | 'risk' | 'cohort' | 'compare'
 const TABS: Array<{ value: ReportTab; label: string }> = [
   { value: 'general', label: 'General' },
   { value: 'symbol', label: 'Symbol' },
-  { value: 'days', label: 'Days & time' },
+  { value: 'days', label: 'Time' },
   { value: 'risk', label: 'Risk' },
-  { value: 'cohort', label: 'Wins vs losses' },
+  { value: 'cohort', label: 'Outcome' },
   { value: 'compare', label: 'Compare' },
 ]
 
@@ -150,38 +149,64 @@ export function ReportsRoute() {
 
       <StatsFilterBar filters={filters} update={update} />
 
-      {/* Tab bar — same style as the main app nav for visual consistency.
-          Hidden when the empty state is showing — there's nothing for the
-          tabs to switch between. */}
-      {loaded && filtered.length > 0 && (
-        <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-drop-xs) p-3">
-          <Pills value={tab} onChange={setTab} options={TABS} />
-        </section>
-      )}
-
       {!loaded ? null : filtered.length === 0 ? (
         <EmptyState>
           {allTrades.length === 0
             ? 'No trades yet.'
             : 'No trades match the current filters.'}
         </EmptyState>
-      ) : tab === 'general' ? (
-        <AdvancedMetricsSections
-          filtered={filtered}
-          stats={stats}
-          rangeStart={rangeStart}
-          rangeEnd={rangeEnd}
-        />
-      ) : tab === 'days' ? (
-        <DaysAndTimeReport trades={filtered} />
-      ) : tab === 'symbol' ? (
-        <SymbolReport trades={filtered} />
-      ) : tab === 'risk' ? (
-        <RiskReport trades={filtered} onTradeClick={id => navigate(`/trade/${id}/edit`)} />
-      ) : tab === 'cohort' ? (
-        <CohortReport trades={filtered} />
       ) : (
-        <CompareReport trades={filtered} axis={compareAxis} onAxisChange={setCompareAxis} />
+        <div className="grid grid-cols-[12rem_1fr] gap-3">
+          <nav
+            aria-label="Report sections"
+            className="bg-(--color-panel) rounded-(--radius) p-3 space-y-1.5"
+          >
+            {TABS.map(t => {
+              const active = t.value === tab
+              return (
+                <button
+                  key={t.value}
+                  type="button"
+                  onClick={() => setTab(t.value)}
+                  aria-current={active ? 'page' : undefined}
+                  className={cn(
+                    'block w-full text-left p-3 rounded-sm text-sm transition-colors duration-300 ease-out',
+                    active
+                      ? 'bg-(--color-panel-3) text-(--color-text)'
+                      : 'bg-(--color-panel-2) text-(--color-text-dim) hover:bg-(--color-panel-3) hover:text-(--color-text)',
+                  )}
+                >
+                  {t.label}
+                </button>
+              )
+            })}
+          </nav>
+
+          <div className="min-w-0">
+            {tab === 'general' ? (
+              <div className="bg-(--color-panel) rounded-(--radius) p-3 h-full">
+                <AdvancedMetricsSections
+                  filtered={filtered}
+                  stats={stats}
+                  rangeStart={rangeStart}
+                  rangeEnd={rangeEnd}
+                />
+              </div>
+            ) : tab === 'days' ? (
+              <DaysAndTimeReport trades={filtered} />
+            ) : tab === 'symbol' ? (
+              <div className="bg-(--color-panel) rounded-(--radius) p-3 h-full">
+                <SymbolReport trades={filtered} />
+              </div>
+            ) : tab === 'risk' ? (
+              <RiskReport trades={filtered} onTradeClick={id => navigate(`/trade/${id}/edit`)} />
+            ) : tab === 'cohort' ? (
+              <CohortReport trades={filtered} />
+            ) : (
+              <CompareReport trades={filtered} axis={compareAxis} onAxisChange={setCompareAxis} />
+            )}
+          </div>
+        </div>
       )}
     </div>
   )
@@ -367,7 +392,7 @@ function SymbolReport({ trades }: { trades: TradeRecord[] }) {
                 ({stats.count})
               </span>
             </h3>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-y-3 gap-x-1.5">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-y-3 gap-x-2">
               <Stat
                 label="Net P&L"
                 value={formatUsd(stats.net_pnl)}
@@ -687,7 +712,7 @@ function CompareReport({
     [trades, axis, modelNameById],
   )
   return (
-    <section>
+    <section className="h-full flex flex-col">
       {/* Browser-tab style: tabs sit above the section with their bottom
           flush against its top edge, each rounded only at the top. The
           section's top-left is square so the leftmost tab supplies that
@@ -716,7 +741,7 @@ function CompareReport({
           )
         })}
       </div>
-      <div className="bg-(--color-panel) rounded-(--radius) rounded-tl-none shadow-(--shadow-drop-xs) p-3 space-y-3">
+      <div className="bg-(--color-panel) rounded-(--radius) rounded-tl-none p-3 space-y-3 flex-1">
         {groups.length === 0 ? (
           <EmptyState>Nothing to compare on this axis.</EmptyState>
         ) : (
@@ -899,7 +924,7 @@ function Card({
       </div>
       <div
         className={cn(
-          'flex-1 bg-(--color-panel) rounded-(--radius) p-3 shadow-(--shadow-drop-xs)',
+          'flex-1 bg-(--color-panel) rounded-(--radius) p-3',
           right && 'rounded-tr-none',
         )}
       >
@@ -921,7 +946,7 @@ function Stat({
   tone?: 'win' | 'loss' | 'dim'
 }) {
   return (
-    <div className="bg-(--color-panel) shadow-(--shadow-drop-sm) rounded-(--radius) p-3">
+    <div className="bg-(--color-panel-2) shadow-(--shadow-drop-sm) rounded-(--radius) p-3">
       <div className="text-xs uppercase tracking-[0.08em] font-medium text-(--color-text-dim)">
         {label}
       </div>

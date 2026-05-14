@@ -61,7 +61,7 @@ export function AccountsPanel({ accounts }: AccountsPanelProps) {
   return (
     <section>
       <h2 className="text-sm font-medium mb-2">Accounts</h2>
-      <div className="rounded-(--radius) bg-(--color-panel) shadow-(--shadow-drop-xs) p-3 space-y-3">
+      <div className="rounded-(--radius) bg-(--color-panel) p-3 space-y-3">
         {/* Account names map 1:1 to a Drive folder, so they're fixed once
             created — renaming would orphan the existing folder of screenshots. */}
         <p className="text-sm text-(--color-text-dim)">
@@ -83,7 +83,7 @@ export function AccountsPanel({ accounts }: AccountsPanelProps) {
             className={inputClass}
           />
           <button type="submit" className={BTN_ACCENT}>
-            Add account
+            Add
           </button>
           {error && <div className="col-span-2 text-xs text-(--color-loss)">{error}</div>}
         </form>

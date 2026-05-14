@@ -15,7 +15,7 @@ export function DayNewsSection({ events }: DayNewsSectionProps) {
   return (
     <section className="space-y-2">
       <h2 className="text-sm font-medium">News</h2>
-      <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-drop-xs) overflow-hidden">
+      <div className="bg-(--color-panel) rounded-(--radius) overflow-hidden">
         {events.length === 0 ? (
           <div className="p-3 text-xs text-(--color-text-dim)">No USD high/medium events.</div>
         ) : (

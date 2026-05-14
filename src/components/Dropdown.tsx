@@ -45,12 +45,12 @@ export function Dropdown<T extends string>({
         type="button"
         aria-label={ariaLabel}
         onClick={() => setOpen(o => !o)}
-        className="inline-flex items-center justify-center px-2 py-1 text-xs font-mono rounded-(--radius) bg-(--color-panel) shadow-(--shadow-drop-xs) text-(--color-text) hover:bg-(--color-panel-2) transition-colors"
+        className="inline-flex items-center justify-center px-2 py-1 text-xs font-mono rounded-(--radius) bg-(--color-panel) text-(--color-text) hover:bg-(--color-panel-2) transition-colors"
       >
         {selectedLabel}
       </button>
       {open && (
-        <div className="absolute right-0 top-full mt-1 z-20 min-w-max bg-(--color-panel) border border-(--color-border-strong) rounded-(--radius) shadow-(--shadow-md) overflow-hidden">
+        <div className="absolute right-0 top-full mt-1 z-20 min-w-max bg-(--color-panel) border border-(--color-border-strong) rounded-(--radius) overflow-hidden">
           {options.map(opt => (
             <button
               key={String(opt.value)}

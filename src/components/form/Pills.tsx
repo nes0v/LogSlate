@@ -63,7 +63,7 @@ export function Pills<T extends string | number | null>({
               'inline-flex items-center gap-1.5 rounded-[6px] cursor-pointer transition-colors whitespace-nowrap',
               size === 'sm' ? 'px-2.5 py-1 text-xs' : 'px-2.5 py-1 text-sm',
               active
-                ? `${activeBgClass} text-(--color-text) shadow-(--shadow-drop-xs)`
+                ? `${activeBgClass} text-(--color-text)`
                 : 'text-(--color-text-dim) hover:text-(--color-text)',
             )}
           >

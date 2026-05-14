@@ -1535,7 +1535,7 @@ export function TradingViewChart({
         {headerRight}
       </div>
       <div
-        className="relative rounded-(--radius) overflow-hidden shadow-(--shadow-drop-xs)"
+        className="relative rounded-(--radius) overflow-hidden"
         style={{ width: '100%', height }}
       >
         <div ref={containerRef} style={{ position: 'absolute', inset: 0 }} />
@@ -1597,7 +1597,7 @@ function CandleInfoRow({
   const tradingPnl = point.close - point.open
   const delta = tradingPnl + point.adjustment
   return (
-    <div className="flex items-center gap-x-4 text-xs font-mono bg-(--color-panel-2) shadow-(--shadow-drop-xs) rounded-(--radius) px-2 py-1 pointer-events-none whitespace-nowrap">
+    <div className="flex items-center gap-x-4 text-xs font-mono bg-(--color-panel-2) rounded-(--radius) px-2 py-1 pointer-events-none whitespace-nowrap">
       <span className="text-(--color-text-dim)">{dateLabel}</span>
       {point.count > 0 ? (
         <>

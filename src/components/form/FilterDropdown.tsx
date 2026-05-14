@@ -61,7 +61,7 @@ export function FilterDropdown<T extends string>({
         <ChevronDown className="size-4 shrink-0 text-(--color-text-dim)" />
       </button>
       {open && (
-        <div className="absolute left-0 top-full mt-1 z-20 min-w-full bg-(--color-panel) border border-(--color-border-strong) rounded-(--radius) shadow-(--shadow-md) overflow-hidden">
+        <div className="absolute left-0 top-full mt-1 z-20 min-w-full bg-(--color-panel) border border-(--color-border-strong) rounded-(--radius) overflow-hidden">
           <button
             type="button"
             onClick={() => {

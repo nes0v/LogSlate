@@ -36,7 +36,7 @@ export function DayScreenshotSection({
   return (
     <section className="space-y-2">
       <h2 className="text-sm font-medium">Screenshots</h2>
-      <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-drop-xs) p-3">
+      <div className="bg-(--color-panel) rounded-(--radius) p-3">
         <div className="flex flex-wrap items-start gap-3">
           {screenshots.map(ref => (
             <ScreenshotThumb

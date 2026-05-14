@@ -210,7 +210,7 @@ export function ProgressRoute() {
       {!loaded ? null : (
         <>
       {/* Score band */}
-      <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-drop-xs) p-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <section className="bg-(--color-panel) rounded-(--radius) p-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
         <ScoreTile
           label="Today's adherence"
           value={
@@ -243,7 +243,7 @@ export function ProgressRoute() {
       </section>
 
       {/* 30-day heat strip */}
-      <section className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-drop-xs) p-3">
+      <section className="bg-(--color-panel) rounded-(--radius) p-3">
         <div className="text-xs uppercase tracking-wider text-(--color-text-dim) mb-2">
           Last 30 days
         </div>
@@ -280,7 +280,7 @@ export function ProgressRoute() {
 
       {/* Rule list / today's checklist */}
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-drop-xs) p-3 space-y-2">
+        <div className="bg-(--color-panel) rounded-(--radius) p-3 space-y-2">
           <div className="text-sm font-medium mb-2">Today's checklist</div>
           {activeRules.length === 0 ? (
             <div className="text-xs text-(--color-text-dim) text-center py-6">
@@ -345,7 +345,7 @@ function RuleManager({
   onDelete: (id: string) => void
 }) {
   return (
-    <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-drop-xs) p-3 space-y-2">
+    <div className="bg-(--color-panel) rounded-(--radius) p-3 space-y-2">
       <div className="text-sm font-medium mb-2">Rules</div>
       <div className="space-y-1">
         {rules.map(r => (

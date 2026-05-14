@@ -229,7 +229,7 @@ export function ForexFactoryNews() {
           </button>
         </div>
       </div>
-      <div className="bg-(--color-panel) rounded-(--radius) shadow-(--shadow-drop-xs) overflow-hidden">
+      <div className="bg-(--color-panel) rounded-(--radius) overflow-hidden">
         {error ? (
           <div className="p-3 text-xs text-(--color-loss)">Failed to load news: {error}</div>
         ) : loading ? (

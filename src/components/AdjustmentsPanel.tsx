@@ -49,7 +49,7 @@ export function AdjustmentsPanel({ adjustments }: AdjustmentsPanelProps) {
           </div>
         </div>
       </div>
-      <div className="bg-(--color-panel) rounded-(--radius) rounded-tr-none shadow-(--shadow-drop-xs) p-3 space-y-3">
+      <div className="bg-(--color-panel) rounded-(--radius) rounded-tr-none p-3 space-y-3">
         {tab === 'cash' ? (
           <EquityAdjustmentsPanel adjustments={adjustments} />
         ) : (

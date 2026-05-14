@@ -82,7 +82,7 @@ export function SettingsRoute() {
       <>
       <section>
         <h2 className="text-sm font-medium mb-2">Google Drive sync</h2>
-        <div className="rounded-(--radius) bg-(--color-panel) shadow-(--shadow-drop-xs) p-3 space-y-3">
+        <div className="rounded-(--radius) bg-(--color-panel) p-3 space-y-3">
           <p className="text-sm text-(--color-text-dim)">
             Trades sync to a hidden file in your own Google Drive — only this app can read it.
             <br />
@@ -182,7 +182,7 @@ export function SettingsRoute() {
 
       <section>
         <h2 className="text-sm font-medium mb-2">Backup &amp; restore</h2>
-        <div className="rounded-(--radius) bg-(--color-panel) shadow-(--shadow-drop-xs) p-3 space-y-3">
+        <div className="rounded-(--radius) bg-(--color-panel) p-3 space-y-3">
           <p className="text-sm text-(--color-text-dim)">
             Download a JSON file of everything.
             <br />
