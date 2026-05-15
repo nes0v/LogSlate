@@ -244,17 +244,12 @@ export async function syncNow(options: SyncOptions = {}): Promise<SyncResult> {
   if (remoteSameAsMerged && meta) {
     uploaded = meta
   } else {
-    // Stale-write check. Between our pull (line ~145) and this push,
-    // another device could have written to Drive. If so, blindly pushing
-    // would silently clobber their changes — `lastSyncedIds` would then
-    // mark our merge as "synced" and the next sync would mistake the
-    // other device's missing rows for "deleted on this device".
-    //
-    // Refetch the metadata; if `modifiedTime` advanced past what we
-    // pulled, abort. The local DB is left in its merged state (still
-    // safe — a superset that includes our pulled-then-merged remote
-    // view); the next manual sync will re-pull, re-merge against the
-    // new remote, and push the union.
+    // Stale-write check. Between our pull and this push, another device
+    // could in theory have written to Drive. If so, blindly pushing
+    // would silently clobber their changes. Refetch the metadata; if
+    // `modifiedTime` advanced past what we pulled, abort. Unreachable
+    // under the project's single-device-at-a-time invariant (CLAUDE.md),
+    // kept as defense-in-depth.
     if (meta) {
       const fresh = await findAppDataFile(FILE_NAME)
       if (fresh && fresh.modifiedTime !== meta.modifiedTime) {
@@ -263,6 +258,23 @@ export async function syncNow(options: SyncOptions = {}): Promise<SyncResult> {
         )
       }
     }
+    // Save a CONSERVATIVE lastSyncedIds BEFORE the push: only the IDs we
+    // KNOW are on Drive right now (= rows that came from this pull,
+    // plus rows from the previous lastSynced that survived the merge).
+    // Locally-created rows are DELIBERATELY excluded — they're not on
+    // Drive yet. If the push then fails:
+    //   - A deletion of a row we just merged in from remote is correctly
+    //     tombstoned on retry (in lastSynced + in remote + not in local
+    //     → drop) instead of resurrecting.
+    //   - A locally-created row is NOT silently dropped on retry (not in
+    //     lastSynced + only in local → keep) because we held it back.
+    // The wider lastSyncedIds = merged set is written AFTER the push
+    // succeeds, below.
+    SPECS.forEach((_, i) => {
+      const known = new Set(lastSyncedSets[i])
+      for (const r of remotes[i]) known.add(r.id)
+      saveIdSet(SPECS[i].idsKey, known)
+    })
     const file: SyncFile = {
       version: FILE_VERSION,
       exported_at: new Date().toISOString(),
@@ -274,17 +286,12 @@ export async function syncNow(options: SyncOptions = {}): Promise<SyncResult> {
     createdRemote = !meta
   }
 
-  // Save lastSyncedIds only after a successful push. The trade-off here:
-  //  - Save BEFORE push: a deletion of a freshly-merged-in row after a
-  //    push failure is correctly tombstoned on retry, BUT a local row
-  //    created before a failed push can be DROPPED on retry if another
-  //    device pushed during the gap (lastSynced says "should be on both
-  //    sides", new remote doesn't have it → treated as remote-deleted).
-  //  - Save AFTER push (this code): a deletion of a freshly-merged-in
-  //    row after push failure can resurrect on retry (visible, user can
-  //    re-delete), BUT no creation is ever silently dropped.
-  // Visible bug > silent data loss, so we save after push.
+  // After-push save: every merged row is now on Drive (either it was
+  // already there, or this push put it there, or no push was needed
+  // because remote already matched). Expand lastSyncedIds to the full
+  // merged set so locally-created rows are tracked for future syncs.
   SPECS.forEach((s, i) => saveIdSet(s.idsKey, new Set(merged[i].map(m => m.id))))
+
   // Stamp the Drive user id so the next sync's GUARD 1 can compare. Saved
   // here (after push) and not on sign-in: until something is actually
   // synced, there's nothing to "fingerprint" — fresh sign-ins to a new

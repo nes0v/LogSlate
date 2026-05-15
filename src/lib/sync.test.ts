@@ -372,6 +372,82 @@ describe('syncNow', () => {
     expect(localStorage.getItem('logslate:sync:trade_ids')).toBeNull()
   })
 
+  it('saves lastSyncedIds before the push so a deletion after a failed push does not resurrect on retry', async () => {
+    // Scenario: remote has r1, local has both r1 and a new l1 that needs
+    // pushing. Sync 1 merges to {r1, l1} and tries to push — push fails.
+    // The user then deletes r1 locally. On Sync 2 (remote unchanged) r1
+    // must NOT come back — and it won't, because lastSyncedIds was
+    // saved before the upload attempt, so the merge sees r1 as
+    // "in lastSynced + in remote + not in local" → tombstone.
+    await db.trades.add(tradeRecord({ id: 'l1', idea: 'local-only' }))
+    findFile.mockResolvedValue({
+      id: 'fid',
+      name: 'logslate.json',
+      modifiedTime: '2026-04-15T11:00:00Z',
+    })
+    downloadFile.mockResolvedValue(
+      JSON.stringify({
+        version: 6,
+        exported_at: '2026-04-15T11:00:00Z',
+        trades: [tradeRecord({ id: 'r1', idea: 'remote-only' })],
+      }),
+    )
+    uploadFile.mockRejectedValueOnce(new Error('network down'))
+
+    await expect(syncNow()).rejects.toThrow(/network down/)
+
+    // Push failed but the merge already ran: local now has both rows.
+    // lastSyncedIds was stamped with the CONSERVATIVE set (only r1 —
+    // the one we know is on Drive), excluding l1 because l1's push
+    // failed and Drive doesn't have it.
+    expect((await db.trades.toArray()).map(t => t.id).sort()).toEqual(['l1', 'r1'])
+    expect(
+      JSON.parse(localStorage.getItem('logslate:sync:trade_ids') ?? '[]'),
+    ).toEqual(['r1'])
+
+    // User deletes the freshly-merged-in remote row.
+    await db.trades.delete('r1')
+
+    // Retry sync: remote still only has r1, upload succeeds this time.
+    uploadFile.mockResolvedValue(uploaded('fid'))
+    const result = await syncNow()
+
+    // r1 stays gone (in lastSynced + in remote + not in local → drop).
+    // l1 survives (not in lastSynced + only in local → keep + push).
+    expect((await db.trades.toArray()).map(t => t.id)).toEqual(['l1'])
+    expect(result.perTable.trades.merged).toBe(1)
+  })
+
+  it('does not silently drop a locally-created row when its first push fails', async () => {
+    // Scenario: user creates l1 locally, syncs (no remote yet) → push
+    // fails. With the OLD post-push save, lastSyncedIds stayed empty
+    // and l1 survived. With a naive pre-push save of the merged set,
+    // l1 would have been added to lastSyncedIds, and a deletion-then-
+    // resync would have resurrected it from… nothing. With the
+    // conservative pre-push save, l1 is NOT added to lastSyncedIds
+    // until the push actually succeeds, so it cannot be silently
+    // tombstoned by a future merge.
+    await db.trades.add(tradeRecord({ id: 'l1', idea: 'first ever' }))
+    findFile.mockResolvedValue(null)
+    uploadFile.mockRejectedValueOnce(new Error('network down'))
+
+    await expect(syncNow()).rejects.toThrow(/network down/)
+
+    // l1 untouched locally; lastSyncedIds is empty (l1 not yet on Drive).
+    expect(await db.trades.count()).toBe(1)
+    expect(localStorage.getItem('logslate:sync:trade_ids')).toEqual('[]')
+
+    // Retry succeeds.
+    uploadFile.mockResolvedValue(uploaded())
+    await syncNow()
+
+    // l1 still there, AND now in lastSyncedIds (post-push save ran).
+    expect(await db.trades.count()).toBe(1)
+    expect(
+      JSON.parse(localStorage.getItem('logslate:sync:trade_ids') ?? '[]'),
+    ).toEqual(['l1'])
+  })
+
   it('stamps the Drive user permissionId after a successful push', async () => {
     await db.trades.add(tradeRecord({ id: 't1' }))
     findFile.mockResolvedValue(null)
