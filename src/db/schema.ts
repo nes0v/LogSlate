@@ -190,31 +190,12 @@ class LogslateDB extends Dexie {
         r.periods = periods
       })
     })
-    // v7: hand-authored reset. The four named rules become the active
-    // routine starting 2026-05-11; every other rule is wiped of periods
-    // (and so disappears from every day, past and present). One-time
-    // fix-up for the single user of this app — text matching is
-    // case-insensitive but otherwise exact, no fuzzy variants.
-    this.version(7).upgrade(async tx => {
-      const KEEP_TEXTS = new Set([
-        'read yesterdays notes',
-        'write a daily review',
-        'do a tapereading session',
-        '1 trade only',
-      ])
-      const ROUTINE_START = '2026-05-11'
-      await tx.table('progress_rules').toCollection().modify((r: {
-        text?: string
-        periods?: Array<{ from: string; until: string | null }>
-      }) => {
-        const normalized = (r.text ?? '').trim().toLowerCase()
-        if (KEEP_TEXTS.has(normalized)) {
-          r.periods = [{ from: ROUTINE_START, until: null }]
-        } else {
-          r.periods = []
-        }
-      })
-    })
+    // v7 previously carried a one-shot, hand-authored reset of the
+    // progress rules for the single user of this app. The reset has
+    // already run on that DB; the upgrade body is removed but the
+    // version declaration must stay — Dexie refuses to attach to a DB
+    // whose stored version exceeds the latest declared in source.
+    this.version(7)
   }
 }
 
@@ -246,6 +227,55 @@ export async function cleanFalseProgressChecks(): Promise<void> {
   const stale = await db.progress_checks.filter(c => !c.checked).toArray()
   if (stale.length === 0) return
   await db.progress_checks.bulkDelete(stale.map(c => c.id))
+}
+
+// Garbage-collect hidden progress rules that no longer have any check
+// rows referencing them. A rule is soft-deleted (`hidden: true`) when
+// the user clicks X on a rule with at least one historical check — the
+// row stays so past adherence ratios don't drift. If the user later
+// goes back and unchecks every day for that rule, the soft-delete
+// becomes a pure tombstone and can be removed safely.
+export async function cleanEmptyHiddenRules(): Promise<void> {
+  const hidden = await db.progress_rules.filter(r => r.hidden === true).toArray()
+  if (hidden.length === 0) return
+  const inUse = new Set<string>()
+  await db.progress_checks.toCollection().each(c => {
+    inUse.add(c.rule_id)
+  })
+  const stale = hidden.filter(r => !inUse.has(r.id))
+  if (stale.length === 0) return
+  await db.progress_rules.bulkDelete(stale.map(r => r.id))
+}
+
+// Heals progress rules that arrived from a pre-v4 Drive backup (or any
+// path that bypassed the schema migrations). Without `periods`, the
+// rule would silently disappear from every day's denominator; without
+// `hidden`, the field is undefined which is correctly falsy but
+// inconsistent. We coerce both fields on read; this function makes the
+// fix durable so the next sync push carries the normalized shape.
+//
+// Heuristic for `periods`: same logic as v4 — open period from
+// `created_at` if the legacy `active` flag was true, else empty.
+export async function normalizeProgressRules(): Promise<void> {
+  const oldShape = await db.progress_rules
+    .filter(r => !Array.isArray(r.periods))
+    .toArray()
+  if (oldShape.length === 0) return
+  const now = new Date().toISOString()
+  await db.transaction('rw', db.progress_rules, async () => {
+    for (const r of oldShape as Array<unknown> as Array<{
+      id: string
+      created_at?: string
+      active?: boolean
+    }>) {
+      const from = (r.created_at ?? '').slice(0, 10) || '0001-01-01'
+      const periods = r.active === true ? [{ from, until: null }] : []
+      await db.progress_rules.update(r.id, {
+        periods,
+        updated_at: now,
+      })
+    }
+  })
 }
 
 // Clears trade / day-row references that point at pending uploads which no

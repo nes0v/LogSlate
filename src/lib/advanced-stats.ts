@@ -58,7 +58,7 @@ export function payoffRatio(trades: TradeRecord[]): number | null {
   return ws / wn / Math.abs(ls / ln)
 }
 
-/** Mean R-multiple. R = pnl / stop_loss. Breakeven (scratch) trades
+/** Mean R-multiple. R = pnl / stop_loss. Scratch trades
  *  are excluded so the metric reflects decisive trades only. */
 export function expectancyR(trades: TradeRecord[]): number | null {
   let n = 0
@@ -102,7 +102,7 @@ export function expectancyDollars(trades: TradeRecord[]): number | null {
 
 // ---------- Van Tharp SQN ------------------------------------------
 
-/** System Quality Number = √n × (mean_R / stdev_R). Breakeven (scratch)
+/** System Quality Number = √n × (mean_R / stdev_R). Scratch
  *  trades are excluded so they don't dilute the magnitude. */
 export function sqn(trades: TradeRecord[]): number | null {
   const rs: number[] = []

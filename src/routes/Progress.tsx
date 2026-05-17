@@ -86,7 +86,6 @@ export function ProgressRoute() {
         .toArray(),
     [accountId, date],
   )
-  const loaded = rules !== undefined && checksToday !== undefined
   // Wide-enough calendar window to cover the last 30 *weekdays* with
   // headroom — 30 weekdays = 6 weeks ≈ 42 calendar days, 50 gives slack
   // for the edge cases where `date` lands on a Sunday.
@@ -103,7 +102,6 @@ export function ProgressRoute() {
         .between([accountId, heatWindowStart], [accountId, date], true, true)
         .toArray(),
     [accountId, date, heatWindowStart],
-    [],
   )
   // Set of dates in the heat window that have at least one trade. Used
   // by the streak walk to skip non-trading days — weekdays where the
@@ -118,8 +116,15 @@ export function ProgressRoute() {
       return new Set(trades.map(t => t.date))
     },
     [accountId, date, heatWindowStart],
-    new Set<string>(),
   )
+  // Gate every score tile / heat cell until all four queries resolve —
+  // otherwise the streak briefly reads 0d before tradedDays loads and
+  // the heat cells flicker empty before recent arrives.
+  const loaded =
+    rules !== undefined &&
+    checksToday !== undefined &&
+    recent !== undefined &&
+    tradedDays !== undefined
 
   // Rules active on the currently-viewed date — drives the checklist
   // and today's-adherence tile.
@@ -179,10 +184,11 @@ export function ProgressRoute() {
   // with no active rules or pct < 100% does break it.
   const streak = useMemo(() => {
     let s = 0
+    const traded = tradedDays ?? new Set<string>()
     for (let i = heat.length - 1; i >= 0; i--) {
       const cell = heat[i]
       if (isWeekend(dateKeyToDate(cell.date))) continue
-      if (!tradedDays.has(cell.date)) continue
+      if (!traded.has(cell.date)) continue
       if (cell.total > 0 && cell.pct >= 1) s++
       else break
     }
@@ -352,11 +358,12 @@ export function ProgressRoute() {
             // weekdays only. Weekends and untraded weekdays would
             // otherwise drag the score down to 0% on days where no
             // routine was ever expected.
+            const traded = tradedDays ?? new Set<string>()
             const scored = heat.filter(
               d =>
                 d.total > 0 &&
                 !isWeekend(dateKeyToDate(d.date)) &&
-                tradedDays.has(d.date),
+                traded.has(d.date),
             )
             if (scored.length === 0) return '—'
             return `${Math.round(
