@@ -23,10 +23,12 @@ export function ruleHasOpenPeriod(rule: ProgressRule): boolean {
   return periodsOf(rule).some(p => p.until === null)
 }
 
-// Open a fresh period starting today. No-op if a period is already open
-// — toggling on twice shouldn't fork the history.
+// Open a fresh period starting today. No-op (returns a defensive copy)
+// if a period is already open — toggling on twice shouldn't fork the
+// history. Always returns a fresh array so callers can't accidentally
+// mutate the underlying rule.periods.
 export function openPeriod(rule: ProgressRule, today: string): ProgressRulePeriod[] {
-  if (ruleHasOpenPeriod(rule)) return periodsOf(rule)
+  if (ruleHasOpenPeriod(rule)) return periodsOf(rule).slice()
   return [...periodsOf(rule), { from: today, until: null }]
 }
 

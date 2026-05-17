@@ -203,8 +203,8 @@ export function ProgressRoute() {
   }
 
   async function deleteRule(id: string) {
-    const rule = (rules ?? []).find(r => r.id === id)
-    if (!rule) return
+    const snapshot = (rules ?? []).find(r => r.id === id)
+    if (!snapshot) return
     if (
       !(await confirm({
         title: 'Delete this rule?',
@@ -213,12 +213,17 @@ export function ProgressRoute() {
       }))
     )
       return
-    // Wrap the check-existence scan and the delete in one transaction
-    // so a write landing between them (or a crash mid-operation) can't
-    // leave the rule row deleted while orphan check rows linger. The
-    // `rule_id` field isn't indexed (schema v3 pruned the index), so we
-    // filter-scan with an early-exit `.until()` on first hit.
+    // Re-fetch the rule INSIDE the transaction before reading periods —
+    // the live-query snapshot can be stale (the user may have toggled
+    // active or edited text between the page rendering and clicking
+    // X). All reads + writes share one rw transaction so the rule
+    // either vanishes cleanly or stays intact; a write landing in the
+    // middle can't leave orphan check rows. `rule_id` isn't indexed
+    // (schema v3 pruned the index), so we filter-scan with an early-
+    // exit `.until()` on first hit.
     await db.transaction('rw', db.progress_rules, db.progress_checks, async () => {
+      const fresh = await db.progress_rules.get(id)
+      if (!fresh) return
       let hasAnyChecks = false
       await db.progress_checks
         .filter(c => c.rule_id === id)
@@ -236,7 +241,7 @@ export function ProgressRoute() {
       // the rule into past days so historical adherence is unchanged.
       await db.progress_rules.update(id, {
         hidden: true,
-        periods: closePeriod(rule, today),
+        periods: closePeriod(fresh, today),
         updated_at: new Date().toISOString(),
       })
     })
