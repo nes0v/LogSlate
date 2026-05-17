@@ -213,28 +213,32 @@ export function ProgressRoute() {
       }))
     )
       return
-    // Cheap check: if the rule has never been checked anywhere, there's
-    // no past data to preserve — hard-delete the row instead of leaving
-    // a hidden tombstone. `rule_id` isn't indexed (schema v3 pruned the
-    // index), so we filter-scan and short-circuit on first hit.
-    let hasAnyChecks = false
-    await db.progress_checks
-      .filter(c => c.rule_id === id)
-      .until(() => hasAnyChecks)
-      .each(() => {
-        hasAnyChecks = true
+    // Wrap the check-existence scan and the delete in one transaction
+    // so a write landing between them (or a crash mid-operation) can't
+    // leave the rule row deleted while orphan check rows linger. The
+    // `rule_id` field isn't indexed (schema v3 pruned the index), so we
+    // filter-scan with an early-exit `.until()` on first hit.
+    await db.transaction('rw', db.progress_rules, db.progress_checks, async () => {
+      let hasAnyChecks = false
+      await db.progress_checks
+        .filter(c => c.rule_id === id)
+        .until(() => hasAnyChecks)
+        .each(() => {
+          hasAnyChecks = true
+        })
+      if (!hasAnyChecks) {
+        await db.progress_rules.delete(id)
+        return
+      }
+      // Soft delete via `hidden` + close any open period at yesterday.
+      // The rule disappears from the rule manager and from today's
+      // checklist (period closes), but its prior periods still anchor
+      // the rule into past days so historical adherence is unchanged.
+      await db.progress_rules.update(id, {
+        hidden: true,
+        periods: closePeriod(rule, today),
+        updated_at: new Date().toISOString(),
       })
-    if (!hasAnyChecks) {
-      await db.progress_rules.delete(id)
-      return
-    }
-    // Soft delete via `hidden` + close any open period at yesterday.
-    // The rule disappears from the rule manager and from today's
-    // checklist (period closes), but its prior periods still anchor
-    // the rule into past days so historical adherence is unchanged.
-    await updateRule(id, {
-      hidden: true,
-      periods: closePeriod(rule, today),
     })
   }
 

@@ -727,10 +727,18 @@ export function classifyDayPnl(
  *  days with at least one trade count toward the rates and average.
  *  `accountStartEquity` is the real account equity right before the first
  *  day of the series — needed so the ±0.4% scratch band uses real capital
- *  rather than period-relative PnL. */
+ *  rather than period-relative PnL.
+ *
+ *  `adjustmentsByDate` (optional) lets the running-equity walk track
+ *  mid-period deposits/withdrawals so the per-day scratch threshold
+ *  reflects real capital throughout the range, not just at its start.
+ *  Without it, a $5k mid-period deposit doesn't lift the threshold, so
+ *  some near-threshold days can be misclassified as wins/losses instead
+ *  of scratches. */
 export function dailyStats(
   series: EquityPoint[],
   accountStartEquity = 0,
+  adjustmentsByDate?: Map<string, number>,
 ): DailyStats {
   const tradingDays = series.filter(p => p.pnl !== 0)
   if (tradingDays.length === 0) {
@@ -761,7 +769,7 @@ export function dailyStats(
       else even++
       total += p.pnl
     }
-    runningEquity += p.pnl
+    runningEquity += p.pnl + (adjustmentsByDate?.get(p.date) ?? 0)
   }
   const decided = green + red
   return {

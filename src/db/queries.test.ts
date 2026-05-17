@@ -367,6 +367,15 @@ describe('account queries', () => {
       created_at: '2026-04-15T00:00:00Z',
       updated_at: '2026-04-15T00:00:00Z',
     })
+    await db.progress_checks.put({
+      id: `${a.id}:2026-04-15:pr1`,
+      account_id: a.id,
+      date: '2026-04-15',
+      rule_id: 'pr1',
+      checked: true,
+      created_at: '2026-04-15T00:00:00Z',
+      updated_at: '2026-04-15T00:00:00Z',
+    })
     await createTrade(tradeDraft(), MAIN_ACCOUNT_ID)
 
     expect(await countAccountData(a.id)).toEqual({
@@ -375,6 +384,7 @@ describe('account queries', () => {
       days: 1,
       models: 1,
       progressRules: 1,
+      progressChecks: 1,
     })
     expect(await countAccountData(MAIN_ACCOUNT_ID)).toEqual({
       trades: 1,
@@ -382,6 +392,7 @@ describe('account queries', () => {
       days: 0,
       models: 0,
       progressRules: 0,
+      progressChecks: 0,
     })
   })
 })

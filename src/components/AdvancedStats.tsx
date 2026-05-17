@@ -1,7 +1,11 @@
 import { Children, memo, useMemo } from 'react'
 import { eachDayOfInterval, format, parseISO } from 'date-fns'
+import { useLiveQuery } from 'dexie-react-hooks'
 import { DonutChart } from '@/components/DonutChart'
-import type { AggregateStats } from '@/lib/trade-stats'
+import { db } from '@/db/schema'
+import { useActiveAccountId } from '@/lib/active-account'
+import { adjustmentsByDate, type AggregateStats } from '@/lib/trade-stats'
+import type { EquityAdjustment } from '@/db/types'
 import { formatUsd } from '@/lib/money'
 import { classifyTrade } from '@/lib/trade-math'
 import { HOLD_BUCKETS, holdBucketOf } from '@/lib/filters'
@@ -373,9 +377,30 @@ export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
   // Real account equity at the start of the visible range — fed into
   // dailyStats so the ±0.4% scratch band uses actual capital.
   const accountStartEquity = useStartingEquity(rangeStart)
+  // Mid-period adjustments are needed so the per-day running equity in
+  // dailyStats reflects deposits/withdraws — otherwise a near-threshold
+  // day after a deposit can misclassify as a win/loss instead of a
+  // scratch. Drawdown / ratio / composite stats stay trade-only (a
+  // deposit shouldn't look like a recovery).
+  const accountId = useActiveAccountId()
+  const rangeAdjustments = useLiveQuery(
+    async (): Promise<EquityAdjustment[]> => {
+      if (!rangeStart || !rangeEnd) return []
+      return db.adjustments
+        .where('[account_id+date]')
+        .between([accountId, rangeStart], [accountId, rangeEnd], true, true)
+        .toArray()
+    },
+    [accountId, rangeStart, rangeEnd],
+    [] as EquityAdjustment[],
+  )
+  const adjByDate = useMemo(
+    () => adjustmentsByDate(rangeAdjustments),
+    [rangeAdjustments],
+  )
   const dayStats = useMemo(
-    () => dailyStats(equitySeries, accountStartEquity ?? 0),
-    [equitySeries, accountStartEquity],
+    () => dailyStats(equitySeries, accountStartEquity ?? 0, adjByDate),
+    [equitySeries, accountStartEquity, adjByDate],
   )
   const totalDays =
     dayStats.greenDays + dayStats.redDays + dayStats.scratchDays

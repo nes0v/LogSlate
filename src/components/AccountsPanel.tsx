@@ -44,6 +44,7 @@ export function AccountsPanel({ accounts }: AccountsPanelProps) {
     push(counts.days, 'day note/screenshots entry', 'day note/screenshot entries')
     push(counts.models, 'model')
     push(counts.progressRules, 'progress rule')
+    push(counts.progressChecks, 'historical check')
     const description = parts.length === 0
       ? undefined
       : `This will permanently remove ${parts.join(', ')}.`

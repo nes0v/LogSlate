@@ -228,15 +228,17 @@ export async function countAccountData(id: string): Promise<{
   days: number
   models: number
   progressRules: number
+  progressChecks: number
 }> {
-  const [trades, adjustments, days, models, progressRules] = await Promise.all([
+  const [trades, adjustments, days, models, progressRules, progressChecks] = await Promise.all([
     db.trades.where('account_id').equals(id).count(),
     db.adjustments.where('account_id').equals(id).count(),
     db.days.where('account_id').equals(id).count(),
     db.models.where('account_id').equals(id).count(),
     db.progress_rules.where('account_id').equals(id).count(),
+    db.progress_checks.where('account_id').equals(id).count(),
   ])
-  return { trades, adjustments, days, models, progressRules }
+  return { trades, adjustments, days, models, progressRules, progressChecks }
 }
 
 // ---------- days ----------
