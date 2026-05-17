@@ -248,7 +248,7 @@ export function OverviewRoute() {
       computeCandles(
         tfBuckets.map(b => ({ ...b, label: b.key })),
         tfAdjByBucket,
-        chartStartingEquity,
+        chartStartingEquity ?? 0,
       ),
     [tfBuckets, tfAdjByBucket, chartStartingEquity],
   )

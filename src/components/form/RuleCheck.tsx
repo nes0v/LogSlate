@@ -5,13 +5,18 @@ interface RuleCheckProps {
   checked: boolean
   onChange: (checked: boolean) => void
   label: string
+  /** Rule is currently archived (Progress: deleted but kept for past
+   *  adherence). Renders the label with italics + a struck-through tone
+   *  so the user can tell this is a historical rule they can no longer
+   *  see in the today checklist. */
+  archived?: boolean
   className?: string
 }
 
 // Rule-followed checkbox: a green check when ok, a red X when not.
 // Used in two places where the visual must stay in sync — the daily
 // Progress checklist and the per-trade ModelRuleChecklist.
-export function RuleCheck({ checked, onChange, label, className }: RuleCheckProps) {
+export function RuleCheck({ checked, onChange, label, archived, className }: RuleCheckProps) {
   return (
     <label
       className={cn(
@@ -44,7 +49,9 @@ export function RuleCheck({ checked, onChange, label, className }: RuleCheckProp
         className={cn(
           'text-sm leading-tight',
           checked ? 'text-(--color-text)' : 'text-(--color-text-dim)',
+          archived && 'italic text-(--color-text-faint) line-through',
         )}
+        title={archived ? 'Archived rule — kept for historical adherence' : undefined}
       >
         {label}
       </span>

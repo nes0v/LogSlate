@@ -374,7 +374,7 @@ export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
   // dailyStats so the ±0.4% scratch band uses actual capital.
   const accountStartEquity = useStartingEquity(rangeStart)
   const dayStats = useMemo(
-    () => dailyStats(equitySeries, accountStartEquity),
+    () => dailyStats(equitySeries, accountStartEquity ?? 0),
     [equitySeries, accountStartEquity],
   )
   const totalDays =

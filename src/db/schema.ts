@@ -83,118 +83,12 @@ class LogslateDB extends Dexie {
       progress_checks: '&id, [account_id+date], account_id, updated_at',
       news: '&id, date, updated_at',
     })
-    // v4: ProgressRule gains a `periods` array (effective date ranges) and
-    // drops the boolean `active`. Backfill from `created_at` so historical
-    // adherence stays anchored to when a rule first appeared — active
-    // rules become one open period from their creation date; inactive
-    // rules become empty (matches current behavior, which excludes them
-    // from every day's denominator).
-    this.version(4).upgrade(async tx => {
-      await tx.table('progress_rules').toCollection().modify((r: {
-        created_at?: string
-        active?: boolean
-        periods?: unknown
-      }) => {
-        const from = (r.created_at ?? '').slice(0, 10) || '0001-01-01'
-        r.periods = r.active === true ? [{ from, until: null }] : []
-        delete r.active
-      })
-    })
-    // v5: heal `periods` against actual check history. v4 anchored each
-    // rule's earliest period to its `created_at`, but checks recorded
-    // before that date (backfilled days, cross-device sync skew, rules
-    // recreated after their first use) leave the heat strip blank for
-    // dates that legitimately had adherence data. Widen the earliest
-    // period — and resurrect periods for rules that ended up empty but
-    // have checks — using the oldest checked `progress_checks` row per
-    // rule_id.
-    this.version(5).upgrade(async tx => {
-      const checks = await tx.table('progress_checks').toArray()
-      const earliest = new Map<string, string>()
-      const latest = new Map<string, string>()
-      for (const c of checks as Array<{ rule_id: string; date: string; checked: boolean }>) {
-        if (!c.checked) continue
-        const e = earliest.get(c.rule_id)
-        if (!e || c.date < e) earliest.set(c.rule_id, c.date)
-        const l = latest.get(c.rule_id)
-        if (!l || c.date > l) latest.set(c.rule_id, c.date)
-      }
-      await tx.table('progress_rules').toCollection().modify((r: {
-        id: string
-        periods?: Array<{ from: string; until: string | null }>
-      }) => {
-        const earliestCheck = earliest.get(r.id)
-        if (!earliestCheck) return
-        const periods = Array.isArray(r.periods) ? r.periods.slice() : []
-        if (periods.length === 0) {
-          // Rule has check history but no period — must have been active
-          // back then. Reconstruct a closed period spanning the earliest
-          // to the latest check. User can re-open it from the UI if the
-          // rule is still in effect.
-          periods.push({
-            from: earliestCheck,
-            until: latest.get(r.id) ?? earliestCheck,
-          })
-        } else if (earliestCheck < periods[0].from) {
-          periods[0] = { ...periods[0], from: earliestCheck }
-        } else {
-          return
-        }
-        r.periods = periods
-      })
-    })
-    // v6: widen each rule's earliest period to the earliest check on the
-    // *account*, not just the earliest check on that rule. v5 used the
-    // per-rule earliest, which silently drops rules from past days where
-    // the user happened not to tick them — inflating those days to 100%
-    // by hiding the failing rules. Old code treated every currently-
-    // active rule as part of the denominator on every past day, and
-    // that's the behavior we need to preserve. Rules that have never
-    // been checked anywhere are skipped — they're either brand-new or
-    // genuinely unused, and shouldn't retro-apply to history.
-    //
-    // Superseded by v7's authoritative reset — left in place because
-    // schema versions can't be removed, but the modify() below would
-    // also be undone by v7 even if it diverged.
-    this.version(6).upgrade(async tx => {
-      const checks = await tx.table('progress_checks').toArray()
-      const earliestByAccount = new Map<string, string>()
-      const ruleSeen = new Set<string>()
-      for (const c of checks as Array<{
-        account_id: string
-        rule_id: string
-        date: string
-        checked: boolean
-      }>) {
-        if (!c.checked) continue
-        ruleSeen.add(c.rule_id)
-        const cur = earliestByAccount.get(c.account_id)
-        if (!cur || c.date < cur) earliestByAccount.set(c.account_id, c.date)
-      }
-      await tx.table('progress_rules').toCollection().modify((r: {
-        id: string
-        account_id: string
-        periods?: Array<{ from: string; until: string | null }>
-      }) => {
-        if (!ruleSeen.has(r.id)) return
-        const earliest = earliestByAccount.get(r.account_id)
-        if (!earliest) return
-        const periods = Array.isArray(r.periods) ? r.periods.slice() : []
-        if (periods.length === 0) {
-          periods.push({ from: earliest, until: null })
-        } else if (earliest < periods[0].from) {
-          periods[0] = { ...periods[0], from: earliest }
-        } else {
-          return
-        }
-        r.periods = periods
-      })
-    })
-    // v7 previously carried a one-shot, hand-authored reset of the
-    // progress rules for the single user of this app. The reset has
-    // already run on that DB; the upgrade body is removed but the
-    // version declaration must stay — Dexie refuses to attach to a DB
-    // whose stored version exceeds the latest declared in source.
+    // v4–v7 carried one-shot upgrades that backfilled
+    // ProgressRule.periods (replacing the legacy `active` boolean) and a
+    // hand-authored reset for the single user of this app. Their work
+    // is persisted, so the upgrade bodies are dropped. Only the version
+    // marker is kept — Dexie refuses to attach to a DB whose stored
+    // version exceeds the latest declared in source.
     this.version(7)
   }
 }
@@ -247,36 +141,6 @@ export async function cleanEmptyHiddenRules(): Promise<void> {
   await db.progress_rules.bulkDelete(stale.map(r => r.id))
 }
 
-// Heals progress rules that arrived from a pre-v4 Drive backup (or any
-// path that bypassed the schema migrations). Without `periods`, the
-// rule would silently disappear from every day's denominator; without
-// `hidden`, the field is undefined which is correctly falsy but
-// inconsistent. We coerce both fields on read; this function makes the
-// fix durable so the next sync push carries the normalized shape.
-//
-// Heuristic for `periods`: same logic as v4 — open period from
-// `created_at` if the legacy `active` flag was true, else empty.
-export async function normalizeProgressRules(): Promise<void> {
-  const oldShape = await db.progress_rules
-    .filter(r => !Array.isArray(r.periods))
-    .toArray()
-  if (oldShape.length === 0) return
-  const now = new Date().toISOString()
-  await db.transaction('rw', db.progress_rules, async () => {
-    for (const r of oldShape as Array<unknown> as Array<{
-      id: string
-      created_at?: string
-      active?: boolean
-    }>) {
-      const from = (r.created_at ?? '').slice(0, 10) || '0001-01-01'
-      const periods = r.active === true ? [{ from, until: null }] : []
-      await db.progress_rules.update(r.id, {
-        periods,
-        updated_at: now,
-      })
-    }
-  })
-}
 
 // Clears trade / day-row references that point at pending uploads which no
 // longer exist in the queue (e.g. blob lost in storage, queue cleared

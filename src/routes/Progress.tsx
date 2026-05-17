@@ -3,7 +3,13 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { addDays, format, getDay, isWeekend } from 'date-fns'
 import { ChevronLeft, ChevronRight, Plus, X } from 'lucide-react'
 import { db } from '@/db/schema'
-import type { ProgressCheck, ProgressRule, ProgressRulePeriod } from '@/db/types'
+import type { ProgressCheck, ProgressRule } from '@/db/types'
+import {
+  closePeriod,
+  openPeriod,
+  ruleActiveOn,
+  ruleHasOpenPeriod,
+} from '@/lib/progress-periods'
 import { useActiveAccountId } from '@/lib/active-account'
 import { Checkbox } from '@/components/form/Checkbox'
 import { DatePicker } from '@/components/form/DatePicker'
@@ -18,47 +24,6 @@ function newId(): string {
 
 function checkId(accountId: string, date: string, ruleId: string): string {
   return `${accountId}:${date}:${ruleId}`
-}
-
-// `periods` is the v4 field — pre-upgrade rows (and any rule synced in
-// from a Drive backup written before the migration runs) won't have it
-// yet. Treat missing as an empty list so reads never crash; the next
-// mutation will write a real `periods` array.
-function periodsOf(rule: ProgressRule): ProgressRulePeriod[] {
-  return rule.periods ?? []
-}
-
-// A rule counts toward day D's denominator if any period covers D
-// inclusively. Periods with `until: null` are still open.
-function ruleActiveOn(rule: ProgressRule, date: string): boolean {
-  return periodsOf(rule).some(
-    p => p.from <= date && (p.until === null || date <= p.until),
-  )
-}
-
-function ruleHasOpenPeriod(rule: ProgressRule): boolean {
-  return periodsOf(rule).some(p => p.until === null)
-}
-
-// Open a fresh period starting today. No-op if a period is already open
-// — toggling on twice shouldn't fork the history.
-function openPeriod(rule: ProgressRule, today: string): ProgressRulePeriod[] {
-  if (ruleHasOpenPeriod(rule)) return periodsOf(rule)
-  return [...periodsOf(rule), { from: today, until: null }]
-}
-
-// Close the currently-open period at yesterday. If the period was
-// opened earlier today (from === today), it never had any effective
-// days, so drop it entirely instead of writing a zero-day range.
-function closePeriod(rule: ProgressRule, today: string): ProgressRulePeriod[] {
-  const yesterday = format(addDays(dateKeyToDate(today), -1), 'yyyy-MM-dd')
-  return periodsOf(rule)
-    .map(p => {
-      if (p.until !== null) return p
-      if (p.from > yesterday) return null
-      return { from: p.from, until: yesterday }
-    })
-    .filter((p): p is ProgressRulePeriod => p !== null)
 }
 
 export function ProgressRoute() {
@@ -226,6 +191,17 @@ export function ProgressRoute() {
     await updateRule(rule.id, { periods })
   }
 
+  async function restoreRule(rule: ProgressRule) {
+    // Bring an archived rule back into today's checklist. Clears
+    // `hidden` and opens a fresh period from today — past periods stay
+    // exactly as they were, so historical adherence is unchanged and
+    // the rule simply resumes from today forward.
+    await updateRule(rule.id, {
+      hidden: false,
+      periods: openPeriod(rule, today),
+    })
+  }
+
   async function deleteRule(id: string) {
     const rule = (rules ?? []).find(r => r.id === id)
     if (!rule) return
@@ -370,7 +346,7 @@ export function ProgressRoute() {
               (scored.reduce((s, d) => s + d.pct, 0) / scored.length) * 100,
             )}%`
           })()}
-          caption="rolling discipline"
+          caption="traded weekdays only"
         />
       </section>
 
@@ -401,7 +377,7 @@ export function ProgressRoute() {
                 title={`${h.date} · ${h.checked}/${h.total}`}
                 className={cn(
                   'flex-1 min-w-0 aspect-square rounded-sm text-xs font-mono hover:opacity-80',
-                  idx > 0 && isMonday && 'ms-1.5',
+                  idx > 0 && isMonday && 'ms-3',
                   h.date === date
                     ? 'text-(--color-text) font-medium'
                     : 'text-(--color-text-dim)',
@@ -431,6 +407,7 @@ export function ProgressRoute() {
                   checked={checkMap.get(r.id) ?? false}
                   onChange={() => toggleCheck(r)}
                   label={r.text}
+                  archived={r.hidden === true}
                 />
               ))}
             </div>
@@ -439,10 +416,12 @@ export function ProgressRoute() {
 
         <RuleManager
           rules={(rules ?? []).filter(r => !r.hidden)}
+          archived={(rules ?? []).filter(r => r.hidden === true)}
           onAdd={addRule}
           onUpdate={updateRule}
           onSetActive={setRuleActive}
           onDelete={deleteRule}
+          onRestore={restoreRule}
           disabled={!isToday}
         />
       </section>
@@ -474,19 +453,24 @@ function ScoreTile({
 
 function RuleManager({
   rules,
+  archived,
   onAdd,
   onUpdate,
   onSetActive,
   onDelete,
+  onRestore,
   disabled,
 }: {
   rules: ProgressRule[]
+  archived: ProgressRule[]
   onAdd: () => void
   onUpdate: (id: string, patch: Partial<ProgressRule>) => void
   onSetActive: (rule: ProgressRule, next: boolean) => void
   onDelete: (id: string) => void
+  onRestore: (rule: ProgressRule) => void
   disabled: boolean
 }) {
+  const [showArchived, setShowArchived] = useState(false)
   return (
     <div className="bg-(--color-panel) rounded-(--radius) p-3 space-y-2">
       <div className="flex items-center justify-between mb-2">
@@ -528,6 +512,40 @@ function RuleManager({
       >
         <Plus className="size-3" /> Add rule
       </button>
+      {archived.length > 0 && (
+        <div className="pt-2 mt-2 border-t border-(--color-panel-2)">
+          <button
+            type="button"
+            onClick={() => setShowArchived(v => !v)}
+            className="text-xs text-(--color-text-dim) hover:text-(--color-text) inline-flex items-center gap-1"
+          >
+            {showArchived ? '▾' : '▸'} {archived.length} archived rule{archived.length === 1 ? '' : 's'}
+          </button>
+          {showArchived && (
+            <div className={cn('mt-2 space-y-1', disabled && 'opacity-50 pointer-events-none')}>
+              {archived.map(r => (
+                <div
+                  key={r.id}
+                  className="flex items-start gap-2 px-1 py-1 rounded-sm text-sm"
+                >
+                  <span className="flex-1 text-(--color-text-dim) italic line-through leading-tight">
+                    {r.text || '(unnamed)'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => onRestore(r)}
+                    disabled={disabled}
+                    className="text-xs text-(--color-text-dim) hover:text-(--color-text) shrink-0"
+                    title="Restore — opens a new period from today; past adherence unchanged"
+                  >
+                    Restore
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

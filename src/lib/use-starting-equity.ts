@@ -37,7 +37,7 @@ export function useCurrentEquity(): number | undefined {
   }, [adjustments, trades])
 }
 
-export function useStartingEquity(dateKey: string | null | undefined): number {
+export function useStartingEquity(dateKey: string | null | undefined): number | undefined {
   const accountId = useActiveAccountId()
   const priorAdjustments = useLiveQuery(
     () => {
@@ -48,7 +48,6 @@ export function useStartingEquity(dateKey: string | null | undefined): number {
         .toArray()
     },
     [accountId, dateKey],
-    [],
   )
   const priorTrades = useLiveQuery(
     () => {
@@ -59,9 +58,9 @@ export function useStartingEquity(dateKey: string | null | undefined): number {
         .toArray()
     },
     [accountId, dateKey],
-    [],
   )
   return useMemo(() => {
+    if (!priorAdjustments || !priorTrades) return undefined
     let eq = 0
     for (const a of priorAdjustments) eq += signedAdjustment(a)
     for (const t of priorTrades) eq += computeNetPnl(t) ?? 0

@@ -82,7 +82,12 @@ export function CalendarRoute() {
   // day-by-day from this baseline gives each cell its own start-of-day
   // equity for the scratch check.
   const gridStartEquity = useStartingEquity(rangeStart)
-  const loaded = trades !== undefined && dayRows !== undefined
+  // Gate the month grid on equity too — otherwise the first paint
+  // classifies near-threshold days with `band = $8` (equity defaults
+  // to 0 while loading) and re-renders to the real ±0.4%/$8 band a
+  // moment later, briefly flashing the wrong cell tone.
+  const loaded =
+    trades !== undefined && dayRows !== undefined && gridStartEquity !== undefined
 
   const screenshotDays = useMemo(() => {
     const s = new Set<string>()
@@ -131,7 +136,7 @@ export function CalendarRoute() {
     }
     // Walk the grid in date order, threading running equity through each
     // day so cells carry their own start-of-day baseline.
-    let runningEquity = gridStartEquity
+    let runningEquity = gridStartEquity ?? 0
     for (const d of days) {
       const key = format(d, DATE_KEY)
       const cell = m.get(key)

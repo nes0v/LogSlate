@@ -1152,6 +1152,14 @@ function RDistRows({ buckets }: { buckets: ReturnType<typeof rDistribution> }) {
   }
   const visible = buckets.slice(startIdx, endIdx + 1)
   const max = Math.max(1, ...visible.map(b => b.count))
+  const total = buckets.reduce((s, b) => s + b.count, 0)
+  if (total === 0) {
+    return (
+      <div className="text-xs text-(--color-text-dim) text-center py-6">
+        No trades with a stop_loss in this range.
+      </div>
+    )
+  }
   return (
     <div>
       {visible.map(b => {
