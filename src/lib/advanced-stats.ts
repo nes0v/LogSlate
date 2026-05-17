@@ -66,7 +66,7 @@ export function expectancyR(trades: TradeRecord[]): number | null {
   for (const t of trades) {
     if (t.stop_loss <= 0) continue
     const { pnl, outcome } = tradeMetrics(t)
-    if (outcome === 'breakeven') continue
+    if (outcome === 'scratch') continue
     s += (pnl ?? 0) / t.stop_loss
     n++
   }
@@ -109,7 +109,7 @@ export function sqn(trades: TradeRecord[]): number | null {
   for (const t of trades) {
     if (t.stop_loss <= 0) continue
     const { pnl, outcome } = tradeMetrics(t)
-    if (outcome === 'breakeven') continue
+    if (outcome === 'scratch') continue
     rs.push((pnl ?? 0) / t.stop_loss)
   }
   if (rs.length < 2) return null
@@ -341,17 +341,25 @@ export interface RBucket {
 }
 
 export function rDistribution(trades: TradeRecord[]): RBucket[] {
+  // Edges are centered on integer R values with ±0.5R half-bins so the
+  // label matches what the user reads: a loss of 1.05R (slippage past
+  // stop, fees) belongs in the `-1R` bucket, not `-2R`. `-1R` is
+  // widened all the way to 0 to absorb small losses (and `+1R` to 0
+  // for small wins), since R-multiples below ±0.5 still represent the
+  // "near-stop" outcome class.
   const edges: Array<[number, number, string]> = [
-    [-Infinity, -3, '< -3R'],
-    [-3, -2, '-3R'],
-    [-2, -1, '-2R'],
-    [-1, 0, '-1R'],
-    [0, 1, '+1R'],
-    [1, 2, '+2R'],
-    [2, 3, '+3R'],
-    [3, 4, '+4R'],
-    [4, 5, '+5R'],
-    [5, Infinity, '5R+'],
+    [-Infinity, -5.5, '< -5R'],
+    [-5.5, -4.5, '-5R'],
+    [-4.5, -3.5, '-4R'],
+    [-3.5, -2.5, '-3R'],
+    [-2.5, -1.5, '-2R'],
+    [-1.5, 0, '-1R'],
+    [0, 1.5, '+1R'],
+    [1.5, 2.5, '+2R'],
+    [2.5, 3.5, '+3R'],
+    [3.5, 4.5, '+4R'],
+    [4.5, 5.5, '+5R'],
+    [5.5, Infinity, '5R+'],
   ]
   const buckets: RBucket[] = edges.map(([lo, hi, label]) => ({
     label,
@@ -362,7 +370,7 @@ export function rDistribution(trades: TradeRecord[]): RBucket[] {
   for (const t of trades) {
     if (t.stop_loss <= 0) continue
     const { pnl, outcome } = tradeMetrics(t)
-    if (outcome === 'breakeven') continue
+    if (outcome === 'scratch') continue
     const r = (pnl ?? 0) / t.stop_loss
     for (const b of buckets) {
       if (r > b.range[0] && r <= b.range[1]) {
@@ -693,12 +701,37 @@ export interface DailyStats {
   dayWinRate: number | null
   greenDays: number
   redDays: number
-  breakevenDays: number
+  scratchDays: number
+}
+
+// A day whose absolute pnl is within this fraction of start-of-day equity
+// counts as a scratch even if pnl ≠ 0 — small chops on top of a real
+// account shouldn't tip the day into the green/red bucket. A hard
+// floor keeps tiny accounts (where 0.4% rounds to pennies) from going
+// green/red on a few dollars of slippage.
+export const SCRATCH_DAY_PCT = 0.004
+export const SCRATCH_DAY_MIN_USD = 8
+
+export function classifyDayPnl(
+  pnl: number,
+  startEquity: number,
+): 'win' | 'loss' | 'scratch' {
+  const band = Math.max(startEquity * SCRATCH_DAY_PCT, SCRATCH_DAY_MIN_USD)
+  if (Math.abs(pnl) <= band) return 'scratch'
+  if (pnl > 0) return 'win'
+  if (pnl < 0) return 'loss'
+  return 'scratch'
 }
 
 /** Aggregates the equity series down to per-trading-day metrics. Only
- *  days with at least one trade count toward the rates and average. */
-export function dailyStats(series: EquityPoint[]): DailyStats {
+ *  days with at least one trade count toward the rates and average.
+ *  `accountStartEquity` is the real account equity right before the first
+ *  day of the series — needed so the ±0.4% scratch band uses real capital
+ *  rather than period-relative PnL. */
+export function dailyStats(
+  series: EquityPoint[],
+  accountStartEquity = 0,
+): DailyStats {
   const tradingDays = series.filter(p => p.pnl !== 0)
   if (tradingDays.length === 0) {
     return {
@@ -708,20 +741,27 @@ export function dailyStats(series: EquityPoint[]): DailyStats {
       dayWinRate: null,
       greenDays: 0,
       redDays: 0,
-      breakevenDays: 0,
+      scratchDays: 0,
     }
   }
   let best = -Infinity
   let worst = Infinity
   let green = 0
   let red = 0
+  let even = 0
   let total = 0
-  for (const p of tradingDays) {
-    if (p.pnl > best) best = p.pnl
-    if (p.pnl < worst) worst = p.pnl
-    if (p.pnl > 0) green++
-    else if (p.pnl < 0) red++
-    total += p.pnl
+  let runningEquity = accountStartEquity
+  for (const p of series) {
+    if (p.pnl !== 0) {
+      if (p.pnl > best) best = p.pnl
+      if (p.pnl < worst) worst = p.pnl
+      const outcome = classifyDayPnl(p.pnl, runningEquity)
+      if (outcome === 'win') green++
+      else if (outcome === 'loss') red++
+      else even++
+      total += p.pnl
+    }
+    runningEquity += p.pnl
   }
   const decided = green + red
   return {
@@ -731,7 +771,7 @@ export function dailyStats(series: EquityPoint[]): DailyStats {
     dayWinRate: decided > 0 ? green / decided : null,
     greenDays: green,
     redDays: red,
-    breakevenDays: tradingDays.length - green - red,
+    scratchDays: even,
   }
 }
 

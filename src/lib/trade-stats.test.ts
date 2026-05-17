@@ -34,9 +34,9 @@ function losingTrade() {
   })
 }
 
-// AHPC = 0 (buy/sell at same price) → classifyTrade returns 'breakeven',
+// AHPC = 0 (buy/sell at same price) → classifyTrade returns 'scratch',
 // and the net pnl is just −fees.
-function breakevenTrade() {
+function scratchTrade() {
   return tradeRecord({
     symbol: 'NQ',
     contract_type: 'mini',
@@ -68,17 +68,17 @@ describe('aggregate', () => {
     expect(s.net_pnl).toBeCloseTo(-9, 5)
   })
 
-  it('counts wins, losses, breakevens and computes win_rate', () => {
-    const trades = [winningTrade(), winningTrade(), losingTrade(), breakevenTrade()]
+  it('counts wins, losses, scratches and computes win_rate', () => {
+    const trades = [winningTrade(), winningTrade(), losingTrade(), scratchTrade()]
     const s = aggregate(trades)
     expect(s.wins).toBe(2)
     expect(s.losses).toBe(1)
-    expect(s.breakevens).toBe(1)
-    expect(s.win_rate).toBeCloseTo(2 / 3, 5) // breakevens excluded from denominator
+    expect(s.scratches).toBe(1)
+    expect(s.win_rate).toBeCloseTo(2 / 3, 5) // scratches excluded from denominator
   })
 
   it('returns null win_rate when no decided outcomes', () => {
-    const trades = [breakevenTrade(), breakevenTrade()]
+    const trades = [scratchTrade(), scratchTrade()]
     expect(aggregate(trades).win_rate).toBeNull()
   })
 
@@ -96,17 +96,17 @@ describe('aggregate', () => {
     expect(s.avg_realized_rr).not.toBeNull()
   })
 
-  it('averages win and loss PnL separately (breakevens excluded)', () => {
+  it('averages win and loss PnL separately (scratches excluded)', () => {
     // winner: +$195.5 net, loser: -$204.5 net
-    const trades = [winningTrade(), winningTrade(), losingTrade(), breakevenTrade()]
+    const trades = [winningTrade(), winningTrade(), losingTrade(), scratchTrade()]
     const s = aggregate(trades)
     expect(s.avg_win).toBeCloseTo(195.5, 5)
     expect(s.avg_loss).toBeCloseTo(-204.5, 5)
   })
 
   it('returns null averages when no wins or losses exist', () => {
-    expect(aggregate([breakevenTrade()]).avg_win).toBeNull()
-    expect(aggregate([breakevenTrade()]).avg_loss).toBeNull()
+    expect(aggregate([scratchTrade()]).avg_win).toBeNull()
+    expect(aggregate([scratchTrade()]).avg_loss).toBeNull()
     expect(aggregate([winningTrade()]).avg_loss).toBeNull()
     expect(aggregate([losingTrade()]).avg_win).toBeNull()
   })

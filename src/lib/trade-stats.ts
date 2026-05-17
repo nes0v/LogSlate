@@ -28,8 +28,8 @@ export interface AggregateStats {
   fees: number
   wins: number
   losses: number
-  breakevens: number
-  win_rate: number | null // 0–1, excluding breakevens from denominator
+  scratches: number
+  win_rate: number | null // 0–1, excluding scratches from denominator
   best: number | null
   worst: number | null
   avg_planned_rr: number | null
@@ -48,7 +48,7 @@ export function aggregate(trades: TradeRecord[]): AggregateStats {
     fees: 0,
     wins: 0,
     losses: 0,
-    breakevens: 0,
+    scratches: 0,
     win_rate: null,
     best: null,
     worst: null,
@@ -87,7 +87,7 @@ export function aggregate(trades: TradeRecord[]): AggregateStats {
       result.losses++
       lossSum += net
     } else {
-      result.breakevens++
+      result.scratches++
     }
 
     if (result.best === null || net > result.best) result.best = net

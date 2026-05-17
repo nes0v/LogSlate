@@ -1,6 +1,6 @@
 // Runtime-authoritative enum values. Types are derived from these so adding
 // a new session/symbol/etc. is a one-line change.
-export const SYMBOLS = ['NQ', 'ES'] as const
+export const SYMBOLS = ['NQ', 'ES', 'YM'] as const
 export const CONTRACT_TYPES = ['micro', 'mini'] as const
 export const SESSIONS = ['pre', 'am', 'lunch', 'pm', 'aft'] as const
 export const RATINGS = ['good', 'excellent', 'poor'] as const
@@ -172,11 +172,27 @@ export interface Model {
 // Daily routine rules ("review yesterday's trades", "no trading on red news",
 // etc.). The user defines a rule list once; each day they tick boxes. The
 // adherence score is just (checked / total) per day.
+//
+// `periods` is the rule's effective history — each entry is a date range
+// during which the rule was active. `until: null` means the period is
+// still open. A rule with no periods has never been activated. A rule
+// counts toward a day D's denominator iff some period covers D
+// (from <= D AND (until === null OR D <= until)). This is what lets
+// past-day adherence stay stable when the user adds or retires rules
+// today — only edits to a rule's text affect history retroactively.
+export interface ProgressRulePeriod {
+  from: string // YYYY-MM-DD inclusive
+  until: string | null // YYYY-MM-DD inclusive, or null while still active
+}
 export interface ProgressRule {
   id: string
   account_id: string
   text: string
-  active: boolean
+  periods: ProgressRulePeriod[]
+  /** Soft-delete flag. Hidden rules vanish from the UI (rule list and
+   *  every day's checklist) but their `periods` and `progress_checks`
+   *  rows stay in the DB so historical adherence ratios don't drift. */
+  hidden?: boolean
   sort: number
   created_at: string
   updated_at: string

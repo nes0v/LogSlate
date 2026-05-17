@@ -10,6 +10,7 @@ export const SYMBOL_OPTS = [
   { value: null, label: 'All' },
   { value: 'NQ' as const, label: 'NQ' },
   { value: 'ES' as const, label: 'ES' },
+  { value: 'YM' as const, label: 'YM' },
 ] satisfies Array<{ value: SymbolKey | null; label: string }>
 
 export const CONTRACT_OPTS = [
@@ -31,7 +32,7 @@ export const OUTCOME_OPTS = [
   { value: null, label: 'All' },
   { value: 'win' as const, label: 'win' },
   { value: 'loss' as const, label: 'loss' },
-  { value: 'breakeven' as const, label: 'even' },
+  { value: 'scratch' as const, label: 'scratch' },
 ] satisfies Array<{ value: TradeOutcome | null; label: string }>
 
 export const SIDE_OPTS = [

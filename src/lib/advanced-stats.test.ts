@@ -27,8 +27,8 @@ import { execution, tradeRecord } from '@/test/fixtures'
 
 // Helper: build a trade whose computed net PnL matches `pnl`. Uses NQ micro
 // ($2 / handle, $0.62 fee × 2 sides = $1.24 fees) so even small dollar
-// values produce enough handles of price movement to clear the breakeven
-// threshold (NQ: 5 handles); pnl=0 deliberately sits in the scratch band.
+// values produce enough handles of price movement to clear the scratch
+// threshold (NQ: 4 handles); pnl=0 deliberately sits in the scratch band.
 //
 // `overrides.executions` is treated as time-only — buy/sell times are read
 // from the first two entries but their prices are replaced with values that
@@ -101,7 +101,7 @@ describe('expectancyR', () => {
     expect(expectancyR([tradeWithPnl(100, { stop_loss: 0 })])).toBeNull()
   })
 
-  it('skips breakeven (scratch) trades', () => {
+  it('skips scratch trades', () => {
     const trades = [
       tradeWithPnl(100, { stop_loss: 100 }), // 1R
       tradeWithPnl(-50, { stop_loss: 100 }), // -0.5R
@@ -142,7 +142,7 @@ describe('sqn', () => {
     expect(sqn([tradeWithPnl(100, { stop_loss: 100 })])).toBeNull()
   })
 
-  it('skips breakeven (scratch) trades when computing R', () => {
+  it('skips scratch trades when computing R', () => {
     const trades = [
       tradeWithPnl(100, { stop_loss: 100 }),
       tradeWithPnl(200, { stop_loss: 100 }),
@@ -296,25 +296,26 @@ describe('ratioStats', () => {
 
 describe('rDistribution', () => {
   it('places each trade into one bucket and accumulates', () => {
-    // Bucket label convention: +NR is range (N-1, N]; -NR is range (-N, -N+1].
-    // So 0.5R wins land in +1R, 1.5R wins in +2R, -0.5R losses in -1R,
-    // -1.5R losses in -2R.
+    // Bucket label = nearest integer R, with half-bin boundaries at
+    // ±0.5R. So +1R covers (0, 1.5], +2R covers (1.5, 2.5], and so on.
+    // A 1.05R loss (slippage past stop) sits in -1R, not -2R.
     const trades = [
       tradeWithPnl(50, { stop_loss: 100 }), // +0.5R -> +1R
-      tradeWithPnl(150, { stop_loss: 100 }), // +1.5R -> +2R
+      tradeWithPnl(200, { stop_loss: 100 }), // +2R -> +2R
       tradeWithPnl(-50, { stop_loss: 100 }), // -0.5R -> -1R
-      tradeWithPnl(-150, { stop_loss: 100 }), // -1.5R -> -2R
+      tradeWithPnl(-105, { stop_loss: 100 }), // -1.05R (over stop) -> -1R
+      tradeWithPnl(-200, { stop_loss: 100 }), // -2R -> -2R
       tradeWithPnl(600, { stop_loss: 100 }), // +6R -> 5R+
     ]
     const buckets = rDistribution(trades)
     const get = (label: string) => buckets.find(b => b.label === label)!
     expect(get('+1R').count).toBe(1)
     expect(get('+2R').count).toBe(1)
-    expect(get('-1R').count).toBe(1)
+    expect(get('-1R').count).toBe(2)
     expect(get('-2R').count).toBe(1)
     expect(get('5R+').count).toBe(1)
     // Cumulative ends at total.
-    expect(buckets[buckets.length - 1].cumulative).toBe(5)
+    expect(buckets[buckets.length - 1].cumulative).toBe(6)
   })
 
   it('skips trades without a stop', () => {
@@ -322,7 +323,7 @@ describe('rDistribution', () => {
     expect(buckets.every(b => b.count === 0)).toBe(true)
   })
 
-  it('skips breakeven (scratch) trades', () => {
+  it('skips scratch trades', () => {
     const buckets = rDistribution([
       tradeWithPnl(50, { stop_loss: 100 }),
       tradeWithPnl(0, { stop_loss: 100 }), // scratch — excluded from buckets

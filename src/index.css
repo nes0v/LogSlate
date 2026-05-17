@@ -70,26 +70,26 @@
    * palette the user picks. */
   --color-star: #ffd700;
   /* Calendar day-cell backgrounds. Deep pine/wine for win/loss, warm
-   * stone for breakeven (scratches), near-black for closed weekend
+   * stone for scratches, near-black for closed weekend
    * cells. Independent of --color-win/loss so the win/loss palette
    * picker doesn't drag the calendar along with it. */
   --color-cal-win-bg:         #073d29;
   --color-cal-loss-bg:        #5c1f1d;
-  --color-cal-breakeven-bg:   #a8a29e;
+  --color-cal-scratch-bg:   #a8a29e;
   --color-cal-weekend-bg:     #13151d;
   /* Corner-icon tints, paired with each card bg — a lighter neighbour
    * for win/loss (so the icon reads against the dark surface), a darker
-   * neighbour for breakeven (against the light surface). */
+   * neighbour for scratches (against the light surface). */
   --color-cal-win-icon:       #0c5e3f;
   --color-cal-loss-icon:      #823834;
-  --color-cal-breakeven-icon: #645d59;
+  --color-cal-scratch-icon: #645d59;
   /* Out-of-month padding cells in the calendar grid — a notch lighter
    * than `--color-panel` so they read as faint placeholders. */
   --color-cal-pad-border: var(--color-panel-2);
   /* Fee bars. */
   --color-fee:  #9ca3af;
   --color-line: #6892ff;
-  /* Muted grey reserved for chart segments (donut "Other"/breakeven/etc.).
+  /* Muted grey reserved for chart segments (donut "Other"/scratch/etc.).
    * A touch lighter than text-dim so the slice reads as background rather
    * than active data. */
   --color-chart-muted: var(--color-fee);

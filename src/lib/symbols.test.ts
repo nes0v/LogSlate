@@ -7,10 +7,12 @@ describe('handleValue', () => {
     expect(handleValue('NQ', 'micro')).toBe(2)
     expect(handleValue('ES', 'mini')).toBe(50)
     expect(handleValue('ES', 'micro')).toBe(5)
+    expect(handleValue('YM', 'mini')).toBe(5)
+    expect(handleValue('YM', 'micro')).toBe(0.5)
   })
 
   it('table covers every (symbol, contract) cell', () => {
-    expect(Object.keys(HANDLE_VALUE).sort()).toEqual(['ES', 'NQ'])
+    expect(Object.keys(HANDLE_VALUE).sort()).toEqual(['ES', 'NQ', 'YM'])
     for (const sym of Object.keys(HANDLE_VALUE) as Array<keyof typeof HANDLE_VALUE>) {
       expect(Object.keys(HANDLE_VALUE[sym]).sort()).toEqual(['micro', 'mini'])
     }

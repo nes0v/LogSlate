@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { X } from 'lucide-react'
@@ -47,26 +47,57 @@ import { AdvancedMetricsSections } from '@/components/AdvancedStats'
 import { BTN_OUTLINED } from '@/components/form/buttonClass'
 import { cn } from '@/lib/utils'
 
-type ReportTab = 'general' | 'days' | 'symbol' | 'risk' | 'cohort' | 'compare'
+type ReportTab = 'general' | 'time' | 'symbol' | 'risk' | 'outcome' | 'compare'
 const TABS: Array<{ value: ReportTab; label: string }> = [
   { value: 'general', label: 'General' },
   { value: 'symbol', label: 'Symbol' },
-  { value: 'days', label: 'Time' },
+  { value: 'time', label: 'Time' },
   { value: 'risk', label: 'Risk' },
-  { value: 'cohort', label: 'Outcome' },
+  { value: 'outcome', label: 'Outcome' },
   { value: 'compare', label: 'Compare' },
 ]
 
 type CompareAxis = 'symbol' | 'contract' | 'session' | 'rating' | 'side' | 'emotion' | 'model'
 
+const TAB_VALUES = TABS.map(t => t.value) as readonly ReportTab[]
+const COMPARE_VALUES: readonly CompareAxis[] = [
+  'symbol', 'contract', 'session', 'rating', 'side', 'emotion', 'model',
+]
+
 export function ReportsRoute() {
   const [params, setParams] = useSearchParams()
   const navigate = useNavigate()
   const urlFilters = filtersFromParams(params)
-  // Tab + compare-axis selection are local UI state, not filters: changing
-  // them shouldn't pollute the URL or arm the "Clear filters" button.
-  const [tab, setTab] = useState<ReportTab>('general')
-  const [compareAxis, setCompareAxis] = useState<CompareAxis>('symbol')
+  // Tab + compare-axis live in the URL so the browser's back button
+  // restores them after a trade-page round-trip — but they're treated
+  // separately from filters so they don't arm the "Clear filters"
+  // button. `replace: true` on the setters keeps history clean.
+  const tab = useMemo<ReportTab>(() => {
+    const raw = params.get('tab')
+    return TAB_VALUES.includes(raw as ReportTab) ? (raw as ReportTab) : 'general'
+  }, [params])
+  const compareAxis = useMemo<CompareAxis>(() => {
+    const raw = params.get('compare')
+    return COMPARE_VALUES.includes(raw as CompareAxis) ? (raw as CompareAxis) : 'symbol'
+  }, [params])
+  const setTab = useCallback(
+    (next: ReportTab) => {
+      const p = new URLSearchParams(params)
+      if (next === 'general') p.delete('tab')
+      else p.set('tab', next)
+      setParams(p, { replace: true })
+    },
+    [params, setParams],
+  )
+  const setCompareAxis = useCallback(
+    (next: CompareAxis) => {
+      const p = new URLSearchParams(params)
+      if (next === 'symbol') p.delete('compare')
+      else p.set('compare', next)
+      setParams(p, { replace: true })
+    },
+    [params, setParams],
+  )
 
   // Hydrate filters from the shared slot on first mount when the URL is
   // bare. Lets the user arrive on /reports with the filter they last set
@@ -106,11 +137,13 @@ export function ReportsRoute() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params, lastTradeDate])
 
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization -- React Compiler can't preserve these after URL-derived `tab`/`compareAxis` memos above, but the manual memoization is still semantically correct.
   const filtered = useMemo(
     () => applyFilters(allTrades ?? [], filters),
     [allTrades, filters],
   )
   const stats = useMemo(() => aggregate(filtered), [filtered])
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const { rangeStart, rangeEnd } = useMemo(() => {
     if (filters.from && filters.to) return { rangeStart: filters.from, rangeEnd: filters.to }
     if (filtered.length === 0) return { rangeStart: null, rangeEnd: null }
@@ -121,20 +154,34 @@ export function ReportsRoute() {
     }
   }, [filtered, filters.from, filters.to])
 
+  // Hoist current tab/compare URL values once per render so the
+  // update/clear closures don't re-read `params` (the React Compiler
+  // can't preserve downstream `useMemo`s when those reads happen
+  // inside non-memoized callbacks).
+  const currentTabParam = params.get('tab')
+  const currentCompareParam = params.get('compare')
   function update(next: Partial<TradeFilters>) {
     const d = defaultRange(lastTradeDate)
     const merged: TradeFilters = { ...urlFilters, ...next }
     if (merged.from === d.from) merged.from = null
     if (merged.to === d.to) merged.to = null
     saveSharedFilters(hasAnyFilter(merged) ? merged : null)
-    setParams(paramsFromFilters(merged))
+    const p = paramsFromFilters(merged)
+    // Preserve non-filter UI params (tab, compare) across filter edits.
+    if (currentTabParam) p.set('tab', currentTabParam)
+    if (currentCompareParam) p.set('compare', currentCompareParam)
+    setParams(p)
   }
   function clear() {
     saveSharedFilters(null)
-    setParams(new URLSearchParams())
+    const p = new URLSearchParams()
+    if (currentTabParam) p.set('tab', currentTabParam)
+    if (currentCompareParam) p.set('compare', currentCompareParam)
+    setParams(p)
   }
 
-  const isDefault = params.toString() === ''
+  // "Default" = no active filter; tab/compare aren't filters.
+  const isDefault = !hasAnyFilter(urlFilters)
 
   return (
     <div className="pt-1 space-y-8">
@@ -192,7 +239,7 @@ export function ReportsRoute() {
                   rangeEnd={rangeEnd}
                 />
               </div>
-            ) : tab === 'days' ? (
+            ) : tab === 'time' ? (
               <div className="bg-(--color-panel) rounded-(--radius) p-3 h-full">
                 <DaysAndTimeReport trades={filtered} />
               </div>
@@ -204,7 +251,7 @@ export function ReportsRoute() {
               <div className="bg-(--color-panel) rounded-(--radius) p-3 h-full">
                 <RiskReport trades={filtered} onTradeClick={id => navigate(`/trade/${id}/edit`)} />
               </div>
-            ) : tab === 'cohort' ? (
+            ) : tab === 'outcome' ? (
               <div className="bg-(--color-panel) rounded-(--radius) p-3 h-full">
                 <CohortReport trades={filtered} />
               </div>
@@ -233,9 +280,9 @@ function EmptyState({ children }: { children: React.ReactNode }) {
 // =====================================================================
 
 function DaysAndTimeReport({ trades }: { trades: TradeRecord[] }) {
-  const [hourMode, setHourMode] = useState<'first' | 'last'>('first')
   const weekday = useMemo(() => pnlByWeekday(trades), [trades])
-  const hour = useMemo(() => pnlByHour(trades, hourMode), [trades, hourMode])
+  const hourFirst = useMemo(() => pnlByHour(trades, 'first'), [trades])
+  const hourLast = useMemo(() => pnlByHour(trades, 'last'), [trades])
   const week = useMemo(() => pnlByWeek(trades), [trades])
   const month = useMemo(() => pnlByMonth(trades), [trades])
 
@@ -260,7 +307,7 @@ function DaysAndTimeReport({ trades }: { trades: TradeRecord[] }) {
     return map
   }, [trades])
 
-  const hourRows = hour
+  const hourRowsFirst = hourFirst
     .filter(h => h.count > 0)
     .map(h => ({
       label: `${String(h.hour).padStart(2, '0')}:00`,
@@ -269,48 +316,26 @@ function DaysAndTimeReport({ trades }: { trades: TradeRecord[] }) {
       losses: h.losses,
       pnl: h.pnl,
     }))
-  // Split visible hour rows roughly in half for the two-column layout.
-  const hourSplit = Math.ceil(hourRows.length / 2)
-  const hourRowsLeft = hourRows.slice(0, hourSplit)
-  const hourRowsRight = hourRows.slice(hourSplit)
+  const hourRowsLast = hourLast
+    .filter(h => h.count > 0)
+    .map(h => ({
+      label: `${String(h.hour).padStart(2, '0')}:00`,
+      count: h.count,
+      wins: h.wins,
+      losses: h.losses,
+      pnl: h.pnl,
+    }))
 
   return (
     <div className="space-y-8">
-      <Card
-        title="P&L by hour"
-        right={
-          <div role="tablist" className="flex gap-1 text-xs">
-            {[
-              { value: 'first' as const, label: 'First execution' },
-              { value: 'last' as const, label: 'Last execution' },
-            ].map(opt => {
-              const active = opt.value === hourMode
-              return (
-                <button
-                  key={opt.value}
-                  type="button"
-                  role="tab"
-                  aria-selected={active}
-                  onClick={() => setHourMode(opt.value)}
-                  className={cn(
-                    'px-2 py-1.5 rounded-t-(--radius) transition-colors whitespace-nowrap',
-                    active
-                      ? 'text-(--color-text) bg-(--color-panel-2)'
-                      : 'text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)/60',
-                  )}
-                >
-                  {opt.label}
-                </button>
-              )
-            })}
-          </div>
-        }
-      >
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-2">
-          <ReportTable rows={hourRowsLeft} />
-          {hourRowsRight.length > 0 ? <ReportTable rows={hourRowsRight} /> : null}
-        </div>
-      </Card>
+      <SectionGrid>
+        <Card title="P&L by hour" caption="bucketed by first execution">
+          <ReportTable rows={hourRowsFirst} />
+        </Card>
+        <Card title="P&L by hour" caption="bucketed by last execution">
+          <ReportTable rows={hourRowsLast} />
+        </Card>
+      </SectionGrid>
 
       <SectionGrid>
         <Card title="Day of week">
@@ -452,7 +477,6 @@ function RiskReport({
   const rDist = useMemo(() => rDistribution(trades), [trades])
   const maePoints = useMemo(() => maeScatter(trades), [trades])
   const mfePoints = useMemo(() => mfeScatter(trades), [trades])
-  const [scatter, setScatter] = useState<'mae' | 'mfe'>('mfe')
 
   // Planned R vs realised R: how often did the actual exit hit the
   // planned R-target? Diagonal y=x = perfect execution; below = cut
@@ -530,69 +554,49 @@ function RiskReport({
   return (
     <div className="space-y-8">
       <SectionGrid>
-        <Card title="R-multiple distribution">
-          <RDistRows buckets={rDist} />
-        </Card>
         <Card
-          title={scatter === 'mfe' ? 'P&L vs MFE' : 'P&L vs MAE'}
-          caption={
-            scatter === 'mfe'
-              ? 'how much each trade gave back from peak'
-              : 'how much heat each trade took'
-          }
-          right={
-            <div role="tablist" className="flex gap-1 text-xs">
-              {[
-                { value: 'mfe' as const, label: 'MFE' },
-                { value: 'mae' as const, label: 'MAE' },
-              ].map(opt => {
-                const active = opt.value === scatter
-                return (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    role="tab"
-                    aria-selected={active}
-                    onClick={() => setScatter(opt.value)}
-                    className={cn(
-                      'px-2 py-1.5 rounded-t-(--radius) transition-colors whitespace-nowrap',
-                      active
-                        ? 'text-(--color-text) bg-(--color-panel-2)'
-                        : 'text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)/60',
-                    )}
-                  >
-                    {opt.label}
-                  </button>
-                )
-              })}
-            </div>
-          }
+          title="P&L vs MFE"
+          caption="how much each trade gave back from peak"
         >
           <Scatter
-            points={scatter === 'mfe' ? mfePoints : maePoints}
+            points={mfePoints}
+            onClick={onTradeClick ? p => onTradeClick(p.id) : undefined}
+          />
+        </Card>
+        <Card
+          title="P&L vs MAE"
+          caption="how much heat each trade took"
+        >
+          <Scatter
+            points={maePoints}
             onClick={onTradeClick ? p => onTradeClick(p.id) : undefined}
           />
         </Card>
       </SectionGrid>
 
       <SectionGrid>
-        <Card title="Position size" caption="contracts per trade">
-          <ReportTable rows={sizeRows} />
+        <Card title="R-multiple distribution">
+          <RDistRows buckets={rDist} />
         </Card>
         <Card title="Planned R" caption="how often does each R target fire?">
           <PlannedRRTable rows={plannedRows} />
         </Card>
       </SectionGrid>
 
-      <Card
-        title="Planned vs realised R"
-        caption="diagonal = perfect execution; below = cut short, above = let run"
-      >
-        <PlannedRealizedScatter
-          points={plannedVsRealized}
-          onClick={onTradeClick ? p => onTradeClick(p.id) : undefined}
-        />
-      </Card>
+      <SectionGrid>
+        <Card
+          title="Planned vs realised R"
+          caption="below = cut short, above = let run"
+        >
+          <PlannedRealizedScatter
+            points={plannedVsRealized}
+            onClick={onTradeClick ? p => onTradeClick(p.id) : undefined}
+          />
+        </Card>
+        <Card title="Position size" caption="contracts per trade">
+          <ReportTable rows={sizeRows} />
+        </Card>
+      </SectionGrid>
     </div>
   )
 }
@@ -770,6 +774,7 @@ function splitByAxis(
       return [
         { label: 'NQ', trades: trades.filter(t => t.symbol === 'NQ') },
         { label: 'ES', trades: trades.filter(t => t.symbol === 'ES') },
+        { label: 'YM', trades: trades.filter(t => t.symbol === 'YM') },
       ].filter(g => g.trades.length > 0)
     case 'contract':
       return [
@@ -1126,10 +1131,30 @@ function HoldRow({ data }: { data: ReturnType<typeof holdTimeBuckets> }) {
 }
 
 function RDistRows({ buckets }: { buckets: ReturnType<typeof rDistribution> }) {
-  const max = Math.max(1, ...buckets.map(b => b.count))
+  // Trim both tails. The chart should bottom at -2R and top at +5R by
+  // default — empty buckets past those thresholds are just noise. Only
+  // extend the range when a trade actually fell into a deeper bucket.
+  let startIdx = 0
+  while (
+    startIdx < buckets.length - 1 &&
+    buckets[startIdx].count === 0 &&
+    buckets[startIdx].label !== '-2R'
+  ) {
+    startIdx++
+  }
+  let endIdx = buckets.length - 1
+  while (
+    endIdx > startIdx &&
+    buckets[endIdx].count === 0 &&
+    buckets[endIdx].label !== '+5R'
+  ) {
+    endIdx--
+  }
+  const visible = buckets.slice(startIdx, endIdx + 1)
+  const max = Math.max(1, ...visible.map(b => b.count))
   return (
     <div>
-      {buckets.map(b => {
+      {visible.map(b => {
         const pct = (b.count / max) * 100
         const isWin = b.range[0] >= 0
         const color = isWin ? 'var(--color-win)' : 'var(--color-loss)'
@@ -1159,9 +1184,30 @@ function Scatter({
   points: ScatterPoint[]
   onClick?: (p: ScatterPoint) => void
 }) {
-  const W = 480
+  // Measure the container so the SVG viewBox matches the real pixel
+  // width — otherwise preserveAspectRatio="meet" letterboxes the chart
+  // into the card and leaves big empty bands on either side. Initial
+  // guess of 480 lines up with the old fixed viewBox so the first
+  // paint isn't visibly off before ResizeObserver fires.
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [W, setW] = useState(480)
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const obs = new ResizeObserver(entries => {
+      for (const e of entries) {
+        const w = Math.max(200, Math.round(e.contentRect.width))
+        setW(prev => (prev === w ? prev : w))
+      }
+    })
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [])
   const H = 240
-  const PAD = 28
+  const PAD_L = 50
+  const PAD_R = 6
+  const PAD_T = 6
+  const PAD_B = 18
   if (points.length === 0) {
     return <div className="text-xs text-(--color-text-dim) text-center py-6">No trades.</div>
   }
@@ -1169,36 +1215,66 @@ function Scatter({
   const ys = points.map(p => p.y)
   const xMax = Math.max(1, ...xs)
   const yMax = Math.max(1, ...ys.map(Math.abs))
-  const x = (v: number) => PAD + (v / xMax) * (W - PAD * 2)
-  const y = (v: number) => H / 2 - (v / yMax) * (H / 2 - PAD)
+  const x = (v: number) => PAD_L + (v / xMax) * (W - PAD_L - PAD_R)
+  const yMid = (H - PAD_B + PAD_T) / 2
+  const y = (v: number) =>
+    yMid - (v / yMax) * (yMid - PAD_T)
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-[240px]">
+    <div ref={containerRef} className="w-full">
+    <svg viewBox={`0 0 ${W} ${H}`} className="block w-full h-[240px]">
+      {/* Horizontal zero line (X axis runs through PnL = 0). */}
       <line
-        x1={PAD}
-        x2={W - PAD}
-        y1={H / 2}
-        y2={H / 2}
+        x1={PAD_L}
+        x2={W - PAD_R}
+        y1={y(0)}
+        y2={y(0)}
         stroke="var(--color-panel-3)"
         strokeWidth={1}
         vectorEffect="non-scaling-stroke"
         shapeRendering="crispEdges"
       />
       <line
-        x1={PAD}
-        x2={PAD}
-        y1={PAD}
-        y2={H - PAD}
+        x1={PAD_L}
+        x2={PAD_L}
+        y1={PAD_T}
+        y2={H - PAD_B}
         stroke="var(--color-panel-3)"
         strokeWidth={1}
         vectorEffect="non-scaling-stroke"
         shapeRendering="crispEdges"
       />
+      {/* Y labels: -max, 0, +max. X labels: 0, max. */}
+      {[yMax, 0, -yMax].map(v => (
+        <text
+          key={`yt-${v}`}
+          x={PAD_L - 10}
+          y={y(v)}
+          textAnchor="end"
+          dominantBaseline="central"
+          fontSize="10"
+          fill="var(--color-text-dim)"
+        >
+          {formatUsd(v)}
+        </text>
+      ))}
+      {[0, xMax].map(v => (
+        <text
+          key={`xt-${v}`}
+          x={x(v)}
+          y={H - PAD_B + 12}
+          textAnchor={v === 0 ? 'start' : 'end'}
+          fontSize="10"
+          fill="var(--color-text-dim)"
+        >
+          {formatUsd(v)}
+        </text>
+      ))}
       {points.map(p => (
         <circle
           key={p.id}
           cx={x(p.x)}
           cy={y(p.y)}
-          r={3.5}
+          r={4}
           fill={
             p.outcome === 'win'
               ? 'var(--color-win)'
@@ -1223,6 +1299,7 @@ function Scatter({
         </circle>
       ))}
     </svg>
+    </div>
   )
 }
 
@@ -1233,12 +1310,25 @@ function PlannedRealizedScatter({
   points: Array<{ id: string; planned: number; realized: number; outcome: TradeOutcome; date: string }>
   onClick?: (p: { id: string }) => void
 }) {
-  const W = 480
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [W, setW] = useState(480)
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const obs = new ResizeObserver(entries => {
+      for (const e of entries) {
+        const w = Math.max(200, Math.round(e.contentRect.width))
+        setW(prev => (prev === w ? prev : w))
+      }
+    })
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [])
   const H = 240
-  const PAD_L = 36
-  const PAD_R = 16
-  const PAD_T = 12
-  const PAD_B = 28
+  const PAD_L = 32
+  const PAD_R = 6
+  const PAD_T = 6
+  const PAD_B = 18
   if (points.length === 0) {
     return (
       <div className="text-xs text-(--color-text-dim) text-center py-6">
@@ -1260,8 +1350,9 @@ function PlannedRealizedScatter({
   const yTicks: number[] = []
   for (let v = yMin; v <= yMax; v++) yTicks.push(v)
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-[240px]">
-      {/* X axis runs through y = 0 (breakeven) so points above sit on
+    <div ref={containerRef} className="w-full">
+    <svg viewBox={`0 0 ${W} ${H}`} className="block w-full h-[240px]">
+      {/* X axis runs through y = 0 (scratch) so points above sit on
           winners-territory and points below sit on losers-territory. */}
       <line
         x1={PAD_L}
@@ -1286,7 +1377,7 @@ function PlannedRealizedScatter({
       {yTicks.map(v => (
         <text
           key={`yt-${v}`}
-          x={PAD_L - 6}
+          x={PAD_L - 10}
           y={y(v)}
           textAnchor="end"
           dominantBaseline="central"
@@ -1300,7 +1391,7 @@ function PlannedRealizedScatter({
         <text
           key={`xt-${v}`}
           x={x(v)}
-          y={H - PAD_B + 14}
+          y={H - PAD_B + 12}
           textAnchor="middle"
           fontSize="10"
           fill="var(--color-text-dim)"
@@ -1323,7 +1414,7 @@ function PlannedRealizedScatter({
           key={p.id}
           cx={x(p.planned)}
           cy={y(p.realized)}
-          r={3.5}
+          r={4}
           fill={
             p.outcome === 'win'
               ? 'var(--color-win)'
@@ -1348,6 +1439,7 @@ function PlannedRealizedScatter({
         </circle>
       ))}
     </svg>
+    </div>
   )
 }
 

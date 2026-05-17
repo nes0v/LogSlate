@@ -30,6 +30,7 @@ import { cn, errorMessage, mergeRefs } from '@/lib/utils'
 const SYMBOLS = [
   { value: 'NQ', label: 'NQ' },
   { value: 'ES', label: 'ES' },
+  { value: 'YM', label: 'YM' },
 ] as const
 const CONTRACT_TYPES = [
   { value: 'micro', label: 'micro' },

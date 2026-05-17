@@ -279,7 +279,7 @@ describe('computeDuration', () => {
 })
 
 describe('classifyTrade', () => {
-  it('NQ: < 5 handles is breakeven', () => {
+  it('NQ: <= 4 handles is scratch', () => {
     const t = tradeRecord({
       symbol: 'NQ',
       contract_type: 'mini',
@@ -288,10 +288,10 @@ describe('classifyTrade', () => {
         execution({ kind: 'sell', price: 20004, contracts: 1 }),
       ],
     })
-    expect(classifyTrade(t)).toBe('breakeven')
+    expect(classifyTrade(t)).toBe('scratch')
   })
 
-  it('NQ: >= 5 handles is win when positive', () => {
+  it('NQ: > 4 handles is win when positive', () => {
     const t = tradeRecord({
       symbol: 'NQ',
       contract_type: 'mini',
@@ -303,7 +303,7 @@ describe('classifyTrade', () => {
     expect(classifyTrade(t)).toBe('win')
   })
 
-  it('ES: < 2 handles is breakeven', () => {
+  it('ES: <= 1.6 handles is scratch', () => {
     const t = tradeRecord({
       symbol: 'ES',
       contract_type: 'mini',
@@ -312,10 +312,10 @@ describe('classifyTrade', () => {
         execution({ kind: 'sell', price: 5001, contracts: 1 }),
       ],
     })
-    expect(classifyTrade(t)).toBe('breakeven')
+    expect(classifyTrade(t)).toBe('scratch')
   })
 
-  it('ES: >= 2 handles is win when positive', () => {
+  it('ES: > 1.6 handles is win when positive', () => {
     const t = tradeRecord({
       symbol: 'ES',
       contract_type: 'mini',
@@ -439,9 +439,9 @@ describe("tradeMetrics", () => {
     expect(m.outcome).toBe("win")
   })
 
-  it("classifies sub-threshold AHPC as breakeven even when pnl is positive", () => {
-    // NQ threshold is 5 handles; 3 handles × $20 − fees = +$55.50 net.
-    // The handle band still wins → 'breakeven'.
+  it("classifies sub-threshold AHPC as scratch even when pnl is positive", () => {
+    // NQ threshold is 4 handles; 3 handles × $20 − fees = +$55.50 net.
+    // The handle band still wins → 'scratch'.
     const t = tradeRecord({
       symbol: "NQ",
       contract_type: "mini",
@@ -451,9 +451,9 @@ describe("tradeMetrics", () => {
       ],
     })
     const m = tradeMetrics(t)
-    expect(m.outcome).toBe("breakeven")
+    expect(m.outcome).toBe("scratch")
     expect(m.pnl).toBeGreaterThan(0)
-    expect(Math.abs(m.ahpc!)).toBeLessThan(5)
+    expect(Math.abs(m.ahpc!)).toBeLessThan(4)
   })
 
   it("returns null pnl + null ahpc when executions are empty", () => {
@@ -461,7 +461,7 @@ describe("tradeMetrics", () => {
     const m = tradeMetrics(t)
     expect(m.ahpc).toBeNull()
     expect(m.pnl).toBeNull()
-    expect(m.outcome).toBe("breakeven")
+    expect(m.outcome).toBe("scratch")
   })
 })
 
@@ -519,13 +519,13 @@ describe('outcomeTextClass', () => {
   it('dims the row when there is no PnL value yet', () => {
     expect(outcomeTextClass('win', false)).toMatch(/text-dim/)
     expect(outcomeTextClass('loss', false)).toMatch(/text-dim/)
-    expect(outcomeTextClass('breakeven', false)).toMatch(/text-dim/)
+    expect(outcomeTextClass('scratch', false)).toMatch(/text-dim/)
   })
   it('maps win → win color and loss → loss color', () => {
     expect(outcomeTextClass('win', true)).toMatch(/--color-win/)
     expect(outcomeTextClass('loss', true)).toMatch(/--color-loss/)
   })
-  it('uses the neutral text color for breakeven', () => {
-    expect(outcomeTextClass('breakeven', true)).toMatch(/--color-text\)/)
+  it('uses the neutral text color for scratch', () => {
+    expect(outcomeTextClass('scratch', true)).toMatch(/--color-text\)/)
   })
 })

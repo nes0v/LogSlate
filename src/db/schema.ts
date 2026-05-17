@@ -83,6 +83,138 @@ class LogslateDB extends Dexie {
       progress_checks: '&id, [account_id+date], account_id, updated_at',
       news: '&id, date, updated_at',
     })
+    // v4: ProgressRule gains a `periods` array (effective date ranges) and
+    // drops the boolean `active`. Backfill from `created_at` so historical
+    // adherence stays anchored to when a rule first appeared — active
+    // rules become one open period from their creation date; inactive
+    // rules become empty (matches current behavior, which excludes them
+    // from every day's denominator).
+    this.version(4).upgrade(async tx => {
+      await tx.table('progress_rules').toCollection().modify((r: {
+        created_at?: string
+        active?: boolean
+        periods?: unknown
+      }) => {
+        const from = (r.created_at ?? '').slice(0, 10) || '0001-01-01'
+        r.periods = r.active === true ? [{ from, until: null }] : []
+        delete r.active
+      })
+    })
+    // v5: heal `periods` against actual check history. v4 anchored each
+    // rule's earliest period to its `created_at`, but checks recorded
+    // before that date (backfilled days, cross-device sync skew, rules
+    // recreated after their first use) leave the heat strip blank for
+    // dates that legitimately had adherence data. Widen the earliest
+    // period — and resurrect periods for rules that ended up empty but
+    // have checks — using the oldest checked `progress_checks` row per
+    // rule_id.
+    this.version(5).upgrade(async tx => {
+      const checks = await tx.table('progress_checks').toArray()
+      const earliest = new Map<string, string>()
+      const latest = new Map<string, string>()
+      for (const c of checks as Array<{ rule_id: string; date: string; checked: boolean }>) {
+        if (!c.checked) continue
+        const e = earliest.get(c.rule_id)
+        if (!e || c.date < e) earliest.set(c.rule_id, c.date)
+        const l = latest.get(c.rule_id)
+        if (!l || c.date > l) latest.set(c.rule_id, c.date)
+      }
+      await tx.table('progress_rules').toCollection().modify((r: {
+        id: string
+        periods?: Array<{ from: string; until: string | null }>
+      }) => {
+        const earliestCheck = earliest.get(r.id)
+        if (!earliestCheck) return
+        const periods = Array.isArray(r.periods) ? r.periods.slice() : []
+        if (periods.length === 0) {
+          // Rule has check history but no period — must have been active
+          // back then. Reconstruct a closed period spanning the earliest
+          // to the latest check. User can re-open it from the UI if the
+          // rule is still in effect.
+          periods.push({
+            from: earliestCheck,
+            until: latest.get(r.id) ?? earliestCheck,
+          })
+        } else if (earliestCheck < periods[0].from) {
+          periods[0] = { ...periods[0], from: earliestCheck }
+        } else {
+          return
+        }
+        r.periods = periods
+      })
+    })
+    // v6: widen each rule's earliest period to the earliest check on the
+    // *account*, not just the earliest check on that rule. v5 used the
+    // per-rule earliest, which silently drops rules from past days where
+    // the user happened not to tick them — inflating those days to 100%
+    // by hiding the failing rules. Old code treated every currently-
+    // active rule as part of the denominator on every past day, and
+    // that's the behavior we need to preserve. Rules that have never
+    // been checked anywhere are skipped — they're either brand-new or
+    // genuinely unused, and shouldn't retro-apply to history.
+    //
+    // Superseded by v7's authoritative reset — left in place because
+    // schema versions can't be removed, but the modify() below would
+    // also be undone by v7 even if it diverged.
+    this.version(6).upgrade(async tx => {
+      const checks = await tx.table('progress_checks').toArray()
+      const earliestByAccount = new Map<string, string>()
+      const ruleSeen = new Set<string>()
+      for (const c of checks as Array<{
+        account_id: string
+        rule_id: string
+        date: string
+        checked: boolean
+      }>) {
+        if (!c.checked) continue
+        ruleSeen.add(c.rule_id)
+        const cur = earliestByAccount.get(c.account_id)
+        if (!cur || c.date < cur) earliestByAccount.set(c.account_id, c.date)
+      }
+      await tx.table('progress_rules').toCollection().modify((r: {
+        id: string
+        account_id: string
+        periods?: Array<{ from: string; until: string | null }>
+      }) => {
+        if (!ruleSeen.has(r.id)) return
+        const earliest = earliestByAccount.get(r.account_id)
+        if (!earliest) return
+        const periods = Array.isArray(r.periods) ? r.periods.slice() : []
+        if (periods.length === 0) {
+          periods.push({ from: earliest, until: null })
+        } else if (earliest < periods[0].from) {
+          periods[0] = { ...periods[0], from: earliest }
+        } else {
+          return
+        }
+        r.periods = periods
+      })
+    })
+    // v7: hand-authored reset. The four named rules become the active
+    // routine starting 2026-05-11; every other rule is wiped of periods
+    // (and so disappears from every day, past and present). One-time
+    // fix-up for the single user of this app — text matching is
+    // case-insensitive but otherwise exact, no fuzzy variants.
+    this.version(7).upgrade(async tx => {
+      const KEEP_TEXTS = new Set([
+        'read yesterdays notes',
+        'write a daily review',
+        'do a tapereading session',
+        '1 trade only',
+      ])
+      const ROUTINE_START = '2026-05-11'
+      await tx.table('progress_rules').toCollection().modify((r: {
+        text?: string
+        periods?: Array<{ from: string; until: string | null }>
+      }) => {
+        const normalized = (r.text ?? '').trim().toLowerCase()
+        if (KEEP_TEXTS.has(normalized)) {
+          r.periods = [{ from: ROUTINE_START, until: null }]
+        } else {
+          r.periods = []
+        }
+      })
+    })
   }
 }
 

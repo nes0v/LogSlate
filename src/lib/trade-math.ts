@@ -245,12 +245,13 @@ export function isReversal(
 // Trades that didn't move the market by at least this many handles in
 // either direction count as "scratch" — neither a winner nor a loser.
 // NQ moves in larger ticks than ES, so the bands differ per symbol.
-export const BREAKEVEN_HANDLES: Record<SymbolKey, number> = {
-  NQ: 5,
-  ES: 2,
+export const SCRATCH_HANDLES: Record<SymbolKey, number> = {
+  NQ: 4,
+  ES: 1.6,
+  YM: 16,
 }
 
-export const TRADE_OUTCOMES = ['win', 'loss', 'breakeven'] as const
+export const TRADE_OUTCOMES = ['win', 'loss', 'scratch'] as const
 export type TradeOutcome = (typeof TRADE_OUTCOMES)[number]
 
 // Tailwind class for tinting text by outcome. Centralised so the trade
@@ -265,12 +266,12 @@ export function outcomeTextClass(
   return 'text-(--color-text)'
 }
 
-// Win/loss/breakeven classifier + the underlying ahpc and net PnL in a
+// Win/loss/scratch classifier + the underlying ahpc and net PnL in a
 // single pass. Many list views (TradeTable, Reports, advanced-stats) need
 // all three numbers per trade — returning them together avoids redundant
 // `weightedAvgPrice` / fee passes.
 //
-// Outcome rule: a trade whose absolute AHPC sits below `BREAKEVEN_HANDLES`
+// Outcome rule: a trade whose absolute AHPC sits below `SCRATCH_HANDLES`
 // is a scratch even when net PnL is non-zero; above the threshold, PnL
 // sign decides.
 export interface TradeMetrics {
@@ -286,8 +287,8 @@ export function tradeMetrics(
   const ahpc = computeAhpc(t)
   const pnl = computeNetPnl(t)
   let outcome: TradeOutcome
-  if (ahpc !== null && Math.abs(ahpc) < BREAKEVEN_HANDLES[t.symbol]) outcome = 'breakeven'
-  else if (pnl === null || pnl === 0) outcome = 'breakeven'
+  if (ahpc !== null && Math.abs(ahpc) <= SCRATCH_HANDLES[t.symbol]) outcome = 'scratch'
+  else if (pnl === null || pnl === 0) outcome = 'scratch'
   else outcome = pnl > 0 ? 'win' : 'loss'
   const result: TradeMetrics = { ahpc, pnl, outcome }
   _metricsCache.set(t as object, result)

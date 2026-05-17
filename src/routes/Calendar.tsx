@@ -15,6 +15,9 @@ import { dateKeyToDate, nyDateKey } from '@/lib/tz'
 import { db } from '@/db/schema'
 import { useActiveAccountId } from '@/lib/active-account'
 import { classifyTrade, computeNetPnl } from '@/lib/trade-math'
+import { classifyDayPnl } from '@/lib/advanced-stats'
+import { signedAdjustment } from '@/lib/trade-stats'
+import { useStartingEquity } from '@/lib/use-starting-equity'
 import { formatUsd } from '@/lib/money'
 import { parseYearMonth } from '@/lib/buckets'
 import { ForexFactoryNews } from '@/components/ForexFactoryNews'
@@ -63,6 +66,22 @@ export function CalendarRoute() {
         .toArray(),
     [rangeStart, rangeEnd, accountId],
   )
+  // Adjustments inside the grid range — needed so per-day equity walks
+  // pick up mid-month deposits / withdrawals when applying the ±0.4%
+  // scratch band.
+  const rangeAdjustments = useLiveQuery(
+    () =>
+      db.adjustments
+        .where('[account_id+date]')
+        .between([accountId, rangeStart], [accountId, rangeEnd], true, true)
+        .toArray(),
+    [rangeStart, rangeEnd, accountId],
+    [],
+  )
+  // Real account equity at the moment the grid starts. Walking forward
+  // day-by-day from this baseline gives each cell its own start-of-day
+  // equity for the scratch check.
+  const gridStartEquity = useStartingEquity(rangeStart)
   const loaded = trades !== undefined && dayRows !== undefined
 
   const screenshotDays = useMemo(() => {
@@ -88,14 +107,17 @@ export function CalendarRoute() {
   }, [dayRows])
 
   // Per-day map. Wins/losses are tracked separately from `count` so a
-  // day that only contains scratches renders in the dim/breakeven tone
+  // day that only contains scratches renders in the dim/scratch tone
   // instead of being miscoloured by fee/slippage residue in the PnL
-  // sum. `wins` also feeds the per-day win-rate badge.
+  // sum. `wins` also feeds the per-day win-rate badge. `startEquity` is
+  // the account equity right before that day's trades — used by the
+  // ±0.4% scratch band so small-net days dim instead of going green/red.
   const perDay = useMemo(() => {
     const m = new Map<string, PerDayCell>()
     for (const t of trades ?? []) {
       const pnl = computeNetPnl(t) ?? 0
-      const cur = m.get(t.date) ?? { pnl: 0, count: 0, wins: 0, losses: 0 }
+      const cur =
+        m.get(t.date) ?? { pnl: 0, count: 0, wins: 0, losses: 0, startEquity: 0 }
       cur.pnl += pnl
       cur.count += 1
       const outcome = classifyTrade(t)
@@ -103,8 +125,21 @@ export function CalendarRoute() {
       else if (outcome === 'loss') cur.losses += 1
       m.set(t.date, cur)
     }
+    const adjByDate = new Map<string, number>()
+    for (const a of rangeAdjustments) {
+      adjByDate.set(a.date, (adjByDate.get(a.date) ?? 0) + signedAdjustment(a))
+    }
+    // Walk the grid in date order, threading running equity through each
+    // day so cells carry their own start-of-day baseline.
+    let runningEquity = gridStartEquity
+    for (const d of days) {
+      const key = format(d, DATE_KEY)
+      const cell = m.get(key)
+      if (cell) cell.startEquity = runningEquity
+      runningEquity += (cell?.pnl ?? 0) + (adjByDate.get(key) ?? 0)
+    }
     return m
-  }, [trades])
+  }, [trades, rangeAdjustments, gridStartEquity, days])
 
   const monthNet = useMemo(() => {
     let total = 0
@@ -248,6 +283,7 @@ interface PerDayCell {
   count: number
   wins: number
   losses: number
+  startEquity: number
 }
 
 // Shared sizing for both day cells and week summary cards so the row
@@ -374,7 +410,7 @@ function CellIcon({
 // (PnL, trades-count, win-rate) + corner icon color. Tweak a tone here
 // and every dependent class moves together; adding a new variant is one
 // new row.
-type CellVariant = 'win' | 'loss' | 'breakeven' | 'empty' | 'pad'
+type CellVariant = 'win' | 'loss' | 'scratch' | 'empty' | 'pad'
 
 interface CellPalette {
   surface: string
@@ -408,14 +444,14 @@ const CELL_PALETTE: Record<CellVariant, CellPalette> = {
   // Scratches-only in-month days get a warm stone card so they read as
   // distinct from win/loss (dark pine/wine) and from no-trade days
   // (panel-3). Dark text + dark icons sit on the light surface.
-  breakeven: {
-    surface: 'bg-(--color-cal-breakeven-bg) border-transparent hover:brightness-125',
+  scratch: {
+    surface: 'bg-(--color-cal-scratch-bg) border-transparent hover:brightness-125',
     date: 'text-stone-900',
     dateToday: 'text-black font-bold',
     pnl: 'text-black/85',
     meta: 'text-black/60',
     winRate: 'text-black/45',
-    icon: 'text-(--color-cal-breakeven-icon)',
+    icon: 'text-(--color-cal-scratch-icon)',
   },
   // In-month, no trades — PnL/meta/winRate slots go unused because the
   // cell guard skips rendering them, but the entries stay defined so
@@ -451,10 +487,8 @@ function pickVariant(
 ): CellVariant {
   if (!inMonth) return 'pad'
   if (!cell) return 'empty'
-  if (decided === 0) return 'breakeven'
-  if (cell.pnl > 0) return 'win'
-  if (cell.pnl < 0) return 'loss'
-  return 'breakeven'
+  if (decided === 0) return 'scratch'
+  return classifyDayPnl(cell.pnl, cell.startEquity)
 }
 
 function WeekCard({

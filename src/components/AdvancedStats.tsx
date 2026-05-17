@@ -5,6 +5,7 @@ import type { AggregateStats } from '@/lib/trade-stats'
 import { formatUsd } from '@/lib/money'
 import { classifyTrade } from '@/lib/trade-math'
 import { HOLD_BUCKETS, holdBucketOf } from '@/lib/filters'
+import { useStartingEquity } from '@/lib/use-starting-equity'
 import { cn } from '@/lib/utils'
 import type { Model, Session, TradeRecord } from '@/db/types'
 import { EMOTIONS, DEFAULT_MODEL_NAME } from '@/db/types'
@@ -180,7 +181,7 @@ export const DistributionDonuts = memo(function DistributionDonuts({
     () => [
       { label: 'win', value: donutCounts.outcome.win, color: 'var(--color-win)' },
       { label: 'loss', value: donutCounts.outcome.loss, color: 'var(--color-loss)' },
-      { label: 'even', value: donutCounts.outcome.be, color: 'var(--color-chart-muted)' },
+      { label: 'scratch', value: donutCounts.outcome.be, color: 'var(--color-chart-muted)' },
     ],
     [donutCounts],
   )
@@ -369,9 +370,15 @@ export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
   const streaks = useMemo(() => streakStats(filtered), [filtered])
   const maeMfe = useMemo(() => maeMfeStats(filtered), [filtered])
   const extremes = useMemo(() => extremeStats(filtered), [filtered])
-  const dayStats = useMemo(() => dailyStats(equitySeries), [equitySeries])
+  // Real account equity at the start of the visible range — fed into
+  // dailyStats so the ±0.4% scratch band uses actual capital.
+  const accountStartEquity = useStartingEquity(rangeStart)
+  const dayStats = useMemo(
+    () => dailyStats(equitySeries, accountStartEquity),
+    [equitySeries, accountStartEquity],
+  )
   const totalDays =
-    dayStats.greenDays + dayStats.redDays + dayStats.breakevenDays
+    dayStats.greenDays + dayStats.redDays + dayStats.scratchDays
 
   return (
     <div className="space-y-8">

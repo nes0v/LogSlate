@@ -43,7 +43,9 @@ export function StatsFilterBar({
   // Memoised so child FilterDropdowns don't see fresh array identity on every
   // keystroke / unrelated render. `listModels` already returns alphabetical.
   const modelOpts = useMemo(() => {
-    const opts = (models ?? []).map(m => ({ value: m.id, label: m.name }))
+    const opts = (models ?? [])
+      .filter(m => !m.draft)
+      .map(m => ({ value: m.id, label: m.name }))
     // Always offer the "no model" sentinel so the user can find untracked
     // (gambling) trades even on accounts that have no Model rows yet.
     opts.push({ value: MODEL_NONE, label: DEFAULT_MODEL_NAME })

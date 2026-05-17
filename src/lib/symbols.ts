@@ -4,9 +4,11 @@ import type { ContractType, SymbolKey } from '@/db/types'
 // https://www.cmegroup.com/ spec:
 //   NQ  mini  = $20/pt      MNQ micro = $2/pt
 //   ES  mini  = $50/pt      MES micro = $5/pt
+//   YM  mini  = $5/pt       MYM micro = $0.50/pt
 export const HANDLE_VALUE: Record<SymbolKey, Record<ContractType, number>> = {
   NQ: { mini: 20, micro: 2 },
   ES: { mini: 50, micro: 5 },
+  YM: { mini: 5, micro: 0.5 },
 }
 
 export function handleValue(symbol: SymbolKey, contract_type: ContractType): number {
