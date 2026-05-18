@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Controller, useFieldArray, useForm, useWatch, type Control } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import type { z } from 'zod'
@@ -6,7 +6,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { Plus, Save, Trash2, X } from 'lucide-react'
 import { detectSession, emptyForm, formToDraft, tradeFormSchema, type TradeFormValues } from '@/lib/form-schema'
 import { SESSION_BADGE, SESSION_BADGE_CLASS } from '@/lib/session-badge'
-import { listModels } from '@/db/queries'
+import { listAllTrades, listModels } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
 import { EMOTIONS, type Emotion, type TradeDraft } from '@/db/types'
 import { Pills } from '@/components/form/Pills'
@@ -88,6 +88,25 @@ export function TradeForm({
       return rows.filter(m => !m.draft)
     },
     [accountId],
+  )
+  // Distinct tags across every trade on this account, used by the Tags
+  // input for autocomplete. Sorted by usage count (most-used first) so
+  // the user's top recurring tags surface before rare one-offs.
+  const tagSuggestions = useLiveQuery(
+    async () => {
+      const trades = await listAllTrades(accountId)
+      const counts = new Map<string, number>()
+      for (const t of trades) {
+        for (const tag of t.setup_tags ?? []) {
+          counts.set(tag, (counts.get(tag) ?? 0) + 1)
+        }
+      }
+      return [...counts.entries()]
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+        .map(([tag]) => tag)
+    },
+    [accountId],
+    [] as string[],
   )
   // Pre-resolve the initial screenshot so the thumb paints in its final
   // state (image or "Couldn't load" panel) instead of flashing the
@@ -474,7 +493,12 @@ export function TradeForm({
               control={control}
               name="setup_tags"
               render={({ field }) => (
-                <TagInput value={field.value ?? []} onChange={field.onChange} tone="neutral" />
+                <TagInput
+                  value={field.value ?? []}
+                  onChange={field.onChange}
+                  suggestions={tagSuggestions}
+                  tone="neutral"
+                />
               )}
             />
           </Field>
@@ -627,64 +651,172 @@ function Stat({
 interface TagInputProps {
   value: string[]
   onChange: (v: string[]) => void
+  suggestions?: string[]
   tone?: 'neutral' | 'loss' | 'win'
 }
-function TagInput({ value, onChange, tone = 'neutral' }: TagInputProps) {
+function TagInput({
+  value,
+  onChange,
+  suggestions = [],
+  tone = 'neutral',
+}: TagInputProps) {
   const [draft, setDraft] = useState('')
+  const [focused, setFocused] = useState(false)
+  const [activeIdx, setActiveIdx] = useState(-1)
+  const listRef = useRef<HTMLDivElement>(null)
+
+  // Case-insensitive prefix-first match against existing tags (rare
+  // duplicates like "Breakout" vs "breakout" are caught by normalising
+  // to the suggestion's casing in `commit`).
+  const filtered = useMemo(() => {
+    const picked = new Set(value.map(v => v.toLowerCase()))
+    const pool = suggestions.filter(s => !picked.has(s.toLowerCase()))
+    const q = draft.trim().toLowerCase()
+    if (!q) return pool.slice(0, 50)
+    const starts: string[] = []
+    const contains: string[] = []
+    for (const s of pool) {
+      const ls = s.toLowerCase()
+      if (ls.startsWith(q)) starts.push(s)
+      else if (ls.includes(q)) contains.push(s)
+    }
+    return [...starts, ...contains].slice(0, 50)
+  }, [draft, value, suggestions])
+
+  // Reset highlight whenever the candidate list changes so the user
+  // doesn't end up pointing at a row that scrolled out of view.
+  useEffect(() => {
+    setActiveIdx(-1)
+  }, [draft, filtered.length])
+
+  // Keep the highlighted row visible when arrow-keying past the
+  // overflow boundary.
+  useEffect(() => {
+    if (activeIdx < 0) return
+    const el = listRef.current?.querySelector<HTMLElement>(
+      `[data-idx="${activeIdx}"]`,
+    )
+    el?.scrollIntoView({ block: 'nearest' })
+  }, [activeIdx])
+
   function commit(text: string) {
     const t = text.trim()
-    if (!t || value.includes(t)) {
+    if (!t) {
       setDraft('')
       return
     }
-    onChange([...value, t])
+    // Case-insensitive dedupe against already-picked tags, plus
+    // casing-normalisation against existing tag library so "BREAKOUT"
+    // collapses into the existing "breakout" rather than becoming a
+    // near-duplicate.
+    const lower = t.toLowerCase()
+    if (value.some(v => v.toLowerCase() === lower)) {
+      setDraft('')
+      return
+    }
+    const existing = suggestions.find(s => s.toLowerCase() === lower)
+    onChange([...value, existing ?? t])
     setDraft('')
   }
   function remove(t: string) {
     onChange(value.filter(v => v !== t))
   }
+
+  const showDropdown = focused && filtered.length > 0
+
   return (
-    <div
-      className={cn(
-        'min-h-8 flex flex-wrap items-center gap-1 bg-(--color-bg) rounded-(--radius) py-1 pr-2.5 focus-within:ring-2 focus-within:ring-(--color-accent-soft) transition-colors',
-        value.length > 0 ? 'pl-1' : 'pl-2.5',
-      )}
-    >
-      {value.map(t => (
-        <span
-          key={t}
-          className={cn(
-            'inline-flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-[4px] text-xs',
-            tone === 'loss' && 'bg-(--color-loss)/15 text-(--color-loss)',
-            tone === 'win' && 'bg-(--color-win)/15 text-(--color-win)',
-            tone === 'neutral' && 'bg-(--color-panel-2) text-(--color-text)',
-          )}
-        >
-          {t}
-          <button
-            type="button"
-            onClick={() => remove(t)}
-            className="inline-flex items-center justify-center cursor-pointer text-(--color-text-dim) hover:text-(--color-text)"
-            aria-label={`Remove tag ${t}`}
+    <div className="relative">
+      <div
+        className={cn(
+          'min-h-8 flex flex-wrap items-center gap-1 bg-(--color-bg) rounded-(--radius) py-1 pr-2.5 focus-within:ring-2 focus-within:ring-(--color-accent-soft) transition-colors',
+          value.length > 0 ? 'pl-1' : 'pl-2.5',
+        )}
+      >
+        {value.map(t => (
+          <span
+            key={t}
+            className={cn(
+              'inline-flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-[4px] text-xs',
+              tone === 'loss' && 'bg-(--color-loss)/15 text-(--color-loss)',
+              tone === 'win' && 'bg-(--color-win)/15 text-(--color-win)',
+              tone === 'neutral' && 'bg-(--color-panel-2) text-(--color-text)',
+            )}
           >
-            <X size={12} strokeWidth={2.5} />
-          </button>
-        </span>
-      ))}
-      <input
-        value={draft}
-        onChange={e => setDraft(e.target.value)}
-        onKeyDown={e => {
-          if (e.key === 'Enter' || e.key === ',') {
-            e.preventDefault()
+            {t}
+            <button
+              type="button"
+              onClick={() => remove(t)}
+              className="inline-flex items-center justify-center cursor-pointer text-(--color-text-dim) hover:text-(--color-text)"
+              aria-label={`Remove tag ${t}`}
+            >
+              <X size={12} strokeWidth={2.5} />
+            </button>
+          </span>
+        ))}
+        <input
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onFocus={() => setFocused(true)}
+          onBlur={() => {
+            setFocused(false)
             commit(draft)
-          } else if (e.key === 'Backspace' && draft === '' && value.length > 0) {
-            onChange(value.slice(0, -1))
-          }
-        }}
-        onBlur={() => commit(draft)}
-        className="flex-1 min-w-[80px] bg-transparent border-0 outline-none text-sm"
-      />
+          }}
+          onKeyDown={e => {
+            if (e.key === 'ArrowDown' && filtered.length > 0) {
+              e.preventDefault()
+              setActiveIdx(i => (i + 1) % filtered.length)
+            } else if (e.key === 'ArrowUp' && filtered.length > 0) {
+              e.preventDefault()
+              setActiveIdx(i => (i <= 0 ? filtered.length - 1 : i - 1))
+            } else if (e.key === 'Enter' || e.key === ',') {
+              e.preventDefault()
+              if (activeIdx >= 0 && filtered[activeIdx]) {
+                commit(filtered[activeIdx])
+              } else {
+                commit(draft)
+              }
+            } else if (e.key === 'Escape') {
+              if (showDropdown) {
+                e.preventDefault()
+                setFocused(false)
+              }
+            } else if (e.key === 'Backspace' && draft === '' && value.length > 0) {
+              onChange(value.slice(0, -1))
+            }
+          }}
+          className="flex-1 min-w-[80px] bg-transparent border-0 outline-none text-sm"
+        />
+      </div>
+      {showDropdown && (
+        <div
+          ref={listRef}
+          className="absolute left-0 right-0 top-full mt-1 z-20 max-h-56 overflow-y-auto bg-(--color-panel) border border-(--color-border-strong) rounded-(--radius)"
+        >
+          {filtered.map((s, i) => (
+            <button
+              key={s}
+              type="button"
+              data-idx={i}
+              // mousedown fires before the input's blur — preventDefault
+              // here keeps focus on the input so the dropdown doesn't
+              // collapse out from under the click.
+              onMouseDown={e => {
+                e.preventDefault()
+                commit(s)
+              }}
+              onMouseEnter={() => setActiveIdx(i)}
+              className={cn(
+                'block w-full text-left px-2.5 py-1.5 text-sm whitespace-nowrap cursor-pointer transition-colors',
+                i === activeIdx
+                  ? 'bg-(--color-panel-2) text-(--color-text)'
+                  : 'text-(--color-text-dim) hover:bg-(--color-panel-2) hover:text-(--color-text)',
+              )}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
