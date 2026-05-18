@@ -52,7 +52,7 @@ export function DayNoteSection({ accountId, date, stored }: DayNoteSectionProps)
           onChange={e => setValue(e.target.value)}
           onBlur={handleBlur}
           placeholder="What did you notice today?"
-          className="block w-full bg-(--color-panel) rounded-(--radius) px-2.5 py-1.5 text-sm font-sans text-(--color-text-dim) placeholder:text-(--color-text-faint) min-h-[95px] resize-none overflow-hidden focus:outline-none"
+          className="block w-full bg-(--color-panel) rounded-(--radius) px-2.5 py-1.5 text-sm font-sans text-(--color-text) placeholder:text-(--color-text-faint) min-h-[95px] resize-none overflow-hidden focus:outline-none"
         />
       </div>
       {error && <div className="text-xs text-(--color-loss)">{error}</div>}

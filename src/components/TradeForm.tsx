@@ -220,7 +220,7 @@ export function TradeForm({
           </div>
           <Field label="Idea" error={errors.idea?.message}>
             <textarea
-              className={cn(inputClass, 'min-h-[95px] resize-none overflow-hidden')}
+              className={cn(inputClass, 'text-(--color-text-dim) min-h-[95px] resize-none overflow-hidden')}
               placeholder="Trade thesis, setup, context…"
               {...ideaReg}
               ref={mergeRefs(ideaReg.ref, ideaRef)}
@@ -505,7 +505,7 @@ export function TradeForm({
 
           <Field label="Notes">
             <textarea
-              className={cn(inputClass, 'min-h-[95px] resize-none overflow-hidden')}
+              className={cn(inputClass, 'text-(--color-text-dim) min-h-[95px] resize-none overflow-hidden')}
               placeholder="What did I learn? What would I do differently?"
               {...notesReg}
               ref={mergeRefs(notesReg.ref, notesRef)}
