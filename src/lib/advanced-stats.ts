@@ -178,11 +178,24 @@ export interface EquityPoint {
 
 /** Builds a per-day equity timeseries. `dates` is the inclusive list
  *  of trading days to include (so streaks and underwater plots are
- *  continuous even on no-trade days). */
+ *  continuous even on no-trade days).
+ *
+ *  `adjustmentsByDate` (optional, already signed: deposit positive,
+ *  withdraw/fee negative) flows into the running equity AND the peak so
+ *  a mid-window deposit anchors the drawdown baseline at real capital
+ *  instead of leaving `peak` stuck at the from-zero series start. The
+ *  `pnl` field on each point stays **trade-only** so downstream callers
+ *  (dailyStats, etc.) keep their trade-only daily P&L. Adjustments only
+ *  affect `equity`, `peak`, `dd`, and `ddPct`. Crucially, recovery
+ *  factor (netPnl / |maxDd|) is unaffected by adjustments because (a)
+ *  netPnl is trade-only and (b) a deposit raises equity and peak at the
+ *  same time, leaving dd unchanged — so a deposit can't masquerade as
+ *  a recovery. */
 export function dailyEquitySeries(
   trades: TradeRecord[],
   dates: string[],
   startEquity = 0,
+  adjustmentsByDate?: Map<string, number>,
 ): EquityPoint[] {
   const byDay = new Map<string, number>()
   for (const t of trades) {
@@ -192,7 +205,8 @@ export function dailyEquitySeries(
   let peak = startEquity
   return dates.map(d => {
     const pnl = byDay.get(d) ?? 0
-    equity += pnl
+    const adj = adjustmentsByDate?.get(d) ?? 0
+    equity += pnl + adj
     if (equity > peak) peak = equity
     const dd = equity - peak
     const ddPct = peak > 0 ? dd / peak : 0
@@ -632,16 +646,20 @@ export function holdTimeBuckets(trades: TradeRecord[]): Array<{ label: string; w
  *  formula from their help-center: PF 25%, Avg Win/Loss 20%, Max DD 20%,
  *  Win % 15%, Recovery 10%, Consistency 10%.
  *
- *  `consistency` is `null` when it can't be measured (fewer than two
- *  trading days in the window — stdev needs ≥2 samples). In that case
- *  the remaining 5 components share the full 100 weight pro-rata
- *  rather than docking the score by 10 for missing data. */
+ *  Sub-scores can be `null` when they genuinely can't be measured:
+ *    - `consistency` — fewer than two trading days (stdev needs ≥2 samples)
+ *    - `maxDd` — the window's drawdown exceeded 100% of running peak AND
+ *      there's no real account baseline (fresh account, no prior trades
+ *      or adjustments). The from-zero formula has no meaningful capital
+ *      anchor, so the "% of peak" reading is unstable rather than wrong.
+ *  When a component is null the remaining sub-scores share the full 100
+ *  weight pro-rata rather than docking the score for unmeasurable data. */
 export interface CompositeScore {
   total: number
   parts: {
     profitFactor: number
     payoff: number
-    maxDd: number
+    maxDd: number | null
     winRate: number
     recovery: number
     consistency: number | null
@@ -658,6 +676,14 @@ export function compositeScore(args: {
   netPnl: number
   wins: number
   losses: number
+  /** Running-peak equity from the source `equitySeries`. Used as a
+   *  sanity check on `maxDdPct`: if it underflows below -100% AND peak
+   *  is ≤ 0 (genuinely no capital anchor — no prior history, no
+   *  in-window deposits, no profitable cumulative point), the metric
+   *  is undefined rather than "max loss." A user with a mid-window
+   *  deposit lifts `peak` above 0 and gets a real score even if their
+   *  drawdown later went deep. */
+  peakEquity?: number
 }): CompositeScore {
   // Each sub-score is 0..100.
   const stepWindow = (v: number | null, lo: number, hi: number): number => {
@@ -677,8 +703,19 @@ export function compositeScore(args: {
   const payoff =
     hasWinners && noLosers ? 100 : stepWindow(args.payoff, 1.0, 2.6)
   const winRate = args.winRate === null ? 0 : Math.min(100, (args.winRate / 0.6) * 100)
-  // max DD score: 0% loss -> 100, 100% loss -> 0.
-  const maxDd = Math.max(0, Math.min(100, 100 - Math.abs(args.maxDdPct) * 100))
+  // max DD score: 0% loss -> 100, 100% loss -> 0. When maxDdPct
+  // underflows below -100% AND `peakEquity` was never positive (no
+  // prior history, no in-window deposit, no profitable cumulative
+  // point), the "% of peak" reading is unstable noise — mark null
+  // so the score reweights instead of docking 20 points. With ANY
+  // anchor (even a small mid-window deposit), the metric is real
+  // and a >100% drawdown means the account actually blew up.
+  const noCapitalAnchor =
+    args.peakEquity === undefined || args.peakEquity <= 0
+  const maxDd: number | null =
+    args.maxDdPct < -1 && noCapitalAnchor
+      ? null
+      : Math.max(0, Math.min(100, 100 - Math.abs(args.maxDdPct) * 100))
   // Recovery: <1.0 -> 0, 3.5+ -> 100, linear in between. A zero-drawdown
   // window with positive PnL is a perfect drawdown record (recovery is
   // mathematically infinite); treat as the ceiling rather than 0.
@@ -698,27 +735,49 @@ export function compositeScore(args: {
   // The total then reweights the remaining components pro-rata so a
   // single-day window isn't artificially docked 10 points for a
   // metric that simply can't be computed.
+  //
+  // Only days with actual trade activity (pnl !== 0) count toward the
+  // stdev. Otherwise a filter that's wider than the user's data (e.g.
+  // filter from Apr 19 when the first trade is May 7) pads `dailyPnls`
+  // with leading zeros and inflates the variance, dragging consistency
+  // down for no real reason. `dailyStats` filters the same way for
+  // identical semantics.
+  const tradingPnls = args.dailyPnls.filter(p => p !== 0)
   let consistency: number | null = null
-  if (args.dailyPnls.length >= 2) {
+  if (tradingPnls.length >= 2) {
     if (args.netPnl <= 0) {
       consistency = 0
     } else {
-      const m = args.dailyPnls.reduce((a, b) => a + b, 0) / args.dailyPnls.length
+      const m = tradingPnls.reduce((a, b) => a + b, 0) / tradingPnls.length
       const v =
-        args.dailyPnls.reduce((a, b) => a + (b - m) ** 2, 0) /
-        (args.dailyPnls.length - 1)
+        tradingPnls.reduce((a, b) => a + (b - m) ** 2, 0) /
+        (tradingPnls.length - 1)
       const sd = Math.sqrt(v)
       consistency = Math.max(0, Math.min(100, 100 - (sd / args.netPnl) * 100))
     }
   }
-  let total =
-    profitFactor * 0.25 +
-    payoff * 0.2 +
-    maxDd * 0.2 +
-    winRate * 0.15 +
-    recovery * 0.1
-  if (consistency !== null) total += consistency * 0.1
-  else total /= 0.9 // reweight the remaining five from 90% → 100%
+  // Generalised null-aware reweighter: each sub-score contributes
+  // weight × score when non-null; null components are dropped and the
+  // remaining weights are renormalised to 100%. So if both maxDd
+  // (0.20) and consistency (0.10) are unmeasurable, the other four
+  // share the full 100 weight (0.70 → 1.00) instead of being capped
+  // at 70.
+  const weighted: Array<{ score: number | null; weight: number }> = [
+    { score: profitFactor, weight: 0.25 },
+    { score: payoff, weight: 0.20 },
+    { score: maxDd, weight: 0.20 },
+    { score: winRate, weight: 0.15 },
+    { score: recovery, weight: 0.10 },
+    { score: consistency, weight: 0.10 },
+  ]
+  const activeWeight = weighted
+    .filter(w => w.score !== null)
+    .reduce((a, w) => a + w.weight, 0)
+  const total = activeWeight === 0
+    ? 0
+    : weighted
+        .filter((w): w is { score: number; weight: number } => w.score !== null)
+        .reduce((a, w) => a + w.score * w.weight, 0) / activeWeight
   return {
     total,
     parts: { profitFactor, payoff, maxDd, winRate, recovery, consistency },

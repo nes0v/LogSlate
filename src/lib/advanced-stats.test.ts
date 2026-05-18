@@ -244,6 +244,37 @@ describe('streakStats', () => {
 })
 
 describe('dailyEquitySeries', () => {
+  it('a mid-range deposit anchors peak so subsequent dd is measured against real capital', () => {
+    // Scenario the user actually hit: filter window starts Apr 19, but
+    // the deposit isn't until Apr 30. accountStartEquity (before Apr 19)
+    // is therefore 0, but real capital arrives during the window. With
+    // adjustmentsByDate, peak should jump from 0 → $10k on Apr 30, and
+    // subsequent dd should be small relative to that real peak.
+    const dates = [
+      '2026-04-19', // empty
+      '2026-04-30', // deposit lands
+      '2026-05-01', // big loss
+    ]
+    const trades = [
+      tradeWithPnl(-500, { date: '2026-05-01' }),
+    ]
+    const adjustments = new Map<string, number>([['2026-04-30', 10_000]])
+    const series = dailyEquitySeries(trades, dates, 0, adjustments)
+    // Apr 19: no trades, no adjustments, equity stays 0
+    expect(series[0]).toMatchObject({ equity: 0, peak: 0, dd: 0, ddPct: 0 })
+    // Apr 30: deposit lifts both equity and peak; dd resets to 0
+    expect(series[1]).toMatchObject({ equity: 10_000, peak: 10_000, dd: 0 })
+    // May 1: $500 loss measured against $10k peak — sensible 5%, not 500%.
+    // The fixture's handle/fee math is float-precision so use closeTo.
+    expect(series[2].equity).toBeCloseTo(9_500, 2)
+    expect(series[2].peak).toBe(10_000)
+    expect(series[2].dd).toBeCloseTo(-500, 2)
+    expect(series[2].ddPct).toBeCloseTo(-0.05, 4)
+    // `pnl` on each point stays trade-only — the deposit doesn't pollute it.
+    expect(series[1].pnl).toBe(0)
+    expect(series[2].pnl).toBeCloseTo(-500, 2)
+  })
+
   it('runs cumulative equity and tracks peak/dd', () => {
     const trades = [
       tradeWithPnl(100, { date: '2026-04-01' }),
@@ -573,6 +604,51 @@ describe('compositeScore', () => {
     expect(score.parts.consistency).toBeNull()
     // All 5 non-null components are 100, reweighted to 100% → total = 100.
     expect(score.total).toBe(100)
+  })
+
+  it('treats maxDd as null when ddPct underflows on a fresh-account window', () => {
+    // accountStartEquity = 0 (no prior trades/adjustments) plus a window
+    // where a small early peak gets dwarfed by a later loss. ddPct goes
+    // below -100% — a "% of peak" artefact, not a real wipe. Mark maxDd
+    // null and reweight rather than clamping the sub-score to 0 (the
+    // misleading "you lost everything" reading the user actually saw).
+    const score = compositeScore({
+      profitFactor: 1.12,
+      payoff: 1.28,
+      winRate: 0.47,
+      maxDdPct: -3.0, // 300% drawdown of small running peak
+      recoveryFactor: 0.5, // recovery legitimately ≤ 1 → stays at 0
+      dailyPnls: [50, -30, 80, -120, 40, -10],
+      netPnl: 10,
+      wins: 20,
+      losses: 18,
+      peakEquity: 0,
+    })
+    expect(score.parts.maxDd).toBeNull()
+    // Other sub-scores still compute against the rest of the formula.
+    expect(score.parts.profitFactor).toBeGreaterThan(0)
+    expect(score.parts.winRate).toBeGreaterThan(0)
+    // Total reweights from 80% → 100% by dropping maxDd's 20% slice.
+    expect(Number.isFinite(score.total)).toBe(true)
+  })
+
+  it('does NOT null maxDd when accountStartEquity is anchored even if ddPct underflows', () => {
+    // Same ddPct underflow, but with a real $10k starting equity — the
+    // user actually lost more than 100% of their capital. The metric is
+    // meaningful: max possible loss. Don't hide it as n/a.
+    const score = compositeScore({
+      profitFactor: 1.12,
+      payoff: 1.28,
+      winRate: 0.47,
+      maxDdPct: -3.0,
+      recoveryFactor: 0.5,
+      dailyPnls: [50, -30, 80, -120, 40, -10],
+      netPnl: 10,
+      wins: 20,
+      losses: 18,
+      peakEquity: 10_500,
+    })
+    expect(score.parts.maxDd).toBe(0)
   })
 
   it('reweights total when consistency is null instead of docking 10 points', () => {

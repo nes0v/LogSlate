@@ -329,71 +329,16 @@ export const CompositeScoreSection = memo(function CompositeScoreSection({
   rangeStart: string | null
   rangeEnd: string | null
 }) {
-  const days = useMemo(() => buildDayRange(rangeStart, rangeEnd), [rangeStart, rangeEnd])
-  const equitySeries = useMemo(() => dailyEquitySeries(filtered, days, 0), [filtered, days])
-  const ddStats = useMemo(() => drawdownStats(equitySeries, stats.net_pnl), [equitySeries, stats.net_pnl])
-  const pf = useMemo(() => profitFactor(filtered), [filtered])
-  const payoff = useMemo(() => payoffRatio(filtered), [filtered])
-
-  const composite = useMemo(
-    () =>
-      compositeScore({
-        profitFactor: pf,
-        payoff,
-        winRate: stats.win_rate,
-        maxDdPct: ddStats.maxDdPct,
-        recoveryFactor: ddStats.recoveryFactor,
-        dailyPnls: equitySeries.map(p => p.pnl),
-        netPnl: stats.net_pnl,
-        wins: stats.wins,
-        losses: stats.losses,
-      }),
-    [
-      pf,
-      payoff,
-      stats.win_rate,
-      ddStats.maxDdPct,
-      ddStats.recoveryFactor,
-      equitySeries,
-      stats.net_pnl,
-      stats.wins,
-      stats.losses,
-    ],
-  )
-
-  return <CompositeScoreCard score={composite} />
-})
-
-export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
-  filtered,
-  stats,
-  rangeStart,
-  rangeEnd,
-}: {
-  filtered: TradeRecord[]
-  stats: AggregateStats
-  rangeStart: string | null
-  rangeEnd: string | null
-}) {
-  const days = useMemo(() => buildDayRange(rangeStart, rangeEnd), [rangeStart, rangeEnd])
-  const equitySeries = useMemo(() => dailyEquitySeries(filtered, days, 0), [filtered, days])
-  const ddStats = useMemo(() => drawdownStats(equitySeries, stats.net_pnl), [equitySeries, stats.net_pnl])
-  const ratios = useMemo(() => ratioStats(equitySeries, ddStats.maxDdPct), [equitySeries, ddStats.maxDdPct])
-  const pf = useMemo(() => profitFactor(filtered), [filtered])
-  const expR = useMemo(() => expectancyR(filtered), [filtered])
-  const expDollars = useMemo(() => expectancyDollars(filtered), [filtered])
-  const sqnVal = useMemo(() => sqn(filtered), [filtered])
-  const streaks = useMemo(() => streakStats(filtered), [filtered])
-  const maeMfe = useMemo(() => maeMfeStats(filtered), [filtered])
-  const extremes = useMemo(() => extremeStats(filtered), [filtered])
-  // Real account equity at the start of the visible range — fed into
-  // dailyStats so the ±0.4% scratch band uses actual capital.
+  // Real account equity at the start of the visible range, plus any
+  // mid-range adjustments. Both feed the equity series so `peak`
+  // tracks real capital — without them, a from-zero series makes the
+  // first winning day the peak and any later loss looks like a
+  // triple-digit drawdown, which clamps maxDd to 0 and tanks the
+  // composite. Critically, this also handles "user deposited inside
+  // the filter window": useStartingEquity only counts data BEFORE
+  // rangeStart, so an Apr 30 deposit with a filter starting Apr 19
+  // wouldn't anchor anything without adjByDate.
   const accountStartEquity = useStartingEquity(rangeStart)
-  // Mid-period adjustments are needed so the per-day running equity in
-  // dailyStats reflects deposits/withdraws — otherwise a near-threshold
-  // day after a deposit can misclassify as a win/loss instead of a
-  // scratch. Drawdown / ratio / composite stats stay trade-only (a
-  // deposit shouldn't look like a recovery).
   const accountId = useActiveAccountId()
   const rangeAdjustments = useLiveQuery(
     async (): Promise<EquityAdjustment[]> => {
@@ -410,6 +355,115 @@ export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
     () => adjustmentsByDate(rangeAdjustments),
     [rangeAdjustments],
   )
+  const days = useMemo(() => buildDayRange(rangeStart, rangeEnd), [rangeStart, rangeEnd])
+  const equitySeries = useMemo(
+    () => dailyEquitySeries(filtered, days, accountStartEquity ?? 0, adjByDate),
+    [filtered, days, accountStartEquity, adjByDate],
+  )
+  const ddStats = useMemo(() => drawdownStats(equitySeries, stats.net_pnl), [equitySeries, stats.net_pnl])
+  const pf = useMemo(() => profitFactor(filtered), [filtered])
+  const payoff = useMemo(() => payoffRatio(filtered), [filtered])
+
+  // Max peak reached anywhere in the equity series — used by
+  // compositeScore to detect whether the window has a capital anchor
+  // at all. With the adjByDate fix above, a mid-window deposit lifts
+  // peak above 0 and gives compositeScore a real baseline for maxDd.
+  const peakEquity = useMemo(
+    () => equitySeries.reduce((m, p) => Math.max(m, p.peak), 0),
+    [equitySeries],
+  )
+  const composite = useMemo(
+    () =>
+      compositeScore({
+        profitFactor: pf,
+        payoff,
+        winRate: stats.win_rate,
+        maxDdPct: ddStats.maxDdPct,
+        recoveryFactor: ddStats.recoveryFactor,
+        dailyPnls: equitySeries.map(p => p.pnl),
+        netPnl: stats.net_pnl,
+        wins: stats.wins,
+        losses: stats.losses,
+        peakEquity,
+      }),
+    [
+      pf,
+      payoff,
+      stats.win_rate,
+      ddStats.maxDdPct,
+      ddStats.recoveryFactor,
+      equitySeries,
+      stats.net_pnl,
+      stats.wins,
+      stats.losses,
+      peakEquity,
+    ],
+  )
+
+  // Hold the card back until starting equity has resolved (returns
+  // undefined while the live queries run). A literal 0 is fine — that's
+  // the "fresh account, no prior history" case, and the sub-score
+  // null-handling above produces a meaningful score from it.
+  if (accountStartEquity === undefined) return null
+  return <CompositeScoreCard score={composite} />
+})
+
+export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
+  filtered,
+  stats,
+  rangeStart,
+  rangeEnd,
+}: {
+  filtered: TradeRecord[]
+  stats: AggregateStats
+  rangeStart: string | null
+  rangeEnd: string | null
+}) {
+  // Real account equity at the start of the visible range. The equity
+  // series is anchored here so `peak` starts at real capital — without
+  // this, a from-zero series makes the first winning day the peak and
+  // any later loss looks like a triple-digit percentage drawdown,
+  // which clamps the max-DD score to 0 and breaks every ratio that
+  // divides by peak equity (Sharpe / Sortino / Calmar / K-Ratio /
+  // Tail Ratio / Ulcer / Recovery). Same fix as `CompositeScoreSection`.
+  // Also feeds `dailyStats` so the ±0.4% scratch band uses actual capital.
+  const accountStartEquity = useStartingEquity(rangeStart)
+  // Mid-range adjustments — fed into both the equity series (so a
+  // deposit inside the window anchors the drawdown baseline at real
+  // capital) and dailyStats (so the ±0.4% scratch band tracks real
+  // capital after deposits/withdrawals). Recovery factor stays
+  // trade-only by construction: a deposit raises equity and peak at
+  // the same time, leaving dd unchanged.
+  const accountId = useActiveAccountId()
+  const rangeAdjustments = useLiveQuery(
+    async (): Promise<EquityAdjustment[]> => {
+      if (!rangeStart || !rangeEnd) return []
+      return db.adjustments
+        .where('[account_id+date]')
+        .between([accountId, rangeStart], [accountId, rangeEnd], true, true)
+        .toArray()
+    },
+    [accountId, rangeStart, rangeEnd],
+    [] as EquityAdjustment[],
+  )
+  const adjByDate = useMemo(
+    () => adjustmentsByDate(rangeAdjustments),
+    [rangeAdjustments],
+  )
+  const days = useMemo(() => buildDayRange(rangeStart, rangeEnd), [rangeStart, rangeEnd])
+  const equitySeries = useMemo(
+    () => dailyEquitySeries(filtered, days, accountStartEquity ?? 0, adjByDate),
+    [filtered, days, accountStartEquity, adjByDate],
+  )
+  const ddStats = useMemo(() => drawdownStats(equitySeries, stats.net_pnl), [equitySeries, stats.net_pnl])
+  const ratios = useMemo(() => ratioStats(equitySeries, ddStats.maxDdPct), [equitySeries, ddStats.maxDdPct])
+  const pf = useMemo(() => profitFactor(filtered), [filtered])
+  const expR = useMemo(() => expectancyR(filtered), [filtered])
+  const expDollars = useMemo(() => expectancyDollars(filtered), [filtered])
+  const sqnVal = useMemo(() => sqn(filtered), [filtered])
+  const streaks = useMemo(() => streakStats(filtered), [filtered])
+  const maeMfe = useMemo(() => maeMfeStats(filtered), [filtered])
+  const extremes = useMemo(() => extremeStats(filtered), [filtered])
   const dayStats = useMemo(
     () => dailyStats(equitySeries, accountStartEquity ?? 0, adjByDate),
     [equitySeries, accountStartEquity, adjByDate],
