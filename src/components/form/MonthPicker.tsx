@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState, type ReactNode } from 'react'
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react'
 import { nyMonthKey } from '@/lib/tz'
 import { useOutsideClick } from '@/lib/use-outside-click'
@@ -24,6 +24,10 @@ interface MonthPickerProps {
   /** Tighter trigger padding for dense rows. */
   compact?: boolean
   ariaLabel?: string
+  /** Override the default h-8 trigger button with custom markup (e.g. a
+   *  page-title button that opens the same picker popover). The popover
+   *  still positions absolutely against the picker's wrapping `<div>`. */
+  renderTrigger?: (args: { open: boolean; toggle: () => void; display: string }) => ReactNode
 }
 
 function parseYearMonth(v: string | null): { year: number; month: number } | null {
@@ -41,6 +45,7 @@ export function MonthPicker({
   clearable = false,
   compact = false,
   ariaLabel,
+  renderTrigger,
 }: MonthPickerProps) {
   const [open, setOpen] = useState(false)
   const today = useMemo(() => parseYearMonth(nyMonthKey())!, [])
@@ -79,22 +84,26 @@ export function MonthPicker({
 
   return (
     <div ref={ref} className={cn('relative inline-block', className)}>
-      <button
-        type="button"
-        onClick={toggle}
-        aria-label={ariaLabel}
-        className={triggerClass}
-      >
-        <span
-          className={cn(
-            'truncate',
-            !selected && 'text-(--color-text-faint)',
-          )}
+      {renderTrigger ? (
+        renderTrigger({ open, toggle, display })
+      ) : (
+        <button
+          type="button"
+          onClick={toggle}
+          aria-label={ariaLabel}
+          className={triggerClass}
         >
-          {display}
-        </span>
-        <CalendarIcon className="size-4 shrink-0 text-(--color-text-dim)" />
-      </button>
+          <span
+            className={cn(
+              'truncate',
+              !selected && 'text-(--color-text-faint)',
+            )}
+          >
+            {display}
+          </span>
+          <CalendarIcon className="size-4 shrink-0 text-(--color-text-dim)" />
+        </button>
+      )}
       {open && (
         <div className="absolute left-0 top-full mt-1 z-30 w-[244px] bg-(--color-panel) border border-(--color-border-strong) rounded-(--radius) p-2">
           <div className="flex items-center justify-between mb-2">

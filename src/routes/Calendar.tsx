@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
   addDays,
@@ -22,6 +22,7 @@ import { formatUsd } from '@/lib/money'
 import { parseYearMonth } from '@/lib/buckets'
 import { ForexFactoryNews } from '@/components/ForexFactoryNews'
 import { PageHeader } from '@/components/PageHeader'
+import { MonthPicker } from '@/components/form/MonthPicker'
 import { cn } from '@/lib/utils'
 
 const DATE_KEY = 'yyyy-MM-dd'
@@ -36,6 +37,7 @@ function pnlToneClass(amount: number): string {
 
 export function CalendarRoute() {
   const { ym } = useParams()
+  const navigate = useNavigate()
 
   // Memoize date derivations so `useMemo` deps compare by stable reference.
   const { month, gridStart, gridEnd, days } = useMemo(() => {
@@ -200,7 +202,21 @@ export function CalendarRoute() {
   return (
     <div className="pt-1 space-y-8">
       <PageHeader
-        title={format(month, 'MMMM yyyy')}
+        title={
+          <MonthPicker
+            value={format(month, 'yyyy-MM')}
+            onChange={v => v && navigate(`/month/${v}`)}
+            renderTrigger={({ toggle }) => (
+              <button
+                type="button"
+                onClick={toggle}
+                className="text-lg font-semibold rounded-(--radius) cursor-pointer hover:text-(--color-accent) transition-colors"
+              >
+                {format(month, 'MMMM yyyy')}
+              </button>
+            )}
+          />
+        }
         prev={`/month/${format(subMonths(month, 1), 'yyyy-MM')}`}
         next={`/month/${format(addMonths(month, 1), 'yyyy-MM')}`}
         prevLabel="Previous month"

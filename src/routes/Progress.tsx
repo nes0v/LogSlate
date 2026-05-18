@@ -15,6 +15,7 @@ import { Checkbox } from '@/components/form/Checkbox'
 import { DatePicker } from '@/components/form/DatePicker'
 import { RuleCheck } from '@/components/form/RuleCheck'
 import { useConfirm } from '@/components/ConfirmDialog'
+import { BTN_OUTLINED } from '@/components/form/buttonClass'
 import { dateKeyToDate, nyToday } from '@/lib/tz'
 import { cn } from '@/lib/utils'
 
@@ -282,6 +283,15 @@ export function ProgressRoute() {
       <div className="flex items-center justify-between mb-8">
         <h1 className="h-8 flex items-center text-lg font-semibold">Progress</h1>
         <div className="flex items-center gap-1 text-sm">
+          {!isToday && (
+            <button
+              type="button"
+              onClick={() => setDate(today)}
+              className={cn(BTN_OUTLINED, 'mr-1')}
+            >
+              Today
+            </button>
+          )}
           <button
             type="button"
             onClick={() => shiftDate(-1)}
@@ -302,15 +312,6 @@ export function ProgressRoute() {
           >
             <ChevronRight className="size-4" />
           </button>
-          {!isToday && (
-            <button
-              type="button"
-              onClick={() => setDate(today)}
-              className="ml-1 px-2 py-1 text-xs rounded-(--radius) border border-(--color-border) text-(--color-text-dim) hover:text-(--color-text)"
-            >
-              Today
-            </button>
-          )}
         </div>
       </div>
 
