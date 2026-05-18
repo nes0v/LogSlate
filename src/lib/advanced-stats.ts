@@ -185,7 +185,7 @@ export interface EquityPoint {
  *  a mid-window deposit anchors the drawdown baseline at real capital
  *  instead of leaving `peak` stuck at the from-zero series start. The
  *  `pnl` field on each point stays **trade-only** so downstream callers
- *  (dailyStats, etc.) keep their trade-only daily P&L. Adjustments only
+ *  (dailyStats, etc.) keep their trade-only daily PnL. Adjustments only
  *  affect `equity`, `peak`, `dd`, and `ddPct`. Crucially, recovery
  *  factor (netPnl / |maxDd|) is unaffected by adjustments because (a)
  *  netPnl is trade-only and (b) a deposit raises equity and peak at the
@@ -570,7 +570,7 @@ export function pnlByWeekday(trades: TradeRecord[]): Array<{ name: string; pnl: 
   return arr
 }
 
-/** P&L grouped by ISO week (Mon..Sun). The label is the week's Monday
+/** PnL grouped by ISO week (Mon..Sun). The label is the week's Monday
  *  in `YYYY-MM-DD` form so it sorts naturally and is unambiguous across
  *  year boundaries. */
 export function pnlByWeek(
@@ -598,7 +598,7 @@ export function pnlByWeek(
     .sort((a, b) => (a.weekStart < b.weekStart ? -1 : 1))
 }
 
-/** P&L grouped by `YYYY-MM` (calendar month). */
+/** PnL grouped by `YYYY-MM` (calendar month). */
 export function pnlByMonth(trades: TradeRecord[]): Array<{ month: string; pnl: number; count: number }> {
   const m = new Map<string, { pnl: number; count: number }>()
   for (const t of trades) {

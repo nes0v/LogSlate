@@ -542,7 +542,7 @@ export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
           label="Recovery"
           value={ddStats.recoveryFactor === null ? '—' : ddStats.recoveryFactor.toFixed(2)}
           caption={qualRecovery(ddStats.recoveryFactor)}
-          tooltip="Net P&L divided by your worst drawdown. 3 = you've earned 3× your worst drawdown back."
+          tooltip="Net PnL divided by your worst drawdown. 3 = you've earned 3× your worst drawdown back."
         />
         <KpiTile
           label="Ulcer Index"
@@ -599,7 +599,7 @@ export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
           tooltip="Lowest single-day net PnL."
         />
         <KpiTile
-          label="Avg daily P&L"
+          label="Avg daily PnL"
           value={dayStats.avgDailyPnl === null ? '—' : formatUsd(dayStats.avgDailyPnl)}
           tone={
             dayStats.avgDailyPnl === null

@@ -329,10 +329,10 @@ function DaysAndTimeReport({ trades }: { trades: TradeRecord[] }) {
   return (
     <div className="space-y-8">
       <SectionGrid>
-        <Card title="P&L by hour" caption="bucketed by first execution">
+        <Card title="PnL by hour" caption="bucketed by first execution">
           <ReportTable rows={hourRowsFirst} />
         </Card>
-        <Card title="P&L by hour" caption="bucketed by last execution">
+        <Card title="PnL by hour" caption="bucketed by last execution">
           <ReportTable rows={hourRowsLast} />
         </Card>
       </SectionGrid>
@@ -427,7 +427,7 @@ function SymbolReport({ trades }: { trades: TradeRecord[] }) {
             </h3>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-y-3 gap-x-2">
               <Stat
-                label="Net P&L"
+                label="Net PnL"
                 value={formatUsd(stats.net_pnl)}
                 tone={stats.net_pnl > 0 ? 'win' : stats.net_pnl < 0 ? 'loss' : 'dim'}
               />
@@ -555,7 +555,7 @@ function RiskReport({
     <div className="space-y-8">
       <SectionGrid>
         <Card
-          title="P&L vs MFE"
+          title="PnL vs MFE"
           caption="how much each trade gave back from peak"
         >
           <Scatter
@@ -564,7 +564,7 @@ function RiskReport({
           />
         </Card>
         <Card
-          title="P&L vs MAE"
+          title="PnL vs MAE"
           caption="how much heat each trade took"
         >
           <Scatter
@@ -1004,7 +1004,7 @@ function ReportTable({ rows }: { rows: ReportRow[] }) {
           <div className="text-right">Trades</div>
           <div className="text-right">W / L</div>
           <div></div>
-          <div className="text-right">P&L</div>
+          <div className="text-right">PnL</div>
         </div>
         {rows.map(r => {
           const intensity = max === 0 ? 0 : Math.abs(r.pnl) / max
