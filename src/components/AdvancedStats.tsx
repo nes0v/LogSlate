@@ -899,7 +899,6 @@ function CompositeScoreCard({ score }: { score: ReturnType<typeof compositeScore
             >
               {total}
             </div>
-            <div className="text-xs text-(--color-text-dim) mt-1">/ 100</div>
           </div>
         </div>
       </div>
