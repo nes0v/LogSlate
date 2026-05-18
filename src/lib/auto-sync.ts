@@ -12,7 +12,9 @@ import { drainPendingUploads } from '@/lib/drive-images'
 import { pushError } from '@/lib/notifications'
 import {
   DriveAccountMismatchError,
+  DriveFileCorruptError,
   DriveFileGoneError,
+  DriveFileVersionError,
   syncNow,
   type SyncOptions,
   type SyncResult,
@@ -27,6 +29,8 @@ export type AutoSyncErrorKind =
   | 'scope'
   | 'account-mismatch'
   | 'file-gone'
+  | 'file-corrupt'
+  | 'file-version'
 
 export interface AutoSyncState {
   status: AutoSyncStatus
@@ -104,6 +108,17 @@ async function runSync(options: SyncOptions = {}): Promise<SyncResult | null> {
     } else if (e instanceof DriveFileGoneError) {
       // Recoverable — the Settings page surfaces a "Recreate" action.
       update({ status: 'error', error: message, errorKind: 'file-gone' })
+    } else if (e instanceof DriveFileCorruptError) {
+      // Recoverable — Settings surfaces an "Overwrite" action. NO push
+      // notification: the same hard-block reasoning as account-mismatch
+      // applies — auto-routing through the banner could nudge the user
+      // to click through and overwrite the corrupted file without
+      // realising what they're trading away.
+      update({ status: 'error', error: message, errorKind: 'file-corrupt' })
+    } else if (e instanceof DriveFileVersionError) {
+      // Hard-block — no override, no notification. The user must update
+      // this device before syncing. Surfaced inline in Settings.
+      update({ status: 'error', error: message, errorKind: 'file-version' })
     } else if (e instanceof DriveScopeError) {
       update({ status: 'error', error: message, errorKind: 'scope' })
       pushError(message, { label: 'Reconnect', to: '/settings' })

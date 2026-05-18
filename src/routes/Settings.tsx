@@ -43,6 +43,20 @@ export function SettingsRoute() {
     await requestManualSync({ recreateRemoteIfMissing: true })
   }
 
+  /** Confirms the corrupt-file recovery — overwrites the unparseable
+   *  Drive file with local data. Destructive on the Drive side (the
+   *  corrupted bytes are gone for good), so the action is gated behind
+   *  an explicit click and a confirm() dialog. */
+  async function handleOverwriteCorruptRemote() {
+    const ok = window.confirm(
+      "Overwrite the corrupted Drive file with your local data? " +
+      "Whatever the corrupted file contained will be lost — but your " +
+      "local trades, models, and settings will be preserved.",
+    )
+    if (!ok) return
+    await requestManualSync({ overwriteCorruptRemote: true })
+  }
+
   async function handleSignOut() {
     signOut()
     // Intentionally NOT calling `clearSyncState()` — wiping `lastSyncedIds`
@@ -217,6 +231,45 @@ export function SettingsRoute() {
                         >
                           <RefreshCw className={'size-4 ' + (syncing ? 'animate-spin' : '')} />
                           Recreate file from local data
+                        </button>
+                      </div>
+                    </div>
+                  ) : autoSync.errorKind === 'file-corrupt' ? (
+                    <div className="rounded-(--radius) border border-(--color-warn)/40 bg-(--color-warn)/10 p-3 space-y-2">
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle className="size-4 text-(--color-warn) mt-0.5 shrink-0" />
+                        <div className="text-sm space-y-1">
+                          <div className="font-medium text-(--color-warn)">Drive file corrupted</div>
+                          <div className="text-(--color-text-dim)">{autoSync.error}</div>
+                        </div>
+                      </div>
+                      <div className="pt-1">
+                        <button
+                          onClick={handleOverwriteCorruptRemote}
+                          disabled={syncing}
+                          className={BTN_ACCENT}
+                        >
+                          <RefreshCw className={'size-4 ' + (syncing ? 'animate-spin' : '')} />
+                          Overwrite Drive file with local data
+                        </button>
+                      </div>
+                    </div>
+                  ) : autoSync.errorKind === 'file-version' ? (
+                    <div className="rounded-(--radius) border border-(--color-warn)/40 bg-(--color-warn)/10 p-3 space-y-2">
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle className="size-4 text-(--color-warn) mt-0.5 shrink-0" />
+                        <div className="text-sm space-y-1">
+                          <div className="font-medium text-(--color-warn)">App update required</div>
+                          <div className="text-(--color-text-dim)">{autoSync.error}</div>
+                        </div>
+                      </div>
+                      <div className="pt-1">
+                        <button
+                          onClick={() => window.location.reload()}
+                          className={BTN_ACCENT}
+                        >
+                          <RefreshCw className="size-4" />
+                          Reload to update
                         </button>
                       </div>
                     </div>

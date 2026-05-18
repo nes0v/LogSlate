@@ -279,7 +279,45 @@ describe('syncNow', () => {
     expect(result.fileId).toBe('fid')
   })
 
-  it('treats corrupt remote JSON as empty and re-uploads', async () => {
+  it('throws DriveFileCorruptError when remote JSON is unparseable and confirmation is missing', async () => {
+    await db.trades.add(tradeRecord({ id: 't1', idea: 'survives' }))
+    findFile.mockResolvedValue({
+      id: 'fid',
+      name: 'logslate.json',
+      modifiedTime: '2026-04-15T11:00:00Z',
+    })
+    downloadFile.mockResolvedValue('not json {{{')
+
+    const { DriveFileCorruptError } = await import('./sync')
+    await expect(syncNow()).rejects.toBeInstanceOf(DriveFileCorruptError)
+    // Guard fires before any clear/bulkAdd, before any upload.
+    expect(uploadFile).not.toHaveBeenCalled()
+    expect(await db.trades.count()).toBe(1)
+  })
+
+  it('throws DriveFileVersionError when remote file declares a newer version', async () => {
+    // A future device wrote a v99 file. The current client doesn't
+    // understand it — merging would silently drop unknown fields and
+    // the next push would overwrite the newer client's work. Hard-block
+    // until this device is updated.
+    await db.trades.add(tradeRecord({ id: 't1' }))
+    findFile.mockResolvedValue({
+      id: 'fid',
+      name: 'logslate.json',
+      modifiedTime: '2026-04-15T11:00:00Z',
+    })
+    downloadFile.mockResolvedValue(
+      JSON.stringify({ version: 99, exported_at: '2099-01-01', trades: [] }),
+    )
+
+    const { DriveFileVersionError } = await import('./sync')
+    await expect(syncNow()).rejects.toBeInstanceOf(DriveFileVersionError)
+    // Guard fires before any clear/bulkAdd or upload.
+    expect(uploadFile).not.toHaveBeenCalled()
+    expect(await db.trades.count()).toBe(1)
+  })
+
+  it('overwriteCorruptRemote: replaces unparseable remote with local data', async () => {
     await db.trades.add(tradeRecord({ id: 't1', idea: 'survives' }))
     findFile.mockResolvedValue({
       id: 'fid',
@@ -289,7 +327,7 @@ describe('syncNow', () => {
     downloadFile.mockResolvedValue('not json {{{')
     uploadFile.mockResolvedValue(uploaded('fid'))
 
-    const result = await syncNow()
+    const result = await syncNow({ overwriteCorruptRemote: true })
 
     expect(result.skippedPush).toBe(false)
     expect(result.perTable.trades.remote).toBe(0)

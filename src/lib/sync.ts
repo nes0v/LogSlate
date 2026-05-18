@@ -58,6 +58,40 @@ export class DriveFileGoneError extends Error {
   }
 }
 
+/** Raised when the Drive sync file exists but doesn't parse as JSON
+ *  (interrupted upload, manual edit, etc.). Without this guard we'd
+ *  silently treat remote as empty and let the next push clobber
+ *  whatever's there — destructive without user awareness. Recoverable
+ *  via `syncNow({ overwriteCorruptRemote: true })` once the user has
+ *  confirmed they want to overwrite the corrupted file with local data. */
+export class DriveFileCorruptError extends Error {
+  constructor() {
+    super(
+      'Your Drive sync file is corrupted — its JSON could not be parsed. Confirm to overwrite it with your local data.',
+    )
+    this.name = 'DriveFileCorruptError'
+  }
+}
+
+/** Raised when the Drive sync file's `version` field is higher than the
+ *  one this client knows about. The shape may have new required fields
+ *  the older code can't handle, so the safe answer is to refuse and
+ *  prompt the user to update this device. Hard-block: no override path,
+ *  because the alternative (overwrite with this device's older shape)
+ *  would silently lose whatever the newer client added. */
+export class DriveFileVersionError extends Error {
+  readonly remoteVersion: number
+  readonly localVersion: number
+  constructor(remoteVersion: number, localVersion: number) {
+    super(
+      `Your Drive sync file was written by a newer version of LogSlate (v${remoteVersion}, this device speaks v${localVersion}). Update this device before syncing.`,
+    )
+    this.name = 'DriveFileVersionError'
+    this.remoteVersion = remoteVersion
+    this.localVersion = localVersion
+  }
+}
+
 interface SyncItem {
   id: string
   updated_at: string
@@ -172,6 +206,11 @@ export interface SyncOptions {
    *  (e.g. after `DriveFileGoneError`). Treats lastSyncedIds as empty
    *  for the merge so local rows aren't tombstoned. */
   recreateRemoteIfMissing?: boolean
+  /** Override the corrupt-file guard. Use when the user has explicitly
+   *  confirmed they want to overwrite an unparseable Drive file with
+   *  their local data (after `DriveFileCorruptError`). Proceeds as if
+   *  the remote were empty so the next push replaces the bad bytes. */
+  overwriteCorruptRemote?: boolean
 }
 
 export async function syncNow(options: SyncOptions = {}): Promise<SyncResult> {
@@ -215,8 +254,19 @@ export async function syncNow(options: SyncOptions = {}): Promise<SyncResult> {
     try {
       parsed = JSON.parse(text) as Partial<SyncFile>
     } catch {
-      // Corrupt file — treat as empty remote; local will overwrite on push.
+      // Corrupt file. Without explicit confirmation we abort — silently
+      // overwriting would mask a real upstream problem and irreversibly
+      // discard whatever the corrupted bytes were. With confirmation,
+      // proceed as if remote were empty so the next push replaces it.
+      if (!options.overwriteCorruptRemote) throw new DriveFileCorruptError()
       parsed = null
+    }
+    // Version guard. If the file was written by a newer client, the
+    // shape may have fields we can't interpret — proceeding could
+    // silently drop data on the next push. No override: the answer is
+    // to update this device, not to clobber the newer client's work.
+    if (parsed && typeof parsed.version === 'number' && parsed.version > FILE_VERSION) {
+      throw new DriveFileVersionError(parsed.version, FILE_VERSION)
     }
   }
 
