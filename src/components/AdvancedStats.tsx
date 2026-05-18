@@ -345,8 +345,20 @@ export const CompositeScoreSection = memo(function CompositeScoreSection({
         recoveryFactor: ddStats.recoveryFactor,
         dailyPnls: equitySeries.map(p => p.pnl),
         netPnl: stats.net_pnl,
+        wins: stats.wins,
+        losses: stats.losses,
       }),
-    [pf, payoff, stats.win_rate, ddStats.maxDdPct, ddStats.recoveryFactor, equitySeries, stats.net_pnl],
+    [
+      pf,
+      payoff,
+      stats.win_rate,
+      ddStats.maxDdPct,
+      ddStats.recoveryFactor,
+      equitySeries,
+      stats.net_pnl,
+      stats.wins,
+      stats.losses,
+    ],
   )
 
   return <CompositeScoreCard score={composite} />
@@ -459,6 +471,18 @@ export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
           value={ratios.calmar === null ? '—' : ratios.calmar.toFixed(2)}
           caption={qualCalmar(ratios.calmar)}
           tooltip="Annualised return divided by max drawdown. Above 3 = strong return for the pain endured."
+        />
+        <KpiTile
+          label="K-Ratio"
+          value={ratios.kRatio === null ? '—' : ratios.kRatio.toFixed(2)}
+          caption={qualKRatio(ratios.kRatio)}
+          tooltip="Slope of your equity curve divided by its own noise. Higher = more linear, fewer wild swings. Above 1 = smooth, above 2 = unusually consistent."
+        />
+        <KpiTile
+          label="Tail Ratio"
+          value={ratios.tailRatio === null ? '—' : ratios.tailRatio.toFixed(2)}
+          caption={qualTailRatio(ratios.tailRatio)}
+          tooltip="Average of your top 5% days divided by the magnitude of the bottom 5%. Above 1 means your best days dwarf your worst; below 1 means losses bite harder than wins reward."
         />
         <KpiTile
           label="Recovery"
@@ -702,13 +726,20 @@ function CompositeScoreCard({ score }: { score: ReturnType<typeof compositeScore
         return `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`
       })
       .join(' ') + ' Z'
-  const valuePath = parts
-    .map((p, i) => {
-      const pct = Math.max(0, Math.min(100, score.parts[p.key])) / 100
-      const pt = point(angles[i], R * pct)
-      return `${i === 0 ? 'M' : 'L'}${pt.x.toFixed(1)},${pt.y.toFixed(1)}`
-    })
-    .join(' ') + ' Z'
+  // Skip null vertices (currently only `consistency` when the window is
+  // <2 days). The resulting polygon has 5 vertices instead of 6 — the
+  // edge bridges directly across the missing axis so the user sees a
+  // visibly different shape rather than the polygon collapsing inward.
+  const valuePath =
+    parts
+      .map((p, i) => ({ value: score.parts[p.key], i }))
+      .filter((v): v is { value: number; i: number } => v.value !== null)
+      .map((v, idx) => {
+        const pct = Math.max(0, Math.min(100, v.value)) / 100
+        const pt = point(angles[v.i], R * pct)
+        return `${idx === 0 ? 'M' : 'L'}${pt.x.toFixed(1)},${pt.y.toFixed(1)}`
+      })
+      .join(' ') + ' Z'
 
   return (
     <section className="flex flex-col gap-2 h-full">
@@ -749,7 +780,25 @@ function CompositeScoreCard({ score }: { score: ReturnType<typeof compositeScore
             })}
             <path d={valuePath} fill={fillColor} fillOpacity={0.22} />
             {parts.map((p, i) => {
-              const pct = Math.max(0, Math.min(100, score.parts[p.key])) / 100
+              const raw = score.parts[p.key]
+              // Null sub-score: render a hollow dot at the outer ring so
+              // the axis has a marker without suggesting a specific value.
+              if (raw === null) {
+                const pt = point(angles[i], R)
+                return (
+                  <g key={p.key}>
+                    <circle
+                      cx={pt.x}
+                      cy={pt.y}
+                      r={5}
+                      fill="none"
+                      stroke="var(--color-text-faint)"
+                      strokeWidth={1.5}
+                    />
+                  </g>
+                )
+              }
+              const pct = Math.max(0, Math.min(100, raw)) / 100
               const pt = point(angles[i], R * pct)
               return (
                 <g key={p.key}>
@@ -759,7 +808,8 @@ function CompositeScoreCard({ score }: { score: ReturnType<typeof compositeScore
               )
             })}
             {parts.map((p, i) => {
-              const v = Math.round(score.parts[p.key])
+              const raw = score.parts[p.key]
+              const v = raw === null ? 'n/a' : String(Math.round(raw))
               const lp = point(angles[i], LABEL_R)
               const cosA = Math.cos(angles[i])
               const anchor = Math.abs(cosA) < 0.3 ? 'middle' : cosA > 0 ? 'start' : 'end'
@@ -775,7 +825,7 @@ function CompositeScoreCard({ score }: { score: ReturnType<typeof compositeScore
                   <tspan fill="var(--color-text-dim)">{p.label}</tspan>
                   <tspan
                     dx={6}
-                    fill="var(--color-text-dim)"
+                    fill={raw === null ? 'var(--color-text-faint)' : 'var(--color-text-dim)'}
                     fontFamily="var(--font-mono)"
                   >
                     ({v})
@@ -827,6 +877,22 @@ function qualCalmar(v: number | null): string | undefined {
   if (v < 3) return 'good'
   if (v < 5) return 'great'
   return 'excellent'
+}
+function qualKRatio(v: number | null): string | undefined {
+  if (v === null) return undefined
+  if (v < 0) return 'losing'
+  if (v < 0.5) return 'choppy'
+  if (v < 1) return 'ok'
+  if (v < 2) return 'smooth'
+  return 'exceptional'
+}
+function qualTailRatio(v: number | null): string | undefined {
+  if (v === null) return undefined
+  if (v < 0.75) return 'losers bigger'
+  if (v < 1) return 'slight edge to losers'
+  if (v < 1.25) return 'balanced'
+  if (v < 1.75) return 'winners bigger'
+  return 'winners dwarf losers'
 }
 function qualRecovery(v: number | null): string | undefined {
   if (v === null) return undefined

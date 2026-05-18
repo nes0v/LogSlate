@@ -215,6 +215,32 @@ describe('streakStats', () => {
     const s = streakStats([later, earlier])
     expect(s.current).toBe(-1) // last trade chronologically is the loser
   })
+
+  it('breaks same-second ties deterministically on id', () => {
+    // Two scalps starting at the exact same second on the same date —
+    // execution times only have second precision, so the sort must
+    // fall back to id to stay deterministic across re-fetches.
+    const a = tradeWithPnl(100, {
+      id: 'aaa',
+      date: '2026-04-01',
+      executions: [
+        execution({ kind: 'buy', time: '2026-04-01T09:30:00.000Z' }),
+        execution({ kind: 'sell', time: '2026-04-01T09:30:30.000Z' }),
+      ],
+    })
+    const b = tradeWithPnl(-50, {
+      id: 'bbb',
+      date: '2026-04-01',
+      executions: [
+        execution({ kind: 'buy', time: '2026-04-01T09:30:00.000Z' }),
+        execution({ kind: 'sell', time: '2026-04-01T09:30:30.000Z' }),
+      ],
+    })
+    // id 'aaa' < 'bbb', so 'a' (the win) sorts first → current streak is
+    // the loser. Both input orders must produce the same answer.
+    expect(streakStats([a, b]).current).toBe(-1)
+    expect(streakStats([b, a]).current).toBe(-1)
+  })
 })
 
 describe('dailyEquitySeries', () => {
@@ -291,6 +317,46 @@ describe('ratioStats', () => {
     expect(Number.isFinite(stats.sharpe!)).toBe(true)
     expect(Number.isFinite(stats.sortino!)).toBe(true)
     expect(Number.isFinite(stats.kRatio!)).toBe(true)
+    expect(Number.isFinite(stats.tailRatio!)).toBe(true)
+  })
+
+  it('tail ratio stays bounded when a single boundary loss is microscopic', () => {
+    // 60 days, one microscopic loss (-$0.01) plus normal P&L. Under the
+    // old |p95|/|p5| formula a near-zero boundary value would blow the
+    // ratio up to ~10,000+. The averaged-tail variant pulls in three or
+    // more losses so the divisor reflects the user's typical loser, not
+    // the boundary outlier.
+    const trades: ReturnType<typeof tradeWithPnl>[] = []
+    const dates: string[] = []
+    for (let i = 0; i < 60; i++) {
+      const d = `2026-${String(Math.floor(i / 30) + 4).padStart(2, '0')}-${String((i % 30) + 1).padStart(2, '0')}`
+      // One microscopic loss, rest is alternating real wins (+$200) and
+      // real losses (-$50).
+      const pnl = i === 0 ? -0.01 : i % 2 === 0 ? 200 : -50
+      trades.push(tradeWithPnl(pnl, { date: d }))
+      dates.push(d)
+    }
+    const series = dailyEquitySeries(trades, dates, 0)
+    const stats = ratioStats(series, -0.1)
+    expect(stats.tailRatio).not.toBeNull()
+    // 5% of 60 = 3-sample tails. Bottom three losses are
+    // (-50, -50, -0.01) averaging to -33.33; top three wins are
+    // (200, 200, 200) averaging to 200. Ratio ≈ 6.
+    expect(stats.tailRatio!).toBeLessThan(50)
+    expect(Number.isFinite(stats.tailRatio!)).toBe(true)
+  })
+
+  it('tail ratio returns null on samples smaller than 30 days', () => {
+    const trades: ReturnType<typeof tradeWithPnl>[] = []
+    const dates: string[] = []
+    for (let i = 0; i < 20; i++) {
+      const d = `2026-04-${String(i + 1).padStart(2, '0')}`
+      trades.push(tradeWithPnl(i % 3 === 0 ? -50 : 100, { date: d }))
+      dates.push(d)
+    }
+    const series = dailyEquitySeries(trades, dates, 0)
+    const stats = ratioStats(series, -0.1)
+    expect(stats.tailRatio).toBeNull()
   })
 })
 
@@ -452,10 +518,13 @@ describe('compositeScore', () => {
       recoveryFactor: 2,
       dailyPnls: [100, -20, 50, 30, -10, 80],
       netPnl: 230,
+      wins: 4,
+      losses: 2,
     })
     expect(score.total).toBeGreaterThanOrEqual(0)
     expect(score.total).toBeLessThanOrEqual(100)
     for (const v of Object.values(score.parts)) {
+      if (v === null) continue
       expect(v).toBeGreaterThanOrEqual(0)
       expect(v).toBeLessThanOrEqual(100)
     }
@@ -470,10 +539,62 @@ describe('compositeScore', () => {
       recoveryFactor: 0.2,
       dailyPnls: [-50, -30],
       netPnl: -80,
+      wins: 1,
+      losses: 3,
     })
     expect(score.parts.profitFactor).toBe(20) // floor of stepWindow
     expect(score.parts.recovery).toBe(0)
+    // length ≥ 2 but netPnl ≤ 0 → consistency clamped to 0 (not null).
     expect(score.parts.consistency).toBe(0)
+  })
+
+  it('treats a pure-winners window as max PF + max payoff + max recovery', () => {
+    // The single-2R-trade case the user hit: no losers, no drawdown.
+    // Previously this scored ~35 because PF=Infinity, payoff=null, and
+    // recoveryFactor=null all mapped to 0. Now those three components
+    // should be at the ceiling; consistency is null (one day) so the
+    // remaining five reweight pro-rata.
+    const score = compositeScore({
+      profitFactor: Infinity,
+      payoff: null,
+      winRate: 1.0,
+      maxDdPct: 0,
+      recoveryFactor: null,
+      dailyPnls: [200],
+      netPnl: 200,
+      wins: 1,
+      losses: 0,
+    })
+    expect(score.parts.profitFactor).toBe(100)
+    expect(score.parts.payoff).toBe(100)
+    expect(score.parts.recovery).toBe(100)
+    expect(score.parts.maxDd).toBe(100)
+    expect(score.parts.winRate).toBe(100)
+    expect(score.parts.consistency).toBeNull()
+    // All 5 non-null components are 100, reweighted to 100% → total = 100.
+    expect(score.total).toBe(100)
+  })
+
+  it('reweights total when consistency is null instead of docking 10 points', () => {
+    // Same component values, but with two days (consistency computable)
+    // vs one day (consistency null + reweighted). The reweighted total
+    // must not be lower than the equivalent computable version.
+    const oneDay = compositeScore({
+      profitFactor: 2.0,
+      payoff: 1.5,
+      winRate: 0.5,
+      maxDdPct: -0.2,
+      recoveryFactor: 2.5,
+      dailyPnls: [100],
+      netPnl: 100,
+      wins: 1,
+      losses: 0,
+    })
+    expect(oneDay.parts.consistency).toBeNull()
+    // Five sub-scores @ 0.25/0.20/0.20/0.15/0.10 weights, divided by 0.9
+    // → equivalent to 0.278/0.222/0.222/0.167/0.111 — sums to ~1.000.
+    // Total should be in a sensible range, not artificially low.
+    expect(oneDay.total).toBeGreaterThan(50)
   })
 })
 

@@ -134,10 +134,15 @@ export function streakStats(trades: TradeRecord[]): StreakStats {
   let current = 0
   let curSign = 0
   // Order trades by date then first execution time so streaks
-  // mean what the user expects (chronological).
+  // mean what the user expects (chronological). `id` is the final
+  // tie-break — execution times only have second precision, so two
+  // scalp entries at the same second would otherwise sort in
+  // whatever order Dexie happened to return them.
   const sorted = [...trades].sort((a, b) => {
     if (a.date !== b.date) return a.date < b.date ? -1 : 1
-    return (firstExecutionMs(a) ?? 0) - (firstExecutionMs(b) ?? 0)
+    const tDiff = (firstExecutionMs(a) ?? 0) - (firstExecutionMs(b) ?? 0)
+    if (tDiff !== 0) return tDiff
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
   })
   for (const t of sorted) {
     const outcome = classifyTrade(t)
@@ -322,11 +327,28 @@ export function ratioStats(series: EquityPoint[], maxDdPct: number): RatioStats 
     if (stderrSlope > 0) kRatio = (slope / stderrSlope) / Math.sqrt(n)
   }
 
-  // Tail ratio — |95th percentile| / |5th percentile|.
-  const sorted = [...pnls].sort((a, b) => a - b)
-  const p5 = sorted[Math.floor(sorted.length * 0.05)]
-  const p95 = sorted[Math.floor(sorted.length * 0.95)]
-  const tailRatio = p5 < 0 ? Math.abs(p95) / Math.abs(p5) : null
+  // Tail ratio — averaged-tail formulation (Crittenden / Wilcox):
+  // mean of the top 5% over the magnitude of the bottom 5%. The old
+  // single-percentile form (|p95| / |p5|) exploded when one near-zero
+  // value happened to land at the boundary; averaging at least three
+  // samples on each side smooths it. Requires ≥30 daily returns so
+  // the tails are statistically meaningful (and to keep tail size
+  // proportional rather than swallowing the whole sample on tiny
+  // datasets).
+  let tailRatio: number | null = null
+  if (pnls.length >= 30) {
+    const sorted = [...pnls].sort((a, b) => a - b)
+    const tailSize = Math.max(3, Math.floor(sorted.length * 0.05))
+    const losingTail = sorted.slice(0, tailSize)
+    const winningTail = sorted.slice(-tailSize)
+    const avgLosingTail =
+      losingTail.reduce((a, b) => a + b, 0) / losingTail.length
+    const avgWinningTail =
+      winningTail.reduce((a, b) => a + b, 0) / winningTail.length
+    if (avgLosingTail < 0) {
+      tailRatio = Math.abs(avgWinningTail) / Math.abs(avgLosingTail)
+    }
+  }
 
   return { sharpe, sortino, calmar, kRatio, tailRatio }
 }
@@ -608,7 +630,12 @@ export function holdTimeBuckets(trades: TradeRecord[]): Array<{ label: string; w
 
 /** 0–100 score with sub-components. Replicates the public TradeZella
  *  formula from their help-center: PF 25%, Avg Win/Loss 20%, Max DD 20%,
- *  Win % 15%, Recovery 10%, Consistency 10%. */
+ *  Win % 15%, Recovery 10%, Consistency 10%.
+ *
+ *  `consistency` is `null` when it can't be measured (fewer than two
+ *  trading days in the window — stdev needs ≥2 samples). In that case
+ *  the remaining 5 components share the full 100 weight pro-rata
+ *  rather than docking the score by 10 for missing data. */
 export interface CompositeScore {
   total: number
   parts: {
@@ -617,7 +644,7 @@ export interface CompositeScore {
     maxDd: number
     winRate: number
     recovery: number
-    consistency: number
+    consistency: number | null
   }
 }
 
@@ -629,6 +656,8 @@ export function compositeScore(args: {
   recoveryFactor: number | null
   dailyPnls: number[]
   netPnl: number
+  wins: number
+  losses: number
 }): CompositeScore {
   // Each sub-score is 0..100.
   const stepWindow = (v: number | null, lo: number, hi: number): number => {
@@ -637,37 +666,59 @@ export function compositeScore(args: {
     if (v >= hi) return 100
     return 20 + ((v - lo) / (hi - lo)) * 80
   }
-  const profitFactor = stepWindow(args.profitFactor, 1.0, 2.6)
-  const payoff = stepWindow(args.payoff, 1.0, 2.6)
+  // PF / payoff "no losers" handling. Without this, a pure-winners
+  // window (losses === 0) returns Infinity / null from the underlying
+  // formulas and stepWindow maps both to 0 — penalising the strongest
+  // possible outcome. Treat as the ceiling instead.
+  const hasWinners = args.wins > 0
+  const noLosers = args.losses === 0
+  const profitFactor =
+    hasWinners && noLosers ? 100 : stepWindow(args.profitFactor, 1.0, 2.6)
+  const payoff =
+    hasWinners && noLosers ? 100 : stepWindow(args.payoff, 1.0, 2.6)
   const winRate = args.winRate === null ? 0 : Math.min(100, (args.winRate / 0.6) * 100)
   // max DD score: 0% loss -> 100, 100% loss -> 0.
   const maxDd = Math.max(0, Math.min(100, 100 - Math.abs(args.maxDdPct) * 100))
-  // Recovery: <1.0 -> 0, 3.5+ -> 100, linear in between.
+  // Recovery: <1.0 -> 0, 3.5+ -> 100, linear in between. A zero-drawdown
+  // window with positive PnL is a perfect drawdown record (recovery is
+  // mathematically infinite); treat as the ceiling rather than 0.
+  const noDrawdown = args.maxDdPct === 0
   const recovery =
-    args.recoveryFactor === null || !isFinite(args.recoveryFactor)
-      ? 0
-      : args.recoveryFactor <= 1
+    noDrawdown && args.netPnl > 0
+      ? 100
+      : args.recoveryFactor === null || !isFinite(args.recoveryFactor)
         ? 0
-        : args.recoveryFactor >= 3.5
-          ? 100
-          : ((args.recoveryFactor - 1) / 2.5) * 100
-  // Consistency: 100 - (stdev_daily / total_profit). 0 if total_profit ≤ 0.
-  let consistency = 0
-  if (args.netPnl > 0 && args.dailyPnls.length >= 2) {
-    const m = args.dailyPnls.reduce((a, b) => a + b, 0) / args.dailyPnls.length
-    const v =
-      args.dailyPnls.reduce((a, b) => a + (b - m) ** 2, 0) /
-      (args.dailyPnls.length - 1)
-    const sd = Math.sqrt(v)
-    consistency = Math.max(0, Math.min(100, 100 - (sd / args.netPnl) * 100))
+        : args.recoveryFactor <= 1
+          ? 0
+          : args.recoveryFactor >= 3.5
+            ? 100
+            : ((args.recoveryFactor - 1) / 2.5) * 100
+  // Consistency: 100 - (stdev_daily / total_profit). Undefined (null)
+  // when there's fewer than two trading days — stdev needs ≥2 samples.
+  // The total then reweights the remaining components pro-rata so a
+  // single-day window isn't artificially docked 10 points for a
+  // metric that simply can't be computed.
+  let consistency: number | null = null
+  if (args.dailyPnls.length >= 2) {
+    if (args.netPnl <= 0) {
+      consistency = 0
+    } else {
+      const m = args.dailyPnls.reduce((a, b) => a + b, 0) / args.dailyPnls.length
+      const v =
+        args.dailyPnls.reduce((a, b) => a + (b - m) ** 2, 0) /
+        (args.dailyPnls.length - 1)
+      const sd = Math.sqrt(v)
+      consistency = Math.max(0, Math.min(100, 100 - (sd / args.netPnl) * 100))
+    }
   }
-  const total =
+  let total =
     profitFactor * 0.25 +
     payoff * 0.2 +
     maxDd * 0.2 +
     winRate * 0.15 +
-    recovery * 0.1 +
-    consistency * 0.1
+    recovery * 0.1
+  if (consistency !== null) total += consistency * 0.1
+  else total /= 0.9 // reweight the remaining five from 90% → 100%
   return {
     total,
     parts: { profitFactor, payoff, maxDd, winRate, recovery, consistency },
