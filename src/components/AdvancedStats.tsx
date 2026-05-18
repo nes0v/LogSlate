@@ -1,15 +1,10 @@
 import { Children, memo, useMemo } from 'react'
 import { eachDayOfInterval, format, parseISO } from 'date-fns'
-import { useLiveQuery } from 'dexie-react-hooks'
 import { DonutChart } from '@/components/DonutChart'
-import { db } from '@/db/schema'
-import { useActiveAccountId } from '@/lib/active-account'
-import { adjustmentsByDate, type AggregateStats } from '@/lib/trade-stats'
-import type { EquityAdjustment } from '@/db/types'
+import { type AggregateStats } from '@/lib/trade-stats'
 import { formatUsd } from '@/lib/money'
 import { classifyTrade } from '@/lib/trade-math'
 import { HOLD_BUCKETS, holdBucketOf } from '@/lib/filters'
-import { useStartingEquity } from '@/lib/use-starting-equity'
 import { cn } from '@/lib/utils'
 import type { Model, Session, TradeRecord } from '@/db/types'
 import { EMOTIONS, DEFAULT_MODEL_NAME } from '@/db/types'
@@ -323,41 +318,26 @@ export const CompositeScoreSection = memo(function CompositeScoreSection({
   stats,
   rangeStart,
   rangeEnd,
+  accountStartEquity,
+  adjByDate,
 }: {
   filtered: TradeRecord[]
   stats: AggregateStats
   rangeStart: string | null
   rangeEnd: string | null
+  /** Real account equity strictly before `rangeStart`. Owned by the
+   *  route (Overview) so the card doesn't open its own Dexie
+   *  subscriptions — those were causing a post-mount layout jump as
+   *  the queries resolved async after the page-level gate had opened. */
+  accountStartEquity: number
+  /** In-range adjustments map (signed; deposit positive, withdraw
+   *  negative). Anchors `peak` when a deposit lands inside the filter
+   *  window. */
+  adjByDate: Map<string, number>
 }) {
-  // Real account equity at the start of the visible range, plus any
-  // mid-range adjustments. Both feed the equity series so `peak`
-  // tracks real capital — without them, a from-zero series makes the
-  // first winning day the peak and any later loss looks like a
-  // triple-digit drawdown, which clamps maxDd to 0 and tanks the
-  // composite. Critically, this also handles "user deposited inside
-  // the filter window": useStartingEquity only counts data BEFORE
-  // rangeStart, so an Apr 30 deposit with a filter starting Apr 19
-  // wouldn't anchor anything without adjByDate.
-  const accountStartEquity = useStartingEquity(rangeStart)
-  const accountId = useActiveAccountId()
-  const rangeAdjustments = useLiveQuery(
-    async (): Promise<EquityAdjustment[]> => {
-      if (!rangeStart || !rangeEnd) return []
-      return db.adjustments
-        .where('[account_id+date]')
-        .between([accountId, rangeStart], [accountId, rangeEnd], true, true)
-        .toArray()
-    },
-    [accountId, rangeStart, rangeEnd],
-    [] as EquityAdjustment[],
-  )
-  const adjByDate = useMemo(
-    () => adjustmentsByDate(rangeAdjustments),
-    [rangeAdjustments],
-  )
   const days = useMemo(() => buildDayRange(rangeStart, rangeEnd), [rangeStart, rangeEnd])
   const equitySeries = useMemo(
-    () => dailyEquitySeries(filtered, days, accountStartEquity ?? 0, adjByDate),
+    () => dailyEquitySeries(filtered, days, accountStartEquity, adjByDate),
     [filtered, days, accountStartEquity, adjByDate],
   )
   const ddStats = useMemo(() => drawdownStats(equitySeries, stats.net_pnl), [equitySeries, stats.net_pnl])
@@ -400,11 +380,6 @@ export const CompositeScoreSection = memo(function CompositeScoreSection({
     ],
   )
 
-  // Hold the card back until starting equity has resolved (returns
-  // undefined while the live queries run). A literal 0 is fine — that's
-  // the "fresh account, no prior history" case, and the sub-score
-  // null-handling above produces a meaningful score from it.
-  if (accountStartEquity === undefined) return null
   return <CompositeScoreCard score={composite} />
 })
 
@@ -413,46 +388,26 @@ export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
   stats,
   rangeStart,
   rangeEnd,
+  accountStartEquity,
+  adjByDate,
 }: {
   filtered: TradeRecord[]
   stats: AggregateStats
   rangeStart: string | null
   rangeEnd: string | null
+  /** Real account equity strictly before `rangeStart`. Owned by the
+   *  route (Reports) so the card doesn't open its own Dexie
+   *  subscriptions — those resolved a tick after the page-level gate
+   *  and caused a post-mount layout jump. */
+  accountStartEquity: number
+  /** In-range adjustments map (signed; deposit positive, withdraw
+   *  negative). Anchors `peak` for the equity series and tracks real
+   *  capital across the period for `dailyStats`'s scratch band. */
+  adjByDate: Map<string, number>
 }) {
-  // Real account equity at the start of the visible range. The equity
-  // series is anchored here so `peak` starts at real capital — without
-  // this, a from-zero series makes the first winning day the peak and
-  // any later loss looks like a triple-digit percentage drawdown,
-  // which clamps the max-DD score to 0 and breaks every ratio that
-  // divides by peak equity (Sharpe / Sortino / Calmar / K-Ratio /
-  // Tail Ratio / Ulcer / Recovery). Same fix as `CompositeScoreSection`.
-  // Also feeds `dailyStats` so the ±0.4% scratch band uses actual capital.
-  const accountStartEquity = useStartingEquity(rangeStart)
-  // Mid-range adjustments — fed into both the equity series (so a
-  // deposit inside the window anchors the drawdown baseline at real
-  // capital) and dailyStats (so the ±0.4% scratch band tracks real
-  // capital after deposits/withdrawals). Recovery factor stays
-  // trade-only by construction: a deposit raises equity and peak at
-  // the same time, leaving dd unchanged.
-  const accountId = useActiveAccountId()
-  const rangeAdjustments = useLiveQuery(
-    async (): Promise<EquityAdjustment[]> => {
-      if (!rangeStart || !rangeEnd) return []
-      return db.adjustments
-        .where('[account_id+date]')
-        .between([accountId, rangeStart], [accountId, rangeEnd], true, true)
-        .toArray()
-    },
-    [accountId, rangeStart, rangeEnd],
-    [] as EquityAdjustment[],
-  )
-  const adjByDate = useMemo(
-    () => adjustmentsByDate(rangeAdjustments),
-    [rangeAdjustments],
-  )
   const days = useMemo(() => buildDayRange(rangeStart, rangeEnd), [rangeStart, rangeEnd])
   const equitySeries = useMemo(
-    () => dailyEquitySeries(filtered, days, accountStartEquity ?? 0, adjByDate),
+    () => dailyEquitySeries(filtered, days, accountStartEquity, adjByDate),
     [filtered, days, accountStartEquity, adjByDate],
   )
   const ddStats = useMemo(() => drawdownStats(equitySeries, stats.net_pnl), [equitySeries, stats.net_pnl])
@@ -465,7 +420,7 @@ export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
   const maeMfe = useMemo(() => maeMfeStats(filtered), [filtered])
   const extremes = useMemo(() => extremeStats(filtered), [filtered])
   const dayStats = useMemo(
-    () => dailyStats(equitySeries, accountStartEquity ?? 0, adjByDate),
+    () => dailyStats(equitySeries, accountStartEquity, adjByDate),
     [equitySeries, accountStartEquity, adjByDate],
   )
   const totalDays =

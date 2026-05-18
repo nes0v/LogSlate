@@ -32,8 +32,8 @@ import {
   loadSharedFilters,
   saveSharedFilters,
 } from '@/lib/shared-filters'
-import { firstExecutionMs } from '@/lib/trade-math'
-import { adjustmentsByDate, aggregate, computeCandles } from '@/lib/trade-stats'
+import { computeNetPnl, firstExecutionMs } from '@/lib/trade-math'
+import { adjustmentsByDate, aggregate, computeCandles, signedAdjustment } from '@/lib/trade-stats'
 import { useStartingEquity } from '@/lib/use-starting-equity'
 import {
   bucketByTimeframe,
@@ -189,6 +189,34 @@ export function OverviewRoute() {
       rangeEnd: filters.to ?? dates[dates.length - 1],
     }
   }, [filtered, filters.from, filters.to])
+
+  // Inputs the composite-score card needs. Computed locally from the
+  // already-loaded `allTrades` + `allAdjustments` so the card doesn't
+  // need its own Dexie subscriptions — that's what was causing the
+  // post-mount jump (queries resolve async; card renders null first,
+  // then snaps in with real data). Now everything is ready when the
+  // page-level `loaded` gate opens.
+  const compositeStartingEquity = useMemo(() => {
+    if (!rangeStart) return 0
+    let eq = 0
+    for (const a of allAdjustments ?? []) {
+      if (a.date < rangeStart) eq += signedAdjustment(a)
+    }
+    for (const t of allTrades ?? []) {
+      if (t.date < rangeStart) eq += computeNetPnl(t) ?? 0
+    }
+    return eq
+  }, [allTrades, allAdjustments, rangeStart])
+  const compositeAdjByDate = useMemo(() => {
+    const m = new Map<string, number>()
+    if (!rangeStart || !rangeEnd) return m
+    for (const a of allAdjustments ?? []) {
+      if (a.date >= rangeStart && a.date <= rangeEnd) {
+        m.set(a.date, (m.get(a.date) ?? 0) + signedAdjustment(a))
+      }
+    }
+    return m
+  }, [allAdjustments, rangeStart, rangeEnd])
 
   // Chart trades = `allTrades` with non-date filters applied. The date
   // filter only sets the initial viewport (`chartVisibleFrom/To` below),
@@ -397,6 +425,8 @@ export function OverviewRoute() {
               stats={stats}
               rangeStart={rangeStart}
               rangeEnd={rangeEnd}
+              accountStartEquity={compositeStartingEquity}
+              adjByDate={compositeAdjByDate}
             />
           </div>
           <DistributionDonuts filtered={filtered} models={models ?? []} />

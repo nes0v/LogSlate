@@ -5,7 +5,7 @@ import { X } from 'lucide-react'
 import type { TradeRecord } from '@/db/types'
 import { EMOTIONS, DEFAULT_MODEL_NAME } from '@/db/types'
 import { nyToday } from '@/lib/tz'
-import { listAllTrades, listModels } from '@/db/queries'
+import { listAdjustments, listAllTrades, listModels } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
 import {
   applyFilters,
@@ -20,9 +20,10 @@ import {
   loadSharedFilters,
   saveSharedFilters,
 } from '@/lib/shared-filters'
-import { aggregate } from '@/lib/trade-stats'
+import { aggregate, signedAdjustment } from '@/lib/trade-stats'
 import {
   classifyTrade,
+  computeNetPnl,
   computePlannedRr,
   computeRealizedRr,
   totalContracts,
@@ -117,6 +118,11 @@ export function ReportsRoute() {
   // we can suppress the empty-state placeholder until the real data lands
   // (otherwise "No trades yet" flashes for one frame on navigation).
   const allTrades = useLiveQuery(() => listAllTrades(accountId), [accountId])
+  const allAdjustments = useLiveQuery(
+    () => listAdjustments(accountId),
+    [accountId],
+    [],
+  )
   const loaded = allTrades !== undefined
 
   const lastTradeDate = useMemo(() => {
@@ -153,6 +159,33 @@ export function ReportsRoute() {
       rangeEnd: filters.to ?? dates[dates.length - 1],
     }
   }, [filtered, filters.from, filters.to])
+
+  // Inputs the Risk-metrics card needs. Computed locally from already-
+  // loaded `allTrades` + `allAdjustments` so the card doesn't open its
+  // own Dexie subscriptions — those resolved async after the page-level
+  // `loaded` gate and caused a post-mount layout jump. Same fix the
+  // Overview page got for `CompositeScoreSection`.
+  const advStartingEquity = useMemo(() => {
+    if (!rangeStart) return 0
+    let eq = 0
+    for (const a of allAdjustments ?? []) {
+      if (a.date < rangeStart) eq += signedAdjustment(a)
+    }
+    for (const t of allTrades ?? []) {
+      if (t.date < rangeStart) eq += computeNetPnl(t) ?? 0
+    }
+    return eq
+  }, [allTrades, allAdjustments, rangeStart])
+  const advAdjByDate = useMemo(() => {
+    const m = new Map<string, number>()
+    if (!rangeStart || !rangeEnd) return m
+    for (const a of allAdjustments ?? []) {
+      if (a.date >= rangeStart && a.date <= rangeEnd) {
+        m.set(a.date, (m.get(a.date) ?? 0) + signedAdjustment(a))
+      }
+    }
+    return m
+  }, [allAdjustments, rangeStart, rangeEnd])
 
   // Hoist current tab/compare URL values once per render so the
   // update/clear closures don't re-read `params` (the React Compiler
@@ -237,6 +270,8 @@ export function ReportsRoute() {
                   stats={stats}
                   rangeStart={rangeStart}
                   rangeEnd={rangeEnd}
+                  accountStartEquity={advStartingEquity}
+                  adjByDate={advAdjByDate}
                 />
               </div>
             ) : tab === 'time' ? (
