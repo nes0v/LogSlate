@@ -51,6 +51,25 @@ const ROW_GAP_PX = 6
 const ROW_GAP_CLASS = 'space-y-1.5'
 
 // Slot the dragged row currently occupies, clamped to the list bounds.
+// Structural equality for the rule-group tree. Used to compute the
+// dirty-state of the model editor on every keystroke — `JSON.stringify`
+// is the obvious answer but it serialises the whole tree on every memo
+// run; walking it directly avoids the allocation.
+function sameGroups(a: ModelRuleGroup[], b: ModelRuleGroup[]): boolean {
+  if (a === b) return true
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) {
+    const ga = a[i]
+    const gb = b[i]
+    if (ga.id !== gb.id || ga.name !== gb.name) return false
+    if (ga.rules.length !== gb.rules.length) return false
+    for (let j = 0; j < ga.rules.length; j++) {
+      if (ga.rules[j] !== gb.rules[j]) return false
+    }
+  }
+  return true
+}
+
 function targetSlot(d: DragState, listLen: number): number {
   const slots = Math.round((d.currentY - d.startY) / d.itemHeight)
   return Math.max(0, Math.min(listLen - 1, d.fromIdx + slots))
@@ -392,7 +411,7 @@ function ModelEditorImpl({ model, onSave, onDelete }: ModelEditorProps) {
       draft !== model.draft ||
       sessions.length !== model.sessions.length ||
       sessions.some((s, i) => s !== model.sessions[i]) ||
-      JSON.stringify(groups) !== JSON.stringify(model.groups),
+      !sameGroups(groups, model.groups),
     [name, description, draft, sessions, groups, model],
   )
 

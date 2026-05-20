@@ -71,7 +71,7 @@ export function OverviewRoute() {
     return filtersFromParams(params)
   }, [params])
   const equityView = useDefaultEquityView()
-  const [tableExpandedIds, setTableExpandedIds] = useState<Set<string>>(new Set())
+  const [tableExpandedIds, setTableExpandedIds] = useState<Set<string>>(() => new Set())
   const toggleTableRow = useCallback((id: string) => {
     setTableExpandedIds(prev => {
       const next = new Set(prev)

@@ -24,6 +24,10 @@ const INFO_DISMISS_MS = 4000
 
 let items: Notification[] = []
 const listeners = new Set<() => void>()
+// Auto-dismiss timers for info notifications, keyed by notification id.
+// Tracked so an early manual dismiss can clear the pending timer and
+// avoid a no-op callback firing after the notification is already gone.
+const infoTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
 function emit(next: Notification[]): void {
   items = next
@@ -80,17 +84,28 @@ export function pushInfo(message: string): string | null {
   if (exists('info', message, undefined)) return null
   const id = newId()
   emit([...items, { id, kind: 'info', message }])
-  setTimeout(() => dismissNotification(id), INFO_DISMISS_MS)
+  const timer = setTimeout(() => {
+    infoTimers.delete(id)
+    dismissNotification(id)
+  }, INFO_DISMISS_MS)
+  infoTimers.set(id, timer)
   return id
 }
 
 export function dismissNotification(id: string): void {
+  const timer = infoTimers.get(id)
+  if (timer !== undefined) {
+    clearTimeout(timer)
+    infoTimers.delete(id)
+  }
   const next = items.filter(n => n.id !== id)
   if (next.length === items.length) return
   emit(next)
 }
 
 export function clearNotifications(): void {
+  for (const timer of infoTimers.values()) clearTimeout(timer)
+  infoTimers.clear()
   if (items.length === 0) return
   emit([])
 }

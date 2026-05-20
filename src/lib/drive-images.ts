@@ -525,7 +525,11 @@ export async function drainPendingUploads(): Promise<void> {
       const oldRef = `pending:${p.id}`
       const newRef = `drive:${driveId}`
       // Rewrite any records that pointed at this pending id (both trades and
-      // days use the same ref format).
+      // days use the same ref format). The URL cache is transferred
+      // inside the transaction so it's already keyed under `drive:` by
+      // the time Dexie fires its post-commit live-query notifications —
+      // otherwise a thumb could re-mount on the new ref before the
+      // cache entry exists and do a redundant re-fetch.
       await db.transaction(
         'rw',
         db.trades,
@@ -548,15 +552,17 @@ export async function drainPendingUploads(): Promise<void> {
             await db.days.update(d.id, { screenshots, updated_at: now })
           }
           await db.pending_uploads.delete(p.id)
+          // Transfer the cached blob URL + dims from the pending entry
+          // to a new entry under the Drive ref — same underlying Blob,
+          // just a new key. Done synchronously inside the transaction
+          // callback so it lands before commit.
+          const cachedEntry = urlCache.get(oldRef)
+          if (cachedEntry) {
+            urlCache.delete(oldRef)
+            rememberUrl(newRef, cachedEntry)
+          }
         },
       )
-      const cachedEntry = urlCache.get(oldRef)
-      if (cachedEntry) {
-        // Transfer URL + dims from the pending entry to the new Drive
-        // ref without revoking — same underlying Blob, just a new key.
-        urlCache.delete(oldRef)
-        rememberUrl(newRef, cachedEntry)
-      }
     } catch (e) {
       // Scope errors will re-happen for every pending item until the user
       // reconnects; bubble them so the sync coordinator surfaces one
