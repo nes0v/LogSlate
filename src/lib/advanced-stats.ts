@@ -146,15 +146,13 @@ export function streakStats(trades: TradeRecord[]): StreakStats {
   })
   for (const t of sorted) {
     const outcome = classifyTrade(t)
-    const sign = outcome === 'win' ? 1 : outcome === 'loss' ? -1 : 0
-    if (sign === 0) {
-      // Scratch — break streak.
-      curSign = 0
-      current = 0
-      continue
-    }
+    // Scratches are ignored entirely — they neither extend nor break
+    // a streak. A win → scratch → win sequence reads as a 2-trade
+    // winning streak, not "1, reset, 1".
+    if (outcome === 'scratch') continue
+    const sign = outcome === 'win' ? 1 : -1
     if (sign === curSign) {
-      current += 1 * sign
+      current += sign
     } else {
       curSign = sign
       current = sign
@@ -181,16 +179,17 @@ export interface EquityPoint {
  *  continuous even on no-trade days).
  *
  *  `adjustmentsByDate` (optional, already signed: deposit positive,
- *  withdraw/fee negative) flows into the running equity AND the peak so
- *  a mid-window deposit anchors the drawdown baseline at real capital
- *  instead of leaving `peak` stuck at the from-zero series start. The
- *  `pnl` field on each point stays **trade-only** so downstream callers
- *  (dailyStats, etc.) keep their trade-only daily PnL. Adjustments only
- *  affect `equity`, `peak`, `dd`, and `ddPct`. Crucially, recovery
- *  factor (netPnl / |maxDd|) is unaffected by adjustments because (a)
- *  netPnl is trade-only and (b) a deposit raises equity and peak at the
- *  same time, leaving dd unchanged — so a deposit can't masquerade as
- *  a recovery. */
+ *  withdraw/fee negative) is applied **peak-neutrally**: each
+ *  adjustment shifts both `equity` and `peak` by the same amount, so
+ *  `dd = equity - peak` is unaffected by adjustments. Net effect for
+ *  every dd-derived statistic (Max DD $, underwater duration, Ulcer
+ *  Index, recovery factor) is that they measure pure trade-driven
+ *  drawdowns — a deposit can't masquerade as a recovery and a
+ *  withdrawal can't manufacture a fictitious drawdown. Adjustments
+ *  still influence `peak` itself (so `maxDdPct = dd / peak` is
+ *  measured against the user's real capital baseline, not the
+ *  trade-only cumulative). The `pnl` field on each point stays
+ *  trade-only for downstream consumers like `dailyStats`. */
 export function dailyEquitySeries(
   trades: TradeRecord[],
   dates: string[],
@@ -207,6 +206,7 @@ export function dailyEquitySeries(
     const pnl = byDay.get(d) ?? 0
     const adj = adjustmentsByDate?.get(d) ?? 0
     equity += pnl + adj
+    peak += adj
     if (equity > peak) peak = equity
     const dd = equity - peak
     const ddPct = peak > 0 ? dd / peak : 0
@@ -217,19 +217,27 @@ export function dailyEquitySeries(
 export interface DrawdownStats {
   maxDd: number // worst (most negative) dd $ value, ≤ 0
   maxDdPct: number // worst dd %, ≤ 0
-  maxDdDurationDays: number // longest stretch without a new equity high
+  maxDdDurationDays: number // longest stretch of traded days below peak
+  currentDd: number // dd $ on the final traded day (0 if currently at/above peak)
+  currentDdDurationDays: number // traded days since the most recent peak (0 if currently at/above peak)
   avgDdDurationDays: number // mean drawdown stretch (excluding zero-length)
   recoveryFactor: number | null // net pnl / |maxDd|
   ulcerIndex: number // sqrt(mean(squared % drawdowns)), in % units (0..100)
   upi: number | null // CAGR-proxy / Ulcer Index — uses mean daily pnl, not annualised
 }
 
+// `series` should already be filtered to traded days (`p.pnl !== 0`).
+// All durations and means are computed over traded days only — weekends,
+// holidays, and untraded weekdays are excluded so the metric reflects
+// actual trading activity, not calendar position.
 export function drawdownStats(series: EquityPoint[], netPnl: number): DrawdownStats {
   if (series.length === 0) {
     return {
       maxDd: 0,
       maxDdPct: 0,
       maxDdDurationDays: 0,
+      currentDd: 0,
+      currentDdDurationDays: 0,
       avgDdDurationDays: 0,
       recoveryFactor: null,
       ulcerIndex: 0,
@@ -254,6 +262,9 @@ export function drawdownStats(series: EquityPoint[], netPnl: number): DrawdownSt
     }
     sqDdSum += (p.ddPct * 100) ** 2
   }
+  // `curStreak` at end of loop = streak still ongoing on the final
+  // traded day → that's the current underwater duration.
+  const currentStreak = curStreak
   if (curStreak > 0) streaks.push(curStreak)
   const avgStreak = streaks.length > 0
     ? streaks.reduce((a, b) => a + b, 0) / streaks.length
@@ -266,6 +277,10 @@ export function drawdownStats(series: EquityPoint[], netPnl: number): DrawdownSt
     maxDd,
     maxDdPct,
     maxDdDurationDays: maxStreak,
+    // dd on the last traded day (≤ 0). When currently at/above peak,
+    // dd was reset to 0 by the running-peak update inside the series.
+    currentDd: series[series.length - 1].dd,
+    currentDdDurationDays: currentStreak,
     avgDdDurationDays: avgStreak,
     recoveryFactor,
     ulcerIndex: ulcer,
@@ -795,10 +810,13 @@ export function extremeStats(trades: TradeRecord[]): ExtremeStats {
   let largestWin: number | null = null
   let largestLoss: number | null = null
   for (const t of trades) {
-    const pnl = computeNetPnl(t)
+    const { pnl, outcome } = tradeMetrics(t)
     if (pnl === null) continue
-    if (pnl > 0 && (largestWin === null || pnl > largestWin)) largestWin = pnl
-    if (pnl < 0 && (largestLoss === null || pnl < largestLoss)) largestLoss = pnl
+    // Only decisive winners / losers feed these extremes — a scratch
+    // with a small positive pnl shouldn't be advertised as the "single
+    // best winning trade" (and same for the loss side).
+    if (outcome === 'win' && (largestWin === null || pnl > largestWin)) largestWin = pnl
+    if (outcome === 'loss' && (largestLoss === null || pnl < largestLoss)) largestLoss = pnl
   }
   return { largestWin, largestLoss }
 }

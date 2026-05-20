@@ -182,18 +182,17 @@ describe('streakStats', () => {
     expect(streakStats([])).toEqual({ longestWin: 0, longestLoss: 0, current: 0 })
   })
 
-  it('breaks the current streak on a scratch trade (pnl = 0)', () => {
+  it('ignores scratch trades — neither extends nor breaks a streak', () => {
     const trades = [
       tradeWithPnl(100, { date: '2026-04-01' }),
       tradeWithPnl(100, { date: '2026-04-02' }),
-      tradeWithPnl(0, { date: '2026-04-03' }),
+      tradeWithPnl(0, { date: '2026-04-03' }), // scratch
       tradeWithPnl(100, { date: '2026-04-04' }),
     ]
     const s = streakStats(trades)
-    // The scratch resets the streak; the trailing winner restarts it at 1.
-    expect(s.current).toBe(1)
-    // Longest still reflects the pre-scratch run.
-    expect(s.longestWin).toBe(2)
+    // 3 winners with a scratch in the middle should read as 3 in a row.
+    expect(s.current).toBe(3)
+    expect(s.longestWin).toBe(3)
   })
 
   it('orders by execution time within the same date', () => {
@@ -244,12 +243,7 @@ describe('streakStats', () => {
 })
 
 describe('dailyEquitySeries', () => {
-  it('a mid-range deposit anchors peak so subsequent dd is measured against real capital', () => {
-    // Scenario the user actually hit: filter window starts Apr 19, but
-    // the deposit isn't until Apr 30. accountStartEquity (before Apr 19)
-    // is therefore 0, but real capital arrives during the window. With
-    // adjustmentsByDate, peak should jump from 0 → $10k on Apr 30, and
-    // subsequent dd should be small relative to that real peak.
+  it('applies adjustments peak-neutrally — deposit raises equity and peak together so dd is trade-only', () => {
     const dates = [
       '2026-04-19', // empty
       '2026-04-30', // deposit lands
@@ -260,19 +254,29 @@ describe('dailyEquitySeries', () => {
     ]
     const adjustments = new Map<string, number>([['2026-04-30', 10_000]])
     const series = dailyEquitySeries(trades, dates, 0, adjustments)
-    // Apr 19: no trades, no adjustments, equity stays 0
     expect(series[0]).toMatchObject({ equity: 0, peak: 0, dd: 0, ddPct: 0 })
-    // Apr 30: deposit lifts both equity and peak; dd resets to 0
+    // Deposit lifts both equity and peak; dd unchanged.
     expect(series[1]).toMatchObject({ equity: 10_000, peak: 10_000, dd: 0 })
-    // May 1: $500 loss measured against $10k peak — sensible 5%, not 500%.
-    // The fixture's handle/fee math is float-precision so use closeTo.
+    // $500 loss measured against the $10k post-deposit peak.
     expect(series[2].equity).toBeCloseTo(9_500, 2)
     expect(series[2].peak).toBe(10_000)
     expect(series[2].dd).toBeCloseTo(-500, 2)
     expect(series[2].ddPct).toBeCloseTo(-0.05, 4)
-    // `pnl` on each point stays trade-only — the deposit doesn't pollute it.
+    // `pnl` stays trade-only — adjustment doesn't pollute it.
     expect(series[1].pnl).toBe(0)
     expect(series[2].pnl).toBeCloseTo(-500, 2)
+  })
+
+  it('withdrawals are peak-neutral too — no fictitious drawdown', () => {
+    const dates = ['2026-04-19', '2026-04-20', '2026-04-21']
+    const trades = [tradeWithPnl(200, { date: '2026-04-19' })]
+    // Big withdrawal on day 2 — equity drops but peak drops the same
+    // amount, so dd stays 0 (no trade activity that day).
+    const adjustments = new Map<string, number>([['2026-04-20', -500]])
+    const series = dailyEquitySeries(trades, dates, 0, adjustments)
+    expect(series[0].dd).toBeCloseTo(0, 2)
+    expect(series[1].dd).toBeCloseTo(0, 2)
+    expect(series[2].dd).toBeCloseTo(0, 2)
   })
 
   it('runs cumulative equity and tracks peak/dd', () => {

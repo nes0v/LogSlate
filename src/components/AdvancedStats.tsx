@@ -1,5 +1,5 @@
 import { Children, memo, useMemo } from 'react'
-import { eachDayOfInterval, format, parseISO } from 'date-fns'
+import { eachDayOfInterval, format, isWeekend, parseISO } from 'date-fns'
 import { DonutChart } from '@/components/DonutChart'
 import { type AggregateStats } from '@/lib/trade-stats'
 import { formatUsd } from '@/lib/money'
@@ -27,10 +27,17 @@ import {
 
 function buildDayRange(rangeStart: string | null, rangeEnd: string | null): string[] {
   if (!rangeStart || !rangeEnd) return []
+  // Weekdays only — futures don't trade Sat/Sun, so including weekend
+  // days in the equity series inflates the "underwater duration" by
+  // ~2 days per week (Fri-recovery rolls over Sat+Sun) and dilutes the
+  // ulcer-index / UPI denominators with zero-PnL flat points the user
+  // could never have traded through.
   return eachDayOfInterval({
     start: parseISO(rangeStart),
     end: parseISO(rangeEnd),
-  }).map(d => format(d, 'yyyy-MM-dd'))
+  })
+    .filter(d => !isWeekend(d))
+    .map(d => format(d, 'yyyy-MM-dd'))
 }
 
 export const HeroNetPnl = memo(function HeroNetPnl({
@@ -331,26 +338,41 @@ export const CompositeScoreSection = memo(function CompositeScoreSection({
    *  the queries resolved async after the page-level gate had opened. */
   accountStartEquity: number
   /** In-range adjustments map (signed; deposit positive, withdraw
-   *  negative). Anchors `peak` when a deposit lands inside the filter
-   *  window. */
+   *  negative). Anchors `peak` so `maxDdPct` is measured against the
+   *  user's real capital, not the trade-only cumulative. */
   adjByDate: Map<string, number>
 }) {
   const days = useMemo(() => buildDayRange(rangeStart, rangeEnd), [rangeStart, rangeEnd])
-  const equitySeries = useMemo(
+  // `rawSeries` walks every weekday in the window — used as the source
+  // for `peakEquity` (so a deposit on a non-trade day still anchors the
+  // capital baseline) and as the source of truth for any consumer that
+  // needs the running equity through gaps.
+  const rawSeries = useMemo(
     () => dailyEquitySeries(filtered, days, accountStartEquity, adjByDate),
     [filtered, days, accountStartEquity, adjByDate],
   )
-  const ddStats = useMemo(() => drawdownStats(equitySeries, stats.net_pnl), [equitySeries, stats.net_pnl])
+  // `tradingSeries` keeps only days where a trade actually happened.
+  // All dd, ratio, and streak metrics run off this so weekends,
+  // holidays, and untraded weekdays don't count as time underwater
+  // and don't dilute the daily-pnl mean/stdev that drive Sharpe etc.
+  const tradingSeries = useMemo(
+    () => rawSeries.filter(p => p.pnl !== 0),
+    [rawSeries],
+  )
+  const ddStats = useMemo(
+    () => drawdownStats(tradingSeries, stats.net_pnl),
+    [tradingSeries, stats.net_pnl],
+  )
   const pf = useMemo(() => profitFactor(filtered), [filtered])
   const payoff = useMemo(() => payoffRatio(filtered), [filtered])
 
-  // Max peak reached anywhere in the equity series — used by
-  // compositeScore to detect whether the window has a capital anchor
-  // at all. With the adjByDate fix above, a mid-window deposit lifts
-  // peak above 0 and gives compositeScore a real baseline for maxDd.
+  // Max peak reached anywhere in the period. Pulled from `rawSeries`
+  // (not `tradingSeries`) so a deposit-only Apr 30 still establishes
+  // the capital baseline for the compositeScore drawdown component
+  // even if the user takes weeks to open their first trade.
   const peakEquity = useMemo(
-    () => equitySeries.reduce((m, p) => Math.max(m, p.peak), 0),
-    [equitySeries],
+    () => rawSeries.reduce((m, p) => Math.max(m, p.peak), 0),
+    [rawSeries],
   )
   const composite = useMemo(
     () =>
@@ -360,7 +382,7 @@ export const CompositeScoreSection = memo(function CompositeScoreSection({
         winRate: stats.win_rate,
         maxDdPct: ddStats.maxDdPct,
         recoveryFactor: ddStats.recoveryFactor,
-        dailyPnls: equitySeries.map(p => p.pnl),
+        dailyPnls: tradingSeries.map(p => p.pnl),
         netPnl: stats.net_pnl,
         wins: stats.wins,
         losses: stats.losses,
@@ -372,7 +394,7 @@ export const CompositeScoreSection = memo(function CompositeScoreSection({
       stats.win_rate,
       ddStats.maxDdPct,
       ddStats.recoveryFactor,
-      equitySeries,
+      tradingSeries,
       stats.net_pnl,
       stats.wins,
       stats.losses,
@@ -406,12 +428,27 @@ export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
   adjByDate: Map<string, number>
 }) {
   const days = useMemo(() => buildDayRange(rangeStart, rangeEnd), [rangeStart, rangeEnd])
-  const equitySeries = useMemo(
+  // `rawSeries` keeps every weekday so `dailyStats` can pick up
+  // adjustments that landed on non-trade days when computing the
+  // scratch-band running equity. `tradingSeries` is the filtered view
+  // used by dd / ratio / streak metrics — see CompositeScoreSection
+  // for the broader rationale.
+  const rawSeries = useMemo(
     () => dailyEquitySeries(filtered, days, accountStartEquity, adjByDate),
     [filtered, days, accountStartEquity, adjByDate],
   )
-  const ddStats = useMemo(() => drawdownStats(equitySeries, stats.net_pnl), [equitySeries, stats.net_pnl])
-  const ratios = useMemo(() => ratioStats(equitySeries, ddStats.maxDdPct), [equitySeries, ddStats.maxDdPct])
+  const tradingSeries = useMemo(
+    () => rawSeries.filter(p => p.pnl !== 0),
+    [rawSeries],
+  )
+  const ddStats = useMemo(
+    () => drawdownStats(tradingSeries, stats.net_pnl),
+    [tradingSeries, stats.net_pnl],
+  )
+  const ratios = useMemo(
+    () => ratioStats(tradingSeries, ddStats.maxDdPct),
+    [tradingSeries, ddStats.maxDdPct],
+  )
   const pf = useMemo(() => profitFactor(filtered), [filtered])
   const expR = useMemo(() => expectancyR(filtered), [filtered])
   const expDollars = useMemo(() => expectancyDollars(filtered), [filtered])
@@ -420,8 +457,8 @@ export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
   const maeMfe = useMemo(() => maeMfeStats(filtered), [filtered])
   const extremes = useMemo(() => extremeStats(filtered), [filtered])
   const dayStats = useMemo(
-    () => dailyStats(equitySeries, accountStartEquity, adjByDate),
-    [equitySeries, accountStartEquity, adjByDate],
+    () => dailyStats(rawSeries, accountStartEquity, adjByDate),
+    [rawSeries, accountStartEquity, adjByDate],
   )
   const totalDays =
     dayStats.greenDays + dayStats.redDays + dayStats.scratchDays
@@ -602,7 +639,18 @@ export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
               : undefined
           }
           tone={ddStats.maxDd === 0 ? 'dim' : 'loss'}
-          tooltip="Largest peak-to-trough drop in your equity curve over this period."
+          tooltip="Largest peak-to-trough drop in your equity curve over this period. Caption is the longest contiguous stretch of traded days the account spent below its prior high — historical, not your present state."
+        />
+        <KpiTile
+          label="Current DD"
+          value={ddStats.currentDd === 0 ? '—' : formatUsd(ddStats.currentDd)}
+          caption={
+            ddStats.currentDdDurationDays === 0
+              ? 'at peak'
+              : `${ddStats.currentDdDurationDays}d underwater`
+          }
+          tone={ddStats.currentDd === 0 ? 'dim' : 'loss'}
+          tooltip="Drop from the most recent equity peak as of the latest traded day. Zero means equity is at or above the highest level seen in this filter window. The caption shows the consecutive traded days the account has been below that peak."
         />
         <KpiTile
           label="Longest win streak"
@@ -617,7 +665,7 @@ export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
           tone={streaks.longestLoss > 0 ? 'loss' : 'dim'}
         />
         <KpiTile
-          label="Current streak"
+          label={'Current\nstreak'}
           value={
             streaks.current === 0
               ? '—'
@@ -673,7 +721,7 @@ function KpiTile({ label, value, caption, tone, tooltip }: KpiTileProps) {
       )}
       title={tooltip}
     >
-      <div className="text-xs uppercase tracking-[0.08em] font-medium text-(--color-text-dim)">
+      <div className="text-xs uppercase tracking-[0.08em] font-medium text-(--color-text-dim) whitespace-pre-line">
         {label}
       </div>
       <div
