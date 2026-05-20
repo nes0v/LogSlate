@@ -45,7 +45,7 @@ import {
 import { formatUsd } from '@/lib/money'
 import { StatsFilterBar } from '@/components/StatsFilterBar'
 import { AdvancedMetricsSections } from '@/components/AdvancedStats'
-import { BTN_OUTLINED } from '@/components/form/buttonClass'
+import { BTN_ACCENT } from '@/components/form/buttonClass'
 import { cn } from '@/lib/utils'
 
 type ReportTab = 'general' | 'time' | 'symbol' | 'risk' | 'outcome' | 'compare'
@@ -68,7 +68,19 @@ const COMPARE_VALUES: readonly CompareAxis[] = [
 export function ReportsRoute() {
   const [params, setParams] = useSearchParams()
   const navigate = useNavigate()
-  const urlFilters = filtersFromParams(params)
+  // Read the shared slot synchronously on render when the URL has no
+  // filter params — otherwise the first paint uses the default 30-day
+  // window and only snaps to the real filter once the hydration effect
+  // mirrors slot → URL, which surfaces as a content "jump" on nav-link
+  // clicks.
+  const urlFilters = useMemo<TradeFilters>(() => {
+    if (FILTER_PARAM_KEYS.some(k => params.has(k))) {
+      return filtersFromParams(params)
+    }
+    const stored = loadSharedFilters()
+    if (stored && hasAnyFilter(stored)) return stored
+    return filtersFromParams(params)
+  }, [params])
   // Tab + compare-axis live in the URL so the browser's back button
   // restores them after a trade-page round-trip — but they're treated
   // separately from filters so they don't arm the "Clear filters"
@@ -100,18 +112,26 @@ export function ReportsRoute() {
     [params, setParams],
   )
 
-  // Hydrate filters from the shared slot on first mount when the URL is
-  // bare. Lets the user arrive on /reports with the filter they last set
-  // on /overview.
+  // Keep URL filters and the shared slot in sync on every navigation —
+  // mirror URL filter params into the slot, and on a bare URL hydrate
+  // from the slot (preserving any non-filter params like `tab`/`compare`).
+  // This makes filters survive nav-link clicks back to this page
+  // instead of being cleared by the resulting bare URL.
   useEffect(() => {
     const hasFilterParam = FILTER_PARAM_KEYS.some(k => params.has(k))
-    if (hasFilterParam) return
-    const stored = loadSharedFilters()
-    if (stored && hasAnyFilter(stored)) {
-      setParams(paramsFromFilters(stored), { replace: true })
+    if (!hasFilterParam) {
+      const stored = loadSharedFilters()
+      if (stored && hasAnyFilter(stored)) {
+        const next = new URLSearchParams(params)
+        paramsFromFilters(stored).forEach((v, k) => next.set(k, v))
+        setParams(next, { replace: true })
+      }
+      return
     }
+    const f = filtersFromParams(params)
+    saveSharedFilters(hasAnyFilter(f) ? f : null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [params])
 
   const accountId = useActiveAccountId()
   // No default value — `allTrades` stays undefined while Dexie resolves so
@@ -221,7 +241,7 @@ export function ReportsRoute() {
       <div className="flex items-center justify-between mb-8">
         <h1 className="h-8 flex items-center text-lg font-semibold">Reports</h1>
         {!isDefault && (
-          <button onClick={clear} className={BTN_OUTLINED}>
+          <button onClick={clear} className={BTN_ACCENT}>
             <X className="size-4" /> Clear filters
           </button>
         )}

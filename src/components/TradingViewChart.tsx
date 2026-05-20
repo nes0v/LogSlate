@@ -51,11 +51,20 @@ function makeWhitespaceTimestamps(tf: Timeframe): number[] {
   if (tf === 'D') {
     const start = Date.UTC(YEAR - 3, 0, 1)
     const end = Date.UTC(YEAR + 1, 11, 31)
-    for (let t = start; t <= end; t += 86400_000) out.push(t / 1000)
+    for (let t = start; t <= end; t += 86400_000) {
+      // Drop Sat (UTC day 6) and Sun (UTC day 0). Futures don't trade
+      // weekends, so emitting whitespace for them leaves visible flat
+      // segments on the equity line.
+      const dow = new Date(t).getUTCDay()
+      if (dow === 0 || dow === 6) continue
+      out.push(t / 1000)
+    }
   } else if (tf === 'W') {
-    // Align to Sundays; 8 years of weeks ≈ 415 points.
+    // Align to Mondays; 8 years of weeks ≈ 415 points. Distance from
+    // the previous Monday = `(dow + 6) % 7` (Sun=0 → 6, Mon=1 → 0,
+    // Tue=2 → 1, …).
     const s = new Date(Date.UTC(YEAR - 7, 0, 1))
-    s.setUTCDate(s.getUTCDate() - s.getUTCDay())
+    s.setUTCDate(s.getUTCDate() - ((s.getUTCDay() + 6) % 7))
     const end = Date.UTC(YEAR + 1, 11, 31)
     for (let t = s.getTime(); t <= end; t += 7 * 86400_000) out.push(t / 1000)
   } else if (tf === 'M') {

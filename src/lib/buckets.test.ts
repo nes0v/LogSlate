@@ -50,40 +50,47 @@ describe('chartDayLabel', () => {
 })
 
 describe('bucketByDay', () => {
-  it('generates one bucket per day in the range', () => {
+  it('generates one bucket per weekday in the range and skips weekends', () => {
+    // Apr 1 2026 = Wed; Apr 7 = Tue. Range covers 5 weekdays + Sat/Sun.
     const start = new Date('2026-04-01T00:00:00')
-    const end = new Date('2026-04-05T00:00:00')
+    const end = new Date('2026-04-07T00:00:00')
     const buckets = bucketByDay([], start, end)
     expect(buckets).toHaveLength(5)
-    expect(buckets[0].key).toBe('2026-04-01')
-    expect(buckets[4].key).toBe('2026-04-05')
+    expect(buckets.map(b => b.key)).toEqual([
+      '2026-04-01',
+      '2026-04-02',
+      '2026-04-03',
+      '2026-04-06',
+      '2026-04-07',
+    ])
     expect(buckets[0].navTarget).toBe('/day/2026-04-01')
   })
 
-  it('places trades into their day bucket by date', () => {
+  it('places trades into their weekday bucket by date', () => {
     const a = tradeRecord({ date: '2026-04-02' })
     const b = tradeRecord({ date: '2026-04-02' })
-    const c = tradeRecord({ date: '2026-04-04' })
+    const c = tradeRecord({ date: '2026-04-03' })
     const start = new Date('2026-04-01T00:00:00')
-    const end = new Date('2026-04-05T00:00:00')
+    const end = new Date('2026-04-07T00:00:00')
     const buckets = bucketByDay([a, b, c], start, end)
+    // Buckets: Apr 1 Wed, Apr 2 Thu, Apr 3 Fri, Apr 6 Mon, Apr 7 Tue
     expect(buckets[1].trades).toHaveLength(2)
-    expect(buckets[2].trades).toHaveLength(0)
-    expect(buckets[3].trades).toHaveLength(1)
+    expect(buckets[2].trades).toHaveLength(1)
+    expect(buckets[3].trades).toHaveLength(0)
   })
 })
 
 describe('bucketByWeek', () => {
-  it('buckets span Sunday..Saturday with keys at the week start', () => {
-    // April 2026: Wed 1st. First Sunday in range = Mar 29 (spillover).
+  it('buckets span Monday..Sunday with keys at the week start', () => {
+    // April 2026: Wed 1st. First Monday in range = Mar 30 (spillover).
     const start = new Date('2026-04-01T00:00:00')
     const end = new Date('2026-04-20T00:00:00')
     const buckets = bucketByWeek([], start, end)
     expect(buckets.length).toBeGreaterThanOrEqual(3)
-    // Each bucket's rangeStart should be a Sunday (weekday 0)
+    // Each bucket's rangeStart should be a Monday (weekday 1)
     for (const b of buckets) {
       const d = new Date(b.rangeStart + 'T00:00:00')
-      expect(d.getDay()).toBe(0)
+      expect(d.getDay()).toBe(1)
     }
   })
 
@@ -99,8 +106,8 @@ describe('bucketByWeek', () => {
 })
 
 describe('WEEK_OPTS', () => {
-  it('is Sunday-based', () => {
-    expect(WEEK_OPTS.weekStartsOn).toBe(0)
+  it('is Monday-based', () => {
+    expect(WEEK_OPTS.weekStartsOn).toBe(1)
   })
 })
 
@@ -169,19 +176,20 @@ describe('bucketByTimeframe', () => {
   const start = new Date('2026-04-01T00:00:00')
   const end = new Date('2026-04-07T00:00:00')
 
-  it('dispatches to bucketByDay for D', () => {
+  it('dispatches to bucketByDay for D (weekdays only)', () => {
     const buckets = bucketByTimeframe('D', [], start, end)
-    expect(buckets).toHaveLength(7)
+    // Apr 1–7 2026 spans Wed..Tue → 5 weekdays after dropping Sat/Sun.
+    expect(buckets).toHaveLength(5)
     expect(buckets[0].key).toBe('2026-04-01')
   })
 
   it('dispatches to bucketByWeek for W', () => {
     const buckets = bucketByTimeframe('W', [], start, end)
-    // April 1–7 2026 (Wed..Tue) crosses a Sunday boundary, so we get
-    // the week of Mar 29 and the week of Apr 5 — both Sunday-anchored.
+    // April 1–7 2026 (Wed..Tue) crosses a Monday boundary, so we get
+    // the week of Mar 30 and the week of Apr 6 — both Monday-anchored.
     expect(buckets).toHaveLength(2)
     for (const b of buckets) {
-      expect(new Date(b.rangeStart + 'T00:00:00').getDay()).toBe(0)
+      expect(new Date(b.rangeStart + 'T00:00:00').getDay()).toBe(1)
     }
   })
 
@@ -206,9 +214,9 @@ describe('dateToBucketKey', () => {
     expect(dateToBucketKey('2026-04-15', 'D')).toBe('2026-04-15')
   })
 
-  it('W → the Sunday of the containing week', () => {
-    // 2026-04-15 (Wed) → 2026-04-12 (Sun)
-    expect(dateToBucketKey('2026-04-15', 'W')).toBe('2026-04-12')
+  it('W → the Monday of the containing week', () => {
+    // 2026-04-15 (Wed) → 2026-04-13 (Mon)
+    expect(dateToBucketKey('2026-04-15', 'W')).toBe('2026-04-13')
   })
 
   it('M → YYYY-MM', () => {
@@ -231,7 +239,7 @@ describe('dateToBucketKey', () => {
     // This acts as a sanity check that the two sides agree on calendar
     // anchors (e.g. Q2 is April, Y is Jan 1 of that year).
     const cases: Array<[string, 'W' | 'M' | 'Q' | 'Y', number]> = [
-      ['2026-04-15', 'W', Date.UTC(2026, 3, 12) / 1000], // Sun Apr 12
+      ['2026-04-15', 'W', Date.UTC(2026, 3, 13) / 1000], // Mon Apr 13
       ['2026-04-15', 'M', Date.UTC(2026, 3, 1) / 1000],
       ['2026-04-15', 'Q', Date.UTC(2026, 3, 1) / 1000],
       ['2026-04-15', 'Y', Date.UTC(2026, 0, 1) / 1000],

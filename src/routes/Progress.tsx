@@ -15,7 +15,7 @@ import { Checkbox } from '@/components/form/Checkbox'
 import { DatePicker } from '@/components/form/DatePicker'
 import { RuleCheck } from '@/components/form/RuleCheck'
 import { useConfirm } from '@/components/ConfirmDialog'
-import { BTN_OUTLINED } from '@/components/form/buttonClass'
+import { BTN_ACCENT } from '@/components/form/buttonClass'
 import { dateKeyToDate, nyToday } from '@/lib/tz'
 import { cn } from '@/lib/utils'
 
@@ -273,7 +273,13 @@ export function ProgressRoute() {
   }
 
   function shiftDate(delta: number) {
-    setDate(format(addDays(dateKeyToDate(date), delta), 'yyyy-MM-dd'))
+    // Futures don't trade Sat/Sun, so progress checks aren't meaningful
+    // on those days — skip past weekends in one click.
+    let cursor = dateKeyToDate(date)
+    do {
+      cursor = addDays(cursor, delta)
+    } while (isWeekend(cursor))
+    setDate(format(cursor, 'yyyy-MM-dd'))
   }
 
   const isToday = date === today
@@ -287,7 +293,7 @@ export function ProgressRoute() {
             <button
               type="button"
               onClick={() => setDate(today)}
-              className={cn(BTN_OUTLINED, 'mr-1')}
+              className={cn(BTN_ACCENT, 'mr-1')}
             >
               Today
             </button>
@@ -388,9 +394,13 @@ export function ProgressRoute() {
                 className={cn(
                   'flex-1 min-w-0 aspect-square rounded-sm text-xs font-mono hover:opacity-80',
                   idx > 0 && isMonday && 'ms-3',
-                  h.date === date
-                    ? 'text-(--color-text) font-medium'
-                    : 'text-(--color-text-dim)',
+                  h.date === today
+                    ? 'text-(--color-text) font-bold'
+                    : h.total > 0 && h.pct > 0
+                      ? 'text-(--color-text)'
+                      : h.date === date
+                        ? 'text-(--color-text) font-medium'
+                        : 'text-(--color-text-dim)',
                 )}
                 style={{ backgroundColor: tone }}
               >

@@ -2,10 +2,12 @@ import { useEffect, useState } from 'react'
 import { ExternalLink, RefreshCw, X } from 'lucide-react'
 import {
   driveViewUrlFromRef,
+  getCachedScreenshotUrl,
   parseScreenshotRef,
   resolveScreenshotUrl,
   type ResolvedScreenshot,
 } from '@/lib/drive-images'
+import { useDriveState } from '@/lib/drive'
 import { useConfirm } from '@/components/ConfirmDialog'
 import { errorMessage } from '@/lib/utils'
 
@@ -22,13 +24,17 @@ interface ScreenshotThumbProps {
 }
 
 const SIZE_CLASSES = {
-  md: { img: 'max-h-32', placeholder: 'h-32 w-32', failed: 'min-h-32 w-44' },
-  sm: { img: 'max-h-16', placeholder: 'h-16 w-16', failed: 'min-h-16 w-32' },
+  // `h-32` / `h-16` is fixed (not max-h) so the browser can derive width
+  // from the inline `aspect-ratio` style set on the rendered `<img>`
+  // before its decode completes. Without a fixed height, aspect-ratio
+  // has nothing to multiply against and the box still collapses to 0×0.
+  md: { img: 'h-32', placeholder: 'h-32 w-36', failed: 'h-32 w-36' },
+  sm: { img: 'h-16', placeholder: 'h-16 w-20', failed: 'h-16 w-20' },
 } as const
 
 type LoadState =
   | { status: 'loading'; ref: string }
-  | { status: 'loaded'; ref: string; url: string }
+  | { status: 'loaded'; ref: string; url: string; width: number; height: number }
   | { status: 'failed'; ref: string; error: string }
 
 // Renders one screenshot — loading placeholder, image (clickable to open in
@@ -39,39 +45,80 @@ export function ScreenshotThumb({ value, onRemove, size = 'md', prefetched }: Sc
   // Local fetch state — only used when the parent didn't pre-resolve the
   // ref. When `prefetched` is set, the render path reads from props
   // directly so the thumb paints in its final state on first frame.
+  // The lazy initializer also checks the module-level URL cache so a
+  // warm ref (e.g. seeded by `preloadDay` on the Day route) renders the
+  // image straight away without flashing the "loading…" placeholder.
   const [fetched, setFetched] = useState<
-    { ref: string; url: string; error: null } | { ref: string; url: null; error: string } | null
-  >(null)
+    | { ref: string; url: string; width: number; height: number; error: null }
+    | { ref: string; url: null; width: 0; height: 0; error: string }
+    | null
+  >(() => {
+    const cached = getCachedScreenshotUrl(value)
+    return cached
+      ? { ref: value, url: cached.url, width: cached.width, height: cached.height, error: null }
+      : null
+  })
+
+  // Short-circuit Drive-backed refs when we're not signed in — otherwise
+  // every thumb flashes "loading…" for a frame before the fetch throws
+  // "Not connected to Google Drive". Pending (local-only) refs still
+  // resolve normally since they don't touch Drive.
+  const driveState = useDriveState()
+  const ref = parseScreenshotRef(value)
+  const viewUrl = driveViewUrlFromRef(ref)
+  const driveOffline =
+    !prefetched && ref?.kind === 'drive' && driveState.status !== 'signed-in'
 
   useEffect(() => {
     if (prefetched) return
+    if (driveOffline) return
     if (fetched?.ref === value) return
     let cancelled = false
     void (async () => {
       try {
-        const url = await resolveScreenshotUrl(value)
-        if (!cancelled) setFetched({ ref: value, url, error: null })
+        const entry = await resolveScreenshotUrl(value)
+        if (!cancelled) {
+          setFetched({
+            ref: value,
+            url: entry.url,
+            width: entry.width,
+            height: entry.height,
+            error: null,
+          })
+        }
       } catch (e) {
         if (!cancelled) {
-          setFetched({ ref: value, url: null, error: errorMessage(e) })
+          setFetched({
+            ref: value,
+            url: null,
+            width: 0,
+            height: 0,
+            error: errorMessage(e),
+          })
         }
       }
     })()
     return () => {
       cancelled = true
     }
-  }, [value, fetched?.ref, prefetched])
+  }, [value, fetched?.ref, prefetched, driveOffline])
 
   const effective = prefetched ? prefetchedToState(value, prefetched) : fetched
-  const load: LoadState =
-    effective?.ref === value
+  const realLoad: LoadState = driveOffline
+    ? { status: 'failed', ref: value, error: 'Not connected to\nGoogle Drive' }
+    : effective?.ref === value
       ? effective.url
-        ? { status: 'loaded', ref: value, url: effective.url }
+        ? {
+            status: 'loaded',
+            ref: value,
+            url: effective.url,
+            width: effective.width,
+            height: effective.height,
+          }
         : { status: 'failed', ref: value, error: effective.error ?? 'Unknown error' }
       : { status: 'loading', ref: value }
 
-  const ref = parseScreenshotRef(value)
-  const viewUrl = driveViewUrlFromRef(ref)
+  const load = realLoad
 
   return (
     <div className="relative inline-block">
@@ -106,10 +153,25 @@ interface ScreenshotBodyProps {
 
 function ScreenshotBody({ load, viewUrl, onRetry, sizes }: ScreenshotBodyProps) {
   if (load.status === 'loaded') {
+    // Set CSS `aspect-ratio` from the cached natural dims so the browser
+    // reserves layout space at the correct shape before the blob
+    // decode completes. Combined with the `max-h-32` (or `max-h-16`)
+    // class from `sizes.img`, the width derives as `height × aspect`,
+    // matching the post-decode size to the byte. Without this, the
+    // img renders at 0×0 during the ~10–30 ms decode window, which
+    // collapses the surrounding inline-flex layout for a frame. Dims
+    // fall back to 0 only on corrupt blobs (decode failure inside
+    // `buildCacheEntry`); the img then renders at intrinsic size,
+    // same as the pre-refactor behaviour.
     const img = (
       <img
         src={load.url}
         alt=""
+        style={
+          load.width && load.height
+            ? { aspectRatio: `${load.width} / ${load.height}` }
+            : undefined
+        }
         className={`${sizes.img} rounded-(--radius) border border-(--color-border)`}
       />
     )
@@ -135,7 +197,7 @@ function ScreenshotBody({ load, viewUrl, onRetry, sizes }: ScreenshotBodyProps) 
         className={`${sizes.failed} rounded-(--radius) border border-dashed border-(--color-loss)/40 flex flex-col items-center justify-center gap-1 text-xs text-(--color-text-dim) text-center p-2`}
       >
         <span className="text-(--color-loss)">Couldn&rsquo;t load</span>
-        <span className="text-xs break-words">{load.error}</span>
+        <span className="text-xs break-words whitespace-pre-line">{load.error}</span>
         <div className="flex items-center gap-2 mt-1">
           <button
             type="button"
@@ -171,10 +233,18 @@ function prefetchedToState(
   ref: string,
   prefetched: ResolvedScreenshot | undefined,
 ):
-  | { ref: string; url: string; error: null }
-  | { ref: string; url: null; error: string }
+  | { ref: string; url: string; width: number; height: number; error: null }
+  | { ref: string; url: null; width: 0; height: 0; error: string }
   | null {
   if (!prefetched) return null
-  if ('url' in prefetched) return { ref, url: prefetched.url, error: null }
-  return { ref, url: null, error: prefetched.error }
+  if ('url' in prefetched) {
+    return {
+      ref,
+      url: prefetched.url,
+      width: prefetched.width,
+      height: prefetched.height,
+      error: null,
+    }
+  }
+  return { ref, url: null, width: 0, height: 0, error: prefetched.error }
 }

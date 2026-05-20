@@ -22,6 +22,7 @@ import { useActiveAccountId } from '@/lib/active-account'
 import {
   applyFilters,
   EMPTY_FILTERS,
+  FILTER_PARAM_KEYS,
   filtersFromParams,
   paramsFromFilters,
   type TradeFilters,
@@ -52,12 +53,23 @@ import {
   HeroNetPnl,
 } from '@/components/AdvancedStats'
 import { StatsFilterBar } from '@/components/StatsFilterBar'
-import { BTN_OUTLINED } from '@/components/form/buttonClass'
+import { BTN_ACCENT } from '@/components/form/buttonClass'
 
 export function OverviewRoute() {
   const [params, setParams] = useSearchParams()
   const navigate = useNavigate()
-  const urlFilters = filtersFromParams(params)
+  // Read the shared slot synchronously on render when the URL is bare —
+  // otherwise the first paint uses the default 30-day window and only
+  // snaps to the real filter once the hydration effect mirrors slot →
+  // URL, which surfaces as a content "jump" on nav-link clicks.
+  const urlFilters = useMemo<TradeFilters>(() => {
+    if (FILTER_PARAM_KEYS.some(k => params.has(k))) {
+      return filtersFromParams(params)
+    }
+    const stored = loadSharedFilters()
+    if (stored && hasAnyFilter(stored)) return stored
+    return filtersFromParams(params)
+  }, [params])
   const equityView = useDefaultEquityView()
   const [tableExpandedIds, setTableExpandedIds] = useState<Set<string>>(new Set())
   const toggleTableRow = useCallback((id: string) => {
@@ -69,17 +81,29 @@ export function OverviewRoute() {
     })
   }, [])
 
-  // First-mount hydration: if the URL is bare and Reports/Stats has saved a
-  // filter to the shared slot, replay it into the URL so this page picks it
-  // up without surfacing a transient unfiltered state.
+  // Keep URL filters and the shared slot in sync on every navigation —
+  // (1) URL with filter params → mirror them into the slot so the user
+  //     can hop to another page and find the same filter applied.
+  // (2) URL with no filter params → hydrate from the slot (preserving
+  //     any non-filter params like `tf` already in the URL).
+  // This makes deep-link arrivals (e.g. a calendar week-card) persist,
+  // and clicking the nav link back to this page restores filters
+  // instead of dropping them.
   useEffect(() => {
-    if (params.toString() !== '') return
-    const stored = loadSharedFilters()
-    if (stored && hasAnyFilter(stored)) {
-      setParams(paramsFromFilters(stored), { replace: true })
+    const hasFilterParam = FILTER_PARAM_KEYS.some(k => params.has(k))
+    if (!hasFilterParam) {
+      const stored = loadSharedFilters()
+      if (stored && hasAnyFilter(stored)) {
+        const next = new URLSearchParams(params)
+        paramsFromFilters(stored).forEach((v, k) => next.set(k, v))
+        setParams(next, { replace: true })
+      }
+      return
     }
+    const f = filtersFromParams(params)
+    saveSharedFilters(hasAnyFilter(f) ? f : null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [params])
   const timeframe = timeframeFromParams(params)
   // Latest visible bucket-key range reported by the chart. The chart
   // emits this on every drag/zoom frame, so it lives in a ref to avoid
@@ -385,14 +409,14 @@ export function OverviewRoute() {
     setViewportEpoch(e => e + 1)
   }
 
-  const isDefault = params.toString() === ''
+  const isDefault = !hasAnyFilter(urlFilters)
 
   return (
     <div className="pt-1 space-y-8">
       <div className="flex items-center justify-between mb-8">
         <h1 className="h-8 flex items-center text-lg font-semibold">Overview</h1>
         {!isDefault && (
-          <button onClick={clear} className={BTN_OUTLINED}>
+          <button onClick={clear} className={BTN_ACCENT}>
             <X className="size-4" /> Clear filters
           </button>
         )}

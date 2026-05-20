@@ -197,7 +197,7 @@ export function signOut(): void {
 function getValidToken(): string {
   const t = loadToken()
   if (t && t.expiresAt > Date.now() + 30_000) return t.value
-  throw new Error('Not connected to Google Drive')
+  throw new Error('Not connected to\nGoogle Drive')
 }
 
 async function authFetch(url: string, init?: RequestInit): Promise<Response> {

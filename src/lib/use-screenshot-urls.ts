@@ -39,8 +39,8 @@ export function useScreenshotUrls(refs: string[]): UseScreenshotUrlsResult {
     void Promise.all(
       refs.map(async (ref): Promise<[string, ResolvedScreenshot]> => {
         try {
-          const url = await resolveScreenshotUrl(ref)
-          return [ref, { url }]
+          const entry = await resolveScreenshotUrl(ref)
+          return [ref, { url: entry.url, width: entry.width, height: entry.height }]
         } catch (e) {
           return [ref, { error: errorMessage(e) }]
         }

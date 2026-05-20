@@ -309,8 +309,9 @@ async function uploadDirectly(
   // Prime the render cache with the bytes we already have so the preview
   // renders instantly instead of doing a round-trip to re-download the file
   // we literally just uploaded (which also hides any transient propagation
-  // blips).
-  rememberUrl(ref, URL.createObjectURL(blob))
+  // blips). Decode here too so the cache carries natural dims for layout
+  // reservation downstream.
+  rememberUrl(ref, await buildCacheEntry(blob))
   return ref
 }
 
@@ -330,7 +331,7 @@ async function enqueuePending(
     created_at: now,
   })
   const ref = `pending:${id}`
-  rememberUrl(ref, URL.createObjectURL(blob))
+  rememberUrl(ref, await buildCacheEntry(blob))
   return ref
 }
 
@@ -383,29 +384,78 @@ export async function discardScreenshotRef(raw: string | null): Promise<void> {
 
 // --- rendering ---
 //
-// Bounded LRU cache mapping a reference string to a blob URL. Keeps repeated
-// renders of the same screenshot (e.g. re-opening a trade) from re-fetching.
-// Evicted entries have their blob URLs revoked so long-lived sessions don't
-// accumulate detached ObjectURLs.
+// Bounded LRU cache mapping a reference string to a blob URL + the
+// decoded image's natural dimensions. Keeps repeated renders of the same
+// screenshot (e.g. re-opening a trade) from re-fetching. Evicted entries
+// have their blob URLs revoked so long-lived sessions don't accumulate
+// detached ObjectURLs.
+//
+// Dimensions are captured at every entry point that creates a blob URL
+// (resolveScreenshotUrl, enqueuePending, uploadDirectly) by decoding the
+// blob once with `img.decode()`. ScreenshotThumb then sets the cached
+// `width`/`height` on the rendered `<img>` element so the browser
+// reserves layout space at the correct dims before its own decode
+// completes — without this, the img briefly renders at 0×0 while
+// decoding, which visibly collapses the surrounding layout.
+export interface CachedScreenshot {
+  url: string
+  width: number
+  height: number
+}
 const MAX_CACHED_URLS = 24
-const urlCache = new Map<string, string>()
+const urlCache = new Map<string, CachedScreenshot>()
 
 function revokeCached(ref: string): void {
   const existing = urlCache.get(ref)
   if (existing) {
-    URL.revokeObjectURL(existing)
+    URL.revokeObjectURL(existing.url)
     urlCache.delete(ref)
   }
 }
 
-function rememberUrl(ref: string, url: string): void {
+/** Synchronous lookup into the same module-level cache populated by
+ *  `resolveScreenshotUrl`. Returns the blob URL + natural dims if a
+ *  previous resolve has settled. Used by `ScreenshotThumb` to render
+ *  the image at the correct size on the first frame after navigation
+ *  when the cache is warm (e.g. seeded by `preloadDay`). */
+export function getCachedScreenshotUrl(
+  raw: string | null | undefined,
+): CachedScreenshot | undefined {
+  if (!raw) return undefined
+  return urlCache.get(raw)
+}
+
+function rememberUrl(ref: string, entry: CachedScreenshot): void {
   if (urlCache.has(ref)) revokeCached(ref)
-  urlCache.set(ref, url)
+  urlCache.set(ref, entry)
   while (urlCache.size > MAX_CACHED_URLS) {
     const oldest = urlCache.keys().next().value
     if (oldest === undefined) break
     revokeCached(oldest)
   }
+}
+
+/** Creates a blob URL and runs `img.decode()` to capture the image's
+ *  natural width/height. Returns the full cache entry shape. Used at
+ *  every entry point that mints a fresh blob URL (resolve / upload /
+ *  enqueue) so the cache always carries dims alongside the URL. */
+async function buildCacheEntry(blob: Blob): Promise<CachedScreenshot> {
+  const url = URL.createObjectURL(blob)
+  let width = 0
+  let height = 0
+  try {
+    const img = new Image()
+    img.src = url
+    await img.decode()
+    width = img.naturalWidth
+    height = img.naturalHeight
+  } catch {
+    // Decode failure → leave dims at 0; the `<img>` element will render
+    // at intrinsic size (same as the old "no-dims" behaviour) and the
+    // surrounding layout briefly collapses. Acceptable fallback for
+    // corrupt blobs.
+  }
+  return { url, width, height }
 }
 
 async function blobForPending(pendingId: string): Promise<Blob | null> {
@@ -417,15 +467,20 @@ async function blobForDrive(fileId: string): Promise<Blob> {
   return downloadDriveFile(fileId)
 }
 
-// Resolves a ref to a blob URL suitable for `<img src>`. Throws on failure
-// (missing pending blob, Drive fetch error, scope issue) so callers can
-// surface a meaningful message — swallowing made "image won't load" bugs
-// impossible to diagnose without devtools.
-/** Per-ref resolution result: either a blob URL ready for `<img>` or the
- *  error message from the failed fetch. Returned by `useScreenshotUrls`. */
-export type ResolvedScreenshot = { url: string } | { error: string }
+// Resolves a ref to a cache entry suitable for rendering. Throws on
+// failure (missing pending blob, Drive fetch error, scope issue) so
+// callers can surface a meaningful message — swallowing made "image
+// won't load" bugs impossible to diagnose without devtools.
+/** Per-ref resolution result: either a blob URL + dims ready for
+ *  `<img>` or the error message from the failed fetch. Returned by
+ *  `useScreenshotUrls`. */
+export type ResolvedScreenshot =
+  | { url: string; width: number; height: number }
+  | { error: string }
 
-export async function resolveScreenshotUrl(raw: string | null | undefined): Promise<string> {
+export async function resolveScreenshotUrl(
+  raw: string | null | undefined,
+): Promise<CachedScreenshot> {
   if (!raw) throw new Error('No screenshot ref')
   const cached = urlCache.get(raw)
   if (cached) return cached
@@ -440,24 +495,14 @@ export async function resolveScreenshotUrl(raw: string | null | undefined): Prom
         : 'Drive returned no file bytes.',
     )
   }
-  const url = URL.createObjectURL(blob)
-  // Wait for the image to be fully decoded before resolving so the
-  // consuming `<img>` paints at its intrinsic dimensions in one frame.
-  // Without this, the thumb's loader is replaced by an `<img>` that
-  // briefly renders at 0×0 (then reflows once the browser finishes
-  // decoding) — a visible "collapse then re-expand" layout shift.
-  // Safe to do here since the Day page no longer gates on screenshot
-  // resolution; per-thumb decode time only delays the per-thumb swap.
-  try {
-    const img = new Image()
-    img.src = url
-    await img.decode()
-  } catch {
-    // Decode failures are non-fatal — the `<img>` will still try to
-    // load. We just lose the layout-stable guarantee for that one image.
-  }
-  rememberUrl(raw, url)
-  return url
+  // `buildCacheEntry` runs `img.decode()` so the consuming `<img>` paints
+  // at its intrinsic dimensions in one frame. Without the decode, the
+  // thumb's loader is replaced by an `<img>` that briefly renders at
+  // 0×0 (then reflows once the browser finishes decoding) — a visible
+  // "collapse then re-expand" layout shift.
+  const entry = await buildCacheEntry(blob)
+  rememberUrl(raw, entry)
+  return entry
 }
 
 // --- queue drain (runs at the start of every manual sync) ---
@@ -505,10 +550,12 @@ export async function drainPendingUploads(): Promise<void> {
           await db.pending_uploads.delete(p.id)
         },
       )
-      const cachedUrl = urlCache.get(oldRef)
-      if (cachedUrl) {
+      const cachedEntry = urlCache.get(oldRef)
+      if (cachedEntry) {
+        // Transfer URL + dims from the pending entry to the new Drive
+        // ref without revoking — same underlying Blob, just a new key.
         urlCache.delete(oldRef)
-        rememberUrl(newRef, cachedUrl)
+        rememberUrl(newRef, cachedEntry)
       }
     } catch (e) {
       // Scope errors will re-happen for every pending item until the user

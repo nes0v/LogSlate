@@ -1,11 +1,12 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { format, parseISO } from 'date-fns'
 import { Plus } from 'lucide-react'
 import { db } from '@/db/schema'
-import type { Model } from '@/db/types'
+import type { Model, NewsEvent, TradeRecord } from '@/db/types'
 import { getDayNote, listDayScreenshotsFor, listModels } from '@/db/queries'
+import { parseScreenshotRef, resolveScreenshotUrl } from '@/lib/drive-images'
 import { useActiveAccountId } from '@/lib/active-account'
 import { firstExecutionMs } from '@/lib/trade-math'
 import { aggregate } from '@/lib/trade-stats'
@@ -18,6 +19,79 @@ import { StatsGrid } from '@/components/StatsGrid'
 import { TradeTable } from '@/components/TradeTable'
 import { BTN_ACCENT } from '@/components/form/buttonClass'
 
+// Module-level LRU cache keyed by `${accountId}|${date}`. Every time a
+// live query on the Day page resolves, the result is mirrored here, and
+// the prev/next neighbours of the current day are warmed in the
+// background. On navigation, the next day's render reads its data
+// straight out of the cache — no blink while Dexie re-queries.
+//
+// Cap: ~100 days × per-day payload (trades + news + note + screenshot
+// refs, all small string/number records) stays well under a megabyte.
+// Eviction uses insertion-order with LRU touch on read, so frequently
+// revisited days survive long navigation sessions.
+interface CachedDay {
+  trades?: TradeRecord[]
+  news?: NewsEvent[]
+  note?: string
+  screenshots?: string[]
+}
+const DAY_CACHE_CAP = 100
+const dayDataCache = new Map<string, CachedDay>()
+const dayCacheKey = (accountId: string, date: string) => `${accountId}|${date}`
+
+function readDayCache(key: string): CachedDay | undefined {
+  const entry = dayDataCache.get(key)
+  if (entry) {
+    // LRU touch: re-insert moves the entry to the end so the oldest
+    // entries (the ones a long-session would naturally evict first)
+    // are the genuinely least-recently-read ones.
+    dayDataCache.delete(key)
+    dayDataCache.set(key, entry)
+  }
+  return entry
+}
+
+function writeDayCache(key: string, value: CachedDay): void {
+  if (dayDataCache.has(key)) dayDataCache.delete(key)
+  dayDataCache.set(key, value)
+  while (dayDataCache.size > DAY_CACHE_CAP) {
+    const oldest = dayDataCache.keys().next().value
+    if (oldest === undefined) break
+    dayDataCache.delete(oldest)
+  }
+}
+
+function patchDayCache(accountId: string, date: string, patch: CachedDay) {
+  if (!accountId || !date) return
+  const key = dayCacheKey(accountId, date)
+  writeDayCache(key, { ...dayDataCache.get(key), ...patch })
+}
+
+async function preloadDay(accountId: string, date: string): Promise<void> {
+  if (!accountId || !date) return
+  const key = dayCacheKey(accountId, date)
+  if (dayDataCache.has(key)) return
+  const [tradeRows, newsRows, note, screenshots] = await Promise.all([
+    db.trades.where('[account_id+date]').equals([accountId, date]).toArray(),
+    db.news.where('date').equals(date).toArray(),
+    getDayNote(accountId, date),
+    listDayScreenshotsFor(accountId, date),
+  ])
+  const trades = tradeRows.sort((a, b) => {
+    const ka = firstExecutionMs(a) ?? Date.parse(a.created_at)
+    const kb = firstExecutionMs(b) ?? Date.parse(b.created_at)
+    return ka - kb
+  })
+  newsRows.sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at))
+  writeDayCache(key, { trades, news: newsRows, note, screenshots })
+  // Warm the screenshot URL cache so thumbs paint as an image on the
+  // first frame after navigation instead of flashing the "loading…"
+  // placeholder while resolveScreenshotUrl awaits the IndexedDB blob.
+  await Promise.all(
+    screenshots.map(ref => resolveScreenshotUrl(ref).catch(() => null)),
+  )
+}
+
 export function DayRoute() {
   const { date = '' } = useParams()
   const navigate = useNavigate()
@@ -26,11 +100,12 @@ export function DayRoute() {
 
   const accountId = useActiveAccountId()
   // All four day-scoped queries live here so the page can reveal as a
-  // single unit. Children are pure presentational: news, note, and
-  // screenshot data are passed in as props instead of each component
-  // opening its own `useLiveQuery` (which would each settle on a separate
-  // microtask, producing the multi-stage flicker).
-  const trades = useLiveQuery(
+  // single unit. Each result is tagged with the `date` it was loaded
+  // for and unwrapped only when that date matches the current URL —
+  // otherwise dexie-react-hooks' stale-while-revalidate behaviour
+  // briefly surfaces the previous day's data (screenshots, trades,
+  // note) before the new queries settle, producing a visible flash.
+  const tradesResult = useLiveQuery(
     async () => {
       const rows = await db.trades
         .where('[account_id+date]')
@@ -38,27 +113,49 @@ export function DayRoute() {
         .toArray()
       const sortKey = (t: typeof rows[number]) =>
         firstExecutionMs(t) ?? Date.parse(t.created_at)
-      return rows.sort((a, b) => sortKey(a) - sortKey(b))
+      const sorted = rows.sort((a, b) => sortKey(a) - sortKey(b))
+      patchDayCache(accountId, date, { trades: sorted })
+      return { forDate: date, rows: sorted }
     },
     [date, accountId],
   )
-  const news = useLiveQuery(
+  const newsResult = useLiveQuery(
     async () => {
       const rows = await db.news.where('date').equals(date).toArray()
       // ISO 8601 strings sort lexicographically — no Date.parse needed.
       rows.sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at))
-      return rows
+      patchDayCache(accountId, date, { news: rows })
+      return { forDate: date, rows }
     },
-    [date],
+    [date, accountId],
   )
-  const note = useLiveQuery(
-    () => getDayNote(accountId, date),
+  const noteResult = useLiveQuery(
+    async () => {
+      const value = await getDayNote(accountId, date)
+      patchDayCache(accountId, date, { note: value })
+      return { forDate: date, value }
+    },
     [accountId, date],
   )
-  const screenshots = useLiveQuery(
-    () => listDayScreenshotsFor(accountId, date),
+  const screenshotsResult = useLiveQuery(
+    async () => {
+      const rows = await listDayScreenshotsFor(accountId, date)
+      patchDayCache(accountId, date, { screenshots: rows })
+      return { forDate: date, rows }
+    },
     [accountId, date],
   )
+  // Stale-while-revalidate: fall back to the module cache so a navigation
+  // to a preloaded neighbour renders with data on the first frame instead
+  // of unmounting the content section until Dexie settles. Reading
+  // through `readDayCache` also LRU-touches the entry so a revisited
+  // day survives eviction.
+  const cached = readDayCache(dayCacheKey(accountId, date))
+  const trades = tradesResult?.forDate === date ? tradesResult.rows : cached?.trades
+  const news = newsResult?.forDate === date ? newsResult.rows : cached?.news
+  const note = noteResult?.forDate === date ? noteResult.value : cached?.note
+  const screenshots =
+    screenshotsResult?.forDate === date ? screenshotsResult.rows : cached?.screenshots
   // Models are resolved once at the route level so trade rows render with
   // the right name on first paint instead of flashing "gambling" → real.
   const models = useLiveQuery(
@@ -70,16 +167,43 @@ export function DayRoute() {
     for (const p of models ?? []) m.set(p.id, p)
     return m
   }, [models])
-  // Page renders as soon as Dexie queries settle — screenshots resolve
-  // their own blob URLs in `<ScreenshotThumb>` so the page doesn't wait
-  // on image fetches. Each thumb shows its own loading placeholder
-  // until its blob URL is ready.
+  // First-paint gate: on a cold open (hard reload / deep-link) we want
+  // pending screenshots fully resolved + decoded before revealing the
+  // page so each thumb paints as an image straight away with no
+  // loading-placeholder flash. `resolveScreenshotUrl` decodes
+  // internally and writes the URL cache, so awaiting `allSettled` over
+  // every pending ref is sufficient. Once the flag flips on it stays
+  // on — subsequent navigations rely on `preloadDay` + the in-thumb
+  // cache check, so re-gating would just re-introduce the blink.
+  const [pendingFirstPaintDone, setPendingFirstPaintDone] = useState(false)
+  useEffect(() => {
+    if (pendingFirstPaintDone) return
+    if (!screenshots) return
+    const pending = screenshots.filter(
+      r => parseScreenshotRef(r)?.kind === 'pending',
+    )
+    if (pending.length === 0) {
+      setPendingFirstPaintDone(true)
+      return
+    }
+    let cancelled = false
+    void Promise.allSettled(pending.map(ref => resolveScreenshotUrl(ref))).then(
+      () => {
+        if (!cancelled) setPendingFirstPaintDone(true)
+      },
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [screenshots, pendingFirstPaintDone])
+
   const loaded =
     trades !== undefined &&
     news !== undefined &&
     note !== undefined &&
     screenshots !== undefined &&
-    models !== undefined
+    models !== undefined &&
+    pendingFirstPaintDone
 
   // Every distinct day that has trades for this account — used to skip empty
   // days in prev/next navigation. `uniqueKeys()` walks the compound index
@@ -113,6 +237,13 @@ export function DayRoute() {
     next: nextDate ? `/day/${nextDate}` : null,
     navigate,
   })
+
+  // Pre-warm the cache for adjacent traded days so prev/next navigation
+  // renders straight from cache on the first frame.
+  useEffect(() => {
+    if (prevDate) void preloadDay(accountId, prevDate)
+    if (nextDate) void preloadDay(accountId, nextDate)
+  }, [accountId, prevDate, nextDate])
 
   const stats = aggregate(trades ?? [])
 
@@ -154,7 +285,10 @@ export function DayRoute() {
 
           <DayNewsSection events={news} />
 
-          <DayNoteSection accountId={accountId} date={date} stored={note} />
+          {/* Keyed on `date` so the textarea's local `value` state can't
+              flash the previous day's note for one frame after navigation
+              while its internal `stored → value` sync effect catches up. */}
+          <DayNoteSection key={date} accountId={accountId} date={date} stored={note} />
 
           <DayScreenshotSection
             accountId={accountId}

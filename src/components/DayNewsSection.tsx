@@ -17,7 +17,7 @@ export function DayNewsSection({ events }: DayNewsSectionProps) {
       <h2 className="text-sm font-medium">News</h2>
       <div className="bg-(--color-panel) rounded-(--radius) overflow-hidden">
         {events.length === 0 ? (
-          <div className="p-3 text-xs text-(--color-text-dim)">No USD high/medium events.</div>
+          <div className="h-8 px-3 flex items-center text-xs text-(--color-text-dim)">No USD high/medium events.</div>
         ) : (
           <table className="w-full text-sm border-collapse">
             <tbody>
@@ -36,7 +36,7 @@ function NewsRow({ event }: { event: NewsEvent }) {
   const d = new Date(event.scheduled_at)
   const time = Number.isNaN(d.getTime()) ? '—' : nyTimeHHmm(d)
   return (
-    <tr className="border-t border-(--color-bg) [&>td]:pt-[7px] [&>td]:pb-[9px] [&>td]:align-middle">
+    <tr className="border-t border-(--color-bg) [&:first-child]:border-t-0 [&>td]:pt-[7px] [&>td]:pb-[9px] [&>td]:align-middle">
       <td className="pl-3 pr-6 text-xs font-mono tabular-nums text-(--color-text-dim) w-px whitespace-nowrap">
         {time}
       </td>

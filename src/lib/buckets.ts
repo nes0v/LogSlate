@@ -12,6 +12,7 @@ import {
   endOfYear,
   format,
   getQuarter,
+  isWeekend,
   parse,
   startOfMonth,
   startOfQuarter,
@@ -24,7 +25,13 @@ import { dateKeyToDate, nyDateKey } from '@/lib/tz'
 export type Timeframe = 'D' | 'W' | 'M' | 'Q' | 'Y'
 
 const DATE_KEY = 'yyyy-MM-dd'
-export const WEEK_OPTS = { weekStartsOn: 0 as const } // Sunday
+// Trading weeks are 5-working-day weeks (Mon–Fri). Anchor on Monday so
+// every week-aligned UI surface — calendar grid, weekly chart buckets,
+// week navigation — starts on the first weekday and the weekend days
+// land at the end. Sun/Sat themselves are still emitted by
+// `eachWeekOfInterval`-driven buckets but they're empty in practice
+// (futures don't trade weekends, and `bucketByDay` filters them out).
+export const WEEK_OPTS = { weekStartsOn: 1 as const } // Monday
 
 export interface Bucket {
   key: string // stable id: date-key for day, week-start for week, yyyy-MM for month
@@ -47,17 +54,22 @@ function groupTrades(trades: TradeRecord[]): Map<string, TradeRecord[]> {
 
 export function bucketByDay(trades: TradeRecord[], rangeStart: Date, rangeEnd: Date): Bucket[] {
   const byDay = groupTrades(trades)
-  return eachDayOfInterval({ start: rangeStart, end: rangeEnd }).map(d => {
-    const key = format(d, DATE_KEY)
-    return {
-      key,
-      label: format(d, 'EEE d'),
-      rangeStart: key,
-      rangeEnd: key,
-      navTarget: `/day/${key}`,
-      trades: byDay.get(key) ?? [],
-    }
-  })
+  // Futures don't trade Sat/Sun, so a weekend day is always an empty
+  // bucket — drop them from the daily timeframe so the equity chart
+  // doesn't render flat plateaus across every weekend.
+  return eachDayOfInterval({ start: rangeStart, end: rangeEnd })
+    .filter(d => !isWeekend(d))
+    .map(d => {
+      const key = format(d, DATE_KEY)
+      return {
+        key,
+        label: format(d, 'EEE d'),
+        rangeStart: key,
+        rangeEnd: key,
+        navTarget: `/day/${key}`,
+        trades: byDay.get(key) ?? [],
+      }
+    })
 }
 
 export function bucketByWeek(trades: TradeRecord[], rangeStart: Date, rangeEnd: Date): Bucket[] {

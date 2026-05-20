@@ -5,17 +5,22 @@ import {
   startOfMonth,
   startOfWeek,
 } from 'date-fns'
-import { WEEK_OPTS } from '@/lib/buckets'
 
-// 6×7 day grid for `month` aligned to the week start, including leading/
+// 6×7 day grid for `month` aligned to a Sunday start, including leading/
 // trailing days from neighboring months. Used by the calendar route and
 // the date-picker popover.
+//
+// Deliberately hardcoded to Sunday-first regardless of the app-wide
+// `WEEK_OPTS` (which is Monday for chart-/bucket-purposes) — the
+// calendar UI keeps the Sun…Sat column order the user is used to.
+const CAL_GRID_OPTS = { weekStartsOn: 0 as const }
+
 export function monthDayGrid(month: Date): {
   start: Date
   end: Date
   days: Date[]
 } {
-  const start = startOfWeek(startOfMonth(month), WEEK_OPTS)
-  const end = endOfWeek(endOfMonth(month), WEEK_OPTS)
+  const start = startOfWeek(startOfMonth(month), CAL_GRID_OPTS)
+  const end = endOfWeek(endOfMonth(month), CAL_GRID_OPTS)
   return { start, end, days: eachDayOfInterval({ start, end }) }
 }

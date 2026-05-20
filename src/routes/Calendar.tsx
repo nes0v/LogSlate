@@ -283,6 +283,8 @@ export function CalendarRoute() {
               <WeekCard
                 key={`week-${weekIdx}`}
                 anchor={week.days[WEEK_LABEL_DAY_INDEX]}
+                rangeStart={week.days[WEEK_LABEL_DAY_INDEX]}
+                rangeEnd={week.days[WEEK_LABEL_DAY_INDEX + 4]}
                 pnl={week.pnl}
                 tradedDays={week.tradedDays}
               />,
@@ -312,8 +314,8 @@ interface PerDayCell {
 const CELL_HEIGHT_CLASS = 'h-[80px] sm:h-[100px]'
 
 // Index into a week's `days` array used as the week-card label anchor.
-// The grid is Sunday-first (`monthDayGrid`), so position 1 is Monday —
-// the conventional "week of" anchor.
+// The calendar grid stays Sunday-first (see `monthDayGrid`) so position
+// 1 is Monday — the conventional "week of" anchor for trading weeks.
 const WEEK_LABEL_DAY_INDEX = 1
 
 interface DayCellProps {
@@ -484,7 +486,7 @@ const CELL_PALETTE: Record<CellVariant, CellPalette> = {
     pnl: '',
     meta: '',
     winRate: '',
-    icon: 'text-(--color-border-strong)',
+    icon: 'text-(--color-cal-empty-icon)',
   },
   // Out-of-month padding cells — transparent surface with a hairline
   // border. Icons / metadata never render here (hasScreenshot/hasNote
@@ -514,10 +516,14 @@ function pickVariant(
 
 function WeekCard({
   anchor,
+  rangeStart,
+  rangeEnd,
   pnl,
   tradedDays,
 }: {
   anchor: Date
+  rangeStart: Date
+  rangeEnd: Date
   pnl: number
   tradedDays: number
 }) {
@@ -532,8 +538,16 @@ function WeekCard({
       />
     )
   }
+  const from = format(rangeStart, DATE_KEY)
+  const to = format(rangeEnd, DATE_KEY)
   return (
-    <div className={cn('rounded-[22px] bg-(--color-panel) p-3.5 flex flex-col justify-center gap-0.5', CELL_HEIGHT_CLASS)}>
+    <Link
+      to={`/overview?from=${from}&to=${to}`}
+      className={cn(
+        'rounded-[22px] bg-(--color-panel) p-3.5 flex flex-col justify-center gap-0.5 transition-colors hover:brightness-125',
+        CELL_HEIGHT_CLASS,
+      )}
+    >
       <div className="text-xs tracking-wider text-(--color-text-dim)">
         Week of {format(anchor, 'MMM do')}
       </div>
@@ -545,6 +559,6 @@ function WeekCard({
           {tradedDays} day{tradedDays === 1 ? '' : 's'}
         </span>
       </div>
-    </div>
+    </Link>
   )
 }
