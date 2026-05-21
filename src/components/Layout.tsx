@@ -64,6 +64,10 @@ export function Layout() {
                   <span className="text-xs uppercase tracking-wider text-(--color-text-dim)">Equity</span>
                   <span className="text-(--color-text)">{formatUsd(equity)}</span>
                 </div>
+                <div className="flex items-baseline gap-1.5 font-mono text-sm tabular-nums">
+                  <span className="text-xs uppercase tracking-wider text-(--color-text-dim)">Risk</span>
+                  <span className="text-(--color-text)">{formatUsd(Math.max(40, equity * 0.02))}</span>
+                </div>
                 <AccountSwitcher accounts={accounts} />
               </>
             ) : null}
