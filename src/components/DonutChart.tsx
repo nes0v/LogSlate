@@ -53,7 +53,6 @@ function DonutChartImpl({ title, segments, centerLabel, className, legendColumns
           prev ? { ...prev, x: e.clientX, y: e.clientY } : prev,
         ),
       onMouseLeave: () => setTip(null),
-      style: { cursor: 'pointer' },
     }
   }
 

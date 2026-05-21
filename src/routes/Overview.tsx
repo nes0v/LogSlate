@@ -54,6 +54,9 @@ import {
 } from '@/components/AdvancedStats'
 import { StatsFilterBar } from '@/components/StatsFilterBar'
 import { BTN_ACCENT } from '@/components/form/buttonClass'
+import { loadJsonFromStorage, saveJsonToStorage } from '@/lib/storage'
+
+const TRADES_SECTION_OPEN_STORAGE_KEY = 'logslate.overview.tradesSectionOpen'
 
 export function OverviewRoute() {
   const [params, setParams] = useSearchParams()
@@ -80,6 +83,13 @@ export function OverviewRoute() {
       return next
     })
   }, [])
+  const [tradesSectionOpen, setTradesSectionOpen] = useState<boolean>(() =>
+    loadJsonFromStorage<boolean>(
+      TRADES_SECTION_OPEN_STORAGE_KEY,
+      raw => (typeof raw === 'boolean' ? raw : null),
+      false,
+    ),
+  )
 
   // Keep URL filters and the shared slot in sync on every navigation —
   // (1) URL with filter params → mirror them into the slot so the user
@@ -425,7 +435,15 @@ export function OverviewRoute() {
       <StatsFilterBar filters={filters} update={update} />
 
       {filtered.length > 0 && (
-        <details className="space-y-2 group">
+        <details
+          className="space-y-2 group"
+          open={tradesSectionOpen}
+          onToggle={e => {
+            const open = (e.currentTarget as HTMLDetailsElement).open
+            setTradesSectionOpen(open)
+            saveJsonToStorage(TRADES_SECTION_OPEN_STORAGE_KEY, open)
+          }}
+        >
           <summary className="text-sm font-medium cursor-pointer text-(--color-text) hover:text-(--color-accent) list-none flex items-center gap-1 transition-colors">
             <ChevronRight className="size-4 transition-transform group-open:rotate-90" />
             Trades{' '}
@@ -436,6 +454,7 @@ export function OverviewRoute() {
             expandedIds={tableExpandedIds}
             onToggle={toggleTableRow}
             modelById={modelById}
+            showDate
           />
         </details>
       )}

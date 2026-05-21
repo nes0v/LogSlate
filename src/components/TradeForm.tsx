@@ -3,7 +3,7 @@ import { Controller, useFieldArray, useForm, useWatch, type Control } from 'reac
 import { zodResolver } from '@hookform/resolvers/zod'
 import type { z } from 'zod'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Plus, Save, Trash2, X } from 'lucide-react'
+import { ArrowLeft, Plus, Save, Trash2, X } from 'lucide-react'
 import { detectSession, emptyForm, formToDraft, tradeFormSchema, type TradeFormValues } from '@/lib/form-schema'
 import { SESSION_BADGE, SESSION_BADGE_CLASS } from '@/lib/session-badge'
 import { listAllTrades, listModels } from '@/db/queries'
@@ -551,7 +551,7 @@ function ActionButtons({ isSubmitting, isDirty, onCancel }: ActionButtonsProps) 
         <Save className="size-4" /> Save
       </button>
       <button type="button" onClick={onCancel} className={BTN_OUTLINED}>
-        Cancel
+        <ArrowLeft className="size-4" /> back
       </button>
     </>
   )

@@ -1,15 +1,12 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
-import { useLiveQuery } from 'dexie-react-hooks'
+import { useEffect, useState } from 'react'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { format, parseISO } from 'date-fns'
 import { Trash2 } from 'lucide-react'
-import { PageHeader } from '@/components/PageHeader'
 import { TradeForm } from '@/components/TradeForm'
 import { useConfirm } from '@/components/ConfirmDialog'
 import { db } from '@/db/schema'
-import { deleteTrade, getTrade, listAllTrades, updateTrade } from '@/db/queries'
+import { deleteTrade, getTrade, updateTrade } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
-import { useArrowNavigation } from '@/lib/use-arrow-navigation'
 import { recordToForm, type TradeFormValues } from '@/lib/form-schema'
 import { BTN_BASE } from '@/components/form/buttonClass'
 import { errorMessage } from '@/lib/utils'
@@ -18,6 +15,8 @@ import type { TradeDraft, TradeRecord } from '@/db/types'
 export function TradeEditRoute() {
   const { id = '' } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
+  const cameFrom = (location.state as { from?: string } | null)?.from ?? null
   const accountId = useActiveAccountId()
   const confirm = useConfirm()
   const [state, setState] = useState<
@@ -49,37 +48,6 @@ export function TradeEditRoute() {
       navigate('/', { replace: true })
     }
   }, [state, accountId, navigate])
-
-  // Every trade id in the active account, ordered chronologically — used to
-  // jump to adjacent trades without going back to the day/overview view.
-  const orderedIds = useLiveQuery(
-    async () => {
-      const rows = await listAllTrades(accountId)
-      rows.sort((a, b) => {
-        if (a.date !== b.date) return a.date < b.date ? -1 : 1
-        return a.created_at < b.created_at ? -1 : 1
-      })
-      return rows.map(t => t.id)
-    },
-    [accountId],
-    [] as string[],
-  )
-
-  const { prevId, nextId } = useMemo(() => {
-    const ids = orderedIds ?? []
-    const idx = ids.indexOf(id)
-    if (idx < 0) return { prevId: null, nextId: null }
-    return {
-      prevId: idx > 0 ? ids[idx - 1] : null,
-      nextId: idx < ids.length - 1 ? ids[idx + 1] : null,
-    }
-  }, [orderedIds, id])
-
-  useArrowNavigation({
-    prev: prevId ? `/trade/${prevId}/edit` : null,
-    next: nextId ? `/trade/${nextId}/edit` : null,
-    navigate,
-  })
 
   async function handleSubmit(draft: TradeDraft) {
     await updateTrade(id, draft)
@@ -119,36 +87,29 @@ export function TradeEditRoute() {
           The date and delete button stay visible (delete just no-ops
           until the record resolves) so the page doesn't flash a "Loading…"
           stub before snapping to the real layout. */}
-      <PageHeader
-        back
-        title="Edit trade"
-        prev={prevId ? `/trade/${prevId}/edit` : null}
-        next={nextId ? `/trade/${nextId}/edit` : null}
-        prevLabel="Previous trade"
-        nextLabel="Next trade"
-        rightSlot={
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-(--color-text-dim) font-mono">
-              {record ? format(parseISO(record.date), 'MMM d, yyyy') : ' '}
-            </span>
-            <button
-              type="button"
-              onClick={handleDelete}
-              disabled={!record}
-              className={`${BTN_BASE} border border-(--color-border) text-(--color-text-dim) hover:text-(--color-loss) disabled:opacity-50 transition-colors`}
-            >
-              <Trash2 className="size-4" /> Delete
-            </button>
-          </div>
-        }
-      />
+      <div className="flex items-center justify-between mb-8">
+        <h1 className="h-8 flex items-center text-lg font-semibold">Edit trade</h1>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-(--color-text-dim) font-mono">
+            {record ? format(parseISO(record.date), 'MMM d, yyyy') : ' '}
+          </span>
+          <button
+            type="button"
+            onClick={handleDelete}
+            disabled={!record}
+            className={`${BTN_BASE} border border-(--color-border) text-(--color-text-dim) hover:text-(--color-loss) disabled:opacity-50 transition-colors`}
+          >
+            <Trash2 className="size-4" /> Delete
+          </button>
+        </div>
+      </div>
       {ready && record ? (
         <TradeForm
           key={id}
           initialValues={state.values}
           initialDate={record.date}
           onSubmit={handleSubmit}
-          onCancel={() => navigate(`/day/${record.date}`)}
+          onCancel={() => navigate(cameFrom ?? `/day/${record.date}`)}
           getTradeOrdinal={async () => {
             const rows = await db.trades
               .where('[account_id+date]')

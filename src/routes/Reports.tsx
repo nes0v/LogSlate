@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { X } from 'lucide-react'
 import type { TradeRecord } from '@/db/types'
@@ -68,6 +68,7 @@ const COMPARE_VALUES: readonly CompareAxis[] = [
 export function ReportsRoute() {
   const [params, setParams] = useSearchParams()
   const navigate = useNavigate()
+  const location = useLocation()
   // Read the shared slot synchronously on render when the URL has no
   // filter params — otherwise the first paint uses the default 30-day
   // window and only snaps to the real filter once the hydration effect
@@ -304,7 +305,14 @@ export function ReportsRoute() {
               </div>
             ) : tab === 'risk' ? (
               <div className="bg-(--color-panel) rounded-(--radius) p-3 h-full">
-                <RiskReport trades={filtered} onTradeClick={id => navigate(`/trade/${id}/edit`)} />
+                <RiskReport
+                  trades={filtered}
+                  onTradeClick={id =>
+                    navigate(`/trade/${id}/edit`, {
+                      state: { from: location.pathname + location.search },
+                    })
+                  }
+                />
               </div>
             ) : tab === 'outcome' ? (
               <div className="bg-(--color-panel) rounded-(--radius) p-3 h-full">

@@ -262,14 +262,17 @@ export function DayRoute() {
   return (
     <div className="pt-1 space-y-8">
       <PageHeader
-        back
         title={pretty}
         prev={prevDate ? `/day/${prevDate}` : null}
         next={nextDate ? `/day/${nextDate}` : null}
         prevLabel="Previous day with trades"
         nextLabel="Next day with trades"
         rightSlot={
-          <Link to={`/trade/new?date=${date}`} className={BTN_ACCENT}>
+          <Link
+            to={`/trade/new?date=${date}`}
+            state={{ from: `/day/${date}` }}
+            className={BTN_ACCENT}
+          >
             <Plus className="size-4" /> New trade
           </Link>
         }

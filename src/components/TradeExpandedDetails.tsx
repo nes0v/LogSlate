@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { Check, ExternalLink, Pencil, Trash2, X } from 'lucide-react'
 import type { Model, TradeRecord } from '@/db/types'
 import { deleteTrade } from '@/db/queries'
@@ -26,6 +26,7 @@ const DELETE_BTN_CLASS = `${ACTION_BTN_BASE} hover:text-(--color-loss)`
 
 export function TradeExpandedDetails({ trade, model }: TradeExpandedDetailsProps) {
   const confirm = useConfirm()
+  const location = useLocation()
   const contracts = totalContracts(trade)
   const ahpc = computeAhpc(trade)
   const hv = handleValue(trade.symbol, trade.contract_type)
@@ -42,9 +43,12 @@ export function TradeExpandedDetails({ trade, model }: TradeExpandedDetailsProps
   }
 
   return (
-    <div className="space-y-5 min-w-0">
-      <div className="flex items-start">
-        <div className="w-[22rem] shrink-0 min-w-0 pr-3 space-y-3">
+    <div className="flex items-start gap-6">
+      {model && (
+        <ModelChecklist groups={model.groups} followed={followed} />
+      )}
+      {(trade.idea || trade.notes) && (
+        <div className="w-[310px] shrink-0 min-w-0 space-y-3">
           {trade.idea && (
             <p className="text-sm text-(--color-text) whitespace-pre-wrap break-words">
               {trade.idea}
@@ -56,44 +60,21 @@ export function TradeExpandedDetails({ trade, model }: TradeExpandedDetailsProps
             </p>
           )}
         </div>
-        {model && (
-          <ModelChecklist groups={model.groups} followed={followed} />
-        )}
-        <div className="flex items-center gap-2 shrink-0 ml-auto">
-          <Link to={`/trade/${trade.id}/edit`} className={NEUTRAL_BTN_CLASS}>
-            <Pencil className="size-4" /> Edit
-          </Link>
-          <button type="button" onClick={handleDelete} className={DELETE_BTN_CLASS}>
-            <Trash2 className="size-4" /> Delete
-          </button>
-          {driveUrl && (
-            <a
-              href={driveUrl}
-              target="_blank"
-              rel="noreferrer"
-              className={NEUTRAL_BTN_CLASS}
-            >
-              <ExternalLink className="size-4" /> Drive
-            </a>
-          )}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-[auto_auto] items-start gap-x-20 gap-y-3 sm:gap-y-5 w-fit">
-        {execs.length > 0 ? (
-          <div className="grid grid-cols-[auto_auto_auto_auto] gap-x-4 gap-y-0.5 tabular-nums w-fit text-xs font-mono">
+      )}
+      <div className="shrink-0 space-y-4">
+        {execs.length > 0 && (
+          <div className="grid grid-cols-[auto_auto_auto_auto_auto] gap-x-4 gap-y-0.5 tabular-nums w-fit text-xs font-mono">
             {execs.map(e => (
               <ExecRow
                 key={`${e.time}-${e.kind}-${e.price}`}
                 time={e.time.slice(11, 19)}
                 kind={e.kind}
+                orderType={e.order_type ?? 'limit'}
                 price={e.price.toFixed(2)}
                 contracts={e.contracts}
               />
             ))}
           </div>
-        ) : (
-          <div />
         )}
         <StatColumn
           rows={[
@@ -114,6 +95,28 @@ export function TradeExpandedDetails({ trade, model }: TradeExpandedDetailsProps
           ]}
         />
       </div>
+      <div className="flex items-center gap-2 shrink-0 ml-auto">
+        <Link
+          to={`/trade/${trade.id}/edit`}
+          state={{ from: location.pathname + location.search }}
+          className={NEUTRAL_BTN_CLASS}
+        >
+          <Pencil className="size-4" /> Edit
+        </Link>
+        <button type="button" onClick={handleDelete} className={DELETE_BTN_CLASS}>
+          <Trash2 className="size-4" /> Delete
+        </button>
+        {driveUrl && (
+          <a
+            href={driveUrl}
+            target="_blank"
+            rel="noreferrer"
+            className={NEUTRAL_BTN_CLASS}
+          >
+            <ExternalLink className="size-4" /> Drive
+          </a>
+        )}
+      </div>
     </div>
   )
 }
@@ -121,11 +124,13 @@ export function TradeExpandedDetails({ trade, model }: TradeExpandedDetailsProps
 function ExecRow({
   time,
   kind,
+  orderType,
   price,
   contracts,
 }: {
   time: string
   kind: 'buy' | 'sell'
+  orderType: 'limit' | 'market'
   price: string
   contracts: number
 }) {
@@ -139,6 +144,7 @@ function ExecRow({
       >
         {kind}
       </span>
+      <span className="text-(--color-text-dim)">{orderType}</span>
       <span>{price}</span>
       <span className="text-(--color-text-dim)">×{contracts}</span>
     </>
@@ -157,7 +163,7 @@ function ModelChecklist({
   const orphans = computeOrphanRules(groups, followed)
   if (total === 0 && orphans.length === 0) return null
   return (
-    <div className="shrink-0 max-w-xs space-y-0.5">
+    <div className="shrink-0 w-[310px] space-y-0.5">
       {groups.flatMap(g =>
         g.rules.map((r, i) => {
           const ok = followed.has(r)

@@ -1,4 +1,4 @@
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { format, parseISO } from 'date-fns'
 import { PageHeader } from '@/components/PageHeader'
 import { TradeForm } from '@/components/TradeForm'
@@ -11,6 +11,8 @@ import type { TradeDraft } from '@/db/types'
 export function TradeNewRoute() {
   const [params] = useSearchParams()
   const navigate = useNavigate()
+  const location = useLocation()
+  const cameFrom = (location.state as { from?: string } | null)?.from ?? null
   const accountId = useActiveAccountId()
   const date = params.get('date') || nyToday()
 
@@ -33,7 +35,7 @@ export function TradeNewRoute() {
       <TradeForm
         initialDate={date}
         onSubmit={handleSubmit}
-        onCancel={() => navigate(`/day/${date}`)}
+        onCancel={() => navigate(cameFrom ?? `/day/${date}`)}
         getTradeOrdinal={async () => {
           const count = await db.trades
             .where('[account_id+date]')

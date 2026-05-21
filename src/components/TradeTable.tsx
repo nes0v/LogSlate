@@ -1,4 +1,5 @@
 import { Fragment, memo } from 'react'
+import { format, parseISO } from 'date-fns'
 import { ArrowDown, ArrowRight, ArrowUp, ArrowUpDown } from 'lucide-react'
 import { DEFAULT_MODEL_NAME, type Model, type TradeRecord } from '@/db/types'
 import {
@@ -25,16 +26,20 @@ interface TradeTableProps {
    *  the full model record (name + rule groups) on first paint, without
    *  each row opening its own `db.models.get` subscription. */
   modelById: Map<string, Model>
+  /** Show the trade date as its own column (between row number and session).
+   *  Used on Overview where trades span multiple days; off on the Day page
+   *  where every row shares the same date. */
+  showDate?: boolean
 }
-
-const COLS = 13
 
 export const TradeTable = memo(function TradeTable({
   trades,
   expandedIds,
   onToggle,
   modelById,
+  showDate = false,
 }: TradeTableProps) {
+  const cols = showDate ? 14 : 13
   return (
     <div className="bg-(--color-panel) rounded-(--radius) overflow-hidden">
       <table className="w-full text-sm border-collapse">
@@ -53,9 +58,10 @@ export const TradeTable = memo(function TradeTable({
                   reversedFromPrev={reversed}
                   onToggle={() => onToggle(t.id)}
                   modelName={model?.name ?? null}
+                  showDate={showDate}
                 />
                 <tr>
-                  <td colSpan={COLS} className="p-0 bg-(--color-panel-2)/40">
+                  <td colSpan={cols} className="p-0 bg-(--color-cal-weekend-bg)">
                     <div
                       className={cn(
                         'grid transition-[grid-template-rows] duration-300 ease-out',
@@ -90,6 +96,7 @@ interface RowProps {
   /** Resolved model name (if the trade has one) — passed in so each row
    *  doesn't open its own `db.models.get` subscription. */
   modelName: string | null
+  showDate: boolean
 }
 function TradeTableRow({
   trade,
@@ -98,6 +105,7 @@ function TradeTableRow({
   reversedFromPrev,
   onToggle,
   modelName,
+  showDate,
 }: RowProps) {
   const side = inferSide(trade)
   const { pnl, outcome } = tradeMetrics(trade)
@@ -122,7 +130,7 @@ function TradeTableRow({
       title={trade.idea}
       className={cn(
         'cursor-pointer transition-colors duration-300 ease-out border-t border-(--color-bg) [&>td]:align-middle [&>td]:pt-[7px] [&>td]:pb-[9px] focus:outline-none focus-visible:bg-(--color-panel-2)/40',
-        expanded ? 'bg-(--color-panel-2)' : 'hover:bg-(--color-panel-2)/60',
+        expanded ? 'bg-(--color-panel-2)/60' : 'hover:bg-(--color-panel-2)/60',
       )}
     >
       <td className="pl-3 pr-4 py-2 text-xs font-mono tabular-nums text-(--color-text-dim) w-px whitespace-nowrap">
@@ -170,13 +178,13 @@ function TradeTableRow({
       </td>
       <td className="pl-0 pr-9 py-2 max-w-[18rem]">
         {trade.setup_tags && trade.setup_tags.length > 0 ? (
-          <div className="flex flex-wrap items-center gap-1">
+          <div className="inline-flex flex-wrap items-center gap-1 align-middle">
             {trade.setup_tags.map(t => (
               <span
                 key={t}
                 className={cn(
                   SESSION_BADGE_CLASS,
-                  'bg-(--color-panel-3) text-(--color-text) pb-0.5 px-1.5',
+                  'bg-(--color-panel-3) text-(--color-text-dim) pb-0.5 px-2',
                 )}
               >
                 {t}
@@ -211,6 +219,11 @@ function TradeTableRow({
         )}
         <RatingStars rating={trade.rating} className="translate-y-0.5" />
       </td>
+      {showDate && (
+        <td className="pl-3 pr-3 py-2 text-xs font-mono text-(--color-text-dim) w-px whitespace-nowrap">
+          {format(parseISO(trade.date), 'dd-MMM-yyyy')}
+        </td>
+      )}
     </tr>
   )
 }
