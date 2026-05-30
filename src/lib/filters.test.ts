@@ -62,14 +62,14 @@ describe('applyFilters', () => {
   it('filters by side (long vs short)', () => {
     const longTrade = tradeRecord({
       executions: [
-        { kind: 'buy', price: 100, time: '2026-04-05T13:30:00.000Z', contracts: 1 },
-        { kind: 'sell', price: 105, time: '2026-04-05T14:00:00.000Z', contracts: 1 },
+        { kind: 'buy', order_type: 'lmt', price: 100, time: '2026-04-05T13:30:00.000Z', contracts: 1 },
+        { kind: 'sell', order_type: 'lmt', price: 105, time: '2026-04-05T14:00:00.000Z', contracts: 1 },
       ],
     })
     const shortTrade = tradeRecord({
       executions: [
-        { kind: 'sell', price: 100, time: '2026-04-05T13:30:00.000Z', contracts: 1 },
-        { kind: 'buy', price: 95, time: '2026-04-05T14:00:00.000Z', contracts: 1 },
+        { kind: 'sell', order_type: 'lmt', price: 100, time: '2026-04-05T13:30:00.000Z', contracts: 1 },
+        { kind: 'buy', order_type: 'lmt', price: 95, time: '2026-04-05T14:00:00.000Z', contracts: 1 },
       ],
     })
     const all = [longTrade, shortTrade]
@@ -89,7 +89,7 @@ describe('applyFilters', () => {
 describe('holdBucketOf', () => {
   it('returns null when there are fewer than two timestamps', () => {
     const t = tradeRecord({
-      executions: [{ kind: 'buy', price: 100, time: '2026-04-05T13:30:00.000Z', contracts: 1 }],
+      executions: [{ kind: 'buy', order_type: 'lmt', price: 100, time: '2026-04-05T13:30:00.000Z', contracts: 1 }],
     })
     expect(holdBucketOf(t)).toBeNull()
   })
@@ -97,8 +97,8 @@ describe('holdBucketOf', () => {
   it('classifies into the right bucket by minutes', () => {
     const t = tradeRecord({
       executions: [
-        { kind: 'buy', price: 100, time: '2026-04-05T13:30:00.000Z', contracts: 1 },
-        { kind: 'sell', price: 105, time: '2026-04-05T13:33:00.000Z', contracts: 1 },
+        { kind: 'buy', order_type: 'lmt', price: 100, time: '2026-04-05T13:30:00.000Z', contracts: 1 },
+        { kind: 'sell', order_type: 'lmt', price: 105, time: '2026-04-05T13:33:00.000Z', contracts: 1 },
       ],
     })
     expect(holdBucketOf(t)).toBe('1-5m')
@@ -153,10 +153,10 @@ describe('applyFilters — newer filter dimensions', () => {
   // emotion, no model). Overrides flip individual axes.
 
   function buys(price: number, time: string) {
-    return { kind: 'buy' as const, price, time, contracts: 1 }
+    return { kind: 'buy' as const, order_type: 'lmt' as const, price, time, contracts: 1 }
   }
   function sells(price: number, time: string) {
-    return { kind: 'sell' as const, price, time, contracts: 1 }
+    return { kind: 'sell' as const, order_type: 'lmt' as const, price, time, contracts: 1 }
   }
 
   it('outcome filter picks per classifyTrade', () => {
@@ -180,9 +180,9 @@ describe('applyFilters — newer filter dimensions', () => {
 
   it('emotion filter matches exact value', () => {
     const calm = tradeRecord({ emotion: 'calm' })
-    const fomo = tradeRecord({ emotion: 'FOMO' })
+    const anxious = tradeRecord({ emotion: 'anxious' })
     expect(
-      applyFilters([calm, fomo], { ...EMPTY_FILTERS, emotion: 'calm' }),
+      applyFilters([calm, anxious], { ...EMPTY_FILTERS, emotion: 'calm' }),
     ).toEqual([calm])
   })
 

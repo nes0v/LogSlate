@@ -93,14 +93,11 @@ export function CalendarRoute() {
 
   const screenshotDays = useMemo(() => {
     const s = new Set<string>()
-    for (const t of trades ?? []) {
-      if (t.screenshot) s.add(t.date)
-    }
     for (const d of dayRows ?? []) {
       if (d.screenshots.length > 0) s.add(d.date)
     }
     return s
-  }, [trades, dayRows])
+  }, [dayRows])
 
   // Day-level note indicator — lights up when the user has written a
   // free-text journal entry on that day's record. The note is stored on

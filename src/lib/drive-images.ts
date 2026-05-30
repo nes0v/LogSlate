@@ -1,7 +1,6 @@
-// Trade and day screenshot storage in the user's Google Drive.
+// Day screenshot storage in the user's Google Drive.
 //
-// The `screenshot` field on a record is a reference string:
-//   null             — no screenshot
+// Each ref on a Day row is a string:
 //   'drive:{id}'     — lives in the user's Drive, fileId = {id}
 //   'pending:{id}'   — local-only blob waiting to be uploaded on next online sync
 //
@@ -10,7 +9,7 @@
 //   LogSlate/
 //     {accountName}/           ← cached by account id, not name (safe on rename)
 //       YYYY-MM/
-//         17-apr-2026-trade-3.png
+//         17-apr-2026-fri-01.png
 //
 // Filenames are built at enqueue time from a caller-supplied date and suffix
 // so they're human-readable when the user browses the folder in Drive.
@@ -18,13 +17,12 @@
 // Uploads happen immediately when online; when offline (or before the user
 // triggers a manual sync), the blob is stashed in the `pending_uploads`
 // IndexedDB table along with its account, precomputed filename and
-// month_key, and the record's screenshot field is set to `pending:{id}`.
+// month_key, and the day row's screenshots[] entry is set to `pending:{id}`.
 // `drainPendingUploads` runs at the start of every manual sync, uploading
 // pending blobs into their owning account's folder and rewriting the
 // reference to `drive:{id}`.
 
 import { db } from '@/db/schema'
-import { MAIN_ACCOUNT_ID } from '@/db/types'
 import { getActiveAccountId } from '@/lib/active-account'
 import {
   createDriveFolder,
@@ -226,11 +224,6 @@ export function parseScreenshotRef(raw: string | null | undefined): ScreenshotRe
   return null
 }
 
-export function formatScreenshotRef(ref: ScreenshotRef): string | null {
-  if (!ref) return null
-  return ref.kind === 'drive' ? `drive:${ref.fileId}` : `pending:${ref.pendingId}`
-}
-
 export function driveViewUrlFromRef(ref: ScreenshotRef): string | null {
   if (ref && ref.kind === 'drive') return driveViewLink(ref.fileId)
   return null
@@ -254,13 +247,25 @@ export function extensionFromBlobType(type: string | undefined | null): string {
   return ext
 }
 
-// YYYY-MM-DD + "trade-3" + "png" → "17-apr-2026-trade-3.png".
+// YYYY-MM-DD + "fri-01" + "png" → "17-apr-2026-fri-01.png".
 export function buildFilename(date: string, suffix: string, ext: string): string {
   const [y, m, d] = date.split('-')
   const mi = Number(m) - 1
   const mon = mi >= 0 && mi < 12 ? MONTH_ABBR[mi] : m
   const safeSuffix = suffix.replace(/[^a-z0-9-]/gi, '').toLowerCase() || 'screenshot'
   return `${d}-${mon}-${y}-${safeSuffix}.${ext}`
+}
+
+const WEEKDAY_ABBR = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const
+
+// "2026-05-18" + 1 → "mon-01" — the filename suffix for the Nth day-level
+// screenshot. Derives the weekday from the date string directly (no
+// timezone math: YYYY-MM-DD is a wall-clock day, and `Date.UTC` keeps the
+// weekday calc stable across browser TZs).
+export function dayScreenshotSuffix(date: string, ordinal: number): string {
+  const [y, m, d] = date.split('-').map(Number)
+  const wd = new Date(Date.UTC(y, m - 1, d)).getUTCDay()
+  return `${WEEKDAY_ABBR[wd]}-${String(ordinal).padStart(2, '0')}`
 }
 
 // --- upload / pending-queue ---
@@ -356,16 +361,15 @@ export async function storeScreenshot(blob: Blob, ctx: ScreenshotContext): Promi
   }
 }
 
-// Best-effort: remove the underlying blob when a screenshot is detached. For
-// Drive refs, delete the Drive file so the folder doesn't accumulate
-// duplicates when the user replaces a screenshot (filenames are stable per
-// date+suffix, so a second upload creates a second file in the folder). For
-// pending refs, drop the queued blob. Failures are swallowed — the field on
-// the record is the source of truth for the user.
-export async function discardScreenshotRef(raw: string | null): Promise<void> {
+// Best-effort: free the underlying blob when a day-screenshot ref is
+// removed. For Drive refs, delete the Drive file so the folder doesn't
+// keep orphans the user can never reach again. For pending refs, drop
+// the queued blob. Failures are swallowed — the Day row is the source
+// of truth for the user.
+export async function discardScreenshotRef(raw: string): Promise<void> {
   const ref = parseScreenshotRef(raw)
   if (!ref) return
-  if (raw) revokeCached(raw)
+  revokeCached(raw)
   if (ref.kind === 'pending') {
     try {
       await db.pending_uploads.delete(ref.pendingId)
@@ -386,7 +390,7 @@ export async function discardScreenshotRef(raw: string | null): Promise<void> {
 //
 // Bounded LRU cache mapping a reference string to a blob URL + the
 // decoded image's natural dimensions. Keeps repeated renders of the same
-// screenshot (e.g. re-opening a trade) from re-fetching. Evicted entries
+// screenshot (e.g. re-opening a day) from re-fetching. Evicted entries
 // have their blob URLs revoked so long-lived sessions don't accumulate
 // detached ObjectURLs.
 //
@@ -472,8 +476,7 @@ async function blobForDrive(fileId: string): Promise<Blob> {
 // callers can surface a meaningful message — swallowing made "image
 // won't load" bugs impossible to diagnose without devtools.
 /** Per-ref resolution result: either a blob URL + dims ready for
- *  `<img>` or the error message from the failed fetch. Returned by
- *  `useScreenshotUrls`. */
+ *  `<img>` or the error message from the failed fetch. */
 export type ResolvedScreenshot =
   | { url: string; width: number; height: number }
   | { error: string }
@@ -512,11 +515,7 @@ export async function drainPendingUploads(): Promise<void> {
   const pending = await db.pending_uploads.toArray()
   for (const p of pending) {
     try {
-      // Back-compat: rows queued before the per-account refactor were stamped
-      // with MAIN_ACCOUNT_ID by the v9 migration, so they still resolve to a
-      // concrete folder here.
-      const accountId = p.account_id || MAIN_ACCOUNT_ID
-      const folderId = await getOrCreateMonthFolder(accountId, p.month_key)
+      const folderId = await getOrCreateMonthFolder(p.account_id, p.month_key)
       const { id: driveId } = await uploadDriveFile({
         name: p.filename,
         body: p.blob,
@@ -524,23 +523,17 @@ export async function drainPendingUploads(): Promise<void> {
       })
       const oldRef = `pending:${p.id}`
       const newRef = `drive:${driveId}`
-      // Rewrite any records that pointed at this pending id (both trades and
-      // days use the same ref format). The URL cache is transferred
-      // inside the transaction so it's already keyed under `drive:` by
-      // the time Dexie fires its post-commit live-query notifications —
-      // otherwise a thumb could re-mount on the new ref before the
-      // cache entry exists and do a redundant re-fetch.
+      // Rewrite any day rows that pointed at this pending id. The URL cache
+      // is transferred inside the transaction so it's already keyed under
+      // `drive:` by the time Dexie fires its post-commit live-query
+      // notifications — otherwise a thumb could re-mount on the new ref
+      // before the cache entry exists and do a redundant re-fetch.
       await db.transaction(
         'rw',
-        db.trades,
         db.days,
         db.pending_uploads,
         async () => {
           const now = new Date().toISOString()
-          const affectedTrades = await db.trades.where('screenshot').equals(oldRef).toArray()
-          for (const t of affectedTrades) {
-            await db.trades.update(t.id, { screenshot: newRef, updated_at: now })
-          }
           // `*screenshots` is multi-entry indexed, so this returns any day
           // whose array contains the pending ref.
           const affectedDays = await db.days
@@ -573,3 +566,4 @@ export async function drainPendingUploads(): Promise<void> {
     }
   }
 }
+

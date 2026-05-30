@@ -1,11 +1,10 @@
 import { Link, useLocation } from 'react-router-dom'
-import { Check, ExternalLink, Pencil, Trash2, X } from 'lucide-react'
+import { Check, Pencil, Trash2, X } from 'lucide-react'
 import type { Model, TradeRecord } from '@/db/types'
 import { deleteTrade } from '@/db/queries'
 import { useConfirm } from '@/components/ConfirmDialog'
 import { computeOrphanRules } from '@/lib/model-rules'
 import { computeAhpc, totalContracts } from '@/lib/trade-math'
-import { driveViewUrlFromRef, parseScreenshotRef } from '@/lib/drive-images'
 import { handleValue } from '@/lib/symbols'
 import { formatUsd } from '@/lib/money'
 import { BTN_BASE } from '@/components/form/buttonClass'
@@ -34,7 +33,6 @@ export function TradeExpandedDetails({ trade, model }: TradeExpandedDetailsProps
   const execs = [...trade.executions].sort(
     (a, b) => Date.parse(a.time) - Date.parse(b.time),
   )
-  const driveUrl = driveViewUrlFromRef(parseScreenshotRef(trade.screenshot))
   const followed = new Set(trade.model_rules_followed ?? [])
 
   async function handleDelete() {
@@ -69,7 +67,7 @@ export function TradeExpandedDetails({ trade, model }: TradeExpandedDetailsProps
                 key={`${e.time}-${e.kind}-${e.price}`}
                 time={e.time.slice(11, 19)}
                 kind={e.kind}
-                orderType={e.order_type ?? 'limit'}
+                orderType={e.order_type}
                 price={e.price.toFixed(2)}
                 contracts={e.contracts}
               />
@@ -106,16 +104,6 @@ export function TradeExpandedDetails({ trade, model }: TradeExpandedDetailsProps
         <button type="button" onClick={handleDelete} className={DELETE_BTN_CLASS}>
           <Trash2 className="size-4" /> Delete
         </button>
-        {driveUrl && (
-          <a
-            href={driveUrl}
-            target="_blank"
-            rel="noreferrer"
-            className={NEUTRAL_BTN_CLASS}
-          >
-            <ExternalLink className="size-4" /> Drive
-          </a>
-        )}
       </div>
     </div>
   )
@@ -130,7 +118,7 @@ function ExecRow({
 }: {
   time: string
   kind: 'buy' | 'sell'
-  orderType: 'limit' | 'market'
+  orderType: 'mkt' | 'lmt'
   price: string
   contracts: number
 }) {

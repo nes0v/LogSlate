@@ -18,8 +18,8 @@ export interface DriveState {
 
 // Two scopes:
 // - drive.appdata lets us keep the sync file in a hidden per-app folder.
-// - drive.file lets us create a user-visible "LogSlate screenshots" folder
-//   where trade screenshots live, so the user can browse them in Drive.
+// - drive.file lets us create a user-visible "LogSlate" folder where day
+//   screenshots live, so the user can browse them in Drive.
 const SCOPE = 'https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/drive.file'
 const GIS_SRC = 'https://accounts.google.com/gsi/client'
 const TOKEN_KEY = 'logslate:drive:token'

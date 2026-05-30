@@ -16,6 +16,7 @@ function nextId(): string {
 export function execution(overrides: Partial<Execution> = {}): Execution {
   return {
     kind: 'buy',
+    order_type: 'lmt',
     price: 20000,
     time: '2026-04-15T14:30:00.000Z',
     contracts: 1,
@@ -39,7 +40,7 @@ export function tradeDraft(overrides: Partial<TradeDraft> = {}): TradeDraft {
     drawdown: 20,
     buildup: 200,
     rating: 'good',
-    screenshot: null,
+    emotion: 'calm',
     ...overrides,
   }
 }

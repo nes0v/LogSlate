@@ -22,8 +22,8 @@ function validForm(overrides: Partial<TradeFormValues> = {}): TradeFormValues {
     buildup: 200,
     emotion: 'focused',
     executions: [
-      { kind: 'buy', order_type: 'limit', price: 20000, time: '10:00:00', contracts: 1 },
-      { kind: 'sell', order_type: 'limit', price: 20010, time: '10:05:00', contracts: 1 },
+      { kind: 'buy', order_type: 'lmt', price: 20000, time: '10:00:00', contracts: 1 },
+      { kind: 'sell', order_type: 'lmt', price: 20010, time: '10:05:00', contracts: 1 },
     ],
     ...overrides,
   }
@@ -39,8 +39,8 @@ describe('tradeFormSchema', () => {
     const r = tradeFormSchema.safeParse(
       validForm({
         executions: [
-          { kind: 'buy', order_type: 'limit', price: 20000, time: '10:00:00', contracts: 2 },
-          { kind: 'sell', order_type: 'limit', price: 20010, time: '10:05:00', contracts: 1 },
+          { kind: 'buy', order_type: 'lmt', price: 20000, time: '10:00:00', contracts: 2 },
+          { kind: 'sell', order_type: 'lmt', price: 20010, time: '10:05:00', contracts: 1 },
         ],
       }),
     )
@@ -55,8 +55,8 @@ describe('tradeFormSchema', () => {
     const r = tradeFormSchema.safeParse(
       validForm({
         executions: [
-          { kind: 'buy', order_type: 'limit', price: 20000, time: '10:00:00', contracts: 1 },
-          { kind: 'buy', order_type: 'limit', price: 20010, time: '10:05:00', contracts: 1 },
+          { kind: 'buy', order_type: 'lmt', price: 20000, time: '10:00:00', contracts: 1 },
+          { kind: 'buy', order_type: 'lmt', price: 20010, time: '10:05:00', contracts: 1 },
         ],
       }),
     )
@@ -67,8 +67,8 @@ describe('tradeFormSchema', () => {
     const r = tradeFormSchema.safeParse(
       validForm({
         executions: [
-          { kind: 'buy', order_type: 'limit', price: 0, time: '25:00', contracts: 1 },
-          { kind: 'sell', order_type: 'limit', price: -5, time: 'noon', contracts: 1 },
+          { kind: 'buy', order_type: 'lmt', price: 0, time: '25:00', contracts: 1 },
+          { kind: 'sell', order_type: 'lmt', price: -5, time: 'noon', contracts: 1 },
         ],
       }),
     )
@@ -95,8 +95,8 @@ describe('formToDraft', () => {
     const draft = formToDraft(
       validForm({
         executions: [
-          { kind: 'sell', order_type: 'limit', price: 20010, time: '10:05:00', contracts: 1 },
-          { kind: 'buy', order_type: 'limit', price: 20000, time: '10:00:00', contracts: 1 },
+          { kind: 'sell', order_type: 'lmt', price: 20010, time: '10:05:00', contracts: 1 },
+          { kind: 'buy', order_type: 'lmt', price: 20000, time: '10:00:00', contracts: 1 },
         ],
       }),
     )
@@ -213,5 +213,15 @@ describe('recordToForm ↔ formToDraft round-trip', () => {
     // execution times rather than as a stored field on the form.
     expect(roundTrip.stop_loss).toBe(record.stop_loss)
     expect(roundTrip.executions).toHaveLength(record.executions.length)
+  })
+
+  it('defaults missing optional text fields to empty strings on the form', () => {
+    // `idea` and `notes` are optional on the record (TradeRecord.idea?:
+    // string, TradeRecord.notes?: string). The form's textarea always
+    // needs a string buffer, so the read path must paper over `undefined`.
+    const record = tradeRecord({ idea: undefined, notes: undefined })
+    const form = recordToForm(record)
+    expect(form.idea).toBe('')
+    expect(form.notes).toBe('')
   })
 })

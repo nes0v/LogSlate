@@ -52,6 +52,7 @@ export function hasAnyFilter(f: TradeFilters): boolean {
     f.side ||
     f.hold ||
     f.emotion ||
-    f.model
+    f.model ||
+    f.tag
   )
 }

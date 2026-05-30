@@ -1,7 +1,7 @@
 // Date-range arithmetic on `ProgressRule.periods`. Extracted from the
 // Progress route so unit tests can exercise the rules without spinning
 // up React. Every function treats a missing `periods` field as `[]`
-// because pre-v4 (or Drive-synced) rows can still land in memory.
+// since rows pulled from Drive may pre-date the field.
 
 import { addDays, format } from 'date-fns'
 import { dateKeyToDate } from '@/lib/tz'

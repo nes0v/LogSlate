@@ -116,7 +116,6 @@ export const tradeFormSchema = z
     drawdown: z.number().min(0, 'must be ≥ 0').nullable(),
     buildup: z.number().min(0, 'must be ≥ 0').nullable(),
     rating: z.enum(RATINGS).nullable(),
-    screenshot: z.string().nullable(),
     // Journaling fields. The form supplies defaults so RHF resolves them;
     // downstream code treats them as optional / nullable.
     profit_target: requiredPositive('profit target must be > 0'),
@@ -215,11 +214,10 @@ export function formToDraft(v: TradeFormValues): TradeDraft {
     drawdown: v.drawdown,
     buildup: v.buildup,
     rating: v.rating as NonNullable<typeof v.rating>,
-    screenshot: v.screenshot,
+    emotion: v.emotion as NonNullable<typeof v.emotion>,
     profit_target: v.profit_target as number,
     notes: v.notes,
     setup_tags: v.setup_tags,
-    emotion: v.emotion,
     model_id: v.model_id,
     model_rules_followed: v.model_rules_followed,
   }
@@ -230,7 +228,7 @@ export function recordToForm(r: TradeRecord): TradeFormValues {
     .sort((a, b) => Date.parse(a.time) - Date.parse(b.time))
     .map(e => ({
       kind: e.kind,
-      order_type: e.order_type ?? 'limit',
+      order_type: e.order_type,
       price: e.price,
       // Stored ISO is `${date}T${HH:MM:SS}.000Z` — slice off the wallclock.
       time: e.time.slice(11, 19),
@@ -241,17 +239,16 @@ export function recordToForm(r: TradeRecord): TradeFormValues {
     date: r.date,
     symbol: r.symbol,
     contract_type: r.contract_type,
-    idea: r.idea,
+    idea: r.idea ?? '',
     executions,
     stop_loss: r.stop_loss,
     drawdown: r.drawdown,
     buildup: r.buildup,
     rating: r.rating,
-    screenshot: r.screenshot,
     profit_target: r.profit_target,
     notes: r.notes ?? '',
     setup_tags: r.setup_tags ?? [],
-    emotion: r.emotion ?? null,
+    emotion: r.emotion,
     model_id: r.model_id ?? null,
     model_rules_followed: r.model_rules_followed ?? [],
   }
@@ -264,14 +261,13 @@ export function emptyForm(date: string): TradeFormValues {
     contract_type: 'micro',
     idea: '',
     executions: [
-      { kind: 'buy', order_type: 'limit', price: null, time: '', contracts: 1 },
-      { kind: 'sell', order_type: 'limit', price: null, time: '', contracts: 1 },
+      { kind: 'buy', order_type: 'mkt', price: null, time: '', contracts: 1 },
+      { kind: 'sell', order_type: 'mkt', price: null, time: '', contracts: 1 },
     ],
     stop_loss: null,
     drawdown: null,
     buildup: null,
     rating: 'poor',
-    screenshot: null,
     profit_target: null,
     notes: '',
     setup_tags: [],

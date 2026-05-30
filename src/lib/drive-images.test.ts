@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildFilename,
+  dayScreenshotSuffix,
   driveViewUrlFromRef,
   extensionFromBlobType,
-  formatScreenshotRef,
   monthKey,
   parseScreenshotRef,
 } from './drive-images'
@@ -30,19 +30,6 @@ describe('parseScreenshotRef', () => {
 
   it('preserves colons inside the id so Drive ids with colons survive', () => {
     expect(parseScreenshotRef('drive:a:b:c')).toEqual({ kind: 'drive', fileId: 'a:b:c' })
-  })
-})
-
-describe('formatScreenshotRef', () => {
-  it('round-trips parse → format', () => {
-    const cases = ['drive:abc123', 'pending:xyz']
-    for (const s of cases) {
-      expect(formatScreenshotRef(parseScreenshotRef(s))).toBe(s)
-    }
-  })
-
-  it('returns null for a null ref', () => {
-    expect(formatScreenshotRef(null)).toBeNull()
   })
 })
 
@@ -83,6 +70,40 @@ describe('buildFilename', () => {
 
   it('falls back to "screenshot" when the sanitised suffix is empty', () => {
     expect(buildFilename('2026-04-17', '!!!', 'png')).toBe('17-apr-2026-screenshot.png')
+  })
+})
+
+describe('dayScreenshotSuffix', () => {
+  it('emits lowercase 3-letter weekday + zero-padded 2-digit ordinal', () => {
+    // Mon 2026-05-18 → 1st shot
+    expect(dayScreenshotSuffix('2026-05-18', 1)).toBe('mon-01')
+    // Fri 2026-05-29 → 9th shot stays single-padded
+    expect(dayScreenshotSuffix('2026-05-29', 9)).toBe('fri-09')
+    // Sun 2026-05-31 → 10th drops the leading zero
+    expect(dayScreenshotSuffix('2026-05-31', 10)).toBe('sun-10')
+  })
+
+  it('covers every weekday', () => {
+    // Week of 2026-04-12 (Sun) through 2026-04-18 (Sat)
+    const dates = [
+      ['2026-04-12', 'sun'],
+      ['2026-04-13', 'mon'],
+      ['2026-04-14', 'tue'],
+      ['2026-04-15', 'wed'],
+      ['2026-04-16', 'thu'],
+      ['2026-04-17', 'fri'],
+      ['2026-04-18', 'sat'],
+    ] as const
+    for (const [date, wd] of dates) {
+      expect(dayScreenshotSuffix(date, 1)).toBe(`${wd}-01`)
+    }
+  })
+
+  it('produces a suffix that round-trips cleanly through buildFilename', () => {
+    // Smoke test: the canonical filename for the 1st screenshot on
+    // 2026-05-18 should be "18-may-2026-mon-01.png".
+    const suffix = dayScreenshotSuffix('2026-05-18', 1)
+    expect(buildFilename('2026-05-18', suffix, 'png')).toBe('18-may-2026-mon-01.png')
   })
 })
 

@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils'
 interface NumberInputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' | 'type'> {
   value: number | null
   onChange: (v: number | null) => void
+  decimals?: number
 }
 
 // Number entry that keeps the user's typed string buffered locally so
@@ -14,14 +15,17 @@ interface NumberInputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, '
 //
 // `w-full min-w-0` is baked in so the input can shrink below its
 // intrinsic ~150px size when placed in a grid/flex cell.
-export function NumberInput({ value, onChange, className, ...rest }: NumberInputProps) {
-  const [text, setText] = useState(value === null ? '' : String(value))
+export function NumberInput({ value, onChange, className, decimals, ...rest }: NumberInputProps) {
+  const format = (v: number | null) =>
+    v === null ? '' : decimals != null ? v.toFixed(decimals) : String(v)
+  const [text, setText] = useState(() => format(value))
   const focused = useRef(false)
 
   useEffect(() => {
     if (focused.current) return
-    setText(value === null ? '' : String(value))
-  }, [value])
+    setText(format(value))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, decimals])
 
   return (
     <input
@@ -33,8 +37,13 @@ export function NumberInput({ value, onChange, className, ...rest }: NumberInput
         focused.current = true
       }}
       onBlur={() => {
+        // Alt-tabbing to another window blurs the input even though focus
+        // stays on it within the page. Only commit the formatted value on a
+        // genuine in-app blur (document still focused); otherwise keep the
+        // raw buffer so the user can resume typing when they return.
+        if (!document.hasFocus()) return
         focused.current = false
-        setText(value === null ? '' : String(value))
+        setText(format(value))
       }}
       onChange={e => {
         const t = e.target.value

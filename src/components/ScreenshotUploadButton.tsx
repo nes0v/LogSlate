@@ -7,8 +7,8 @@ import { errorMessage } from '@/lib/utils'
 interface ScreenshotUploadButtonProps {
   /** YYYY-MM-DD — drives the month subfolder and filename. */
   date: string
-  /** Resolved lazily at upload time so edit flows can pick up the latest
-   *  ordinal. Return something like "trade-3" or "day-2".
+  /** Resolved lazily at upload time so the suffix reflects the current
+   *  state of the day's screenshot list. Return something like "fri-01".
    */
   getFilenameSuffix: () => Promise<string> | string
   /** Called with the resolved ref string after a successful upload. */

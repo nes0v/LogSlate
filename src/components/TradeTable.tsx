@@ -174,7 +174,7 @@ function TradeTableRow({
         {modelName ?? DEFAULT_MODEL_NAME}
       </td>
       <td className="pl-0 pr-9 py-2 text-xs text-(--color-text-dim) truncate max-w-28 w-px whitespace-nowrap">
-        {trade.emotion ?? ''}
+        {trade.emotion}
       </td>
       <td className="pl-0 pr-9 py-2 max-w-[18rem]">
         {trade.setup_tags && trade.setup_tags.length > 0 ? (
@@ -214,7 +214,7 @@ function TradeTableRow({
             className="absolute right-[16.5rem] -top-[11px] inline-flex items-center gap-1 w-[6.25rem] text-xs leading-none text-(--color-text-dim) bg-(--color-bg) rounded-(--radius) px-2 py-[4.5px] whitespace-nowrap z-10 pointer-events-none"
           >
             <ArrowUpDown className="size-3" />
-            <span className="-translate-y-px">@ {trade.executions[0]?.price ?? ''}</span>
+            <span className="-translate-y-px">@ {trade.executions[0]?.price != null ? trade.executions[0].price.toFixed(2) : ''}</span>
           </span>
         )}
         <RatingStars rating={trade.rating} className="translate-y-0.5" />

@@ -16,10 +16,10 @@ interface ScreenshotThumbProps {
   onRemove?: () => void | Promise<void>
   /** "md" (default) for ~128px height, "sm" for ~64px inline thumbnails. */
   size?: 'sm' | 'md'
-  /** Pre-resolved URL or error from a parent that hoisted the fetch
-   *  (e.g. via `useScreenshotUrls`). When provided, the thumb renders
-   *  in its final state immediately and skips its own async fetch —
-   *  eliminating the staggered "loading…" flash on lists. */
+  /** Pre-resolved URL or error from a parent that hoisted the fetch.
+   *  When provided, the thumb renders in its final state immediately and
+   *  skips its own async fetch — eliminating the staggered "loading…"
+   *  flash on lists. */
   prefetched?: ResolvedScreenshot
 }
 

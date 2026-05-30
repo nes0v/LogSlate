@@ -4,7 +4,6 @@ import { format, parseISO } from 'date-fns'
 import { Trash2 } from 'lucide-react'
 import { TradeForm } from '@/components/TradeForm'
 import { useConfirm } from '@/components/ConfirmDialog'
-import { db } from '@/db/schema'
 import { deleteTrade, getTrade, updateTrade } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
 import { recordToForm, type TradeFormValues } from '@/lib/form-schema'
@@ -110,15 +109,6 @@ export function TradeEditRoute() {
           initialDate={record.date}
           onSubmit={handleSubmit}
           onCancel={() => navigate(cameFrom ?? `/day/${record.date}`)}
-          getTradeOrdinal={async () => {
-            const rows = await db.trades
-              .where('[account_id+date]')
-              .equals([accountId, record.date])
-              .sortBy('created_at')
-            const idx = rows.findIndex(t => t.id === id)
-            return idx >= 0 ? idx + 1 : rows.length + 1
-          }}
-          onScreenshotPersist={ref => updateTrade(id, { screenshot: ref })}
         />
       ) : null}
     </div>

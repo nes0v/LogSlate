@@ -298,7 +298,7 @@ export interface RatioStats {
   tailRatio: number | null
 }
 
-export function ratioStats(series: EquityPoint[], maxDdPct: number): RatioStats {
+export function ratioStats(series: EquityPoint[]): RatioStats {
   if (series.length < 2) {
     return { sharpe: null, sortino: null, calmar: null, kRatio: null, tailRatio: null }
   }
@@ -320,12 +320,9 @@ export function ratioStats(series: EquityPoint[], maxDdPct: number): RatioStats 
   // mean_daily * 252 / starting_equity, but we don't track starting
   // equity here, so use mean_daily * 252 / |max_dd_$| as a scale-free
   // analogue. When max_dd is 0, Calmar is undefined.
-  const lastEquity = series[series.length - 1].equity
   const cagrLike = m * 252
   const maxDd = series.reduce((a, b) => Math.min(a, b.dd), 0)
   const calmar = maxDd < 0 ? cagrLike / Math.abs(maxDd) : null
-  void maxDdPct // legacy signature; calmar uses $ form here for stability
-  void lastEquity
 
   // K-Ratio (simplified) — slope of cumulative-return regression
   // divided by its standard error, scaled by √n. Equity is already
@@ -494,9 +491,6 @@ export interface ScatterPoint {
   id: string
   x: number
   y: number
-  /** Kept for back-compat — true only for trades classified as a win
-   *  (i.e. above the AHPC threshold and with positive PnL). */
-  win: boolean
   outcome: TradeOutcome
   date: string
 }
@@ -507,14 +501,7 @@ export function maeScatter(trades: TradeRecord[]): ScatterPoint[] {
     const { pnl, outcome } = tradeMetrics(t)
     if (pnl === null) continue
     if (t.drawdown === null) continue
-    out.push({
-      id: t.id,
-      x: t.drawdown,
-      y: pnl,
-      win: outcome === 'win',
-      outcome,
-      date: t.date,
-    })
+    out.push({ id: t.id, x: t.drawdown, y: pnl, outcome, date: t.date })
   }
   return out
 }
@@ -525,14 +512,7 @@ export function mfeScatter(trades: TradeRecord[]): ScatterPoint[] {
     const { pnl, outcome } = tradeMetrics(t)
     if (pnl === null) continue
     if (t.buildup === null) continue
-    out.push({
-      id: t.id,
-      x: t.buildup,
-      y: pnl,
-      win: outcome === 'win',
-      outcome,
-      date: t.date,
-    })
+    out.push({ id: t.id, x: t.buildup, y: pnl, outcome, date: t.date })
   }
   return out
 }

@@ -1,5 +1,5 @@
 import { addDayScreenshot, removeDayScreenshot } from '@/db/queries'
-import { discardScreenshotRef } from '@/lib/drive-images'
+import { dayScreenshotSuffix, discardScreenshotRef } from '@/lib/drive-images'
 import { ScreenshotThumb } from '@/components/ScreenshotThumb'
 import { ScreenshotUploadButton } from '@/components/ScreenshotUploadButton'
 
@@ -38,7 +38,7 @@ export function DayScreenshotSection({
           ))}
           <ScreenshotUploadButton
             date={date}
-            getFilenameSuffix={() => `day-${screenshots.length + 1}`}
+            getFilenameSuffix={() => dayScreenshotSuffix(date, screenshots.length + 1)}
             onUpload={async ref => {
               await addDayScreenshot(accountId, date, ref)
             }}

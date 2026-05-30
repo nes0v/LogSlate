@@ -72,20 +72,17 @@ export const HeroNetPnl = memo(function HeroNetPnl({
   )
 })
 
-// One distinct hue per emotion. Greens lean to the steady/positive end;
-// reds/ambers/purples to the agitated/negative end; greys to neutral
-// states — but the legend label is the authoritative signal.
+// Same palette as the model donut; the legend label is the authoritative
+// signal, the hue just separates segments.
 const EMOTION_COLORS: Record<(typeof EMOTIONS)[number], string> = {
-  calm: '#10b981',
-  focused: '#34d399',
-  anxious: '#f59e0b',
-  fearful: '#fb7185',
-  FOMO: '#f97316',
-  impatient: '#ec4899',
-  frustrated: '#ef4444',
-  tired: '#9ca3af',
-  greedy: '#a855f7',
-  busy: '#06b6d4',
+  calm: 'var(--color-accent)',
+  focused: '#7dd3fc',
+  anxious: '#fbbf24',
+  fearful: '#c4b5fd',
+  impatient: '#f472b6',
+  frustrated: '#34d399',
+  tired: '#fb923c',
+  greedy: '#60a5fa',
 }
 
 // Hold-time gradient — quick scalps (cool blues) → long holds (warm
@@ -163,7 +160,7 @@ export const DistributionDonuts = memo(function DistributionDonuts({
       if (b) hold[b]++
       else holdUnknown++
 
-      if (t.emotion && t.emotion in emotion) emotion[t.emotion]++
+      if (t.emotion in emotion) emotion[t.emotion]++
       else emotionOther++
 
       if (t.model_id) model.set(t.model_id, (model.get(t.model_id) ?? 0) + 1)
@@ -273,28 +270,27 @@ export const DistributionDonuts = memo(function DistributionDonuts({
   }, [donutCounts])
 
   const modelDonut = useMemo(() => {
-    const nameById = new Map<string, string>()
-    for (const p of models ?? []) nameById.set(p.id, p.name)
+    const known = new Set((models ?? []).map(p => p.id))
     // Trades whose model_id no longer exists fall through to the
     // "gambling" wedge along with truly unmodelled trades.
     let unmodelled = donutCounts.modelOther
-    const counts = new Map<string, number>()
     for (const [id, n] of donutCounts.model) {
-      if (nameById.has(id)) counts.set(id, n)
-      else unmodelled += n
+      if (!known.has(id)) unmodelled += n
     }
+    // Segments follow the user-set model order from the Models page (the
+    // order `models` already arrives in), not trade count.
     const segments: Array<{
       label: string
       value: number
       color: string
       legendHidden?: boolean
-    }> = Array.from(counts.entries())
-      .sort((a, b) => b[1] - a[1])
-      .map(([id, value], i) => ({
-        label: nameById.get(id)!,
-        value,
+    }> = (models ?? [])
+      .map((p, i) => ({
+        label: p.name,
+        value: donutCounts.model.get(p.id) ?? 0,
         color: MODEL_PALETTE[i % MODEL_PALETTE.length],
       }))
+      .filter(s => s.value > 0)
     if (unmodelled > 0) {
       segments.push({
         label: DEFAULT_MODEL_NAME,
@@ -312,7 +308,7 @@ export const DistributionDonuts = memo(function DistributionDonuts({
         <DonutChart title="Outcomes" segments={outcomeDonut} />
         <DonutChart title="Ratings" segments={ratingDonut} />
         <DonutChart title="Sessions" segments={sessionDonut} />
-        <DonutChart title="Models" segments={modelDonut} />
+        <DonutChart title="Models" segments={modelDonut} legendColumns={modelDonut.length > 5 ? 2 : 1} />
         <DonutChart title="Emotions" segments={emotionDonut} legendColumns={2} />
         <DonutChart title="Durations" segments={holdDonut} legendColumns={2} />
       </div>
@@ -446,7 +442,7 @@ export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
     [tradingSeries, stats.net_pnl],
   )
   const ratios = useMemo(
-    () => ratioStats(tradingSeries, ddStats.maxDdPct),
+    () => ratioStats(tradingSeries),
     [tradingSeries, ddStats.maxDdPct],
   )
   const pf = useMemo(() => profitFactor(filtered), [filtered])
@@ -751,7 +747,8 @@ function CompositeScoreCard({ score }: { score: ReturnType<typeof compositeScore
     { key: 'maxDd', label: 'max drawdown', weight: 20 },
     { key: 'consistency', label: 'consistency', weight: 10 },
   ]
-  const total = Math.round(score.total)
+  const total = score.total
+  const totalDisplay = Math.round(total).toString()
   const tone = total >= 70 ? 'win' : total >= 40 ? 'dim' : 'loss'
   const fillColor =
     tone === 'win'
@@ -900,7 +897,7 @@ function CompositeScoreCard({ score }: { score: ReturnType<typeof compositeScore
                 tone === 'dim' && 'text-(--color-text)',
               )}
             >
-              {total}
+              {totalDisplay}
             </div>
           </div>
         </div>

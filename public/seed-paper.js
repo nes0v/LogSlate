@@ -32,7 +32,7 @@ const uuid = () => crypto.randomUUID()
 const SYMS = ['NQ', 'ES']
 const CTS = ['micro', 'mini']
 const RATES = ['poor', 'good', 'excellent']
-const EMS = ['calm', 'focused', 'anxious', 'fearful', 'FOMO', 'impatient', 'frustrated', 'tired', 'greedy', 'busy']
+const EMS = ['calm', 'focused', 'anxious', 'fearful', 'impatient', 'frustrated', 'tired', 'greedy']
 const IDEAS = [
   'ORB long off vwap reclaim',
   'Fade pop at resistance',

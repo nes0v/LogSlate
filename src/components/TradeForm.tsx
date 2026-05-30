@@ -17,15 +17,13 @@ import { RuleCheck } from '@/components/form/RuleCheck'
 import { NumberInput } from '@/components/form/NumberInput'
 import { QtyInput } from '@/components/form/QtyInput'
 import { Select } from '@/components/form/Select'
-import { ScreenshotField } from '@/components/ScreenshotField'
 import { BTN_BASE, BTN_OUTLINED } from '@/components/form/buttonClass'
 import { computeOrphanRules } from '@/lib/model-rules'
 import { computeAhpc, computeNetPnl } from '@/lib/trade-math'
 import { formatDuration } from '@/lib/duration'
 import { formatUsd } from '@/lib/money'
 import { useAutosizeTextarea } from '@/lib/use-autosize-textarea'
-import { useScreenshotUrls } from '@/lib/use-screenshot-urls'
-import { cn, errorMessage, mergeRefs } from '@/lib/utils'
+import { cn, mergeRefs } from '@/lib/utils'
 
 const SYMBOLS = [
   { value: 'NQ', label: 'NQ' },
@@ -41,8 +39,8 @@ const EXECUTION_KINDS = [
   { value: 'sell', label: 'sell' },
 ] as const
 const ORDER_TYPE_OPTIONS = [
-  { value: 'limit', label: 'limit' },
-  { value: 'market', label: 'market' },
+  { value: 'mkt', label: 'mkt' },
+  { value: 'lmt', label: 'lmt' },
 ] as const
 
 // Parses a partial-or-full HH:MM[:SS] wallclock into ms-within-day.
@@ -58,15 +56,6 @@ interface TradeFormProps {
   initialDate: string // YYYY-MM-DD
   onSubmit: (draft: TradeDraft) => Promise<void> | void
   onCancel: () => void
-  /** Resolves the trade's 1-based ordinal within its day when an upload
-   *  happens. Called lazily so the count reflects the DB at upload time.
-   */
-  getTradeOrdinal: () => Promise<number> | number
-  /** Edit flow hooks this to persist the screenshot ref to the trade record
-   *  the moment it changes, so navigating away without clicking Save doesn't
-   *  orphan the uploaded image. Omitted for new-trade flow (no record yet).
-   */
-  onScreenshotPersist?: (ref: string | null) => Promise<void> | void
 }
 
 export function TradeForm({
@@ -74,8 +63,6 @@ export function TradeForm({
   initialDate,
   onSubmit,
   onCancel,
-  getTradeOrdinal,
-  onScreenshotPersist,
 }: TradeFormProps) {
   const accountId = useActiveAccountId()
   // No default — the form's right column waits on the model list so the
@@ -108,20 +95,6 @@ export function TradeForm({
     [accountId],
     [] as string[],
   )
-  // Pre-resolve the initial screenshot so the thumb paints in its final
-  // state (image or "Couldn't load" panel) instead of flashing the
-  // "loading…" placeholder. Captured in state so subsequent uploads
-  // mid-edit don't re-gate the form.
-  const [initialScreenshot] = useState(initialValues?.screenshot ?? null)
-  const initialScreenshotRefs = useMemo(
-    () => (initialScreenshot ? [initialScreenshot] : []),
-    [initialScreenshot],
-  )
-  const {
-    loaded: initialScreenshotResolved,
-    resolved: screenshotResolutions,
-  } = useScreenshotUrls(initialScreenshotRefs)
-
   const {
     register,
     control,
@@ -129,7 +102,6 @@ export function TradeForm({
     formState: { errors, isSubmitting, isDirty },
     getValues,
     reset,
-    setValue,
   } = useForm<TradeFormValues, unknown, z.output<typeof tradeFormSchema>>({
     resolver: zodResolver(tradeFormSchema),
     defaultValues: initialValues ?? emptyForm(initialDate),
@@ -138,14 +110,11 @@ export function TradeForm({
   })
 
   const executions = useFieldArray({ control, name: 'executions' })
-  // Scope the top-level subscription to just the fields the form shell needs.
-  // The Idea/Notes textareas re-render on every keystroke; subscribing to the
-  // whole form (`useWatch({ control })`) would re-render the entire shell each
-  // time. LiveStatsSection has its own scoped subscription for stats.
-  const [modelIdValue, screenshotValue, dateValue] = useWatch({
-    control,
-    name: ['model_id', 'screenshot', 'date'],
-  })
+  // Scope the top-level subscription to a single field. The Idea/Notes
+  // textareas re-render on every keystroke; subscribing to the whole form
+  // (`useWatch({ control })`) would re-render the entire shell each time.
+  // LiveStatsSection has its own scoped subscription for stats.
+  const modelIdValue = useWatch({ control, name: 'model_id' })
   const ideaRef = useAutosizeTextarea()
   const notesRef = useAutosizeTextarea()
   const ideaReg = register('idea')
@@ -168,19 +137,16 @@ export function TradeForm({
     const sells = current.filter(e => e?.kind === 'sell').length
     executions.append({
       kind: buys <= sells ? 'buy' : 'sell',
-      order_type: 'limit',
+      order_type: 'mkt',
       price: null,
       time: '',
       contracts: 1,
     })
   }
 
-  // Gate the entire form on `models` having resolved AND the initial
-  // screenshot (if any) having resolved. The right column's
-  // ModelRuleChecklist depends on which model is selected, and we want
-  // the screenshot to render in its final state on first paint instead
-  // of flashing the "loading…" placeholder.
-  if (models === undefined || !initialScreenshotResolved) return null
+  // Gate the entire form on `models` having resolved. The right column's
+  // ModelRuleChecklist depends on which model is selected.
+  if (models === undefined) return null
 
   return (
     <form onSubmit={handleSubmit(submit)}>
@@ -269,6 +235,7 @@ export function TradeForm({
                         className={inputClass}
                         value={field.value ?? null}
                         onChange={field.onChange}
+                        decimals={2}
                       />
                     )}
                   />
@@ -299,6 +266,12 @@ export function TradeForm({
                           field.onChange(formatted)
                         }}
                         onBlur={() => {
+                          // Alt-tabbing to another window blurs the input even
+                          // though focus stays on it within the page. Skip
+                          // padding on a window blur so a half-typed time isn't
+                          // committed mid-entry; only normalize on a genuine
+                          // in-app blur (document still focused).
+                          if (!document.hasFocus()) return
                           // Pad partial input to canonical HH:MM:SS so the form
                           // state matches what gets persisted: "13:30" → "13:30:00",
                           // "13:30:4" → "13:30:40". Padding is right-aligned (a
@@ -354,6 +327,7 @@ export function TradeForm({
                 render={({ field }) => (
                   <NumberInput
                     className={inputClass}
+                    decimals={2}
                     value={field.value ?? null}
                     onChange={field.onChange}
                   />
@@ -367,6 +341,7 @@ export function TradeForm({
                 render={({ field }) => (
                   <NumberInput
                     className={inputClass}
+                    decimals={2}
                     value={field.value ?? null}
                     onChange={field.onChange}
                   />
@@ -380,6 +355,7 @@ export function TradeForm({
                 render={({ field }) => (
                   <NumberInput
                     className={inputClass}
+                    decimals={2}
                     value={field.value ?? null}
                     onChange={field.onChange}
                   />
@@ -393,6 +369,7 @@ export function TradeForm({
                 render={({ field }) => (
                   <NumberInput
                     className={inputClass}
+                    decimals={2}
                     value={field.value ?? null}
                     onChange={field.onChange}
                   />
@@ -401,34 +378,9 @@ export function TradeForm({
             </Field>
           </div>
 
-          <Field label="Screenshot">
-            <ScreenshotField
-              value={screenshotValue ?? null}
-              onChange={async ref => {
-                setValue('screenshot', ref, { shouldDirty: true })
-                if (!onScreenshotPersist) return
-                try {
-                  await onScreenshotPersist(ref)
-                } catch (e) {
-                  // Surface the failure rather than letting the form silently
-                  // drift away from the persisted record. The user can re-pick
-                  // the screenshot once they've resolved the cause (no Drive,
-                  // quota, etc.).
-                  alert(
-                    `Failed to save screenshot reference: ${errorMessage(e)}`,
-                  )
-                }
-              }}
-              date={dateValue}
-              getFilenameSuffix={async () => `trade-${await getTradeOrdinal()}`}
-              prefetched={
-                screenshotValue
-                  ? screenshotResolutions.get(screenshotValue)
-                  : undefined
-              }
-            />
-          </Field>
             </section>
+
+            <LiveStatsSection control={control} />
 
             {/* Buttons live inside the left column on lg+ so growing the
                 Notes textarea (right column) doesn't push them down. */}
@@ -512,7 +464,6 @@ export function TradeForm({
             />
           </Field>
             </section>
-            <LiveStatsSection control={control} />
           </div>
 
           {/* On smaller screens the grid collapses to a single column; the
@@ -569,6 +520,7 @@ function LiveStatsSection({ control }: { control: Control<TradeFormValues> }) {
       .filter(e => e && e.price != null && e.contracts != null)
       .map(e => ({
         kind: e.kind,
+        order_type: e.order_type,
         price: e.price as number,
         time: '',
         contracts: e.contracts as number,
@@ -841,7 +793,6 @@ function ModelRuleChecklist({
   // `model_rules_followed` and won't reappear.
   const orphans = useMemo(() => computeOrphanRules(groups, followed), [groups, followed])
   const total = groups.reduce((n, g) => n + g.rules.length, 0)
-  const inModelFollowed = followed.length - orphans.length
   if (total === 0 && orphans.length === 0) {
     return (
       <div className="text-xs text-(--color-text-dim) italic px-2">
@@ -851,15 +802,6 @@ function ModelRuleChecklist({
   }
   return (
     <div className="bg-(--color-panel-2) rounded-(--radius) p-3 space-y-2">
-      <div className="text-xs uppercase tracking-wider text-(--color-text-dim) flex items-center justify-between">
-        <span>Rules followed</span>
-        <span className="font-mono normal-case">
-          {inModelFollowed} / {total}
-          {orphans.length > 0 && (
-            <span className="text-(--color-text-faint)"> (+{orphans.length} removed)</span>
-          )}
-        </span>
-      </div>
       {groups.map(g => (
         <div key={g.id} className="space-y-0.5">
           <div className="text-xs text-(--color-text-dim)">{g.name}</div>

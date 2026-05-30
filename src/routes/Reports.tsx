@@ -872,14 +872,10 @@ function splitByAxis(
     }
     case 'emotion': {
       // Preserve EMOTIONS' declared order so the buckets always sort the
-      // same way; an extra "(unset)" bucket catches trades without an
-      // emotion logged.
-      const buckets: Array<{ label: string; trades: TradeRecord[] }> = EMOTIONS.map(
-        e => ({ label: e, trades: trades.filter(t => t.emotion === e) }),
-      )
-      const unset = trades.filter(t => !t.emotion)
-      if (unset.length > 0) buckets.push({ label: '(unset)', trades: unset })
-      return buckets.filter(g => g.trades.length > 0)
+      // same way.
+      return EMOTIONS
+        .map(e => ({ label: e, trades: trades.filter(t => t.emotion === e) }))
+        .filter(g => g.trades.length > 0)
     }
     case 'model': {
       const map = new Map<string, TradeRecord[]>()

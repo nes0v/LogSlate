@@ -330,7 +330,7 @@ describe('drawdownStats', () => {
 
 describe('ratioStats', () => {
   it('returns null on too-short series', () => {
-    expect(ratioStats([], 0)).toEqual({
+    expect(ratioStats([])).toEqual({
       sharpe: null,
       sortino: null,
       calmar: null,
@@ -348,7 +348,7 @@ describe('ratioStats', () => {
       dates.push(d)
     }
     const series = dailyEquitySeries(trades, dates, 0)
-    const stats = ratioStats(series, -0.1)
+    const stats = ratioStats(series)
     expect(Number.isFinite(stats.sharpe!)).toBe(true)
     expect(Number.isFinite(stats.sortino!)).toBe(true)
     expect(Number.isFinite(stats.kRatio!)).toBe(true)
@@ -372,7 +372,7 @@ describe('ratioStats', () => {
       dates.push(d)
     }
     const series = dailyEquitySeries(trades, dates, 0)
-    const stats = ratioStats(series, -0.1)
+    const stats = ratioStats(series)
     expect(stats.tailRatio).not.toBeNull()
     // 5% of 60 = 3-sample tails. Bottom three losses are
     // (-50, -50, -0.01) averaging to -33.33; top three wins are
@@ -390,7 +390,7 @@ describe('ratioStats', () => {
       dates.push(d)
     }
     const series = dailyEquitySeries(trades, dates, 0)
-    const stats = ratioStats(series, -0.1)
+    const stats = ratioStats(series)
     expect(stats.tailRatio).toBeNull()
   })
 })
@@ -457,10 +457,10 @@ describe('scatter helpers', () => {
     expect(pts).toHaveLength(2)
     expect(pts[0].x).toBe(20)
     expect(pts[0].y).toBeCloseTo(100, 5)
-    expect(pts[0].win).toBe(true)
+    expect(pts[0].outcome).toBe('win')
     expect(pts[1].x).toBe(100)
     expect(pts[1].y).toBeCloseTo(-50, 5)
-    expect(pts[1].win).toBe(false)
+    expect(pts[1].outcome).toBe('loss')
   })
 
   it('mfeScatter skips trades with no buildup', () => {
