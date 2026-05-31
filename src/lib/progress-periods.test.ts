@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { ProgressRule, ProgressRulePeriod } from '@/db/types'
+import type { ProgressRule } from '@/db/types'
 import {
   closePeriod,
   openPeriod,
@@ -52,10 +52,6 @@ describe('ruleActiveOn', () => {
     expect(ruleActiveOn(r, '2026-12-01')).toBe(true)
   })
 
-  it('treats a missing periods field as empty (no day covered)', () => {
-    const r = { ...rule(), periods: undefined as unknown as ProgressRulePeriod[] }
-    expect(ruleActiveOn(r, '2026-05-11')).toBe(false)
-  })
 })
 
 describe('ruleHasOpenPeriod', () => {
@@ -121,8 +117,4 @@ describe('closePeriod', () => {
     ])
   })
 
-  it('handles missing periods field defensively', () => {
-    const r = { ...rule(), periods: undefined as unknown as ProgressRulePeriod[] }
-    expect(closePeriod(r, '2026-05-17')).toEqual([])
-  })
 })

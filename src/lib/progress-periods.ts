@@ -1,26 +1,21 @@
 // Date-range arithmetic on `ProgressRule.periods`. Extracted from the
 // Progress route so unit tests can exercise the rules without spinning
-// up React. Every function treats a missing `periods` field as `[]`
-// since rows pulled from Drive may pre-date the field.
+// up React.
 
 import { addDays, format } from 'date-fns'
 import { dateKeyToDate } from '@/lib/tz'
 import type { ProgressRule, ProgressRulePeriod } from '@/db/types'
 
-export function periodsOf(rule: ProgressRule): ProgressRulePeriod[] {
-  return rule.periods ?? []
-}
-
 // A rule counts toward day D's denominator if any period covers D
 // inclusively. Periods with `until: null` are still open.
 export function ruleActiveOn(rule: ProgressRule, date: string): boolean {
-  return periodsOf(rule).some(
+  return rule.periods.some(
     p => p.from <= date && (p.until === null || date <= p.until),
   )
 }
 
 export function ruleHasOpenPeriod(rule: ProgressRule): boolean {
-  return periodsOf(rule).some(p => p.until === null)
+  return rule.periods.some(p => p.until === null)
 }
 
 // Open a fresh period starting today. No-op (returns a defensive copy)
@@ -28,8 +23,8 @@ export function ruleHasOpenPeriod(rule: ProgressRule): boolean {
 // history. Always returns a fresh array so callers can't accidentally
 // mutate the underlying rule.periods.
 export function openPeriod(rule: ProgressRule, today: string): ProgressRulePeriod[] {
-  if (ruleHasOpenPeriod(rule)) return periodsOf(rule).slice()
-  return [...periodsOf(rule), { from: today, until: null }]
+  if (ruleHasOpenPeriod(rule)) return rule.periods.slice()
+  return [...rule.periods, { from: today, until: null }]
 }
 
 // Close the currently-open period at yesterday. If the period was
@@ -37,7 +32,7 @@ export function openPeriod(rule: ProgressRule, today: string): ProgressRulePerio
 // days, so drop it entirely instead of writing a zero-day range.
 export function closePeriod(rule: ProgressRule, today: string): ProgressRulePeriod[] {
   const yesterday = format(addDays(dateKeyToDate(today), -1), 'yyyy-MM-dd')
-  return periodsOf(rule)
+  return rule.periods
     .map(p => {
       if (p.until !== null) return p
       if (p.from > yesterday) return null
