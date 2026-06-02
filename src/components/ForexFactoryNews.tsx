@@ -61,6 +61,8 @@ export function ForexFactoryNews() {
   const [loadedByWeek, setLoadedByWeek] = useState<Partial<Record<FFWeek, FFEvent[]>>>({})
   const [error, setError] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
+  // Blocks rapid re-clicks that would trip the proxy's 429 rate limit.
+  const [coolingDown, setCoolingDown] = useState(false)
   const [userCurrency, setUserCurrency] = useState<string | null>(null)
   const [dayKey, setDayKey] = useState<string>(() => nyDateKey(new Date()))
   // Ticks every minute so past-vs-upcoming styling stays correct without a
@@ -118,7 +120,10 @@ export function ForexFactoryNews() {
   }, [dayKey, events, loadedByWeek.lastweek, loadedByWeek.nextweek, loadWeek])
 
   async function refresh() {
+    if (refreshing || coolingDown) return
     setRefreshing(true)
+    setCoolingDown(true)
+    setTimeout(() => setCoolingDown(false), 8000)
     try {
       // Refresh only the weeks we've already loaded.
       // Manual refresh — bypasses cache, so freshly-fetched thisweek data
@@ -138,7 +143,8 @@ export function ForexFactoryNews() {
     }
   }
 
-  const loading = events.length === 0 && error === null
+  const hasData = events.length > 0
+  const loading = !hasData && error === null
 
   // `nowMs` ticks every minute — derive today's NY key from it so a midnight
   // rollover refreshes the Today button state without a Date() call in render.
@@ -221,7 +227,7 @@ export function ForexFactoryNews() {
           <button
             type="button"
             onClick={() => void refresh()}
-            disabled={refreshing}
+            disabled={refreshing || coolingDown}
             aria-label="Refresh"
             className="p-1.5 rounded-(--radius) text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2) disabled:opacity-50"
           >
@@ -229,8 +235,11 @@ export function ForexFactoryNews() {
           </button>
         </div>
       </div>
+      {error && hasData && (
+        <div className="text-xs text-(--color-loss)">{error}</div>
+      )}
       <div className="bg-(--color-panel) rounded-(--radius) overflow-hidden">
-        {error ? (
+        {error && !hasData ? (
           <div className="p-3 text-xs text-(--color-loss)">Failed to load news: {error}</div>
         ) : loading ? (
           <div className="p-3 text-xs text-(--color-text-dim)">Loading…</div>

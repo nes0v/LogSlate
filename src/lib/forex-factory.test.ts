@@ -92,6 +92,23 @@ describe('fetchForexFactoryWeek', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(2)
   })
 
+  it('force=true also bypasses the browser HTTP cache via no-store', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
+      new Response(JSON.stringify(feed), { status: 200 }),
+    )
+    await fetchForexFactoryWeek('thisweek')
+    expect(fetchSpy.mock.calls[0][1]).toMatchObject({ cache: 'default' })
+    await fetchForexFactoryWeek('thisweek', true)
+    expect(fetchSpy.mock.calls[1][1]).toMatchObject({ cache: 'no-store' })
+  })
+
+  it('surfaces a rate-limit message on a 429', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response('too many requests', { status: 429 }),
+    )
+    await expect(fetchForexFactoryWeek('thisweek')).rejects.toThrow(/rate limited/i)
+  })
+
   it('throws on a non-OK response', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response('not found', { status: 404 }),

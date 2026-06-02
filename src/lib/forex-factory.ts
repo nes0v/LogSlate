@@ -64,8 +64,16 @@ function normalizeImpact(s: unknown): FFImpact {
   return 'Low'
 }
 
-async function fetchFeed(url: string): Promise<FFEvent[]> {
-  const resp = await fetch(PROXY_URL + encodeURIComponent(url))
+async function fetchFeed(url: string, force = false): Promise<FFEvent[]> {
+  // On a manual refresh, bypass the browser HTTP cache too — corsproxy.io
+  // returns a cacheable response, so a default fetch would be served from
+  // memory/disk cache and never hit the wire.
+  const resp = await fetch(PROXY_URL + encodeURIComponent(url), {
+    cache: force ? 'no-store' : 'default',
+  })
+  if (resp.status === 429) {
+    throw new Error('Rate limited by the news proxy — wait a moment before refreshing again.')
+  }
   if (!resp.ok) throw new Error(`ForexFactory fetch failed: ${resp.status}`)
   const raw = (await resp.json()) as Array<Record<string, unknown>>
   return raw.map(e => ({
@@ -85,7 +93,7 @@ export async function fetchForexFactoryWeek(week: FFWeek, force = false): Promis
     const cached = loadCache(cacheKey)
     if (cached) return cached.events
   }
-  const events = await fetchFeed(FEED_URL_BY_WEEK[week])
+  const events = await fetchFeed(FEED_URL_BY_WEEK[week], force)
   saveCache(cacheKey, events)
   return events
 }
