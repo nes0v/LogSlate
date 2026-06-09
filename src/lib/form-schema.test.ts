@@ -19,7 +19,7 @@ function validForm(overrides: Partial<TradeFormValues> = {}): TradeFormValues {
     stop_loss: 100,
     profit_target: 200,
     drawdown: 20,
-    buildup: 200,
+    runup: 200,
     emotion: 'focused',
     executions: [
       { kind: 'buy', order_type: 'lmt', price: 20000, time: '10:00:00', contracts: 1 },
@@ -203,7 +203,7 @@ describe('recordToForm ↔ formToDraft round-trip', () => {
       stop_loss: 100,
       profit_target: 200,
       drawdown: 20,
-      buildup: 200,
+      runup: 200,
       rating: 'good',
     })
     const roundTrip = formToDraft(recordToForm(record))

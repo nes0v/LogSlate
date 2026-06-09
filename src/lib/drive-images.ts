@@ -37,6 +37,7 @@ import {
 } from '@/lib/drive'
 import { pushError } from '@/lib/notifications'
 import { loadJsonFromStorage, removeFromStorage, saveJsonToStorage } from '@/lib/storage'
+import type { StoredScreenshot } from '@/db/types'
 
 const TOP_FOLDER_NAME = 'LogSlate'
 
@@ -320,44 +321,55 @@ async function uploadDirectly(
   return ref
 }
 
-async function enqueuePending(
+// Stages a blob for the pending queue WITHOUT writing it to IndexedDB.
+// The caller persists the returned `pending` record in the same
+// transaction that attaches its ref to the owning record, so the blob and
+// its reference are committed atomically (no orphan blob / dangling ref if
+// the app dies mid-way — a real risk on Android tab eviction).
+async function stagePending(
   blob: Blob,
   resolved: ResolvedFilename,
   accountId: string,
-): Promise<string> {
+): Promise<StoredScreenshot> {
   const id = newId()
-  const now = new Date().toISOString()
-  await db.pending_uploads.add({
-    id,
-    account_id: accountId,
-    blob,
-    filename: resolved.filename,
-    month_key: resolved.month_key,
-    created_at: now,
-  })
   const ref = `pending:${id}`
   rememberUrl(ref, await buildCacheEntry(blob))
-  return ref
+  return {
+    ref,
+    pending: {
+      id,
+      account_id: accountId,
+      blob,
+      filename: resolved.filename,
+      month_key: resolved.month_key,
+      created_at: new Date().toISOString(),
+    },
+  }
 }
 
 // Called by the trade form / day page when the user picks a screenshot.
-// Returns the reference string to store on the record. Uploads immediately
-// when possible; falls back to the pending queue otherwise. The upload is
-// tagged with the currently active account so it lands in that account's
-// Drive folder even if the user switches accounts before the queue drains.
-export async function storeScreenshot(blob: Blob, ctx: ScreenshotContext): Promise<string> {
+// Returns a StoredScreenshot: a `drive:` ref when uploaded immediately, or
+// a `pending:` ref plus the uncommitted blob record when queued. The caller
+// must persist that record together with the ref (see `StoredScreenshot`).
+// The upload is tagged with the currently active account so it lands in
+// that account's Drive folder even if the user switches before the queue
+// drains.
+export async function storeScreenshot(
+  blob: Blob,
+  ctx: ScreenshotContext,
+): Promise<StoredScreenshot> {
   const resolved = resolveFilename(blob, ctx)
   const accountId = getActiveAccountId()
-  if (!canUploadToDrive()) return enqueuePending(blob, resolved, accountId)
+  if (!canUploadToDrive()) return stagePending(blob, resolved, accountId)
   try {
-    return await uploadDirectly(blob, resolved, accountId)
+    return { ref: await uploadDirectly(blob, resolved, accountId) }
   } catch (e) {
     // Keep the image either way — the drainer will retry. Scope errors need
     // user action, so surface them to the notification banner too.
     if (e instanceof DriveScopeError) {
       pushError(e.message, { label: 'Reconnect', to: '/settings' })
     }
-    return enqueuePending(blob, resolved, accountId)
+    return stagePending(blob, resolved, accountId)
   }
 }
 

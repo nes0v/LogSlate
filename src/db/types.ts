@@ -65,7 +65,7 @@ export interface TradeRecord {
   executions: Execution[] // stored sorted by time ascending
   stop_loss: number // USD (positive number representing risk amount)
   drawdown: number | null // USD, MAE — max adverse excursion (optional)
-  buildup: number | null // USD, MFE — max favorable excursion (optional)
+  runup: number | null // USD, MFE — max favorable excursion (optional)
   rating: Rating
   emotion: Emotion
   profit_target: number // USD planned profit target
@@ -112,6 +112,16 @@ export interface PendingUpload {
   filename: string
   month_key: string
   created_at: string
+}
+
+// Result of staging a screenshot for storage. `ref` is the string to
+// attach to the owning record (`drive:…` when uploaded immediately,
+// `pending:…` when queued). When `pending` is set, the blob has NOT been
+// committed yet — the caller must persist it in the SAME transaction that
+// stores `ref`, so a crash can't orphan the blob or leave a dangling ref.
+export interface StoredScreenshot {
+  ref: string
+  pending?: PendingUpload
 }
 
 // Per-day record (one row per account+date). Holds the day's free-text

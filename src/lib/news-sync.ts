@@ -25,22 +25,30 @@ function eventId(date: string, title: string): string {
  * Single transaction; safe to call repeatedly.
  */
 export async function syncWeekNews(events: FFEvent[]): Promise<void> {
-  const filtered = events.filter(isPersistableEvent)
-  if (filtered.length === 0) return
+  // Derive the covered day range from ALL fetched events (any country /
+  // impact), not just the persistable USD high/medium subset. A quiet week
+  // with zero persistable events must still clear last week's stale rows in
+  // its range — deriving the range only from the kept events would skip the
+  // delete pass entirely on such a week.
+  const allDayKeys: string[] = []
+  for (const e of events) {
+    const d = new Date(e.date)
+    if (!Number.isNaN(d.getTime())) allDayKeys.push(nyDateKey(d))
+  }
+  if (allDayKeys.length === 0) return
+  allDayKeys.sort()
+  const fromDay = allDayKeys[0]
+  const toDay = allDayKeys[allDayKeys.length - 1]
 
   const now = new Date().toISOString()
-  const fetchedById = new Map<string, { event: typeof filtered[number]; dayKey: string }>()
-  for (const e of filtered) {
+  const fetchedById = new Map<string, { event: FFEvent & { impact: PersistedNewsImpact }; dayKey: string }>()
+  for (const e of events) {
+    if (!isPersistableEvent(e)) continue
     const d = new Date(e.date)
     if (Number.isNaN(d.getTime())) continue
     const dayKey = nyDateKey(d)
     fetchedById.set(eventId(dayKey, e.title), { event: e, dayKey })
   }
-  if (fetchedById.size === 0) return
-
-  const dayKeys = Array.from(new Set(Array.from(fetchedById.values()).map(v => v.dayKey))).sort()
-  const fromDay = dayKeys[0]
-  const toDay = dayKeys[dayKeys.length - 1]
 
   await db.transaction('rw', db.news, async () => {
     const existing = await db.news
@@ -61,7 +69,7 @@ export async function syncWeekNews(events: FFEvent[]): Promise<void> {
       created_at: existingCreatedAt.get(id) ?? now,
       updated_at: now,
     }))
-    await db.news.bulkPut(upserts)
+    if (upserts.length > 0) await db.news.bulkPut(upserts)
 
     const staleIds = existing.filter(r => !fetchedById.has(r.id)).map(r => r.id)
     if (staleIds.length > 0) await db.news.bulkDelete(staleIds)

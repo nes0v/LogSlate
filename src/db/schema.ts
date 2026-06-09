@@ -59,6 +59,8 @@ class LogslateDB extends Dexie {
       progress_checks: '&id, [account_id+date], account_id, updated_at',
       news: '&id, date, updated_at',
     })
+
+    this.version(10)
   }
 }
 

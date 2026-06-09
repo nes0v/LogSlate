@@ -107,7 +107,7 @@ function makeTrade({ date, sym, ct, startMin, endMin, long, rating, entryOverrid
     stop_loss: sl,
     profit_target: sl * ri(1, 3),
     drawdown: dd,
-    buildup: bu,
+    runup: bu,
     rating: rating ?? pick(RATES),
     emotion: pick(EMS),
     screenshot: null,

@@ -40,7 +40,7 @@ Sessions: `pre | AM | LT | PM | aft` (pre-market, morning, lunch, evening, after
 - `idea` (free text)
 - `buys[]` — array of `{ price, time, contracts }`
 - `sells[]` — array of `{ price, time, contracts }`
-- `stop_loss` USD, `drawdown` USD (MAE), `buildup` USD (MFE)
+- `stop_loss` USD, `drawdown` USD (MAE), `runup` USD (MFE)
 - `planned_rr` — integer 1–7 (1x..7x only, no decimals)
 - `rating` — `poor` | `good` | `excellent` (1/2/3 stars; see `src/lib/rating.ts`)
 - `pnl` USD — auto-computed by default, with manual override allowed

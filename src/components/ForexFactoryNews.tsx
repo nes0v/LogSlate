@@ -125,10 +125,13 @@ export function ForexFactoryNews() {
     setCoolingDown(true)
     setTimeout(() => setCoolingDown(false), 8000)
     try {
-      // Refresh only the weeks we've already loaded.
+      // Refresh the weeks we've already loaded. When the initial load
+      // failed (nothing loaded yet), fall back to refetching `thisweek` so
+      // Refresh actually retries instead of silently no-opping.
       // Manual refresh — bypasses cache, so freshly-fetched thisweek data
       // is what the persisted news table needs to mirror.
-      const weeks = Object.keys(loadedByWeek) as FFWeek[]
+      const loadedWeeks = Object.keys(loadedByWeek) as FFWeek[]
+      const weeks = loadedWeeks.length > 0 ? loadedWeeks : (['thisweek'] as FFWeek[])
       await Promise.all(weeks.map(w => fetchForexFactoryWeek(w, true).then(
         data => {
           setLoadedByWeek(prev => ({ ...prev, [w]: data }))

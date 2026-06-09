@@ -14,17 +14,31 @@ afterEach(() => {
 })
 
 describe('defaultRange', () => {
-  it('returns a 30-day inclusive window ending on baseDate', () => {
-    expect(defaultRange('2026-04-30')).toEqual({
-      from: '2026-04-01',
-      to: '2026-04-30',
+  it('returns a one-month inclusive window ending on baseDate', () => {
+    expect(defaultRange('2026-06-08')).toEqual({
+      from: '2026-05-08',
+      to: '2026-06-08',
     })
   })
 
-  it('handles month boundaries', () => {
-    expect(defaultRange('2026-03-15')).toEqual({
-      from: '2026-02-14',
-      to: '2026-03-15',
+  it('clamps when the prior month is shorter', () => {
+    expect(defaultRange('2026-03-31')).toEqual({
+      from: '2026-02-28',
+      to: '2026-03-31',
+    })
+  })
+
+  it('clamps to Feb 29 in a leap year', () => {
+    expect(defaultRange('2028-03-30')).toEqual({
+      from: '2028-02-29',
+      to: '2028-03-30',
+    })
+  })
+
+  it('crosses the year boundary', () => {
+    expect(defaultRange('2026-01-15')).toEqual({
+      from: '2025-12-15',
+      to: '2026-01-15',
     })
   })
 })

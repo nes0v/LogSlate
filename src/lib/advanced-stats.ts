@@ -223,7 +223,6 @@ export interface DrawdownStats {
   avgDdDurationDays: number // mean drawdown stretch (excluding zero-length)
   recoveryFactor: number | null // net pnl / |maxDd|
   ulcerIndex: number // sqrt(mean(squared % drawdowns)), in % units (0..100)
-  upi: number | null // CAGR-proxy / Ulcer Index — uses mean daily pnl, not annualised
 }
 
 // `series` should already be filtered to traded days (`p.pnl !== 0`).
@@ -241,7 +240,6 @@ export function drawdownStats(series: EquityPoint[], netPnl: number): DrawdownSt
       avgDdDurationDays: 0,
       recoveryFactor: null,
       ulcerIndex: 0,
-      upi: null,
     }
   }
   let maxDd = 0
@@ -271,8 +269,6 @@ export function drawdownStats(series: EquityPoint[], netPnl: number): DrawdownSt
     : 0
   const ulcer = Math.sqrt(sqDdSum / series.length)
   const recoveryFactor = maxDd < 0 ? netPnl / Math.abs(maxDd) : null
-  const meanPnl = series.reduce((a, b) => a + b.pnl, 0) / series.length
-  const upi = ulcer > 0 ? meanPnl / ulcer : null
   return {
     maxDd,
     maxDdPct,
@@ -284,7 +280,6 @@ export function drawdownStats(series: EquityPoint[], netPnl: number): DrawdownSt
     avgDdDurationDays: avgStreak,
     recoveryFactor,
     ulcerIndex: ulcer,
-    upi,
   }
 }
 
@@ -308,10 +303,17 @@ export function ratioStats(series: EquityPoint[]): RatioStats {
   const sd = Math.sqrt(v)
   const sharpe = sd > 0 ? (m / sd) * Math.sqrt(252) : null
 
+  // Target downside deviation: sum squared NEGATIVE returns but divide by
+  // the TOTAL period count (non-negative days contribute 0), not by the
+  // count of losing days. This is the canonical Sortino denominator and
+  // keeps the metric on the same N basis as Sharpe above — dividing by
+  // only the losing-day count inflates the deviation and understates
+  // Sortino the more winning days there are.
   let sortino: number | null = null
-  const downside = pnls.filter(p => p < 0)
-  if (downside.length > 0) {
-    const dv = downside.reduce((a, b) => a + b * b, 0) / downside.length
+  const hasDownside = pnls.some(p => p < 0)
+  if (hasDownside) {
+    const dv =
+      pnls.reduce((a, b) => a + (b < 0 ? b * b : 0), 0) / pnls.length
     const dsd = Math.sqrt(dv)
     sortino = dsd > 0 ? (m / dsd) * Math.sqrt(252) : null
   }
@@ -462,14 +464,14 @@ export function maeMfeStats(trades: TradeRecord[]): MaeMfeStats {
       mae += t.drawdown
       nMae++
     }
-    if (t.buildup !== null && t.buildup > 0) {
-      mfe += t.buildup
+    if (t.runup !== null && t.runup > 0) {
+      mfe += t.runup
       nMfe++
     }
     const { pnl: p, outcome } = tradeMetrics(t)
     const pnl = p ?? 0
-    if (outcome === 'win' && t.buildup !== null && t.buildup > 0) {
-      effSum += pnl / t.buildup
+    if (outcome === 'win' && t.runup !== null && t.runup > 0) {
+      effSum += pnl / t.runup
       effN++
     }
     if (outcome === 'loss' && t.drawdown !== null && t.drawdown > 0 && t.stop_loss > 0) {
@@ -511,8 +513,8 @@ export function mfeScatter(trades: TradeRecord[]): ScatterPoint[] {
   for (const t of trades) {
     const { pnl, outcome } = tradeMetrics(t)
     if (pnl === null) continue
-    if (t.buildup === null) continue
-    out.push({ id: t.id, x: t.buildup, y: pnl, outcome, date: t.date })
+    if (t.runup === null) continue
+    out.push({ id: t.id, x: t.runup, y: pnl, outcome, date: t.date })
   }
   return out
 }
@@ -927,8 +929,8 @@ export function cohortStats(trades: TradeRecord[]): CohortCompare {
       maeSum += t.drawdown
       maeN++
     }
-    if (t.buildup !== null && t.buildup > 0) {
-      mfeSum += t.buildup
+    if (t.runup !== null && t.runup > 0) {
+      mfeSum += t.runup
       mfeN++
     }
     feeSum += computeFees(t)

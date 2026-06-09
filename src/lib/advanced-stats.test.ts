@@ -325,6 +325,7 @@ describe('drawdownStats', () => {
     const stats = drawdownStats([], 0)
     expect(stats.maxDd).toBe(0)
     expect(stats.recoveryFactor).toBeNull()
+    expect(stats.maxDdDurationDays).toBe(0)
   })
 })
 
@@ -353,6 +354,23 @@ describe('ratioStats', () => {
     expect(Number.isFinite(stats.sortino!)).toBe(true)
     expect(Number.isFinite(stats.kRatio!)).toBe(true)
     expect(Number.isFinite(stats.tailRatio!)).toBe(true)
+  })
+
+  it('uses the canonical N-basis downside deviation for Sortino', () => {
+    // Daily PnL +100, -50, +100. Downside deviation = sqrt((-50)² / 3)
+    // (squared losses ÷ TOTAL days), NOT sqrt((-50)² / 1) (÷ loss count).
+    // mean = 50, dsd = 50/√3, so Sortino = √3 × √252.
+    const dates = ['2026-04-01', '2026-04-02', '2026-04-03']
+    const series = dailyEquitySeries(
+      [
+        tradeWithPnl(100, { date: dates[0] }),
+        tradeWithPnl(-50, { date: dates[1] }),
+        tradeWithPnl(100, { date: dates[2] }),
+      ],
+      dates,
+      0,
+    )
+    expect(ratioStats(series).sortino).toBeCloseTo(Math.sqrt(3) * Math.sqrt(252), 4)
   })
 
   it('tail ratio stays bounded when a single boundary loss is microscopic', () => {
@@ -435,10 +453,10 @@ describe('rDistribution', () => {
 })
 
 describe('maeMfeStats', () => {
-  it('averages drawdown and buildup separately', () => {
+  it('averages drawdown and runup separately', () => {
     const trades = [
-      tradeWithPnl(100, { drawdown: 20, buildup: 200, stop_loss: 100 }),
-      tradeWithPnl(-50, { drawdown: 100, buildup: 30, stop_loss: 100 }),
+      tradeWithPnl(100, { drawdown: 20, runup: 200, stop_loss: 100 }),
+      tradeWithPnl(-50, { drawdown: 100, runup: 30, stop_loss: 100 }),
     ]
     const s = maeMfeStats(trades)
     expect(s.avgMae).toBe(60) // (20+100)/2
@@ -463,8 +481,8 @@ describe('scatter helpers', () => {
     expect(pts[1].outcome).toBe('loss')
   })
 
-  it('mfeScatter skips trades with no buildup', () => {
-    const trades = [tradeWithPnl(100, { buildup: 200 }), tradeWithPnl(-50, { buildup: null })]
+  it('mfeScatter skips trades with no runup', () => {
+    const trades = [tradeWithPnl(100, { runup: 200 }), tradeWithPnl(-50, { runup: null })]
     expect(mfeScatter(trades)).toHaveLength(1)
   })
 })
@@ -681,8 +699,8 @@ describe('compositeScore', () => {
 describe('cohortStats', () => {
   it('summarises a cohort', () => {
     const trades = [
-      tradeWithPnl(100, { drawdown: 20, buildup: 200, stop_loss: 100 }),
-      tradeWithPnl(50, { drawdown: 30, buildup: 100, stop_loss: 100 }),
+      tradeWithPnl(100, { drawdown: 20, runup: 200, stop_loss: 100 }),
+      tradeWithPnl(50, { drawdown: 30, runup: 100, stop_loss: 100 }),
     ]
     const s = cohortStats(trades)
     expect(s.count).toBe(2)

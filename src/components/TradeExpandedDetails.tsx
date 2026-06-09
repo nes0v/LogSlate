@@ -77,7 +77,7 @@ export function TradeExpandedDetails({ trade, model }: TradeExpandedDetailsProps
         <StatColumn
           rows={[
             ['Drawdown', trade.drawdown === null ? '—' : formatUsd(trade.drawdown)],
-            ['Buildup', trade.buildup === null ? '—' : formatUsd(trade.buildup)],
+            ['Runup', trade.runup === null ? '—' : formatUsd(trade.runup)],
             [
               'AHPC',
               ahpc === null

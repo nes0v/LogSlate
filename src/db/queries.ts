@@ -6,6 +6,7 @@ import type {
   Day,
   EquityAdjustment,
   Model,
+  PendingUpload,
   TradeDraft,
   TradeRecord,
 } from '@/db/types'
@@ -267,31 +268,59 @@ export async function listDayScreenshotsFor(
   return day?.screenshots ?? []
 }
 
+// Appends a screenshot ref to a day's list, creating the day row if it
+// doesn't exist yet. MUST run inside a `rw` transaction that includes
+// `db.days`.
+async function appendDayScreenshotTx(
+  accountId: string,
+  date: string,
+  screenshot: string,
+  ts: string,
+): Promise<Day> {
+  const id = dayId(accountId, date)
+  const existing = await db.days.get(id)
+  const next: Day = existing
+    ? {
+        ...existing,
+        screenshots: [...existing.screenshots, screenshot],
+        updated_at: ts,
+      }
+    : {
+        id,
+        account_id: accountId,
+        date,
+        screenshots: [screenshot],
+        created_at: ts,
+        updated_at: ts,
+      }
+  await db.days.put(next)
+  return next
+}
+
 export async function addDayScreenshot(
   accountId: string,
   date: string,
   screenshot: string,
 ): Promise<Day> {
-  const id = dayId(accountId, date)
   const ts = now()
-  return db.transaction('rw', db.days, async () => {
-    const existing = await db.days.get(id)
-    const next: Day = existing
-      ? {
-          ...existing,
-          screenshots: [...existing.screenshots, screenshot],
-          updated_at: ts,
-        }
-      : {
-          id,
-          account_id: accountId,
-          date,
-          screenshots: [screenshot],
-          created_at: ts,
-          updated_at: ts,
-        }
-    await db.days.put(next)
-    return next
+  return db.transaction('rw', db.days, () =>
+    appendDayScreenshotTx(accountId, date, screenshot, ts),
+  )
+}
+
+// Atomically queues a screenshot blob for later Drive upload AND attaches
+// its `pending:` ref to the day — both in one transaction. If the app dies
+// between the two writes (e.g. Android tab eviction), there is no window
+// where the blob exists without its ref, or the ref without its blob.
+export async function addPendingDayScreenshot(
+  accountId: string,
+  date: string,
+  pending: PendingUpload,
+): Promise<Day> {
+  const ts = now()
+  return db.transaction('rw', db.days, db.pending_uploads, async () => {
+    await db.pending_uploads.add(pending)
+    return appendDayScreenshotTx(accountId, date, `pending:${pending.id}`, ts)
   })
 }
 

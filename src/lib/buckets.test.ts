@@ -34,6 +34,17 @@ describe('parseYearMonth', () => {
     const d = parseYearMonth(undefined)
     expect(d.getDate()).toBe(1)
   })
+
+  it('rejects out-of-range months instead of rolling them over', () => {
+    // `2026-13` matches a bare \d{2} and date-fns would roll it to Jan 2027;
+    // it must fall back to the current month, not silently advance a year.
+    const [yyyy, mm] = nyDateKey().split('-')
+    for (const bad of ['2026-13', '2026-00', '2026-99']) {
+      const d = parseYearMonth(bad)
+      expect(d.getFullYear()).toBe(Number(yyyy))
+      expect(d.getMonth()).toBe(Number(mm) - 1)
+    }
+  })
 })
 
 describe('chartDayLabel', () => {

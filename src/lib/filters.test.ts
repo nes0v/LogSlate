@@ -3,6 +3,7 @@ import {
   EMPTY_FILTERS,
   MODEL_NONE,
   applyFilters,
+  coerceFilters,
   filtersFromParams,
   holdBucketOf,
   paramsFromFilters,
@@ -144,6 +145,35 @@ describe('filtersFromParams ↔ paramsFromFilters round-trip', () => {
     const f = filtersFromParams(p)
     expect(f.from).toBe('2026-04-01')
     expect(f.to).toBe('2026-04-30')
+  })
+})
+
+describe('coerceFilters', () => {
+  it('whitelists enums and rejects wrong-typed values from an untrusted blob', () => {
+    const f = coerceFilters({
+      from: 42, // wrong type — not a string
+      to: '2026-04-30',
+      symbol: 'DOGE', // not in SYMBOLS
+      session: 'am', // valid
+      rating: 'bad', // not in RATINGS
+      weekday: 'funday', // not in WEEKDAYS
+      model: 'uuid-123', // free-form string kept
+      tag: '', // empty string → null
+    })
+    expect(f.from).toBeNull()
+    expect(f.to).toBe('2026-04-30')
+    expect(f.symbol).toBeNull()
+    expect(f.session).toBe('am')
+    expect(f.rating).toBeNull()
+    expect(f.weekday).toBeNull()
+    expect(f.model).toBe('uuid-123')
+    expect(f.tag).toBeNull()
+  })
+
+  it('returns all-empty for non-object input', () => {
+    expect(coerceFilters(null)).toEqual(EMPTY_FILTERS)
+    expect(coerceFilters('nonsense')).toEqual(EMPTY_FILTERS)
+    expect(coerceFilters([1, 2])).toEqual(EMPTY_FILTERS)
   })
 })
 

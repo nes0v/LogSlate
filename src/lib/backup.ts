@@ -4,6 +4,7 @@
 
 import type { EntityTable } from 'dexie'
 import { db, ensureMainAccount } from '@/db/schema'
+import { clearSyncState } from '@/lib/sync'
 import type {
   Account,
   Day,
@@ -130,6 +131,14 @@ export async function importBackup(
   )
   // Ensure the main account exists even if the backup had no accounts array.
   await ensureMainAccount()
+
+  // The local DB was just wholesale-replaced, so the old sync ledger
+  // (`lastSyncedIds` + Drive account fingerprint) no longer describes
+  // what's on disk. Clear it so the next sync is treated as a first
+  // sync — a full, non-destructive reconcile that keeps every imported
+  // row. Without this, rows whose ids were in the stale ledger but
+  // absent from Drive get misread as local deletions and dropped.
+  clearSyncState()
 
   const counts: Record<string, number> = {}
   SPECS.forEach((s, i) => {

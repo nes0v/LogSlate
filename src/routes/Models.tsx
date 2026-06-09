@@ -91,6 +91,16 @@ export function ModelsRoute() {
   // through the old order.
   const [optimisticIds, setOptimisticIds] = useState<string[] | null>(null)
 
+  // Drop the selection (and any in-flight drag order) when the account
+  // changes, so the editor can't briefly show the previous account's model.
+  // Render-phase reset via the previous-value pattern — no extra commit.
+  const [prevAccount, setPrevAccount] = useState(accountId)
+  if (prevAccount !== accountId) {
+    setPrevAccount(accountId)
+    setSelectedId(null)
+    setOptimisticIds(null)
+  }
+
   const visible = useMemo(() => {
     const base = models ?? []
     if (!optimisticIds) return base

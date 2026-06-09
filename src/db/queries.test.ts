@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { db, ensureMainAccount } from './schema'
 import {
   addDayScreenshot,
+  addPendingDayScreenshot,
   countAccountData,
   countTradesUsingModel,
   createAccount,
@@ -426,6 +427,24 @@ describe('day queries', () => {
       expect(second.screenshots).toEqual(['drive:a', 'drive:b'])
       expect(second.created_at).toBe(first.created_at)
       expect(second.updated_at >= first.updated_at).toBe(true)
+    })
+  })
+
+  describe('addPendingDayScreenshot', () => {
+    it('writes the pending blob and the day ref atomically', async () => {
+      const pending = {
+        id: 'p1',
+        account_id: ACCT,
+        blob: new Blob(['x'], { type: 'image/png' }),
+        filename: '01-jan-2026-thu-01.png',
+        month_key: '2026-01',
+        created_at: new Date().toISOString(),
+      }
+      const day = await addPendingDayScreenshot(ACCT, DATE, pending)
+      // Day row carries the pending ref…
+      expect(day.screenshots).toEqual(['pending:p1'])
+      // …and the blob row exists, both committed together.
+      expect(await db.pending_uploads.get('p1')).toMatchObject({ id: 'p1', account_id: ACCT })
     })
   })
 

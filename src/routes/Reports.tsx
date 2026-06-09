@@ -70,7 +70,7 @@ export function ReportsRoute() {
   const navigate = useNavigate()
   const location = useLocation()
   // Read the shared slot synchronously on render when the URL has no
-  // filter params — otherwise the first paint uses the default 30-day
+  // filter params — otherwise the first paint uses the default one-month
   // window and only snaps to the real filter once the hydration effect
   // mirrors slot → URL, which surfaces as a content "jump" on nav-link
   // clicks.
@@ -164,13 +164,11 @@ export function ReportsRoute() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params, lastTradeDate])
 
-  // eslint-disable-next-line react-hooks/preserve-manual-memoization -- React Compiler can't preserve these after URL-derived `tab`/`compareAxis` memos above, but the manual memoization is still semantically correct.
   const filtered = useMemo(
     () => applyFilters(allTrades ?? [], filters),
     [allTrades, filters],
   )
   const stats = useMemo(() => aggregate(filtered), [filtered])
-  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const { rangeStart, rangeEnd } = useMemo(() => {
     if (filters.from && filters.to) return { rangeStart: filters.from, rangeEnd: filters.to }
     if (filtered.length === 0) return { rangeStart: null, rangeEnd: null }

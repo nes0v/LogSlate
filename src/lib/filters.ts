@@ -176,6 +176,37 @@ export function filtersFromParams(p: URLSearchParams): TradeFilters {
   }
 }
 
+/** Validates an untrusted object (e.g. a stale or hand-edited localStorage
+ *  blob) into a clean TradeFilters. Every enum field is whitelisted against
+ *  its allowed set — exactly like `filtersFromParams` does for URL params —
+ *  so an invalid or wrong-typed value becomes `null` instead of silently
+ *  flowing into `applyFilters` and skewing (or emptying) results. */
+export function coerceFilters(raw: unknown): TradeFilters {
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+    return { ...EMPTY_FILTERS }
+  }
+  const o = raw as Record<string, unknown>
+  const str = (v: unknown): string | null =>
+    typeof v === 'string' && v.length > 0 ? v : null
+  const oneOf = <K extends string>(v: unknown, allowed: readonly K[]): K | null =>
+    typeof v === 'string' && (allowed as readonly string[]).includes(v) ? (v as K) : null
+  return {
+    from: str(o.from),
+    to: str(o.to),
+    symbol: oneOf<SymbolKey>(o.symbol, SYMBOLS),
+    contract: oneOf<ContractType>(o.contract, CONTRACT_TYPES),
+    session: oneOf<Session>(o.session, SESSIONS),
+    rating: oneOf<Rating>(o.rating, RATINGS),
+    weekday: oneOf<Weekday>(o.weekday, WEEKDAYS),
+    outcome: oneOf<TradeOutcome>(o.outcome, TRADE_OUTCOMES),
+    side: oneOf<Side>(o.side, SIDES),
+    hold: oneOf<HoldBucket>(o.hold, HOLD_BUCKETS),
+    emotion: oneOf<Emotion>(o.emotion, EMOTIONS),
+    model: str(o.model),
+    tag: str(o.tag),
+  }
+}
+
 /** URL-param names that map to a TradeFilters dimension. The Stats/Reports
  *  pages use this to count "active" filters (non-default URL state) so the
  *  filter bar opens/closes its collapsible appropriately. */

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Upload } from 'lucide-react'
 import { storeScreenshot } from '@/lib/drive-images'
+import type { StoredScreenshot } from '@/db/types'
 import { BTN_GHOST } from '@/components/form/buttonClass'
 import { errorMessage } from '@/lib/utils'
 
@@ -11,8 +12,10 @@ interface ScreenshotUploadButtonProps {
    *  state of the day's screenshot list. Return something like "fri-01".
    */
   getFilenameSuffix: () => Promise<string> | string
-  /** Called with the resolved ref string after a successful upload. */
-  onUpload: (ref: string) => Promise<void> | void
+  /** Called with the staged screenshot after a successful store. The
+   *  handler must persist `stored.pending` (when set) together with the
+   *  ref in one transaction. */
+  onUpload: (stored: StoredScreenshot) => Promise<void> | void
   label?: string
 }
 
@@ -31,8 +34,8 @@ export function ScreenshotUploadButton({
     setError(null)
     try {
       const suffix = await getFilenameSuffix()
-      const ref = await storeScreenshot(file, { date, filenameSuffix: suffix })
-      await onUpload(ref)
+      const stored = await storeScreenshot(file, { date, filenameSuffix: suffix })
+      await onUpload(stored)
     } catch (e) {
       setError(errorMessage(e))
     } finally {

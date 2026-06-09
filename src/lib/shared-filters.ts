@@ -4,21 +4,23 @@
 // reload restores its exact view), but on first mount with an empty URL we
 // hydrate from this slot.
 
-import { addDays, format } from 'date-fns'
+import { format, subMonths } from 'date-fns'
 import { dateKeyToDate } from '@/lib/tz'
-import type { TradeFilters } from '@/lib/filters'
+import { coerceFilters, type TradeFilters } from '@/lib/filters'
 import { loadJsonFromStorage, removeFromStorage, saveJsonToStorage } from '@/lib/storage'
 
 const KEY = 'logslate.shared-filters.v1'
 
-/** Default 30-day inclusive range ending on `baseDate` (YYYY-MM-DD).
- *  Anchored on the most recent trade date, so opening Stats/Reports lands
- *  on the user's actual trading window instead of a probably-empty
- *  trailing 30 days. */
+/** Default one-month inclusive range ending on `baseDate` (YYYY-MM-DD) —
+ *  same day-of-month one month back through `baseDate` (e.g. Jun 8 →
+ *  May 8 – Jun 8). Anchored on the most recent trade date, so opening
+ *  Stats/Reports lands on the user's actual trading window instead of a
+ *  probably-empty trailing month. `subMonths` clamps short months
+ *  (e.g. Mar 31 → Feb 28). */
 export function defaultRange(baseDate: string): { from: string; to: string } {
   const base = dateKeyToDate(baseDate)
   return {
-    from: format(addDays(base, -29), 'yyyy-MM-dd'),
+    from: format(subMonths(base, 1), 'yyyy-MM-dd'),
     to: baseDate,
   }
 }
@@ -26,10 +28,12 @@ export function defaultRange(baseDate: string): { from: string; to: string } {
 export function loadSharedFilters(): TradeFilters | null {
   return loadJsonFromStorage<TradeFilters | null>(
     KEY,
-    raw =>
-      raw !== null && typeof raw === 'object' && !Array.isArray(raw)
-        ? (raw as TradeFilters)
-        : null,
+    raw => {
+      // Whitelist every field — a stale/corrupt slot must not inject an
+      // invalid enum or wrong-typed `from`/`to` into `applyFilters`.
+      const f = coerceFilters(raw)
+      return hasAnyFilter(f) ? f : null
+    },
     null,
   )
 }

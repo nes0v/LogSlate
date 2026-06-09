@@ -62,7 +62,7 @@ export function OverviewRoute() {
   const [params, setParams] = useSearchParams()
   const navigate = useNavigate()
   // Read the shared slot synchronously on render when the URL is bare —
-  // otherwise the first paint uses the default 30-day window and only
+  // otherwise the first paint uses the default one-month window and only
   // snaps to the real filter once the hydration effect mirrors slot →
   // URL, which surfaces as a content "jump" on nav-link clicks.
   const urlFilters = useMemo<TradeFilters>(() => {
@@ -162,7 +162,7 @@ export function OverviewRoute() {
     return max
   }, [allTrades])
 
-  // Effective filters = URL filters with the default 30-day window
+  // Effective filters = URL filters with the default one-month window
   // (ending on `lastTradeDate`) filled in for any unset bound. The URL
   // stays clean (no params) for the default view; params only appear
   // when the user deviates from it.
@@ -327,15 +327,43 @@ export function OverviewRoute() {
   // Filter's bucket-aligned keys, used to compare against the chart's
   // emitted visible-range keys (so the "Set date filter" button only
   // shows when they actually differ).
-  const filterFromKey = rangeStart ? dateToBucketKey(rangeStart, timeframe) : undefined
-  const filterToKey = rangeEnd ? dateToBucketKey(rangeEnd, timeframe) : undefined
+  const rawFilterFromKey = rangeStart ? dateToBucketKey(rangeStart, timeframe) : undefined
+  const rawFilterToKey = rangeEnd ? dateToBucketKey(rangeEnd, timeframe) : undefined
+
+  // The chart only ever renders real candles, so on first load it emits
+  // the candle keys nearest the filter window — the first bucket >= the
+  // filter's `from` and the last bucket <= its `to`. Comparing the
+  // filter's *literal* date keys against those flags a difference
+  // whenever a boundary lands on a non-trading day (true for nearly
+  // every default one-month window), which made "Set date to range" appear
+  // on a fresh load the user never touched. Snap the filter keys onto
+  // the candle grid so the comparison matches what the chart emits.
+  const { from: filterFromKey, to: filterToKey } = useMemo(() => {
+    const keys = tfBuckets.map(b => b.key)
+    if (keys.length === 0) return { from: rawFilterFromKey, to: rawFilterToKey }
+    let from = rawFilterFromKey
+    if (from !== undefined) from = keys.find(k => k >= from!) ?? keys[keys.length - 1]
+    let to = rawFilterToKey
+    if (to !== undefined) {
+      let hit: string | undefined
+      for (const k of keys) {
+        if (k <= to!) hit = k
+        else break
+      }
+      to = hit ?? keys[0]
+    }
+    return { from, to }
+  }, [tfBuckets, rawFilterFromKey, rawFilterToKey])
 
   // Chronological order — oldest trade at the top, newest at the bottom.
   const tradesDesc = useMemo(
     () =>
       [...filtered].sort((a, b) => {
         if (a.date !== b.date) return a.date < b.date ? -1 : 1
-        return (firstExecutionMs(a) ?? 0) - (firstExecutionMs(b) ?? 0)
+        const d = (firstExecutionMs(a) ?? 0) - (firstExecutionMs(b) ?? 0)
+        if (d !== 0) return d
+        // Deterministic `id` tie-break for same-second trades.
+        return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
       }),
     [filtered],
   )
@@ -409,7 +437,7 @@ export function OverviewRoute() {
   }, [filterFromKey, filterToKey])
 
   // "Clear" returns to the bare /overview URL and restores the chart's
-  // default state: filter back to the last-30-days default, timeframe
+  // default state: filter back to the one-month default, timeframe
   // back to D (URL clear handles tf), and viewport snapped to the new
   // default range via an epoch bump. The Line/Candles toggle is the
   // persisted preference itself, so it stays where the user left it.
@@ -476,7 +504,8 @@ export function OverviewRoute() {
         </>
       )}
 
-      {filtered.length > 0 && chartReady ? (
+      {filtered.length > 0 ? (
+        chartReady ? (
         <TradingViewChart
           points={tfCandles}
           adjustments={tfAdjustmentMarkers}
@@ -511,6 +540,16 @@ export function OverviewRoute() {
             </div>
           }
         />
+        ) : (
+          // The chart is lazy-mounted a tick after first paint. Hold its
+          // footprint with a neutral placeholder so the slot doesn't flash
+          // the "no trades" empty-state before the chart mounts.
+          <div
+            aria-hidden
+            style={{ height: 698 }}
+            className="rounded-(--radius) bg-(--color-panel)"
+          />
+        )
       ) : loaded ? (
         <div className="text-sm text-(--color-text-dim) text-center py-12 border border-dashed border-(--color-border) rounded-(--radius)">
           {allTrades.length === 0

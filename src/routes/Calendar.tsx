@@ -167,9 +167,13 @@ export function CalendarRoute() {
     [gridStart],
   )
 
-  // Chunk the day grid into weekly rows + per-week PnL & traded-day
-  // count, scoped to the active month so neighbouring-month padding
-  // doesn't pollute the totals.
+  // Chunk the day grid into weekly rows + per-week PnL & traded-day count.
+  // Each card's total covers the FULL Mon–Fri trading week, so when a month
+  // starts or ends mid-week the card includes the adjacent-month days of
+  // that week — matching the card's drill-down link (from=Mon … to=Fri).
+  // The card label ("Week of …") names the week, not the month, so this is
+  // a whole-week figure, not the month's contribution to that week. (The
+  // header's monthNet is separately month-scoped via isSameMonth.)
   //
   // Skip weeks whose only in-month days are Sat/Sun (futures don't trade
   // weekends, so a row of pure padding plus a lone weekend reads as empty

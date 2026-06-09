@@ -38,7 +38,7 @@ export function tradeDraft(overrides: Partial<TradeDraft> = {}): TradeDraft {
     stop_loss: 100,
     profit_target: 200,
     drawdown: 20,
-    buildup: 200,
+    runup: 200,
     rating: 'good',
     emotion: 'calm',
     ...overrides,

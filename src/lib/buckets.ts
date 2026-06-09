@@ -240,7 +240,9 @@ export function chartDayLabel(dateKey: string): string {
 // ---------- period navigation helpers ----------
 
 export function parseYearMonth(ym: string | undefined): Date {
-  if (ym && /^\d{4}-\d{2}$/.test(ym)) {
+  // Month must be 01–12. A bare `\d{2}` would let `2026-13` through, and
+  // date-fns silently rolls it over to Jan 2027 instead of rejecting it.
+  if (ym && /^\d{4}-(0[1-9]|1[0-2])$/.test(ym)) {
     const d = parse(ym, 'yyyy-MM', new Date())
     if (!Number.isNaN(d.getTime())) return startOfMonth(d)
   }

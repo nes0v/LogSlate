@@ -53,7 +53,10 @@ export function NumberInput({ value, onChange, className, decimals, ...rest }: N
           return
         }
         const n = Number(t)
-        if (!Number.isNaN(n)) onChange(n)
+        // `Number.isFinite` (not `!isNaN`) so "Infinity"/"-Infinity" are
+        // rejected — they'd otherwise pass `> 0` validation and poison
+        // downstream PnL/R math into NaN.
+        if (Number.isFinite(n)) onChange(n)
       }}
       {...rest}
     />

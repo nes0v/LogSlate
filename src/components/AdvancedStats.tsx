@@ -441,10 +441,7 @@ export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
     () => drawdownStats(tradingSeries, stats.net_pnl),
     [tradingSeries, stats.net_pnl],
   )
-  const ratios = useMemo(
-    () => ratioStats(tradingSeries),
-    [tradingSeries, ddStats.maxDdPct],
-  )
+  const ratios = useMemo(() => ratioStats(tradingSeries), [tradingSeries])
   const pf = useMemo(() => profitFactor(filtered), [filtered])
   const expR = useMemo(() => expectancyR(filtered), [filtered])
   const expDollars = useMemo(() => expectancyDollars(filtered), [filtered])
@@ -712,7 +709,7 @@ function KpiTile({ label, value, caption, tone, tooltip }: KpiTileProps) {
   return (
     <div
       className={cn(
-        'bg-(--color-panel-2) rounded-(--radius) p-3 transition-colors',
+        'flex flex-col bg-(--color-panel-2) rounded-(--radius) p-3 transition-colors',
         tooltip && 'cursor-help',
       )}
       title={tooltip}
@@ -731,7 +728,7 @@ function KpiTile({ label, value, caption, tone, tooltip }: KpiTileProps) {
         {value}
       </div>
       {caption ? (
-        <div className="text-xs text-(--color-text-dim) mt-1">{caption}</div>
+        <div className="text-xs text-(--color-text-dim) mt-auto pt-1">{caption}</div>
       ) : null}
     </div>
   )

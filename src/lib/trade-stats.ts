@@ -171,9 +171,16 @@ function candleFromBucket(
   let low = running
   let fees = 0
 
-  const sorted = [...b.trades].sort(
-    (a, b2) => (firstExecutionMs(a) ?? 0) - (firstExecutionMs(b2) ?? 0),
-  )
+  // Order by first-execution time, with `id` as a deterministic
+  // tie-break: execution times are second-resolution, so two trades on
+  // the same second would otherwise sort in whatever order Dexie
+  // returned them — and since high/low accumulate path-dependently, that
+  // would make the candle's wicks flicker between renders.
+  const sorted = [...b.trades].sort((a, b2) => {
+    const d = (firstExecutionMs(a) ?? 0) - (firstExecutionMs(b2) ?? 0)
+    if (d !== 0) return d
+    return a.id < b2.id ? -1 : a.id > b2.id ? 1 : 0
+  })
   for (const t of sorted) {
     running += computeNetPnl(t) ?? 0
     if (running > high) high = running

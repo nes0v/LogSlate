@@ -80,7 +80,10 @@ async function preloadDay(accountId: string, date: string): Promise<void> {
   const trades = tradeRows.sort((a, b) => {
     const ka = firstExecutionMs(a) ?? Date.parse(a.created_at)
     const kb = firstExecutionMs(b) ?? Date.parse(b.created_at)
-    return ka - kb
+    if (ka !== kb) return ka - kb
+    // Second-resolution times tie for same-second trades — break on `id`
+    // so the order is deterministic across renders.
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
   })
   newsRows.sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at))
   writeDayCache(key, { trades, news: newsRows, note, screenshots })
@@ -115,7 +118,7 @@ export function DayRoute() {
         firstExecutionMs(t) ?? Date.parse(t.created_at)
       const sorted = rows.sort((a, b) => sortKey(a) - sortKey(b))
       patchDayCache(accountId, date, { trades: sorted })
-      return { forDate: date, rows: sorted }
+      return { forDate: date, forAccount: accountId, rows: sorted }
     },
     [date, accountId],
   )
@@ -125,7 +128,7 @@ export function DayRoute() {
       // ISO 8601 strings sort lexicographically — no Date.parse needed.
       rows.sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at))
       patchDayCache(accountId, date, { news: rows })
-      return { forDate: date, rows }
+      return { forDate: date, forAccount: accountId, rows }
     },
     [date, accountId],
   )
@@ -133,7 +136,7 @@ export function DayRoute() {
     async () => {
       const value = await getDayNote(accountId, date)
       patchDayCache(accountId, date, { note: value })
-      return { forDate: date, value }
+      return { forDate: date, forAccount: accountId, value }
     },
     [accountId, date],
   )
@@ -141,7 +144,7 @@ export function DayRoute() {
     async () => {
       const rows = await listDayScreenshotsFor(accountId, date)
       patchDayCache(accountId, date, { screenshots: rows })
-      return { forDate: date, rows }
+      return { forDate: date, forAccount: accountId, rows }
     },
     [accountId, date],
   )
@@ -150,12 +153,16 @@ export function DayRoute() {
   // of unmounting the content section until Dexie settles. Reading
   // through `readDayCache` also LRU-touches the entry so a revisited
   // day survives eviction.
+  // Require BOTH date and account to match the live result — otherwise an
+  // account switch (same date URL) leaves the stale previous-account result
+  // satisfying `forDate === date`, flashing account A's data under B.
+  const fresh = <T extends { forDate: string; forAccount: string }>(r: T | undefined) =>
+    r !== undefined && r.forDate === date && r.forAccount === accountId
   const cached = readDayCache(dayCacheKey(accountId, date))
-  const trades = tradesResult?.forDate === date ? tradesResult.rows : cached?.trades
-  const news = newsResult?.forDate === date ? newsResult.rows : cached?.news
-  const note = noteResult?.forDate === date ? noteResult.value : cached?.note
-  const screenshots =
-    screenshotsResult?.forDate === date ? screenshotsResult.rows : cached?.screenshots
+  const trades = fresh(tradesResult) ? tradesResult!.rows : cached?.trades
+  const news = fresh(newsResult) ? newsResult!.rows : cached?.news
+  const note = fresh(noteResult) ? noteResult!.value : cached?.note
+  const screenshots = fresh(screenshotsResult) ? screenshotsResult!.rows : cached?.screenshots
   // Models are resolved once at the route level so trade rows render with
   // the right name on first paint instead of flashing "gambling" → real.
   const models = useLiveQuery(
@@ -182,10 +189,10 @@ export function DayRoute() {
     const pending = screenshots.filter(
       r => parseScreenshotRef(r)?.kind === 'pending',
     )
-    if (pending.length === 0) {
-      setPendingFirstPaintDone(true)
-      return
-    }
+    // Route the no-pending case through the same resolved promise rather
+    // than flipping the flag synchronously — `allSettled([])` settles on
+    // the next microtask, which keeps the gate off the synchronous
+    // setState-in-effect path (avoids the cascading render).
     let cancelled = false
     void Promise.allSettled(pending.map(ref => resolveScreenshotUrl(ref))).then(
       () => {
@@ -245,7 +252,7 @@ export function DayRoute() {
     if (nextDate) void preloadDay(accountId, nextDate)
   }, [accountId, prevDate, nextDate])
 
-  const stats = aggregate(trades ?? [])
+  const stats = useMemo(() => aggregate(trades ?? []), [trades])
 
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
   // Stable identity so the memoized `<TradeTable>` doesn't re-render on

@@ -199,9 +199,15 @@ export function TradeForm({
               <div className="text-xs text-(--color-loss)">{String(errors.executions.message)}</div>
             )}
             {Array.isArray(errors.executions) && errors.executions
-              .filter(Boolean)
-              .flatMap(e => Object.values(e ?? {}).map(v => (v as { message?: string }).message))
-              .filter(Boolean)
+              // Prefix each message with its row so a multi-execution trade
+              // points the user at the offending row instead of a bare
+              // "time must be HH:MM" with no location.
+              .flatMap((e, idx) =>
+                Object.values(e ?? {})
+                  .map(v => (v as { message?: string }).message)
+                  .filter(Boolean)
+                  .map(msg => `Row ${idx + 1}: ${msg}`),
+              )
               .slice(0, 3)
               .map((msg, i) => (
                 <div key={i} className="text-xs text-(--color-loss)">{msg}</div>
@@ -362,10 +368,10 @@ export function TradeForm({
                 )}
               />
             </Field>
-            <Field label="Buildup ($)" error={errors.buildup?.message}>
+            <Field label="Runup ($)" error={errors.runup?.message}>
               <Controller
                 control={control}
-                name="buildup"
+                name="runup"
                 render={({ field }) => (
                   <NumberInput
                     className={inputClass}
@@ -635,11 +641,16 @@ function TagInput({
     return [...starts, ...contains].slice(0, 50)
   }, [draft, value, suggestions])
 
-  // Reset highlight whenever the candidate list changes so the user
-  // doesn't end up pointing at a row that scrolled out of view.
-  useEffect(() => {
+  // Reset the highlight whenever the candidate list changes so the user
+  // doesn't end up pointing at a row that scrolled out of view. Done
+  // during render via the previous-value pattern (not an effect), so it
+  // costs no extra commit and never trips set-state-in-effect.
+  const candidateKey = `${draft}\u0000${filtered.length}`
+  const [prevCandidateKey, setPrevCandidateKey] = useState(candidateKey)
+  if (candidateKey !== prevCandidateKey) {
+    setPrevCandidateKey(candidateKey)
     setActiveIdx(-1)
-  }, [draft, filtered.length])
+  }
 
   // Keep the highlighted row visible when arrow-keying past the
   // overflow boundary.
@@ -710,8 +721,11 @@ function TagInput({
           onChange={e => setDraft(e.target.value)}
           onFocus={() => setFocused(true)}
           onBlur={() => {
+            // Don't auto-commit the draft on blur — clicking Save (or any
+            // other field) would otherwise silently add a half-typed
+            // fragment as a tag. Tags are added explicitly via Enter /
+            // comma / clicking a suggestion.
             setFocused(false)
-            commit(draft)
           }}
           onKeyDown={e => {
             if (e.key === 'ArrowDown' && filtered.length > 0) {

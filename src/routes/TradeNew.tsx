@@ -10,7 +10,11 @@ export function TradeNewRoute() {
   const navigate = useNavigate()
   const location = useLocation()
   const cameFrom = (location.state as { from?: string } | null)?.from ?? null
-  const date = params.get('date') || nyToday()
+  // `||` alone would let a malformed but non-empty param (e.g. ?date=foo)
+  // reach parseISO below and throw on format() → ErrorBoundary. Require a
+  // real YYYY-MM-DD, else fall back to today.
+  const rawDate = params.get('date')
+  const date = rawDate && /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : nyToday()
 
   async function handleSubmit(draft: TradeDraft) {
     await createTrade(draft)
