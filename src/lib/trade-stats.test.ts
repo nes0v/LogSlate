@@ -211,36 +211,37 @@ describe('computeCandles', () => {
     expect(second.count).toBe(0)
   })
 
-  it('adjustment does not affect the bucket candle itself', () => {
-    // Day with just a deposit: open=close=0 (no trades), adjustment is recorded.
-    const day1 = bucketWith([], '2026-04-01')
-    const adjMap = new Map<string, number>([['2026-04-01', 1000]])
-    const [c] = computeCandles([day1], adjMap)
-    expect(c.adjustment).toBe(1000)
-    expect(c.open).toBe(0)
-    expect(c.close).toBe(0)
-    expect(c.high).toBe(0)
-    expect(c.low).toBe(0)
-  })
-
-  it('adjustment shifts only the next bucket, not the current one', () => {
-    // A winning trade closes at +195.5; a $500 deposit lands that same day.
-    // The candle shows trading only (+195.5); next day opens at 695.5.
+  it('folds a deposit into the bucket open so it never opens at zero', () => {
+    // A $500 deposit lands in the bucket; the candle opens at the funded level
+    // (500) and the win lifts it to 695.5 — not a span up from zero.
     const day1 = bucketWith([winningTrade()], '2026-04-01')
     const day2 = bucketWith([winningTrade()], '2026-04-02')
     const adjMap = new Map<string, number>([['2026-04-01', 500]])
     const [c1, c2] = computeCandles([day1, day2], adjMap)
-    expect(c1.close).toBeCloseTo(195.5, 5)
-    expect(c1.high).toBeCloseTo(195.5, 5)
+    expect(c1.open).toBe(500)
+    expect(c1.close).toBeCloseTo(695.5, 5)
+    expect(c1.adjustment).toBe(500)
     expect(c2.open).toBeCloseTo(695.5, 5)
     expect(c2.close).toBeCloseTo(695.5 + 195.5, 5)
   })
 
-  it('carries a withdraw forward to later days (subsequent candles open lower)', () => {
+  it('a deposit funds the baseline so a later loss cannot draw a sub-zero wick', () => {
+    // The bug this fixes: a deposit in the same (wide) bucket as the losing
+    // trade lifts the opening baseline, so the wick stays realistic.
+    const day = bucketWith([losingTrade()], '2026-Q2') // loss = -204.5 net
+    const adjMap = new Map<string, number>([['2026-Q2', 1000]])
+    const [c] = computeCandles([day], adjMap)
+    // open 1000 → close 1000 - 204.5 = 795.5; low never goes negative.
+    expect(c.open).toBe(1000)
+    expect(c.high).toBe(1000)
+    expect(c.low).toBeCloseTo(795.5, 5)
+    expect(c.close).toBeCloseTo(795.5, 5)
+  })
+
+  it('a withdraw lowers its own bucket open and every later bucket', () => {
     // Day 1: 2 winning trades = +391
-    // Day 2: withdraw -600 (no trades)
-    // Day 3: 1 winning trade
-    // Day 4: 1 winning trade
+    // Day 2: withdraw -600 (no trades) → opens AND closes at -209
+    // Day 3 & 4: 1 winning trade each, opening at the post-withdraw baseline
     const day1 = bucketWith([winningTrade(), winningTrade()], '2026-04-15')
     const day2 = bucketWith([], '2026-04-16')
     const day3 = bucketWith([winningTrade()], '2026-04-17')
@@ -249,25 +250,23 @@ describe('computeCandles', () => {
     const adjMap = new Map<string, number>([['2026-04-16', -600]])
     const candles = computeCandles([day1, day2, day3, day4], adjMap)
 
-    // Day 1: trades only
     expect(candles[0].close).toBeCloseTo(391, 5)
-    // Day 2 (withdraw-only): candle unchanged (open=close=previous close);
-    // running drops for the next bucket.
-    expect(candles[1].open).toBeCloseTo(391, 5)
-    expect(candles[1].close).toBeCloseTo(391, 5)
-    // Subsequent days open at the post-withdraw baseline
+    // Day 2 (withdraw-only): the withdraw is folded into the open.
+    expect(candles[1].open).toBeCloseTo(-209, 5)
+    expect(candles[1].close).toBeCloseTo(-209, 5)
     expect(candles[2].open).toBeCloseTo(-209, 5)
     expect(candles[2].close).toBeCloseTo(-13.5, 5)
     expect(candles[3].open).toBeCloseTo(-13.5, 5)
     expect(candles[3].close).toBeCloseTo(182, 5)
   })
 
-  it('negative adjustments (withdraw) lower equity for the next bucket', () => {
+  it('negative adjustments (withdraw) lower equity from their bucket on', () => {
     const day1 = bucketWith([], '2026-04-01')
     const day2 = bucketWith([], '2026-04-02')
     const adjMap = new Map<string, number>([['2026-04-01', -300]])
     const [c1, c2] = computeCandles([day1, day2], adjMap)
-    expect(c1.close).toBe(0) // current bucket unchanged
+    expect(c1.open).toBe(-300) // the withdraw is folded into this bucket's open
+    expect(c1.close).toBe(-300)
     expect(c2.open).toBe(-300) // next bucket opens at the new baseline
   })
 

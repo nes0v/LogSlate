@@ -6,7 +6,9 @@ import { useConfirm } from '@/components/ConfirmDialog'
 import { inputClassCompact as inputClass } from '@/components/form/Field'
 import { MonthPicker } from '@/components/form/MonthPicker'
 import { NumberInput } from '@/components/form/NumberInput'
+import { Switch } from '@/components/form/Switch'
 import { BTN_ACCENT } from '@/components/form/buttonClass'
+import { setChartAdjustmentPref, useChartAdjustmentPrefs } from '@/lib/chart-adjustment-prefs'
 import { formatUsd } from '@/lib/money'
 import { nyMonthKey } from '@/lib/tz'
 
@@ -18,6 +20,7 @@ interface BrokerFeesPanelProps {
 
 export function BrokerFeesPanel({ adjustments }: BrokerFeesPanelProps) {
   const confirm = useConfirm()
+  const markerPrefs = useChartAdjustmentPrefs()
   const list = useMemo(
     () => adjustments.filter(a => a.kind === 'fee').slice().reverse(),
     [adjustments],
@@ -57,9 +60,17 @@ export function BrokerFeesPanel({ adjustments }: BrokerFeesPanelProps) {
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-(--color-text-dim)">
-        Recurring broker charges (live data feed, platform, etc.).
-      </p>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm text-(--color-text-dim)">
+          Recurring broker charges (live data feed, platform, etc.).
+        </p>
+        <Switch
+          checked={markerPrefs.fees}
+          onChange={v => setChartAdjustmentPref('fees', v)}
+          label="Show on chart"
+          ariaLabel="Show fee markers on the equity chart"
+        />
+      </div>
 
       <form
         onSubmit={handleSubmit}

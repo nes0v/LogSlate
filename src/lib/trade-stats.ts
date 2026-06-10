@@ -136,15 +136,20 @@ export function aggregate(trades: TradeRecord[]): AggregateStats {
 // — the running equity as trades close, not per-trade MFE/MAE. A day that goes
 // +200, then loses a -40 trade, shows a wick high at +200 and a close at +160.
 //
-//   open   — running equity at start of bucket
-//   close  — running equity at end of bucket (after all trades close)
-//   high   — peak realized running equity between trades
-//   low    — trough realized running equity between trades
+//   open   — equity at start of bucket, INCLUDING this bucket's net cash flow
+//   close  — open + the bucket's trading P&L
+//   high   — peak running equity reached within the bucket
+//   low    — trough running equity reached within the bucket
 //   fees   — total broker fees paid during the bucket
 //
-// The starting equity for bucket i+1 is the close of bucket i, so candles
-// chain into a continuous equity curve. The first bucket opens at 0, so the
-// chart is a relative-equity view for the period.
+// Each bucket's net cash flow (deposits/withdrawals/fees) is folded into its
+// OPENING baseline, so the candle opens at the funded equity level and the
+// trades sit on top of it. This keeps the wicks honest (a funded account can't
+// draw an impossible sub-zero wick) and means a funded account's first candle
+// opens at its capital rather than at zero. The trade-off: a cash flow is
+// attributed to the start of whichever bucket (timeframe) contains it — so at
+// coarser zoom the deposit snaps to the bucket's open. The starting equity for
+// bucket i+1 is the close of bucket i, so candles chain into a continuous curve.
 
 export interface CandlePoint {
   key: string
@@ -163,19 +168,19 @@ function candleFromBucket(
   startEquity: number,
   bucketAdjustment: number,
 ): CandlePoint {
-  // The candle reflects ONLY the day's trading — deposits/withdrawals don't
-  // affect the open/high/low/close. The adjustment shifts the starting point
-  // of the *next* bucket (handled in computeCandles).
-  let running = startEquity
+  // Fold the bucket's cash flow into the opening baseline, then walk the trades
+  // on top of it. open already includes the deposit/withdrawal, so trades never
+  // sit on a pre-funding baseline and the wicks stay realistic.
+  let running = startEquity + bucketAdjustment
+  const open = running
   let high = running
   let low = running
   let fees = 0
 
-  // Order by first-execution time, with `id` as a deterministic
-  // tie-break: execution times are second-resolution, so two trades on
-  // the same second would otherwise sort in whatever order Dexie
-  // returned them — and since high/low accumulate path-dependently, that
-  // would make the candle's wicks flicker between renders.
+  // Order by first-execution time, with `id` as a deterministic tie-break:
+  // execution times are second-resolution, so two trades on the same second
+  // would otherwise sort in whatever order Dexie returned them — and since
+  // high/low accumulate path-dependently, that would flicker the wicks.
   const sorted = [...b.trades].sort((a, b2) => {
     const d = (firstExecutionMs(a) ?? 0) - (firstExecutionMs(b2) ?? 0)
     if (d !== 0) return d
@@ -191,7 +196,7 @@ function candleFromBucket(
   return {
     key: b.key,
     label: b.label,
-    open: startEquity,
+    open,
     close: running,
     high,
     low,
@@ -212,9 +217,9 @@ export function computeCandles(
     const adj = adjustmentsByBucket.get(b.key) ?? 0
     const c = candleFromBucket(b, running, adj)
     out.push(c)
-    // Carry forward post-adjustment equity so the next bucket opens at the
-    // new baseline, without the current candle itself reflecting the cash flow.
-    running = c.close + adj
+    // `close` already includes this bucket's cash flow (folded into its open),
+    // so the next bucket opens right at the close.
+    running = c.close
   }
   return out
 }

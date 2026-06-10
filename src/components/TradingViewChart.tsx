@@ -1603,6 +1603,8 @@ function CandleInfoRow({
 }) {
   if (!point) return null
   const dateLabel = formatInfoDate(point.key, timeframe)
+  // The cash flow is folded into `open`, so close − open is trading-only;
+  // the total change adds the adjustment back on.
   const tradingPnl = point.close - point.open
   const delta = tradingPnl + point.adjustment
   return (

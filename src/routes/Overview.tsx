@@ -36,6 +36,7 @@ import {
 import { computeNetPnl, firstExecutionMs } from '@/lib/trade-math'
 import { adjustmentsByDate, aggregate, computeCandles, signedAdjustment } from '@/lib/trade-stats'
 import { useStartingEquity } from '@/lib/use-starting-equity'
+import { useChartAdjustmentPrefs } from '@/lib/chart-adjustment-prefs'
 import {
   bucketByTimeframe,
   dateToBucketKey,
@@ -61,6 +62,7 @@ const TRADES_SECTION_OPEN_STORAGE_KEY = 'logslate.overview.tradesSectionOpen'
 export function OverviewRoute() {
   const [params, setParams] = useSearchParams()
   const navigate = useNavigate()
+  const markerPrefs = useChartAdjustmentPrefs()
   // Read the shared slot synchronously on render when the URL is bare —
   // otherwise the first paint uses the default one-month window and only
   // snaps to the real filter once the hydration effect mirrors slot →
@@ -315,14 +317,31 @@ export function OverviewRoute() {
     [tfBuckets, tfAdjByBucket, chartStartingEquity],
   )
 
+  // Marker visibility is user-controlled per kind (Settings → Adjustments).
+  // Hidden kinds still pull the equity curve down (via tfAdjByBucket →
+  // computeCandles); the toggles only suppress the drawn labels.
+  const tfMarkerAdjByBucket = useMemo(() => {
+    const byDate = adjustmentsByDate(
+      (allAdjustments ?? []).filter(a =>
+        a.kind === 'fee' ? markerPrefs.fees : markerPrefs.deposits,
+      ),
+    )
+    const map = new Map<string, number>()
+    for (const [dateKey, amount] of byDate.entries()) {
+      const k = dateToBucketKey(dateKey, timeframe)
+      map.set(k, (map.get(k) ?? 0) + amount)
+    }
+    return map
+  }, [allAdjustments, timeframe, markerPrefs])
+
   const tfAdjustmentMarkers = useMemo(() => {
     const keys = new Set(tfBuckets.map(b => b.key))
     const out: Array<{ x: string; amount: number }> = []
-    for (const [key, amount] of tfAdjByBucket) {
+    for (const [key, amount] of tfMarkerAdjByBucket) {
       if (keys.has(key)) out.push({ x: key, amount })
     }
     return out
-  }, [tfAdjByBucket, tfBuckets])
+  }, [tfMarkerAdjByBucket, tfBuckets])
 
   // Filter's bucket-aligned keys, used to compare against the chart's
   // emitted visible-range keys (so the "Set date filter" button only

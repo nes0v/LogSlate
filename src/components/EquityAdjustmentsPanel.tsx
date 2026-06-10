@@ -7,7 +7,9 @@ import { inputClassCompact as inputClass } from '@/components/form/Field'
 import { DatePicker } from '@/components/form/DatePicker'
 import { NumberInput } from '@/components/form/NumberInput'
 import { Pills } from '@/components/form/Pills'
+import { Switch } from '@/components/form/Switch'
 import { BTN_ACCENT } from '@/components/form/buttonClass'
+import { setChartAdjustmentPref, useChartAdjustmentPrefs } from '@/lib/chart-adjustment-prefs'
 import { formatUsd } from '@/lib/money'
 import { nyToday } from '@/lib/tz'
 import { cn } from '@/lib/utils'
@@ -20,6 +22,7 @@ interface EquityAdjustmentsPanelProps {
 
 export function EquityAdjustmentsPanel({ adjustments }: EquityAdjustmentsPanelProps) {
   const confirm = useConfirm()
+  const markerPrefs = useChartAdjustmentPrefs()
   const list = useMemo(
     () => adjustments.filter(a => a.kind !== 'fee').slice().reverse(),
     [adjustments],
@@ -59,9 +62,17 @@ export function EquityAdjustmentsPanel({ adjustments }: EquityAdjustmentsPanelPr
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-(--color-text-dim)">
-        These show up on the equity curve but don&rsquo;t affect trade stats.
-      </p>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm text-(--color-text-dim)">
+          These show up on the equity curve but don&rsquo;t affect trade stats.
+        </p>
+        <Switch
+          checked={markerPrefs.deposits}
+          onChange={v => setChartAdjustmentPref('deposits', v)}
+          label="Show on chart"
+          ariaLabel="Show deposit & withdrawal markers on the equity chart"
+        />
+      </div>
 
       <form
         onSubmit={handleSubmit}
