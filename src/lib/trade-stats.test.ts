@@ -270,37 +270,21 @@ describe('computeCandles', () => {
     expect(c2.open).toBe(-300) // next bucket opens at the new baseline
   })
 
-  it('a coarse bucket reconciles its OHLC with the constituent daily candles', () => {
-    // The bug this guards against: a mid-period cash flow used to snap to the
-    // whole bucket's open at coarser zoom, shifting the intra-bucket path so a
-    // weekly high/low no longer matched the max/min of its daily highs/lows.
-    // With per-day folding the equity path is identical regardless of grouping,
-    // so the extremes must reconcile exactly.
+  it('folds a multi-day bucket’s cash flow into the open, not the body', () => {
+    // A mid-week deposit must NOT inflate the weekly candle body: the body
+    // (close − open) stays trading-only, and the deposit shifts the open/
+    // baseline instead. (A trade-off vs. exact daily reconciliation: the
+    // deposit lifts the whole week's baseline rather than landing mid-week.)
     const on = (date: string, t: ReturnType<typeof tradeRecord>) => ({ ...t, date })
-
-    // A Mon–Sun trading week with trades spread across days + a mid-week deposit.
-    const dates = [
-      '2026-04-13', '2026-04-14', '2026-04-15',
-      '2026-04-16', '2026-04-17', '2026-04-18', '2026-04-19',
-    ]
     const weekTrades = [
-      on('2026-04-13', winningTrade()),
-      on('2026-04-15', losingTrade()),
-      on('2026-04-15', losingTrade()),
-      on('2026-04-17', winningTrade()),
+      on('2026-04-13', winningTrade()), // +195.5
+      on('2026-04-15', losingTrade()), // -204.5
+      on('2026-04-15', losingTrade()), // -204.5
+      on('2026-04-17', winningTrade()), // +195.5
     ]
+    const tradeSum = 195.5 - 204.5 - 204.5 + 195.5 // -18
     const adjMap = new Map<string, number>([['2026-04-15', 500]])
     const startEquity = 1000
-
-    const dayBuckets = dates.map(d => ({
-      key: d,
-      label: d,
-      rangeStart: d,
-      rangeEnd: d,
-      navTarget: `/day/${d}`,
-      trades: weekTrades.filter(t => t.date === d),
-    }))
-    const daily = computeCandles(dayBuckets, adjMap, startEquity)
 
     const weekBucket: Bucket = {
       key: '2026-04-13',
@@ -312,10 +296,9 @@ describe('computeCandles', () => {
     }
     const [week] = computeCandles([weekBucket], adjMap, startEquity)
 
-    expect(week.open).toBeCloseTo(daily[0].open, 5)
-    expect(week.close).toBeCloseTo(daily[daily.length - 1].close, 5)
-    expect(week.high).toBeCloseTo(Math.max(...daily.map(c => c.high)), 5)
-    expect(week.low).toBeCloseTo(Math.min(...daily.map(c => c.low)), 5)
+    // Deposit folded into the open; body excludes it.
+    expect(week.open).toBeCloseTo(startEquity + 500, 5)
+    expect(week.close - week.open).toBeCloseTo(tradeSum, 5)
     expect(week.adjustment).toBe(500)
     expect(week.count).toBe(4)
   })

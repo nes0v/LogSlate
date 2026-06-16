@@ -245,18 +245,22 @@ function candleFromBucket(
 
   const dayKeys = bucketDayKeys(b)
   if (dayKeys) {
-    // Multi-day bucket: interleave each day's cash flow and trades in date order.
+    // Multi-day bucket. Fold the bucket's ENTIRE cash flow into the open (as in
+    // the single-day path) so the candle body stays trading-only — a deposit /
+    // withdrawal shifts the baseline, never the body. Trades and overrides then
+    // walk per-day on top for a realistic wick path. Trade-off: a deposit that
+    // lands mid-bucket lifts the baseline for the whole bucket, so a dip that
+    // happened before it won't draw a wick below the funded level.
     const byDate = new Map<string, TradeRecord[]>()
     for (const t of b.trades) {
       const a = byDate.get(t.date)
       if (a) a.push(t)
       else byDate.set(t.date, [t])
     }
+    for (const dk of dayKeys) bucketAdjustment += adjustmentsByDate.get(dk) ?? 0
+    running += bucketAdjustment
+    record(running)
     for (const dk of dayKeys) {
-      const adj = adjustmentsByDate.get(dk) ?? 0
-      running += adj
-      bucketAdjustment += adj
-      record(running)
       if (overrideDates.has(dk)) {
         // Override is the day's net (already net of its own fees) — replace the
         // day's trades wholesale and skip their fees.
