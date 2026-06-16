@@ -298,23 +298,17 @@ export function OverviewRoute() {
     return bucketByTimeframe(timeframe, chartFiltered, tfChartRange.start, endPlusOne)
   }, [chartFiltered, tfChartRange, timeframe])
 
-  const tfAdjByBucket = useMemo(() => {
-    const map = new Map<string, number>()
-    for (const [dateKey, amount] of chartAdjByDate.entries()) {
-      const k = dateToBucketKey(dateKey, timeframe)
-      map.set(k, (map.get(k) ?? 0) + amount)
-    }
-    return map
-  }, [chartAdjByDate, timeframe])
-
   const tfCandles = useMemo(
     () =>
       computeCandles(
         tfBuckets.map(b => ({ ...b, label: b.key })),
-        tfAdjByBucket,
+        // Day-keyed so each cash flow folds into the open of the day it lands
+        // on, not the whole bucket's open. That keeps the equity path identical
+        // across timeframes, so candle highs/lows reconcile at every zoom.
+        chartAdjByDate,
         chartStartingEquity ?? 0,
       ),
-    [tfBuckets, tfAdjByBucket, chartStartingEquity],
+    [tfBuckets, chartAdjByDate, chartStartingEquity],
   )
 
   // Marker visibility is user-controlled per kind (Settings → Adjustments).

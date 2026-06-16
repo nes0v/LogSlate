@@ -1,5 +1,7 @@
+import { addDays, format } from 'date-fns'
 import type { EquityAdjustment, TradeRecord } from '@/db/types'
 import type { Bucket } from '@/lib/buckets'
+import { dateKeyToDate } from '@/lib/tz'
 import {
   classifyTrade,
   computeDuration,
@@ -163,34 +165,108 @@ export interface CandlePoint {
   adjustment: number // signed cash flow on this bucket (deposit+ / withdraw-)
 }
 
+// Order by first-execution time, with `id` as a deterministic tie-break:
+// execution times are second-resolution, so two trades on the same second
+// would otherwise sort in whatever order Dexie returned them — and since
+// high/low accumulate path-dependently, that would flicker the wicks.
+function byExecutionThenId(a: TradeRecord, b2: TradeRecord): number {
+  const d = (firstExecutionMs(a) ?? 0) - (firstExecutionMs(b2) ?? 0)
+  if (d !== 0) return d
+  return a.id < b2.id ? -1 : a.id > b2.id ? 1 : 0
+}
+
+const DATE_KEY_RE = /^\d{4}-\d{2}-\d{2}$/
+
+// The ordered list of YYYY-MM-DD day keys a bucket spans, or `null` for a
+// single-day bucket (the daily timeframe) or a synthetic bucket whose
+// range isn't a real date (test fixtures). Coarser timeframes — weekly,
+// monthly, … — return the full run of days so each day's cash flow folds
+// into THAT day's open instead of snapping to the whole bucket's open.
+// That keeps the intra-bucket equity path identical no matter how days are
+// grouped, so a weekly high is exactly the max of its daily highs and the
+// extremes reconcile across every zoom level.
+function bucketDayKeys(b: Bucket): string[] | null {
+  if (
+    !DATE_KEY_RE.test(b.rangeStart) ||
+    !DATE_KEY_RE.test(b.rangeEnd) ||
+    b.rangeStart === b.rangeEnd
+  ) {
+    return null
+  }
+  const out: string[] = []
+  let d = dateKeyToDate(b.rangeStart)
+  const end = dateKeyToDate(b.rangeEnd)
+  while (d <= end) {
+    out.push(format(d, 'yyyy-MM-dd'))
+    d = addDays(d, 1)
+  }
+  return out
+}
+
 function candleFromBucket(
   b: Bucket,
   startEquity: number,
-  bucketAdjustment: number,
+  adjustmentsByDate: Map<string, number>,
 ): CandlePoint {
-  // Fold the bucket's cash flow into the opening baseline, then walk the trades
-  // on top of it. open already includes the deposit/withdrawal, so trades never
-  // sit on a pre-funding baseline and the wicks stay realistic.
-  let running = startEquity + bucketAdjustment
-  const open = running
-  let high = running
-  let low = running
+  // Each day's cash flow is folded into THAT day's opening baseline, then the
+  // day's trades walk on top of it. open already includes the deposit/withdrawal
+  // for the day it lands on, so trades never sit on a pre-funding baseline and
+  // the wicks stay realistic — while the high/low still track the true path
+  // across the whole bucket.
+  let running = startEquity
+  let initialized = false
+  let open = startEquity
+  let high = startEquity
+  let low = startEquity
   let fees = 0
+  let bucketAdjustment = 0
 
-  // Order by first-execution time, with `id` as a deterministic tie-break:
-  // execution times are second-resolution, so two trades on the same second
-  // would otherwise sort in whatever order Dexie returned them — and since
-  // high/low accumulate path-dependently, that would flicker the wicks.
-  const sorted = [...b.trades].sort((a, b2) => {
-    const d = (firstExecutionMs(a) ?? 0) - (firstExecutionMs(b2) ?? 0)
-    if (d !== 0) return d
-    return a.id < b2.id ? -1 : a.id > b2.id ? 1 : 0
-  })
-  for (const t of sorted) {
-    running += computeNetPnl(t) ?? 0
-    if (running > high) high = running
-    if (running < low) low = running
-    fees += computeFees(t)
+  const record = (v: number) => {
+    if (!initialized) {
+      open = v
+      high = v
+      low = v
+      initialized = true
+    } else {
+      if (v > high) high = v
+      if (v < low) low = v
+    }
+  }
+
+  const dayKeys = bucketDayKeys(b)
+  if (dayKeys) {
+    // Multi-day bucket: interleave each day's cash flow and trades in date order.
+    const byDate = new Map<string, TradeRecord[]>()
+    for (const t of b.trades) {
+      const a = byDate.get(t.date)
+      if (a) a.push(t)
+      else byDate.set(t.date, [t])
+    }
+    for (const dk of dayKeys) {
+      const adj = adjustmentsByDate.get(dk) ?? 0
+      running += adj
+      bucketAdjustment += adj
+      record(running)
+      const dayTrades = byDate.get(dk)
+      if (dayTrades) {
+        for (const t of [...dayTrades].sort(byExecutionThenId)) {
+          running += computeNetPnl(t) ?? 0
+          record(running)
+          fees += computeFees(t)
+        }
+      }
+    }
+  } else {
+    // Single-day (or synthetic) bucket: the whole bucket's cash flow folds into
+    // its one open, then every trade walks on top.
+    bucketAdjustment = adjustmentsByDate.get(b.key) ?? 0
+    running += bucketAdjustment
+    record(running)
+    for (const t of [...b.trades].sort(byExecutionThenId)) {
+      running += computeNetPnl(t) ?? 0
+      record(running)
+      fees += computeFees(t)
+    }
   }
 
   return {
@@ -208,17 +284,16 @@ function candleFromBucket(
 
 export function computeCandles(
   buckets: Bucket[],
-  adjustmentsByBucket: Map<string, number> = new Map(),
+  adjustmentsByDate: Map<string, number> = new Map(),
   startEquity = 0,
 ): CandlePoint[] {
   const out: CandlePoint[] = []
   let running = startEquity
   for (const b of buckets) {
-    const adj = adjustmentsByBucket.get(b.key) ?? 0
-    const c = candleFromBucket(b, running, adj)
+    const c = candleFromBucket(b, running, adjustmentsByDate)
     out.push(c)
-    // `close` already includes this bucket's cash flow (folded into its open),
-    // so the next bucket opens right at the close.
+    // `close` already includes this bucket's cash flow (folded per-day into the
+    // day it lands on), so the next bucket opens right at the close.
     running = c.close
   }
   return out
