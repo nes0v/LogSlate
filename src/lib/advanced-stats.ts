@@ -17,6 +17,7 @@ import {
   tradeMetrics,
   type TradeOutcome,
 } from '@/lib/trade-math'
+import { netPnlByDate } from '@/lib/day-pnl'
 import { dateKeyToDate } from '@/lib/tz'
 
 // ---------- profit factor / payoff / expectancy ---------------------
@@ -128,24 +129,41 @@ export interface StreakStats {
   current: number // signed: +N for ongoing winning streak, -N for losing
 }
 
-export function streakStats(trades: TradeRecord[]): StreakStats {
+export function streakStats(
+  trades: TradeRecord[],
+  overridesByDate?: Map<string, number>,
+): StreakStats {
   let longestWin = 0
   let longestLoss = 0
   let current = 0
   let curSign = 0
-  // Order trades by date then first execution time so streaks
-  // mean what the user expects (chronological). `id` is the final
-  // tie-break — execution times only have second precision, so two
-  // scalp entries at the same second would otherwise sort in
-  // whatever order Dexie happened to return them.
-  const sorted = [...trades].sort((a, b) => {
+  // Merge trades with override-day markers, ordered chronologically. An
+  // override day is a combined "messy day" with no individual trades, so it
+  // BREAKS any ongoing win/loss run (a win streak that straddles a tilt day
+  // isn't a real win streak). Order trades by date then first execution time
+  // (with `id` as the final tie-break, since execution times are only
+  // second-precision); an override marker sorts after any trades on its date.
+  type Event = { date: string; trade?: TradeRecord }
+  const events: Event[] = trades.map(t => ({ date: t.date, trade: t }))
+  if (overridesByDate) {
+    for (const date of overridesByDate.keys()) events.push({ date })
+  }
+  events.sort((a, b) => {
     if (a.date !== b.date) return a.date < b.date ? -1 : 1
-    const tDiff = (firstExecutionMs(a) ?? 0) - (firstExecutionMs(b) ?? 0)
+    if (!a.trade) return b.trade ? 1 : 0 // override marker after trades same day
+    if (!b.trade) return -1
+    const tDiff = (firstExecutionMs(a.trade) ?? 0) - (firstExecutionMs(b.trade) ?? 0)
     if (tDiff !== 0) return tDiff
-    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+    return a.trade.id < b.trade.id ? -1 : a.trade.id > b.trade.id ? 1 : 0
   })
-  for (const t of sorted) {
-    const outcome = classifyTrade(t)
+  for (const ev of events) {
+    if (!ev.trade) {
+      // Override day — break the current streak; the next trade starts fresh.
+      curSign = 0
+      current = 0
+      continue
+    }
+    const outcome = classifyTrade(ev.trade)
     // Scratches are ignored entirely — they neither extend nor break
     // a streak. A win → scratch → win sequence reads as a 2-trade
     // winning streak, not "1, reset, 1".
@@ -195,10 +213,15 @@ export function dailyEquitySeries(
   dates: string[],
   startEquity = 0,
   adjustmentsByDate?: Map<string, number>,
+  overridesByDate?: Map<string, number>,
 ): EquityPoint[] {
   const byDay = new Map<string, number>()
   for (const t of trades) {
     byDay.set(t.date, (byDay.get(t.date) ?? 0) + (computeNetPnl(t) ?? 0))
+  }
+  // A day-level override replaces that day's trade-derived P&L wholesale.
+  if (overridesByDate) {
+    for (const [date, value] of overridesByDate) byDay.set(date, value)
   }
   let equity = startEquity
   let peak = startEquity
@@ -554,15 +577,23 @@ export function pnlByHour(
 }
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-export function pnlByWeekday(trades: TradeRecord[]): Array<{ name: string; pnl: number; count: number; wins: number; losses: number }> {
+export function pnlByWeekday(
+  trades: TradeRecord[],
+  overridesByDate?: Map<string, number>,
+): Array<{ name: string; pnl: number; count: number; wins: number; losses: number }> {
   const arr = WEEKDAYS.map(name => ({ name, pnl: 0, count: 0, wins: 0, losses: 0 }))
+  // Counts/wins/losses come from real trades only.
   for (const t of trades) {
     const day = dateKeyToDate(t.date).getDay()
-    const { pnl, outcome } = tradeMetrics(t)
-    arr[day].pnl += pnl ?? 0
+    const { outcome } = tradeMetrics(t)
     arr[day].count++
     if (outcome === 'win') arr[day].wins++
     else if (outcome === 'loss') arr[day].losses++
+  }
+  // PnL comes from the override-replaced per-day net so an override day's
+  // figure lands on its weekday (with no trade count of its own).
+  for (const [date, net] of netPnlByDate(trades, overridesByDate)) {
+    arr[dateKeyToDate(date).getDay()].pnl += net
   }
   return arr
 }
@@ -572,22 +603,34 @@ export function pnlByWeekday(trades: TradeRecord[]): Array<{ name: string; pnl: 
  *  year boundaries. */
 export function pnlByWeek(
   trades: TradeRecord[],
+  overridesByDate?: Map<string, number>,
 ): Array<{ weekStart: string; pnl: number; count: number; wins: number; losses: number }> {
-  const m = new Map<string, { pnl: number; count: number; wins: number; losses: number }>()
-  for (const t of trades) {
-    const d = dateKeyToDate(t.date)
+  const weekKey = (dateStr: string) => {
+    const d = dateKeyToDate(dateStr)
     // Shift to Monday: getDay() returns 0..6 with 0 = Sunday.
     const dow = d.getDay()
     const offset = dow === 0 ? -6 : 1 - dow
     const monday = new Date(d)
     monday.setDate(d.getDate() + offset)
-    const key = `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, '0')}-${String(monday.getDate()).padStart(2, '0')}`
+    return `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, '0')}-${String(monday.getDate()).padStart(2, '0')}`
+  }
+  const m = new Map<string, { pnl: number; count: number; wins: number; losses: number }>()
+  // Counts/wins/losses come from real trades only.
+  for (const t of trades) {
+    const key = weekKey(t.date)
     const cur = m.get(key) ?? { pnl: 0, count: 0, wins: 0, losses: 0 }
-    const { pnl, outcome } = tradeMetrics(t)
-    cur.pnl += pnl ?? 0
+    const { outcome } = tradeMetrics(t)
     cur.count++
     if (outcome === 'win') cur.wins++
     else if (outcome === 'loss') cur.losses++
+    m.set(key, cur)
+  }
+  // PnL comes from the override-replaced per-day net so a tilt day's figure
+  // lands in its week (override-only days appear with count 0).
+  for (const [date, net] of netPnlByDate(trades, overridesByDate)) {
+    const key = weekKey(date)
+    const cur = m.get(key) ?? { pnl: 0, count: 0, wins: 0, losses: 0 }
+    cur.pnl += net
     m.set(key, cur)
   }
   return Array.from(m.entries())
@@ -596,13 +639,21 @@ export function pnlByWeek(
 }
 
 /** PnL grouped by `YYYY-MM` (calendar month). */
-export function pnlByMonth(trades: TradeRecord[]): Array<{ month: string; pnl: number; count: number }> {
+export function pnlByMonth(
+  trades: TradeRecord[],
+  overridesByDate?: Map<string, number>,
+): Array<{ month: string; pnl: number; count: number }> {
   const m = new Map<string, { pnl: number; count: number }>()
   for (const t of trades) {
     const ym = t.date.slice(0, 7)
     const cur = m.get(ym) ?? { pnl: 0, count: 0 }
-    cur.pnl += computeNetPnl(t) ?? 0
     cur.count++
+    m.set(ym, cur)
+  }
+  for (const [date, net] of netPnlByDate(trades, overridesByDate)) {
+    const ym = date.slice(0, 7)
+    const cur = m.get(ym) ?? { pnl: 0, count: 0 }
+    cur.pnl += net
     m.set(ym, cur)
   }
   return Array.from(m.entries())

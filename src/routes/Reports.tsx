@@ -5,7 +5,7 @@ import { X } from 'lucide-react'
 import type { TradeRecord } from '@/db/types'
 import { EMOTIONS, DEFAULT_MODEL_NAME } from '@/db/types'
 import { nyToday } from '@/lib/tz'
-import { listAdjustments, listAllTrades, listModels } from '@/db/queries'
+import { listAdjustments, listAllTrades, listDayPnlOverrides, listModels } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
 import {
   applyFilters,
@@ -20,10 +20,10 @@ import {
   loadSharedFilters,
   saveSharedFilters,
 } from '@/lib/shared-filters'
-import { aggregate, signedAdjustment } from '@/lib/trade-stats'
+import { aggregate, signedAdjustment, type AggregateStats } from '@/lib/trade-stats'
+import { netPnlByDate, sumNetPnl } from '@/lib/day-pnl'
 import {
   classifyTrade,
-  computeNetPnl,
   computePlannedRr,
   computeRealizedRr,
   totalContracts,
@@ -46,7 +46,18 @@ import { formatUsd } from '@/lib/money'
 import { StatsFilterBar } from '@/components/StatsFilterBar'
 import { AdvancedMetricsSections } from '@/components/AdvancedStats'
 import { BTN_ACCENT } from '@/components/form/buttonClass'
+import { Switch } from '@/components/form/Switch'
+import { loadJsonFromStorage, saveJsonToStorage } from '@/lib/storage'
 import { cn } from '@/lib/utils'
+
+// Persisted toggle: fold day-level P&L overrides into the date-grouped
+// breakdowns (day-of-week / day-of-month / weekly / monthly). Off by default
+// so those views show real, deliberate trades only; flip on to include the
+// combined-P&L "override" days. (The equity chart, Net P&L, drawdown and the
+// consistency stats always include overrides regardless of this toggle.)
+const INCLUDE_OVERRIDES_KEY = 'logslate:reports_time_include_overrides'
+const readIncludeOverrides = () =>
+  loadJsonFromStorage(INCLUDE_OVERRIDES_KEY, v => (typeof v === 'boolean' ? v : null), false)
 
 type ReportTab = 'general' | 'time' | 'symbol' | 'risk' | 'outcome' | 'compare'
 const TABS: Array<{ value: ReportTab; label: string }> = [
@@ -144,31 +155,49 @@ export function ReportsRoute() {
     [accountId],
     [],
   )
+  // Day-level net-P&L overrides (date → value); each replaces its day's
+  // trade P&L in every money/equity readout.
+  const overridesByDate = useLiveQuery(
+    () => listDayPnlOverrides(accountId),
+    [accountId],
+    new Map<string, number>(),
+  )
   const loaded = allTrades !== undefined
 
-  const lastTradeDate = useMemo(() => {
-    const list = allTrades ?? []
-    if (list.length === 0) return nyToday()
-    let max = list[0].date
-    for (const t of list) if (t.date > max) max = t.date
-    return max
-  }, [allTrades])
+  // Most recent date with anything that moves equity — a trade OR a day-level
+  // P&L override — so the default window ends on the latest activity even when
+  // that day has no logged trades.
+  const lastActivityDate = useMemo(() => {
+    let max: string | null = null
+    for (const t of allTrades ?? []) if (max === null || t.date > max) max = t.date
+    for (const d of overridesByDate.keys()) if (max === null || d > max) max = d
+    return max ?? nyToday()
+  }, [allTrades, overridesByDate])
 
   const filters = useMemo<TradeFilters>(() => {
-    const d = defaultRange(lastTradeDate)
+    const d = defaultRange(lastActivityDate)
     return {
       ...urlFilters,
       from: urlFilters.from ?? d.from,
       to: urlFilters.to ?? d.to,
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params, lastTradeDate])
+  }, [params, lastActivityDate])
 
   const filtered = useMemo(
     () => applyFilters(allTrades ?? [], filters),
     [allTrades, filters],
   )
-  const stats = useMemo(() => aggregate(filtered), [filtered])
+  const baseStats = useMemo(() => aggregate(filtered), [filtered])
+  const stats = useMemo<AggregateStats>(() => {
+    const from = filters.from
+    const to = filters.to
+    const net = sumNetPnl(
+      netPnlByDate(filtered, overridesByDate),
+      d => (from == null || d >= from) && (to == null || d <= to),
+    )
+    return { ...baseStats, net_pnl: net }
+  }, [baseStats, filtered, overridesByDate, filters.from, filters.to])
   const { rangeStart, rangeEnd } = useMemo(() => {
     if (filters.from && filters.to) return { rangeStart: filters.from, rangeEnd: filters.to }
     if (filtered.length === 0) return { rangeStart: null, rangeEnd: null }
@@ -190,11 +219,13 @@ export function ReportsRoute() {
     for (const a of allAdjustments ?? []) {
       if (a.date < rangeStart) eq += signedAdjustment(a)
     }
-    for (const t of allTrades ?? []) {
-      if (t.date < rangeStart) eq += computeNetPnl(t) ?? 0
-    }
+    // Day-net before the range, with override days replacing their trades.
+    eq += sumNetPnl(
+      netPnlByDate(allTrades ?? [], overridesByDate),
+      d => d < rangeStart,
+    )
     return eq
-  }, [allTrades, allAdjustments, rangeStart])
+  }, [allTrades, allAdjustments, overridesByDate, rangeStart])
   const advAdjByDate = useMemo(() => {
     const m = new Map<string, number>()
     if (!rangeStart || !rangeEnd) return m
@@ -206,6 +237,20 @@ export function ReportsRoute() {
     return m
   }, [allAdjustments, rangeStart, rangeEnd])
 
+  // Day overrides inside the active window. Date-grouped breakdowns (Time)
+  // and the Symbol tab's "Override days" group fold these in only when the
+  // "Include override days" toggle is on. Scoped to [rangeStart, rangeEnd] so
+  // an override outside the filter can't leak into a bucket it isn't part of.
+  const windowOverrides = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const [d, v] of overridesByDate) {
+      if ((rangeStart == null || d >= rangeStart) && (rangeEnd == null || d <= rangeEnd)) {
+        m.set(d, v)
+      }
+    }
+    return m
+  }, [overridesByDate, rangeStart, rangeEnd])
+
   // Hoist current tab/compare URL values once per render so the
   // update/clear closures don't re-read `params` (the React Compiler
   // can't preserve downstream `useMemo`s when those reads happen
@@ -213,7 +258,7 @@ export function ReportsRoute() {
   const currentTabParam = params.get('tab')
   const currentCompareParam = params.get('compare')
   function update(next: Partial<TradeFilters>) {
-    const d = defaultRange(lastTradeDate)
+    const d = defaultRange(lastActivityDate)
     const merged: TradeFilters = { ...urlFilters, ...next }
     if (merged.from === d.from) merged.from = null
     if (merged.to === d.to) merged.to = null
@@ -291,11 +336,12 @@ export function ReportsRoute() {
                   rangeEnd={rangeEnd}
                   accountStartEquity={advStartingEquity}
                   adjByDate={advAdjByDate}
+                  overridesByDate={overridesByDate}
                 />
               </div>
             ) : tab === 'time' ? (
               <div className="bg-(--color-panel) rounded-(--radius) p-3 h-full">
-                <DaysAndTimeReport trades={filtered} />
+                <DaysAndTimeReport trades={filtered} overridesByDate={windowOverrides} />
               </div>
             ) : tab === 'symbol' ? (
               <div className="bg-(--color-panel) rounded-(--radius) p-3 h-full">
@@ -340,12 +386,24 @@ function EmptyState({ children }: { children: React.ReactNode }) {
 // Tab: Days & Time
 // =====================================================================
 
-function DaysAndTimeReport({ trades }: { trades: TradeRecord[] }) {
-  const weekday = useMemo(() => pnlByWeekday(trades), [trades])
+function DaysAndTimeReport({
+  trades,
+  overridesByDate,
+}: {
+  trades: TradeRecord[]
+  overridesByDate?: Map<string, number>
+}) {
+  const [includeOverrides, setIncludeOverrides] = useState(readIncludeOverrides)
+  const hasOverrides = !!overridesByDate && overridesByDate.size > 0
+  // Only the date-grouped breakdowns honour the toggle. When off (default) they
+  // see real trades only; when on, override days fold into their date bucket.
+  const dateOverrides = includeOverrides ? overridesByDate : undefined
+
+  const weekday = useMemo(() => pnlByWeekday(trades, dateOverrides), [trades, dateOverrides])
   const hourFirst = useMemo(() => pnlByHour(trades, 'first'), [trades])
   const hourLast = useMemo(() => pnlByHour(trades, 'last'), [trades])
-  const week = useMemo(() => pnlByWeek(trades), [trades])
-  const month = useMemo(() => pnlByMonth(trades), [trades])
+  const week = useMemo(() => pnlByWeek(trades, dateOverrides), [trades, dateOverrides])
+  const month = useMemo(() => pnlByMonth(trades, dateOverrides), [trades, dateOverrides])
 
   const dayOfMonth = useMemo(() => {
     const map = Array.from({ length: 31 }, (_, i) => ({
@@ -355,18 +413,25 @@ function DaysAndTimeReport({ trades }: { trades: TradeRecord[] }) {
       wins: 0,
       losses: 0,
     }))
+    // Counts/wins/losses from real trades only.
     for (const t of trades) {
       const d = Number(t.date.slice(8, 10))
       if (d < 1 || d > 31) continue
       const cell = map[d - 1]
-      const { pnl, outcome } = tradeMetrics(t)
-      cell.pnl += pnl ?? 0
+      const { outcome } = tradeMetrics(t)
       cell.count++
       if (outcome === 'win') cell.wins++
       else if (outcome === 'loss') cell.losses++
     }
+    // PnL from the override-replaced per-day net so an override day lands on
+    // its day-of-month (consistent with the weekday / weekly / monthly views).
+    for (const [date, net] of netPnlByDate(trades, dateOverrides)) {
+      const d = Number(date.slice(8, 10))
+      if (d < 1 || d > 31) continue
+      map[d - 1].pnl += net
+    }
     return map
-  }, [trades])
+  }, [trades, dateOverrides])
 
   const hourRowsFirst = hourFirst
     .filter(h => h.count > 0)
@@ -398,11 +463,24 @@ function DaysAndTimeReport({ trades }: { trades: TradeRecord[] }) {
         </Card>
       </SectionGrid>
 
+      {hasOverrides && (
+        <Switch
+          checked={includeOverrides}
+          onChange={next => {
+            setIncludeOverrides(next)
+            saveJsonToStorage(INCLUDE_OVERRIDES_KEY, next)
+          }}
+          label="Include override days"
+        />
+      )}
+
       <SectionGrid>
         <Card title="Day of week">
           <ReportTable
             rows={weekday
-              .filter(w => w.count > 0)
+              // Keep buckets with no trades but a non-zero P&L — an override
+              // day (count 0) lands here when "Include override days" is on.
+              .filter(w => w.count > 0 || w.pnl !== 0)
               .map(w => ({
                 label: w.name,
                 count: w.count,
@@ -415,7 +493,9 @@ function DaysAndTimeReport({ trades }: { trades: TradeRecord[] }) {
         <Card title="Day of month">
           <ReportTable
             rows={dayOfMonth
-              .filter(d => d.count > 0)
+              // Keep buckets with no trades but a non-zero P&L — an override
+              // day (count 0) lands here when "Include override days" is on.
+              .filter(d => d.count > 0 || d.pnl !== 0)
               .map(d => ({
                 label: String(d.day),
                 count: d.count,

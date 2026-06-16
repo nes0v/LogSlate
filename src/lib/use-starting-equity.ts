@@ -1,10 +1,10 @@
 import { useMemo } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/db/schema'
-import { listAdjustments, listAllTrades } from '@/db/queries'
+import { listAdjustments, listAllTrades, listDayPnlOverrides } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
 import { signedAdjustment } from '@/lib/trade-stats'
-import { computeNetPnl } from '@/lib/trade-math'
+import { netPnlByDate, sumNetPnl } from '@/lib/day-pnl'
 
 /**
  * Account equity immediately before `dateKey` (YYYY-MM-DD): signed cash flows
@@ -28,13 +28,14 @@ export function useCurrentEquity(): number | undefined {
   const accountId = useActiveAccountId()
   const adjustments = useLiveQuery(() => listAdjustments(accountId), [accountId])
   const trades = useLiveQuery(() => listAllTrades(accountId), [accountId])
+  const overrides = useLiveQuery(() => listDayPnlOverrides(accountId), [accountId])
   return useMemo(() => {
-    if (!adjustments || !trades) return undefined
+    if (!adjustments || !trades || !overrides) return undefined
     let eq = 0
     for (const a of adjustments) eq += signedAdjustment(a)
-    for (const t of trades) eq += computeNetPnl(t) ?? 0
+    eq += sumNetPnl(netPnlByDate(trades, overrides))
     return eq
-  }, [adjustments, trades])
+  }, [adjustments, trades, overrides])
 }
 
 export function useStartingEquity(dateKey: string | null | undefined): number | undefined {
@@ -59,11 +60,14 @@ export function useStartingEquity(dateKey: string | null | undefined): number | 
     },
     [accountId, dateKey],
   )
+  const overrides = useLiveQuery(() => listDayPnlOverrides(accountId), [accountId])
   return useMemo(() => {
-    if (!priorAdjustments || !priorTrades) return undefined
+    if (!priorAdjustments || !priorTrades || !overrides) return undefined
     let eq = 0
     for (const a of priorAdjustments) eq += signedAdjustment(a)
-    for (const t of priorTrades) eq += computeNetPnl(t) ?? 0
+    // Override-only days before `dateKey` aren't in `priorTrades`; restricting
+    // the day-net map by date picks them up while excluding on/after `dateKey`.
+    eq += sumNetPnl(netPnlByDate(priorTrades, overrides), d => d < dateKey!)
     return eq
-  }, [priorAdjustments, priorTrades])
+  }, [priorAdjustments, priorTrades, overrides, dateKey])
 }

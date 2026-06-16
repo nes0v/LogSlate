@@ -5,7 +5,7 @@ import { format, parseISO } from 'date-fns'
 import { Plus } from 'lucide-react'
 import { db } from '@/db/schema'
 import type { Model, NewsEvent, TradeRecord } from '@/db/types'
-import { getDayNote, listDayScreenshotsFor, listModels } from '@/db/queries'
+import { getDayNote, getDayPnlOverride, listDayScreenshotsFor, listModels } from '@/db/queries'
 import { parseScreenshotRef, resolveScreenshotUrl } from '@/lib/drive-images'
 import { useActiveAccountId } from '@/lib/active-account'
 import { firstExecutionMs } from '@/lib/trade-math'
@@ -13,6 +13,7 @@ import { aggregate } from '@/lib/trade-stats'
 import { useArrowNavigation } from '@/lib/use-arrow-navigation'
 import { DayNewsSection } from '@/components/DayNewsSection'
 import { DayNoteSection } from '@/components/DayNoteSection'
+import { DayPnlOverrideSection } from '@/components/DayPnlOverrideSection'
 import { DayScreenshotSection } from '@/components/DayScreenshotSection'
 import { PageHeader } from '@/components/PageHeader'
 import { StatsGrid } from '@/components/StatsGrid'
@@ -34,6 +35,7 @@ interface CachedDay {
   news?: NewsEvent[]
   note?: string
   screenshots?: string[]
+  pnlOverride?: number | null
 }
 const DAY_CACHE_CAP = 100
 const dayDataCache = new Map<string, CachedDay>()
@@ -71,11 +73,12 @@ async function preloadDay(accountId: string, date: string): Promise<void> {
   if (!accountId || !date) return
   const key = dayCacheKey(accountId, date)
   if (dayDataCache.has(key)) return
-  const [tradeRows, newsRows, note, screenshots] = await Promise.all([
+  const [tradeRows, newsRows, note, screenshots, pnlOverride] = await Promise.all([
     db.trades.where('[account_id+date]').equals([accountId, date]).toArray(),
     db.news.where('date').equals(date).toArray(),
     getDayNote(accountId, date),
     listDayScreenshotsFor(accountId, date),
+    getDayPnlOverride(accountId, date),
   ])
   const trades = tradeRows.sort((a, b) => {
     const ka = firstExecutionMs(a) ?? Date.parse(a.created_at)
@@ -86,7 +89,7 @@ async function preloadDay(accountId: string, date: string): Promise<void> {
     return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
   })
   newsRows.sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at))
-  writeDayCache(key, { trades, news: newsRows, note, screenshots })
+  writeDayCache(key, { trades, news: newsRows, note, screenshots, pnlOverride })
   // Warm the screenshot URL cache so thumbs paint as an image on the
   // first frame after navigation instead of flashing the "loading…"
   // placeholder while resolveScreenshotUrl awaits the IndexedDB blob.
@@ -148,6 +151,14 @@ export function DayRoute() {
     },
     [accountId, date],
   )
+  const pnlOverrideResult = useLiveQuery(
+    async () => {
+      const value = await getDayPnlOverride(accountId, date)
+      patchDayCache(accountId, date, { pnlOverride: value })
+      return { forDate: date, forAccount: accountId, value }
+    },
+    [accountId, date],
+  )
   // Stale-while-revalidate: fall back to the module cache so a navigation
   // to a preloaded neighbour renders with data on the first frame instead
   // of unmounting the content section until Dexie settles. Reading
@@ -163,6 +174,9 @@ export function DayRoute() {
   const news = fresh(newsResult) ? newsResult!.rows : cached?.news
   const note = fresh(noteResult) ? noteResult!.value : cached?.note
   const screenshots = fresh(screenshotsResult) ? screenshotsResult!.rows : cached?.screenshots
+  const pnlOverride = fresh(pnlOverrideResult)
+    ? pnlOverrideResult!.value
+    : cached?.pnlOverride
   // Models are resolved once at the route level so trade rows render with
   // the right name on first paint instead of flashing "gambling" → real.
   const models = useLiveQuery(
@@ -209,6 +223,7 @@ export function DayRoute() {
     news !== undefined &&
     note !== undefined &&
     screenshots !== undefined &&
+    pnlOverride !== undefined &&
     models !== undefined &&
     pendingFirstPaintDone
 
@@ -252,7 +267,13 @@ export function DayRoute() {
     if (nextDate) void preloadDay(accountId, nextDate)
   }, [accountId, prevDate, nextDate])
 
-  const stats = useMemo(() => aggregate(trades ?? []), [trades])
+  // When the day carries a manual net-P&L override, it replaces the trade-
+  // derived net in the day's headline stats (the per-trade counts below stay
+  // as-is — the override isn't a trade).
+  const stats = useMemo(() => {
+    const base = aggregate(trades ?? [])
+    return pnlOverride != null ? { ...base, net_pnl: pnlOverride } : base
+  }, [trades, pnlOverride])
 
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
   // Stable identity so the memoized `<TradeTable>` doesn't re-render on
@@ -304,6 +325,13 @@ export function DayRoute() {
             accountId={accountId}
             date={date}
             screenshots={screenshots}
+          />
+
+          <DayPnlOverrideSection
+            key={date}
+            accountId={accountId}
+            date={date}
+            stored={pnlOverride ?? null}
           />
 
           <section className="space-y-2">

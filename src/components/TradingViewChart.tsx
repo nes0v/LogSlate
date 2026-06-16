@@ -39,6 +39,15 @@ const BAR_SPACING = 10
  * candles, etc.). Returns enough history + one year of future buffer to
  * keep the time axis populated when the user pans around.
  */
+// Whether a bucket gets a drawn candle (vs. flat whitespace). A bucket draws
+// when a trade happened on it OR the equity actually moved — the latter covers
+// a day-level P&L override on a day with no logged trades (`count === 0` but
+// `open !== close`). A truly empty/flat bucket (no trades, no move) stays
+// whitespace so the equity line holds level instead of drawing a flat candle.
+function hasCandleBody(p: CandlePoint): boolean {
+  return p.count > 0 || p.open !== p.close
+}
+
 function makeWhitespaceTimestamps(tf: Timeframe): number[] {
   const now = new Date()
   const YEAR = now.getUTCFullYear()
@@ -125,7 +134,7 @@ function createLineDotHoverPrimitive(): LineDotHoverPrimitive {
     draw(target) {
       if (hoveredTime === null || !chart || !series) return
       const p = points.get(hoveredTime)
-      if (!p || p.count === 0) return
+      if (!p || !hasCandleBody(p)) return
       const xc = chart.timeScale().timeToCoordinate(hoveredTime as UTCTimestamp)
       if (xc === null) return
       const yc = series.priceToCoordinate(p.close)
@@ -1032,7 +1041,7 @@ export function TradingViewChart({
       if (viewRef.current === 'line') {
         const p = pointByTimeRef.current.get(t as number)
         const activeSeries = seriesRef.current
-        if (!p || p.count === 0 || !activeSeries || !chartRef.current) return false
+        if (!p || !hasCandleBody(p) || !activeSeries || !chartRef.current) return false
         const xc = chartRef.current.timeScale().timeToCoordinate(t as UTCTimestamp)
         if (xc === null) return false
         const yc = activeSeries.priceToCoordinate(p.close)
@@ -1044,10 +1053,10 @@ export function TradingViewChart({
       }
       const activeSeries = seriesRef.current
       const p = pointByTimeRef.current.get(t as number)
-      // `count === 0` buckets exist (equity holds flat) but have no
-      // candle to hit — gate them out here so the click handler and the
-      // white-border hover ignore them in candle mode.
-      if (!activeSeries || !p || p.count === 0 || !chartRef.current) return false
+      // Flat empty buckets (equity holds level) have no candle to hit — gate
+      // them out so the click handler and white-border hover ignore them in
+      // candle mode. An override day moved the equity, so it stays hittable.
+      if (!activeSeries || !p || !hasCandleBody(p) || !chartRef.current) return false
       const xc = chartRef.current.timeScale().timeToCoordinate(t as UTCTimestamp)
       if (xc === null) return false
       const barSpacing = chartRef.current.timeScale().options().barSpacing
@@ -1303,7 +1312,7 @@ export function TradingViewChart({
       const ts = bucketKeyToTs(p.key)
       if (ts === 0) continue
       pointByTime.set(ts, p)
-      if (p.count > 0) {
+      if (hasCandleBody(p)) {
         candleByTime.set(ts, {
           time: ts as UTCTimestamp,
           open: p.open,
@@ -1610,7 +1619,7 @@ function CandleInfoRow({
   return (
     <div className="flex items-center gap-x-4 text-xs font-mono bg-(--color-panel-2) rounded-(--radius) px-2 py-1 pointer-events-none whitespace-nowrap">
       <span className="text-(--color-text-dim)">{dateLabel}</span>
-      {point.count > 0 ? (
+      {hasCandleBody(point) ? (
         <>
           <InfoCell label="O" value={formatUsd(point.open)} />
           <InfoCell label="H" value={formatUsd(point.high)} />

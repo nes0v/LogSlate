@@ -17,7 +17,7 @@ import { bucketNavTarget, drillDownRange, timeframeFromParams } from '@/lib/stat
 import { ChevronRight, X } from 'lucide-react'
 import { dateKeyToDate, nyToday } from '@/lib/tz'
 import type { Model } from '@/db/types'
-import { listAdjustments, listAllTrades, listModels } from '@/db/queries'
+import { listAdjustments, listAllTrades, listDayPnlOverrides, listModels } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
 import {
   applyFilters,
@@ -33,8 +33,9 @@ import {
   loadSharedFilters,
   saveSharedFilters,
 } from '@/lib/shared-filters'
-import { computeNetPnl, firstExecutionMs } from '@/lib/trade-math'
-import { adjustmentsByDate, aggregate, computeCandles, signedAdjustment } from '@/lib/trade-stats'
+import { firstExecutionMs } from '@/lib/trade-math'
+import { adjustmentsByDate, aggregate, computeCandles, signedAdjustment, type AggregateStats } from '@/lib/trade-stats'
+import { netPnlByDate, sumNetPnl } from '@/lib/day-pnl'
 import { useStartingEquity } from '@/lib/use-starting-equity'
 import { useChartAdjustmentPrefs } from '@/lib/chart-adjustment-prefs'
 import {
@@ -139,6 +140,13 @@ export function OverviewRoute() {
     [accountId],
     [],
   )
+  // Day-level net-P&L overrides (date → value). Replace each day's trade P&L
+  // in every money/equity readout. Rare, so loading the whole map is cheap.
+  const overridesByDate = useLiveQuery(
+    () => listDayPnlOverrides(accountId),
+    [accountId],
+    new Map<string, number>(),
+  )
   // Models are resolved once at the route level so trade rows render
   // with the right name on first paint (instead of flashing "gambling"
   // before the lookup map populates).
@@ -156,34 +164,49 @@ export function OverviewRoute() {
   // Most recent trade date — anchors the default filter so Stats lands
   // on the user's actual trading window. Falls back to today before
   // any trades exist.
-  const lastTradeDate = useMemo(() => {
-    const list = allTrades ?? []
-    if (list.length === 0) return nyToday()
-    let max = list[0].date
-    for (const t of list) if (t.date > max) max = t.date
-    return max
-  }, [allTrades])
+  // The most recent date the user logged anything that moves equity — a
+  // trade OR a day-level P&L override. Anchors the default one-month window
+  // and the chart's right edge, so an override day with no trades still pulls
+  // the default view (and viewport) out to it.
+  const lastActivityDate = useMemo(() => {
+    let max: string | null = null
+    for (const t of allTrades ?? []) if (max === null || t.date > max) max = t.date
+    for (const d of overridesByDate.keys()) if (max === null || d > max) max = d
+    return max ?? nyToday()
+  }, [allTrades, overridesByDate])
 
   // Effective filters = URL filters with the default one-month window
-  // (ending on `lastTradeDate`) filled in for any unset bound. The URL
+  // (ending on `lastActivityDate`) filled in for any unset bound. The URL
   // stays clean (no params) for the default view; params only appear
   // when the user deviates from it.
   const filters = useMemo<TradeFilters>(() => {
-    const d = defaultRange(lastTradeDate)
+    const d = defaultRange(lastActivityDate)
     return {
       ...urlFilters,
       from: urlFilters.from ?? d.from,
       to: urlFilters.to ?? d.to,
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params, lastTradeDate])
+  }, [params, lastActivityDate])
 
   const filtered = useMemo(() => applyFilters(allTrades ?? [], filters), [allTrades, filters])
   // Aggregate once at the route level and pass down. Previously each
   // memo'd child (HeroNetPnl, CompositeScoreSection) computed
   // `aggregate(filtered)` independently — same data, multiple
   // full-array passes per render.
-  const stats = useMemo(() => aggregate(filtered), [filtered])
+  const baseStats = useMemo(() => aggregate(filtered), [filtered])
+  // Net P&L for the visible window with day overrides folded in: each
+  // override date replaces its trades' sum. Population fields (wins, win
+  // rate, best/worst) stay trade-only — an override day isn't a win or loss.
+  const stats = useMemo<AggregateStats>(() => {
+    const from = filters.from
+    const to = filters.to
+    const net = sumNetPnl(
+      netPnlByDate(filtered, overridesByDate),
+      d => (from == null || d >= from) && (to == null || d <= to),
+    )
+    return { ...baseStats, net_pnl: net }
+  }, [baseStats, filtered, overridesByDate, filters.from, filters.to])
 
   // Lazy-mount the TradingView chart on a tick after the rest of the
   // page has painted. The chart synchronously builds canvases, primitives,
@@ -238,11 +261,13 @@ export function OverviewRoute() {
     for (const a of allAdjustments ?? []) {
       if (a.date < rangeStart) eq += signedAdjustment(a)
     }
-    for (const t of allTrades ?? []) {
-      if (t.date < rangeStart) eq += computeNetPnl(t) ?? 0
-    }
+    // Day-net before the range, with override days replacing their trades.
+    eq += sumNetPnl(
+      netPnlByDate(allTrades ?? [], overridesByDate),
+      d => d < rangeStart,
+    )
     return eq
-  }, [allTrades, allAdjustments, rangeStart])
+  }, [allTrades, allAdjustments, overridesByDate, rangeStart])
   const compositeAdjByDate = useMemo(() => {
     const m = new Map<string, number>()
     if (!rangeStart || !rangeEnd) return m
@@ -264,12 +289,14 @@ export function OverviewRoute() {
   )
 
   // Bucket-aligned range that spans the earliest..latest dates across
-  // chart trades AND adjustments — picking up adjustments that fall
-  // outside the trades' window (e.g. a deposit before the first trade).
+  // chart trades, adjustments AND day overrides — picking up dates that
+  // fall outside the trades' window (a deposit before the first trade, or
+  // a net-P&L override on a day with no logged trades).
   const tfChartRange = useMemo(() => {
     const dates: string[] = []
     for (const t of chartFiltered) dates.push(t.date)
     for (const a of allAdjustments ?? []) dates.push(a.date)
+    for (const d of overridesByDate.keys()) dates.push(d)
     if (dates.length === 0) return null
     dates.sort()
     const s = dateKeyToDate(dates[0])
@@ -281,7 +308,7 @@ export function OverviewRoute() {
       case 'Q': return { start: startOfQuarter(s), end: endOfQuarter(e) }
       case 'Y': return { start: startOfYear(s), end: endOfYear(e) }
     }
-  }, [chartFiltered, allAdjustments, timeframe])
+  }, [chartFiltered, allAdjustments, overridesByDate, timeframe])
 
   const chartAdjByDate = useMemo(
     () => adjustmentsByDate(allAdjustments ?? []),
@@ -307,8 +334,9 @@ export function OverviewRoute() {
         // across timeframes, so candle highs/lows reconcile at every zoom.
         chartAdjByDate,
         chartStartingEquity ?? 0,
+        overridesByDate,
       ),
-    [tfBuckets, chartAdjByDate, chartStartingEquity],
+    [tfBuckets, chartAdjByDate, chartStartingEquity, overridesByDate],
   )
 
   // Marker visibility is user-controlled per kind (Settings → Adjustments).
@@ -386,7 +414,7 @@ export function OverviewRoute() {
   // view. `tf` is preserved when not in `next` (so filter edits don't
   // reset the chart timeframe) and dropped when it equals the default D.
   function update(next: Partial<TradeFilters> & { tf?: Timeframe }) {
-    const d = defaultRange(lastTradeDate)
+    const d = defaultRange(lastActivityDate)
     const merged: TradeFilters = { ...urlFilters, ...next }
     if (merged.from === d.from) merged.from = null
     if (merged.to === d.to) merged.to = null
@@ -511,6 +539,7 @@ export function OverviewRoute() {
               rangeEnd={rangeEnd}
               accountStartEquity={compositeStartingEquity}
               adjByDate={compositeAdjByDate}
+              overridesByDate={overridesByDate}
             />
           </div>
           <DistributionDonuts filtered={filtered} models={models ?? []} />

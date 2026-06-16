@@ -335,13 +335,14 @@ export async function removeDayScreenshot(
     const existing = await db.days.get(id)
     if (!existing) return
     const screenshots = existing.screenshots.filter(s => s !== screenshot)
-    if (screenshots.length === 0 && !existing.note) {
+    const next: Day = { ...existing, screenshots, updated_at: ts }
+    if (!dayHasContent(next)) {
       // No remaining content on this day — drop the row instead of leaving
       // an empty placeholder.
       await db.days.delete(id)
       return
     }
-    await db.days.put({ ...existing, screenshots, updated_at: ts })
+    await db.days.put(next)
   })
 }
 
@@ -351,6 +352,77 @@ export async function getDayNote(
 ): Promise<string> {
   const day = await getDay(accountId, date)
   return day?.note ?? ''
+}
+
+// True when a day row carries something worth keeping. Used by every
+// empty-row garbage collector so a day that holds ONLY a P&L override
+// (no note, no screenshots) is never dropped.
+function dayHasContent(day: Day): boolean {
+  return (
+    day.screenshots.length > 0 ||
+    !!day.note ||
+    typeof day.pnl_override === 'number'
+  )
+}
+
+export async function getDayPnlOverride(
+  accountId: string,
+  date: string,
+): Promise<number | null> {
+  const day = await getDay(accountId, date)
+  return day?.pnl_override ?? null
+}
+
+/** All net-P&L overrides for an account as a `date → value` map. Overrides
+ *  are rare (one per tilt/revenge day) so loading the small days table and
+ *  filtering in memory is cheaper than a dedicated index. */
+export async function listDayPnlOverrides(
+  accountId: string,
+): Promise<Map<string, number>> {
+  const rows = await db.days.where('account_id').equals(accountId).toArray()
+  const m = new Map<string, number>()
+  for (const d of rows) {
+    if (typeof d.pnl_override === 'number') m.set(d.date, d.pnl_override)
+  }
+  return m
+}
+
+/** Upserts the per-day net-P&L override. Passing `null` clears it; if the
+ *  row then has no other content the whole row is removed so the days
+ *  table doesn't grow with empty rows. */
+export async function setDayPnlOverride(
+  accountId: string,
+  date: string,
+  value: number | null,
+): Promise<void> {
+  const id = dayId(accountId, date)
+  const ts = now()
+  await db.transaction('rw', db.days, async () => {
+    const existing = await db.days.get(id)
+    if (!existing) {
+      if (value == null) return
+      await db.days.put({
+        id,
+        account_id: accountId,
+        date,
+        screenshots: [],
+        pnl_override: value,
+        created_at: ts,
+        updated_at: ts,
+      })
+      return
+    }
+    const next: Day = {
+      ...existing,
+      pnl_override: value ?? undefined,
+      updated_at: ts,
+    }
+    if (!dayHasContent(next)) {
+      await db.days.delete(id)
+      return
+    }
+    await db.days.put(next)
+  })
 }
 
 /** Upserts the per-day journal note. Empty/whitespace strings clear the
@@ -379,15 +451,16 @@ export async function setDayNote(
       })
       return
     }
-    if (trimmed === '' && existing.screenshots.length === 0) {
-      await db.days.delete(id)
-      return
-    }
-    await db.days.put({
+    const next: Day = {
       ...existing,
       note: trimmed === '' ? undefined : trimmed,
       updated_at: ts,
-    })
+    }
+    if (!dayHasContent(next)) {
+      await db.days.delete(id)
+      return
+    }
+    await db.days.put(next)
   })
 }
 

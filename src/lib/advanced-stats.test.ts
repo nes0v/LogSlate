@@ -182,6 +182,31 @@ describe('streakStats', () => {
     expect(streakStats([])).toEqual({ longestWin: 0, longestLoss: 0, current: 0 })
   })
 
+  it('an override day breaks the win/loss streak', () => {
+    const trades = [
+      tradeWithPnl(100, { date: '2026-04-01' }),
+      tradeWithPnl(100, { date: '2026-04-02' }),
+      // 2026-04-03 is an override day → breaks the run.
+      tradeWithPnl(100, { date: '2026-04-04' }),
+      tradeWithPnl(100, { date: '2026-04-05' }),
+    ]
+    const overrides = new Map([['2026-04-03', -250]])
+    const s = streakStats(trades, overrides)
+    // Without the override this would be a 4-win streak; the tilt day splits
+    // it into two runs of 2, and the most recent run (the current) is 2.
+    expect(s.longestWin).toBe(2)
+    expect(s.current).toBe(2)
+  })
+
+  it('an override day as the latest activity ends the current streak at 0', () => {
+    const trades = [
+      tradeWithPnl(100, { date: '2026-04-01' }),
+      tradeWithPnl(100, { date: '2026-04-02' }),
+    ]
+    const overrides = new Map([['2026-04-03', -250]])
+    expect(streakStats(trades, overrides).current).toBe(0)
+  })
+
   it('ignores scratch trades — neither extends nor breaks a streak', () => {
     const trades = [
       tradeWithPnl(100, { date: '2026-04-01' }),

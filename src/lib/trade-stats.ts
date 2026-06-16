@@ -207,6 +207,7 @@ function candleFromBucket(
   b: Bucket,
   startEquity: number,
   adjustmentsByDate: Map<string, number>,
+  overridesByDate?: Map<string, number>,
 ): CandlePoint {
   // Each day's cash flow is folded into THAT day's opening baseline, then the
   // day's trades walk on top of it. open already includes the deposit/withdrawal
@@ -233,6 +234,15 @@ function candleFromBucket(
     }
   }
 
+  // Override dates inside this bucket. A day-level override replaces that day's
+  // trades (and their fees) with a single net-P&L step.
+  const overrideDates = new Set<string>()
+  if (overridesByDate) {
+    for (const date of overridesByDate.keys()) {
+      if (date >= b.rangeStart && date <= b.rangeEnd) overrideDates.add(date)
+    }
+  }
+
   const dayKeys = bucketDayKeys(b)
   if (dayKeys) {
     // Multi-day bucket: interleave each day's cash flow and trades in date order.
@@ -247,6 +257,13 @@ function candleFromBucket(
       running += adj
       bucketAdjustment += adj
       record(running)
+      if (overrideDates.has(dk)) {
+        // Override is the day's net (already net of its own fees) — replace the
+        // day's trades wholesale and skip their fees.
+        running += overridesByDate!.get(dk)!
+        record(running)
+        continue
+      }
       const dayTrades = byDate.get(dk)
       if (dayTrades) {
         for (const t of [...dayTrades].sort(byExecutionThenId)) {
@@ -262,10 +279,15 @@ function candleFromBucket(
     bucketAdjustment = adjustmentsByDate.get(b.key) ?? 0
     running += bucketAdjustment
     record(running)
-    for (const t of [...b.trades].sort(byExecutionThenId)) {
-      running += computeNetPnl(t) ?? 0
+    if (overrideDates.has(b.rangeStart)) {
+      running += overridesByDate!.get(b.rangeStart)!
       record(running)
-      fees += computeFees(t)
+    } else {
+      for (const t of [...b.trades].sort(byExecutionThenId)) {
+        running += computeNetPnl(t) ?? 0
+        record(running)
+        fees += computeFees(t)
+      }
     }
   }
 
@@ -286,11 +308,12 @@ export function computeCandles(
   buckets: Bucket[],
   adjustmentsByDate: Map<string, number> = new Map(),
   startEquity = 0,
+  overridesByDate?: Map<string, number>,
 ): CandlePoint[] {
   const out: CandlePoint[] = []
   let running = startEquity
   for (const b of buckets) {
-    const c = candleFromBucket(b, running, adjustmentsByDate)
+    const c = candleFromBucket(b, running, adjustmentsByDate, overridesByDate)
     out.push(c)
     // `close` already includes this bucket's cash flow (folded per-day into the
     // day it lands on), so the next bucket opens right at the close.

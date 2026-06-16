@@ -61,6 +61,10 @@ class LogslateDB extends Dexie {
     })
 
     this.version(10)
+
+    // v11: adds optional `Day.pnl_override` (non-indexed) — no migration
+    // needed, IndexedDB stores are schemaless for unindexed fields.
+    this.version(11)
   }
 }
 
@@ -123,9 +127,9 @@ export async function cleanOrphanedPendingRefs(): Promise<void> {
       })
       if (filtered.length === d.screenshots.length) continue
       // Only delete the row when there's truly nothing left to keep —
-      // an empty screenshots list with no note. A day's note is a
-      // user-authored journal entry and is independent of screenshots.
-      if (filtered.length === 0 && !d.note) {
+      // an empty screenshots list with no note and no P&L override. A
+      // day's note/override are user-authored and independent of screenshots.
+      if (filtered.length === 0 && !d.note && d.pnl_override == null) {
         await db.days.delete(d.id)
       } else {
         await db.days.update(d.id, { screenshots: filtered, updated_at: now })

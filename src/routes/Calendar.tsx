@@ -16,6 +16,7 @@ import { db } from '@/db/schema'
 import { useActiveAccountId } from '@/lib/active-account'
 import { classifyTrade, computeNetPnl } from '@/lib/trade-math'
 import { classifyDayPnl } from '@/lib/advanced-stats'
+import { netPnlByDate } from '@/lib/day-pnl'
 import { signedAdjustment } from '@/lib/trade-stats'
 import { useStartingEquity } from '@/lib/use-starting-equity'
 import { formatUsd } from '@/lib/money'
@@ -129,6 +130,17 @@ export function CalendarRoute() {
       else if (outcome === 'loss') cur.losses += 1
       m.set(t.date, cur)
     }
+    // A day-level override replaces that day's trade P&L. Mark the cell so it
+    // colours by its P&L even with no decided trades (a tilt day reads red,
+    // not as a dim scratch).
+    for (const d of dayRows ?? []) {
+      if (typeof d.pnl_override !== 'number') continue
+      const cur =
+        m.get(d.date) ?? { pnl: 0, count: 0, wins: 0, losses: 0, startEquity: 0 }
+      cur.pnl = d.pnl_override
+      cur.isOverride = true
+      m.set(d.date, cur)
+    }
     const adjByDate = new Map<string, number>()
     for (const a of rangeAdjustments) {
       adjByDate.set(a.date, (adjByDate.get(a.date) ?? 0) + signedAdjustment(a))
@@ -143,17 +155,19 @@ export function CalendarRoute() {
       runningEquity += (cell?.pnl ?? 0) + (adjByDate.get(key) ?? 0)
     }
     return m
-  }, [trades, rangeAdjustments, gridStartEquity, days])
+  }, [trades, dayRows, rangeAdjustments, gridStartEquity, days])
 
   const monthNet = useMemo(() => {
+    const overrides = new Map<string, number>()
+    for (const d of dayRows ?? []) {
+      if (typeof d.pnl_override === 'number') overrides.set(d.date, d.pnl_override)
+    }
     let total = 0
-    for (const t of trades ?? []) {
-      if (isSameMonth(dateKeyToDate(t.date), month)) {
-        total += computeNetPnl(t) ?? 0
-      }
+    for (const [date, net] of netPnlByDate(trades ?? [], overrides)) {
+      if (isSameMonth(dateKeyToDate(date), month)) total += net
     }
     return total
-  }, [trades, month])
+  }, [trades, dayRows, month])
 
   // Carry the weekend flag alongside the label so weekend styling
   // doesn't depend on the label *string* (which is locale-formatted by
@@ -308,6 +322,9 @@ interface PerDayCell {
   wins: number
   losses: number
   startEquity: number
+  // Set when the day's P&L comes from a manual `Day.pnl_override` rather than
+  // its trades — used so the tone classifies by P&L even with no decided trades.
+  isOverride?: boolean
 }
 
 // Shared sizing for both day cells and week summary cards so the row
@@ -375,7 +392,9 @@ function DayCell({ date, inMonth, cell, isToday, hasScreenshot, hasNote }: DayCe
             {formatUsd(cell.pnl)}
           </div>
           <div className={cn('text-xs', palette.meta)}>
-            {cell.count} trade{cell.count === 1 ? '' : 's'}
+            {cell.isOverride && cell.count === 0
+              ? 'override'
+              : `${cell.isOverride ? 'override + ' : ''}${cell.count} trade${cell.count === 1 ? '' : 's'}`}
           </div>
           {winRate !== null ? (
             <div className={cn('text-xs font-mono tabular-nums mt-0.5', palette.winRate)}>
@@ -511,7 +530,9 @@ function pickVariant(
 ): CellVariant {
   if (!inMonth) return 'pad'
   if (!cell) return 'empty'
-  if (decided === 0) return 'scratch'
+  // Override days carry a real P&L with no decided trades — colour them by
+  // that figure instead of forcing the neutral scratch tone.
+  if (decided === 0 && !cell.isOverride) return 'scratch'
   return classifyDayPnl(cell.pnl, cell.startEquity)
 }
 

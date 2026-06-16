@@ -323,6 +323,7 @@ export const CompositeScoreSection = memo(function CompositeScoreSection({
   rangeEnd,
   accountStartEquity,
   adjByDate,
+  overridesByDate,
 }: {
   filtered: TradeRecord[]
   stats: AggregateStats
@@ -337,6 +338,9 @@ export const CompositeScoreSection = memo(function CompositeScoreSection({
    *  negative). Anchors `peak` so `maxDdPct` is measured against the
    *  user's real capital, not the trade-only cumulative. */
   adjByDate: Map<string, number>
+  /** Day-level P&L overrides (date → value). Each replaces its day's trade
+   *  P&L in the equity series. Keys outside the window are ignored. */
+  overridesByDate?: Map<string, number>
 }) {
   const days = useMemo(() => buildDayRange(rangeStart, rangeEnd), [rangeStart, rangeEnd])
   // `rawSeries` walks every weekday in the window — used as the source
@@ -344,8 +348,8 @@ export const CompositeScoreSection = memo(function CompositeScoreSection({
   // capital baseline) and as the source of truth for any consumer that
   // needs the running equity through gaps.
   const rawSeries = useMemo(
-    () => dailyEquitySeries(filtered, days, accountStartEquity, adjByDate),
-    [filtered, days, accountStartEquity, adjByDate],
+    () => dailyEquitySeries(filtered, days, accountStartEquity, adjByDate, overridesByDate),
+    [filtered, days, accountStartEquity, adjByDate, overridesByDate],
   )
   // `tradingSeries` keeps only days where a trade actually happened.
   // All dd, ratio, and streak metrics run off this so weekends,
@@ -408,6 +412,7 @@ export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
   rangeEnd,
   accountStartEquity,
   adjByDate,
+  overridesByDate,
 }: {
   filtered: TradeRecord[]
   stats: AggregateStats
@@ -422,6 +427,9 @@ export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
    *  negative). Anchors `peak` for the equity series and tracks real
    *  capital across the period for `dailyStats`'s scratch band. */
   adjByDate: Map<string, number>
+  /** Day-level P&L overrides (date → value). Each replaces its day's trade
+   *  P&L in the equity series. Keys outside the window are ignored. */
+  overridesByDate?: Map<string, number>
 }) {
   const days = useMemo(() => buildDayRange(rangeStart, rangeEnd), [rangeStart, rangeEnd])
   // `rawSeries` keeps every weekday so `dailyStats` can pick up
@@ -430,8 +438,8 @@ export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
   // used by dd / ratio / streak metrics — see CompositeScoreSection
   // for the broader rationale.
   const rawSeries = useMemo(
-    () => dailyEquitySeries(filtered, days, accountStartEquity, adjByDate),
-    [filtered, days, accountStartEquity, adjByDate],
+    () => dailyEquitySeries(filtered, days, accountStartEquity, adjByDate, overridesByDate),
+    [filtered, days, accountStartEquity, adjByDate, overridesByDate],
   )
   const tradingSeries = useMemo(
     () => rawSeries.filter(p => p.pnl !== 0),
@@ -446,7 +454,20 @@ export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
   const expR = useMemo(() => expectancyR(filtered), [filtered])
   const expDollars = useMemo(() => expectancyDollars(filtered), [filtered])
   const sqnVal = useMemo(() => sqn(filtered), [filtered])
-  const streaks = useMemo(() => streakStats(filtered), [filtered])
+  // Override days within the window — passed to streakStats so a tilt day
+  // breaks the win/loss run. Scoped to [rangeStart, rangeEnd] so an override
+  // outside the filter can't reset a streak it isn't part of.
+  const windowOverrides = useMemo(() => {
+    if (!overridesByDate || overridesByDate.size === 0) return undefined
+    const m = new Map<string, number>()
+    for (const [d, v] of overridesByDate) {
+      if ((rangeStart == null || d >= rangeStart) && (rangeEnd == null || d <= rangeEnd)) {
+        m.set(d, v)
+      }
+    }
+    return m
+  }, [overridesByDate, rangeStart, rangeEnd])
+  const streaks = useMemo(() => streakStats(filtered, windowOverrides), [filtered, windowOverrides])
   const maeMfe = useMemo(() => maeMfeStats(filtered), [filtered])
   const extremes = useMemo(() => extremeStats(filtered), [filtered])
   const dayStats = useMemo(
