@@ -5,7 +5,7 @@
 // hydrate from this slot.
 
 import { format, subMonths } from 'date-fns'
-import { dateKeyToDate } from '@/lib/tz'
+import { dateKeyToDate, nextWeekdayKey, previousWeekdayKey } from '@/lib/tz'
 import { coerceFilters, type TradeFilters } from '@/lib/filters'
 import { loadJsonFromStorage, removeFromStorage, saveJsonToStorage } from '@/lib/storage'
 
@@ -16,12 +16,19 @@ const KEY = 'logslate.shared-filters.v1'
  *  May 8 – Jun 8). Anchored on the most recent trade date, so opening
  *  Stats/Reports lands on the user's actual trading window instead of a
  *  probably-empty trailing month. `subMonths` clamps short months
- *  (e.g. Mar 31 → Feb 28). */
+ *  (e.g. Mar 31 → Feb 28).
+ *
+ *  Both edges are snapped to weekdays so the default matches the filters'
+ *  weekday-only date pickers: `from` rolls forward to the next weekday (e.g.
+ *  Jun 16 → May 16 Sat → May 18 Mon), `to` rolls back to the previous weekday.
+ *  `to` is usually a real activity date (already a weekday); the snap only
+ *  matters when it falls back to today on an empty account opened on a
+ *  weekend. */
 export function defaultRange(baseDate: string): { from: string; to: string } {
-  const base = dateKeyToDate(baseDate)
+  const from = format(subMonths(dateKeyToDate(baseDate), 1), 'yyyy-MM-dd')
   return {
-    from: format(subMonths(base, 1), 'yyyy-MM-dd'),
-    to: baseDate,
+    from: nextWeekdayKey(from),
+    to: previousWeekdayKey(baseDate),
   }
 }
 

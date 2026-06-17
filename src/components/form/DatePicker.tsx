@@ -4,6 +4,7 @@ import {
   format,
   isSameDay,
   isSameMonth,
+  isWeekend,
   startOfMonth,
   subMonths,
 } from 'date-fns'
@@ -36,6 +37,10 @@ interface DatePickerProps {
   clearable?: boolean
   /** Tighter trigger padding for dense rows (matches `inputClassCompact`). */
   compact?: boolean
+  /** Grey out and block Saturday/Sunday cells (and the Today shortcut when
+   *  today is a weekend). Used for cash-flow dates, which must land on a
+   *  trading day so they aren't dropped from the daily equity candles. */
+  disableWeekends?: boolean
   ariaLabel?: string
 }
 
@@ -46,6 +51,7 @@ export function DatePicker({
   className,
   clearable = false,
   compact = false,
+  disableWeekends = false,
   ariaLabel,
 }: DatePickerProps) {
   const [open, setOpen] = useState(false)
@@ -64,7 +70,17 @@ export function DatePicker({
   const selectedDate = value ? dateKeyToDate(value) : null
   const todayKey = nyToday()
 
-  const days = useMemo(() => monthDayGrid(viewMonth).days, [viewMonth])
+  // When weekends are excluded, drop the Sat/Sun cells entirely and lay the
+  // grid out as 5 weekday columns. The Sunday-first grid is contiguous
+  // Sun…Sat per row, so filtering weekends leaves each row's Mon…Fri in order.
+  const days = useMemo(() => {
+    const all = monthDayGrid(viewMonth).days
+    return disableWeekends ? all.filter(d => !isWeekend(d)) : all
+  }, [viewMonth, disableWeekends])
+  const weekdayInitials = disableWeekends
+    ? ['M', 'T', 'W', 'T', 'F']
+    : WEEKDAY_INITIALS
+  const gridCols = disableWeekends ? 'grid-cols-5' : 'grid-cols-7'
 
   function pick(d: Date) {
     onChange(format(d, DATE_KEY))
@@ -124,8 +140,8 @@ export function DatePicker({
               <ChevronRight className="size-4" />
             </button>
           </div>
-          <div className="grid grid-cols-7 mb-1">
-            {WEEKDAY_INITIALS.map((wd, i) => (
+          <div className={cn('grid mb-1', gridCols)}>
+            {weekdayInitials.map((wd, i) => (
               <div
                 key={i}
                 className="text-center text-[10px] uppercase tracking-wide text-(--color-text-faint) py-1"
@@ -134,7 +150,7 @@ export function DatePicker({
               </div>
             ))}
           </div>
-          <div className="grid grid-cols-7 gap-0.5">
+          <div className={cn('grid gap-0.5', gridCols)}>
             {days.map(d => {
               const key = format(d, DATE_KEY)
               const inMonth = isSameMonth(d, viewMonth)
@@ -165,11 +181,12 @@ export function DatePicker({
           <div className="mt-2 pt-2 border-t border-(--color-border) flex items-center justify-between text-xs">
             <button
               type="button"
+              disabled={disableWeekends && isWeekend(dateKeyToDate(todayKey))}
               onClick={() => {
                 onChange(todayKey)
                 setOpen(false)
               }}
-              className="px-2 py-1 rounded text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)"
+              className="px-2 py-1 rounded text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2) disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-(--color-text-dim)"
             >
               Today
             </button>

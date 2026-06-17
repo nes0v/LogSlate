@@ -105,6 +105,17 @@ export async function cleanEmptyHiddenRules(): Promise<void> {
 }
 
 
+// True when a day row carries something worth keeping. Used by every
+// empty-row garbage collector so a day that holds ONLY a P&L override
+// (no note, no screenshots) is never dropped.
+export function dayHasContent(day: Pick<Day, 'screenshots' | 'note' | 'pnl_override'>): boolean {
+  return (
+    day.screenshots.length > 0 ||
+    !!day.note ||
+    typeof day.pnl_override === 'number'
+  )
+}
+
 // Clears day-row references that point at pending uploads which no
 // longer exist in the queue (e.g. blob lost in storage, queue cleared
 // across an app reset). Without this, a stale `pending:foo` ref would show
@@ -126,10 +137,10 @@ export async function cleanOrphanedPendingRefs(): Promise<void> {
         return live.has(ref.slice('pending:'.length))
       })
       if (filtered.length === d.screenshots.length) continue
-      // Only delete the row when there's truly nothing left to keep —
-      // an empty screenshots list with no note and no P&L override. A
-      // day's note/override are user-authored and independent of screenshots.
-      if (filtered.length === 0 && !d.note && d.pnl_override == null) {
+      // Only delete the row when there's truly nothing left to keep. A day's
+      // note/override are user-authored and independent of screenshots, so
+      // defer to the shared keep-rule with the filtered list applied.
+      if (!dayHasContent({ ...d, screenshots: filtered })) {
         await db.days.delete(d.id)
       } else {
         await db.days.update(d.id, { screenshots: filtered, updated_at: now })

@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { format } from 'date-fns'
 import { Trash2 } from 'lucide-react'
 import { createAdjustment, deleteAdjustment } from '@/db/queries'
 import type { EquityAdjustment } from '@/db/types'
@@ -10,7 +11,14 @@ import { Switch } from '@/components/form/Switch'
 import { BTN_ACCENT } from '@/components/form/buttonClass'
 import { setChartAdjustmentPref, useChartAdjustmentPrefs } from '@/lib/chart-adjustment-prefs'
 import { formatUsd } from '@/lib/money'
-import { nyMonthKey } from '@/lib/tz'
+import { dateKeyToDate, nextWeekdayKey, nyMonthKey } from '@/lib/tz'
+
+/** First *weekday* of `YYYY-MM`, as a YYYY-MM-DD key. A fee on the 1st would
+ *  land on a weekend in some months, and weekend-dated cash flow is dropped
+ *  from the daily equity candles — so anchor it to the first trading day. */
+function firstWeekdayOfMonth(month: string): string {
+  return nextWeekdayKey(`${month}-01`)
+}
 
 interface BrokerFeesPanelProps {
   /** All adjustments for the active account; this panel filters for the
@@ -43,7 +51,7 @@ export function BrokerFeesPanel({ adjustments }: BrokerFeesPanelProps) {
     }
     setError(null)
     await createAdjustment({
-      date: `${month}-01`,
+      date: firstWeekdayOfMonth(month),
       kind: 'fee',
       amount,
       note: note.trim(),
@@ -120,7 +128,7 @@ export function BrokerFeesPanel({ adjustments }: BrokerFeesPanelProps) {
                     className="transition-colors duration-300 ease-out border-t border-(--color-panel) first:border-t-0 hover:bg-(--color-panel-3)/60"
                   >
                     <td className="px-3 py-2 text-xs font-mono tabular-nums text-(--color-text-dim) whitespace-nowrap">
-                      {a.date.slice(0, 7)}
+                      {format(dateKeyToDate(a.date), 'MMM d, yyyy')}
                     </td>
                     <td className="px-3 py-2 font-mono font-medium tabular-nums text-(--color-loss) whitespace-nowrap">
                       -{formatUsd(a.amount)}

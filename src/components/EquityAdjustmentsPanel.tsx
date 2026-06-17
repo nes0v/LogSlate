@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { format } from 'date-fns'
 import { Trash2 } from 'lucide-react'
 import { createAdjustment, deleteAdjustment } from '@/db/queries'
 import type { AdjustmentKind, EquityAdjustment } from '@/db/types'
@@ -11,7 +12,7 @@ import { Switch } from '@/components/form/Switch'
 import { BTN_ACCENT } from '@/components/form/buttonClass'
 import { setChartAdjustmentPref, useChartAdjustmentPrefs } from '@/lib/chart-adjustment-prefs'
 import { formatUsd } from '@/lib/money'
-import { nyToday } from '@/lib/tz'
+import { dateKeyToDate, nyToday, previousWeekdayKey } from '@/lib/tz'
 import { cn } from '@/lib/utils'
 
 interface EquityAdjustmentsPanelProps {
@@ -28,7 +29,9 @@ export function EquityAdjustmentsPanel({ adjustments }: EquityAdjustmentsPanelPr
     [adjustments],
   )
 
-  const [date, setDate] = useState(() => nyToday())
+  // Cash-flow dates must land on a trading day (weekend dates get dropped from
+  // the daily equity candles), so default to the most recent weekday.
+  const [date, setDate] = useState(() => previousWeekdayKey(nyToday()))
   const [kind, setKind] = useState<AdjustmentKind>('deposit')
   const [amount, setAmount] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -84,6 +87,7 @@ export function EquityAdjustmentsPanel({ adjustments }: EquityAdjustmentsPanelPr
             value={date}
             onChange={v => v && setDate(v)}
             compact
+            disableWeekends
             ariaLabel="Adjustment date"
           />
         </div>
@@ -125,7 +129,7 @@ export function EquityAdjustmentsPanel({ adjustments }: EquityAdjustmentsPanelPr
                   className="transition-colors duration-300 ease-out border-t border-(--color-panel) first:border-t-0 hover:bg-(--color-panel-3)/60"
                 >
                   <td className="px-3 py-2 text-xs font-mono tabular-nums text-(--color-text-dim) whitespace-nowrap">
-                    {a.date}
+                    {format(dateKeyToDate(a.date), 'MMM d, yyyy')}
                   </td>
                   <td className="px-3 py-2">
                     <span

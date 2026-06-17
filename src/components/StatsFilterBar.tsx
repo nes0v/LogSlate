@@ -72,6 +72,7 @@ export function StatsFilterBar({
             onChange={v => update({ from: v })}
             placeholder="Any"
             clearable
+            disableWeekends
             ariaLabel="From date"
           />
         </Field>
@@ -81,6 +82,7 @@ export function StatsFilterBar({
             onChange={v => update({ to: v })}
             placeholder="Any"
             clearable
+            disableWeekends
             ariaLabel="To date"
           />
         </Field>

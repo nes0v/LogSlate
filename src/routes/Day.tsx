@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { format, parseISO } from 'date-fns'
+import { format, isWeekend, parseISO } from 'date-fns'
 import { Plus } from 'lucide-react'
-import { db } from '@/db/schema'
+import { db, dayHasContent } from '@/db/schema'
 import type { Model, NewsEvent, TradeRecord } from '@/db/types'
 import { getDayNote, getDayPnlOverride, listDayScreenshotsFor, listModels } from '@/db/queries'
 import { parseScreenshotRef, resolveScreenshotUrl } from '@/lib/drive-images'
@@ -98,7 +98,23 @@ async function preloadDay(accountId: string, date: string): Promise<void> {
   )
 }
 
+// Weekend guard. The calendar already makes Saturday/Sunday cells
+// non-clickable, but a hand-typed `/day/2026-06-20` URL would still land on
+// a weekend page — which can carry no trades and no P&L override. Bounce it
+// to that date's month calendar. Kept in a thin wrapper so the heavy
+// `DayView` either mounts fully or not at all (stable hook order); a bare
+// early-return inside DayView would skip its hooks and trip rules-of-hooks
+// when navigating between a weekday and a weekend date on the same route.
 export function DayRoute() {
+  const { date = '' } = useParams()
+  const parsed = /^\d{4}-\d{2}-\d{2}$/.test(date) ? parseISO(date) : null
+  if (parsed && isWeekend(parsed)) {
+    return <Navigate to={`/month/${date.slice(0, 7)}`} replace />
+  }
+  return <DayView />
+}
+
+function DayView() {
   const { date = '' } = useParams()
   const navigate = useNavigate()
   const parsed = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? parseISO(date) : null
@@ -227,24 +243,33 @@ export function DayRoute() {
     models !== undefined &&
     pendingFirstPaintDone
 
-  // Every distinct day that has trades for this account — used to skip empty
-  // days in prev/next navigation. `uniqueKeys()` walks the compound index
-  // without pulling trade rows into memory, so this stays cheap even with
-  // hundreds of trades.
-  const tradingDays = useLiveQuery(
+  // Every distinct day that holds something for this account — a trade OR a
+  // day row with content (note, screenshot, or P&L override) — used to skip
+  // genuinely-empty days in prev/next navigation. Trade dates come from the
+  // compound index via `uniqueKeys()` (no rows pulled into memory); day rows
+  // are filtered by the shared `dayHasContent` keep-rule and merged in.
+  const navigableDays = useLiveQuery(
     async () => {
-      const keys = await db.trades
+      const tradeKeys = await db.trades
         .where('[account_id+date]')
         .between([accountId, ''], [accountId, '￿'], true, true)
         .uniqueKeys()
-      return keys.map(k => (k as unknown as [string, string])[1])
+      const set = new Set(tradeKeys.map(k => (k as unknown as [string, string])[1]))
+      const dayRows = await db.days.where('account_id').equals(accountId).toArray()
+      for (const d of dayRows) if (dayHasContent(d)) set.add(d.date)
+      // Drop weekend dates: a note/screenshot/override could be stored on a
+      // Sat/Sun, but the weekend Day page redirects to the month view — so a
+      // weekend neighbour would make prev/next bounce out of the Day view.
+      return Array.from(set)
+        .filter(k => !isWeekend(parseISO(k)))
+        .sort()
     },
     [accountId],
     [] as string[],
   )
 
   const { prevDate, nextDate } = useMemo(() => {
-    const list = tradingDays ?? []
+    const list = navigableDays ?? []
     let prev: string | null = null
     let next: string | null = null
     for (const d of list) {
@@ -252,7 +277,7 @@ export function DayRoute() {
       else if (d > date && next === null) next = d
     }
     return { prevDate: prev, nextDate: next }
-  }, [tradingDays, date])
+  }, [navigableDays, date])
 
   useArrowNavigation({
     prev: prevDate ? `/day/${prevDate}` : null,
@@ -275,6 +300,14 @@ export function DayRoute() {
     return pnlOverride != null ? { ...base, net_pnl: pnlOverride } : base
   }, [trades, pnlOverride])
 
+  // The day-override and trades are mutually exclusive (a tilt day is logged
+  // as one net figure INSTEAD of its individual trades). An override is
+  // "active" when one is stored; in that state we hide the New-trade button.
+  // The override field itself stays visible whenever there are no trades OR
+  // an override already exists, so a legacy both-day can still be cleared.
+  const overrideActive = pnlOverride != null
+  const showOverrideField = (trades?.length ?? 0) === 0 || overrideActive
+
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
   // Stable identity so the memoized `<TradeTable>` doesn't re-render on
   // every parent render.
@@ -293,16 +326,18 @@ export function DayRoute() {
         title={pretty}
         prev={prevDate ? `/day/${prevDate}` : null}
         next={nextDate ? `/day/${nextDate}` : null}
-        prevLabel="Previous day with trades"
-        nextLabel="Next day with trades"
+        prevLabel="Previous day with activity"
+        nextLabel="Next day with activity"
         rightSlot={
-          <Link
-            to={`/trade/new?date=${date}`}
-            state={{ from: `/day/${date}` }}
-            className={BTN_ACCENT}
-          >
-            <Plus className="size-4" /> New trade
-          </Link>
+          overrideActive ? undefined : (
+            <Link
+              to={`/trade/new?date=${date}`}
+              state={{ from: `/day/${date}` }}
+              className={BTN_ACCENT}
+            >
+              <Plus className="size-4" /> New trade
+            </Link>
+          )
         }
       />
 
@@ -312,7 +347,7 @@ export function DayRoute() {
           asynchronously and produce a multi-stage flicker. */}
       {loaded ? (
         <>
-          <StatsGrid stats={stats} />
+          <StatsGrid stats={stats} hideBreakdown={overrideActive} />
 
           <DayNewsSection events={news} />
 
@@ -327,35 +362,39 @@ export function DayRoute() {
             screenshots={screenshots}
           />
 
-          <DayPnlOverrideSection
-            key={date}
-            accountId={accountId}
-            date={date}
-            stored={pnlOverride ?? null}
-          />
+          {showOverrideField && (
+            <DayPnlOverrideSection
+              key={date}
+              accountId={accountId}
+              date={date}
+              stored={pnlOverride ?? null}
+            />
+          )}
 
-          <section className="space-y-2">
-            <h2 className="text-sm font-medium">
-              Trades{' '}
-              <span className="text-(--color-text-dim) font-normal">
-                ({trades.length})
-              </span>{' '}
-              <span className="text-(--color-win) font-normal">{stats.wins}W</span>{' '}
-              <span className="text-(--color-loss) font-normal">{stats.losses}L</span>
-            </h2>
-            {trades.length > 0 ? (
-              <TradeTable
-                trades={trades}
-                expandedIds={expandedIds}
-                onToggle={toggleExpanded}
-                modelById={modelById}
-              />
-            ) : (
-              <div className="text-sm text-(--color-text-dim) text-center py-12 border border-dashed border-(--color-border) rounded-(--radius)">
-                No trades on this day yet.
-              </div>
-            )}
-          </section>
+          {!overrideActive && (
+            <section className="space-y-2">
+              <h2 className="text-sm font-medium">
+                Trades{' '}
+                <span className="text-(--color-text-dim) font-normal">
+                  ({trades.length})
+                </span>{' '}
+                <span className="text-(--color-win) font-normal">{stats.wins}W</span>{' '}
+                <span className="text-(--color-loss) font-normal">{stats.losses}L</span>
+              </h2>
+              {trades.length > 0 ? (
+                <TradeTable
+                  trades={trades}
+                  expandedIds={expandedIds}
+                  onToggle={toggleExpanded}
+                  modelById={modelById}
+                />
+              ) : (
+                <div className="text-sm text-(--color-text-dim) text-center py-12 border border-dashed border-(--color-border) rounded-(--radius)">
+                  No trades on this day yet.
+                </div>
+              )}
+            </section>
+          )}
         </>
       ) : null}
     </div>

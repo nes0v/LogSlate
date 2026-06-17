@@ -45,7 +45,10 @@ const BAR_SPACING = 10
 // `open !== close`). A truly empty/flat bucket (no trades, no move) stays
 // whitespace so the equity line holds level instead of drawing a flat candle.
 function hasCandleBody(p: CandlePoint): boolean {
-  return p.count > 0 || p.open !== p.close
+  // Epsilon rather than exact `!==`: a bucket whose open and close differ only
+  // by floating-point residue (e.g. summing cash flows back to ~0) shouldn't
+  // draw a sub-pixel, effectively invisible candle.
+  return p.count > 0 || Math.abs(p.open - p.close) > 1e-6
 }
 
 function makeWhitespaceTimestamps(tf: Timeframe): number[] {
@@ -1627,7 +1630,7 @@ function CandleInfoRow({
           <InfoCell label="C" value={formatUsd(point.close)} />
           {tradingPnl !== 0 && (
             <InfoCell
-              label="pnl"
+              label={point.count === 0 ? 'override' : 'pnl'}
               value={formatUsd(tradingPnl)}
               tone={tradingPnl > 0 ? 'win' : 'loss'}
             />

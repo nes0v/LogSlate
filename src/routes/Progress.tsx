@@ -16,7 +16,7 @@ import { DatePicker } from '@/components/form/DatePicker'
 import { RuleCheck } from '@/components/form/RuleCheck'
 import { useConfirm } from '@/components/ConfirmDialog'
 import { BTN_ACCENT } from '@/components/form/buttonClass'
-import { dateKeyToDate, nyToday } from '@/lib/tz'
+import { dateKeyToDate, nyToday, previousWeekdayKey } from '@/lib/tz'
 import { cn } from '@/lib/utils'
 
 function newId(): string {
@@ -31,7 +31,9 @@ export function ProgressRoute() {
   const accountId = useActiveAccountId()
   const confirm = useConfirm()
   const today = nyToday()
-  const [date, setDate] = useState(today)
+  // Progress checks aren't meaningful on weekends (futures don't trade), so
+  // open on the most recent weekday rather than a Sat/Sun.
+  const [date, setDate] = useState(() => previousWeekdayKey(today))
 
   // No default values on the primary queries — `loaded` gates the
   // rendering of the score band + heat strip + checklist so we don't
@@ -69,17 +71,29 @@ export function ProgressRoute() {
         .toArray(),
     [accountId, date, heatWindowStart],
   )
-  // Set of dates in the heat window that have at least one trade. Used
-  // by the streak walk to skip non-trading days — weekdays where the
-  // user didn't trade (sick day, holiday, etc.) shouldn't break a
-  // streak, since there was no routine to follow.
+  // Set of dates in the heat window that the user actually traded — at least
+  // one trade OR a day-level P&L override (a tilt day logged as one net figure
+  // instead of individual trades still counts as a traded day). Used by the
+  // streak walk to skip non-trading days — weekdays where the user didn't
+  // trade (sick day, holiday, etc.) shouldn't break a streak, since there was
+  // no routine to follow.
   const tradedDays = useLiveQuery(
     async () => {
       const trades = await db.trades
         .where('[account_id+date]')
         .between([accountId, heatWindowStart], [accountId, date], true, true)
         .toArray()
-      return new Set(trades.map(t => t.date))
+      const set = new Set(trades.map(t => t.date))
+      // Override days count as traded days. Use the same [account_id+date]
+      // range as the trades query above rather than scanning the whole table.
+      const dayRows = await db.days
+        .where('[account_id+date]')
+        .between([accountId, heatWindowStart], [accountId, date], true, true)
+        .toArray()
+      for (const d of dayRows) {
+        if (typeof d.pnl_override === 'number') set.add(d.date)
+      }
+      return set
     },
     [accountId, date, heatWindowStart],
   )
@@ -309,6 +323,7 @@ export function ProgressRoute() {
             value={date}
             onChange={v => v && setDate(v)}
             compact
+            disableWeekends
             ariaLabel="Selected date"
           />
           <button

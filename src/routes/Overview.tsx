@@ -15,9 +15,9 @@ import {
 } from 'date-fns'
 import { bucketNavTarget, drillDownRange, timeframeFromParams } from '@/lib/stats-nav'
 import { ChevronRight, X } from 'lucide-react'
-import { dateKeyToDate, nyToday } from '@/lib/tz'
+import { dateKeyToDate } from '@/lib/tz'
 import type { Model } from '@/db/types'
-import { listAdjustments, listAllTrades, listDayPnlOverrides, listModels } from '@/db/queries'
+import { listAdjustments, listAllTrades, listModels } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
 import {
   applyFilters,
@@ -33,6 +33,7 @@ import {
   loadSharedFilters,
   saveSharedFilters,
 } from '@/lib/shared-filters'
+import { useDefaultRangeFilters } from '@/lib/use-default-range-filters'
 import { firstExecutionMs } from '@/lib/trade-math'
 import { adjustmentsByDate, aggregate, computeCandles, signedAdjustment, type AggregateStats } from '@/lib/trade-stats'
 import { netPnlByDate, sumNetPnl } from '@/lib/day-pnl'
@@ -140,13 +141,12 @@ export function OverviewRoute() {
     [accountId],
     [],
   )
-  // Day-level net-P&L overrides (date → value). Replace each day's trade P&L
-  // in every money/equity readout. Rare, so loading the whole map is cheap.
-  const overridesByDate = useLiveQuery(
-    () => listDayPnlOverrides(accountId),
-    [accountId],
-    new Map<string, number>(),
-  )
+  // Day-level overrides + the default one-month filter window (shared with
+  // Reports). `rangeReady` is trades+overrides only — it deliberately excludes
+  // models so the filter bar fills its default without waiting on the slower
+  // models query (which would surface as a visible "Any"→date jump).
+  const { overridesByDate, rangeReady, lastActivityDate, filters } =
+    useDefaultRangeFilters(accountId, allTrades, urlFilters)
   // Models are resolved once at the route level so trade rows render
   // with the right name on first paint (instead of flashing "gambling"
   // before the lookup map populates).
@@ -159,35 +159,11 @@ export function OverviewRoute() {
     for (const p of models ?? []) m.set(p.id, p)
     return m
   }, [models])
-  const loaded = allTrades !== undefined && models !== undefined
-
-  // Most recent trade date — anchors the default filter so Stats lands
-  // on the user's actual trading window. Falls back to today before
-  // any trades exist.
-  // The most recent date the user logged anything that moves equity — a
-  // trade OR a day-level P&L override. Anchors the default one-month window
-  // and the chart's right edge, so an override day with no trades still pulls
-  // the default view (and viewport) out to it.
-  const lastActivityDate = useMemo(() => {
-    let max: string | null = null
-    for (const t of allTrades ?? []) if (max === null || t.date > max) max = t.date
-    for (const d of overridesByDate.keys()) if (max === null || d > max) max = d
-    return max ?? nyToday()
-  }, [allTrades, overridesByDate])
-
-  // Effective filters = URL filters with the default one-month window
-  // (ending on `lastActivityDate`) filled in for any unset bound. The URL
-  // stays clean (no params) for the default view; params only appear
-  // when the user deviates from it.
-  const filters = useMemo<TradeFilters>(() => {
-    const d = defaultRange(lastActivityDate)
-    return {
-      ...urlFilters,
-      from: urlFilters.from ?? d.from,
-      to: urlFilters.to ?? d.to,
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params, lastActivityDate])
+  // `rangeReady` (from the hook) is trades + overrides; the full page-content
+  // gate also waits on models so trade rows never flash an unresolved name.
+  // The explicit `allTrades !== undefined` is redundant with `rangeReady` but
+  // lets TS narrow `allTrades` inside `loaded` branches below.
+  const loaded = allTrades !== undefined && rangeReady && models !== undefined
 
   const filtered = useMemo(() => applyFilters(allTrades ?? [], filters), [allTrades, filters])
   // Aggregate once at the route level and pass down. Previously each
@@ -501,9 +477,12 @@ export function OverviewRoute() {
         )}
       </div>
 
+      {/* Always present (no layout jump on load). Its date values stay blank
+          ("Any") until `loaded`, so it never flashes a today-based default —
+          everything data-dependent below waits for the full `loaded` gate. */}
       <StatsFilterBar filters={filters} update={update} />
 
-      {filtered.length > 0 && (
+      {loaded && filtered.length > 0 && (
         <details
           className="space-y-2 group"
           open={tradesSectionOpen}
@@ -528,7 +507,7 @@ export function OverviewRoute() {
         </details>
       )}
 
-      {filtered.length > 0 && (
+      {loaded && filtered.length > 0 && (
         <>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             <HeroNetPnl stats={stats} />
@@ -546,7 +525,7 @@ export function OverviewRoute() {
         </>
       )}
 
-      {filtered.length > 0 ? (
+      {loaded && filtered.length > 0 ? (
         chartReady ? (
         <TradingViewChart
           points={tfCandles}

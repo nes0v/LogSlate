@@ -1,4 +1,4 @@
-import { db } from '@/db/schema'
+import { db, dayHasContent } from '@/db/schema'
 import type {
   Account,
   AccountDraft,
@@ -352,17 +352,6 @@ export async function getDayNote(
 ): Promise<string> {
   const day = await getDay(accountId, date)
   return day?.note ?? ''
-}
-
-// True when a day row carries something worth keeping. Used by every
-// empty-row garbage collector so a day that holds ONLY a P&L override
-// (no note, no screenshots) is never dropped.
-function dayHasContent(day: Day): boolean {
-  return (
-    day.screenshots.length > 0 ||
-    !!day.note ||
-    typeof day.pnl_override === 'number'
-  )
 }
 
 export async function getDayPnlOverride(

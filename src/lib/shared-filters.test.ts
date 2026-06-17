@@ -21,10 +21,27 @@ describe('defaultRange', () => {
     })
   })
 
-  it('clamps when the prior month is shorter', () => {
+  it('clamps when the prior month is shorter (then rolls the weekend edge to Monday)', () => {
+    // subMonths(Mar 31) clamps to Feb 28, which is a Saturday → next Monday.
     expect(defaultRange('2026-03-31')).toEqual({
-      from: '2026-02-28',
+      from: '2026-03-02',
       to: '2026-03-31',
+    })
+  })
+
+  it('rolls a weekend from-edge forward to the next weekday', () => {
+    // Jun 16 → May 16 (Saturday) → Monday May 18.
+    expect(defaultRange('2026-06-16')).toEqual({
+      from: '2026-05-18',
+      to: '2026-06-16',
+    })
+  })
+
+  it('rolls a weekend to-edge back to the previous weekday', () => {
+    // baseDate Sat Jun 20 → to Fri Jun 19; from May 20 (Wed) unchanged.
+    expect(defaultRange('2026-06-20')).toEqual({
+      from: '2026-05-20',
+      to: '2026-06-19',
     })
   })
 

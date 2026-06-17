@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { nyDateKey, nyMonthKey, nyTimeHHmm, nyToday } from './tz'
+import {
+  nextWeekdayKey,
+  nyDateKey,
+  nyMonthKey,
+  nyTimeHHmm,
+  nyToday,
+  previousWeekdayKey,
+} from './tz'
 
 describe('nyDateKey', () => {
   it('returns YYYY-MM-DD in NY timezone', () => {
@@ -49,5 +56,35 @@ describe('nyTimeHHmm', () => {
   it('formats NY clock time (EST)', () => {
     const d = new Date('2026-12-15T14:30:00Z') // 09:30 NY
     expect(nyTimeHHmm(d)).toBe('09:30')
+  })
+})
+
+describe('previousWeekdayKey', () => {
+  it('returns a weekday unchanged', () => {
+    expect(previousWeekdayKey('2026-06-17')).toBe('2026-06-17') // Wed
+  })
+  it('rolls Saturday back to Friday', () => {
+    expect(previousWeekdayKey('2026-06-20')).toBe('2026-06-19')
+  })
+  it('rolls Sunday back to Friday', () => {
+    expect(previousWeekdayKey('2026-06-21')).toBe('2026-06-19')
+  })
+  it('crosses the month boundary', () => {
+    expect(previousWeekdayKey('2026-08-01')).toBe('2026-07-31') // Sat → Fri
+  })
+})
+
+describe('nextWeekdayKey', () => {
+  it('returns a weekday unchanged', () => {
+    expect(nextWeekdayKey('2026-06-17')).toBe('2026-06-17') // Wed
+  })
+  it('rolls Saturday forward to Monday', () => {
+    expect(nextWeekdayKey('2026-06-20')).toBe('2026-06-22')
+  })
+  it('rolls Sunday forward to Monday', () => {
+    expect(nextWeekdayKey('2026-06-21')).toBe('2026-06-22')
+  })
+  it('crosses the month boundary', () => {
+    expect(nextWeekdayKey('2026-02-28')).toBe('2026-03-02') // Sat → Mon
   })
 })

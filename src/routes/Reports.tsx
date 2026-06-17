@@ -4,8 +4,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { X } from 'lucide-react'
 import type { TradeRecord } from '@/db/types'
 import { EMOTIONS, DEFAULT_MODEL_NAME } from '@/db/types'
-import { nyToday } from '@/lib/tz'
-import { listAdjustments, listAllTrades, listDayPnlOverrides, listModels } from '@/db/queries'
+import { listAdjustments, listAllTrades, listModels } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
 import {
   applyFilters,
@@ -20,6 +19,7 @@ import {
   loadSharedFilters,
   saveSharedFilters,
 } from '@/lib/shared-filters'
+import { useDefaultRangeFilters } from '@/lib/use-default-range-filters'
 import { aggregate, signedAdjustment, type AggregateStats } from '@/lib/trade-stats'
 import { netPnlByDate, sumNetPnl } from '@/lib/day-pnl'
 import {
@@ -155,34 +155,13 @@ export function ReportsRoute() {
     [accountId],
     [],
   )
-  // Day-level net-P&L overrides (date → value); each replaces its day's
-  // trade P&L in every money/equity readout.
-  const overridesByDate = useLiveQuery(
-    () => listDayPnlOverrides(accountId),
-    [accountId],
-    new Map<string, number>(),
-  )
-  const loaded = allTrades !== undefined
-
-  // Most recent date with anything that moves equity — a trade OR a day-level
-  // P&L override — so the default window ends on the latest activity even when
-  // that day has no logged trades.
-  const lastActivityDate = useMemo(() => {
-    let max: string | null = null
-    for (const t of allTrades ?? []) if (max === null || t.date > max) max = t.date
-    for (const d of overridesByDate.keys()) if (max === null || d > max) max = d
-    return max ?? nyToday()
-  }, [allTrades, overridesByDate])
-
-  const filters = useMemo<TradeFilters>(() => {
-    const d = defaultRange(lastActivityDate)
-    return {
-      ...urlFilters,
-      from: urlFilters.from ?? d.from,
-      to: urlFilters.to ?? d.to,
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params, lastActivityDate])
+  // Day-level overrides + the default one-month filter window (shared with
+  // Overview). Reports has no models query, so its full `loaded` gate is just
+  // the hook's `rangeReady` (trades + overrides). The explicit `allTrades`
+  // check is redundant with `rangeReady` but lets TS narrow it in branches.
+  const { overridesByDate, rangeReady, lastActivityDate, filters } =
+    useDefaultRangeFilters(accountId, allTrades, urlFilters)
+  const loaded = allTrades !== undefined && rangeReady
 
   const filtered = useMemo(
     () => applyFilters(allTrades ?? [], filters),
@@ -238,9 +217,9 @@ export function ReportsRoute() {
   }, [allAdjustments, rangeStart, rangeEnd])
 
   // Day overrides inside the active window. Date-grouped breakdowns (Time)
-  // and the Symbol tab's "Override days" group fold these in only when the
-  // "Include override days" toggle is on. Scoped to [rangeStart, rangeEnd] so
-  // an override outside the filter can't leak into a bucket it isn't part of.
+  // fold these in only when the "Include override days" toggle is on. Scoped
+  // to [rangeStart, rangeEnd] so an override outside the filter can't leak
+  // into a bucket it isn't part of.
   const windowOverrides = useMemo(() => {
     const m = new Map<string, number>()
     for (const [d, v] of overridesByDate) {
@@ -291,6 +270,8 @@ export function ReportsRoute() {
         )}
       </div>
 
+      {/* Always present (no layout jump). Date values stay "Any" until
+          `loaded`, so the bar never flashes a today-based default. */}
       <StatsFilterBar filters={filters} update={update} />
 
       {!loaded ? null : filtered.length === 0 ? (

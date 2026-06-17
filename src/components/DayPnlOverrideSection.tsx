@@ -32,7 +32,10 @@ export function DayPnlOverrideSection({ accountId, date, stored }: DayPnlOverrid
     setValue(stored)
   }, [stored])
 
-  async function commit(next: number | null) {
+  async function commit(raw: number | null) {
+    // Money figure — round to cents so the stored value matches the 2-decimal
+    // display and never carries float noise into equity math.
+    const next = raw === null ? null : Math.round(raw * 100) / 100
     if (next === stored) return
     try {
       await setDayPnlOverride(accountId, date, next)
@@ -61,7 +64,8 @@ export function DayPnlOverrideSection({ accountId, date, stored }: DayPnlOverrid
           <NumberInput
             value={value}
             onChange={setValue}
-            placeholder="e.g. -250"
+            decimals={2}
+            placeholder="e.g. -250.00"
             className={cn(inputClass, 'font-mono max-w-[12rem]')}
           />
           {value !== null && (

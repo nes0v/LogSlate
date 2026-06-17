@@ -55,3 +55,33 @@ export function nyTimeHHmm(d: Date): string {
 export function dateKeyToDate(dateKey: string): Date {
   return new Date(dateKey + 'T00:00:00')
 }
+
+function toDateKey(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+/** Nearest weekday on or before `dateKey` (YYYY-MM-DD): Sat/Sun roll back to
+ *  Friday, a weekday is returned unchanged. Used for date inputs that must
+ *  land on a trading day (cash flow / progress / the default range's `to`),
+ *  since weekend-dated values get dropped from the daily equity candles. */
+export function previousWeekdayKey(dateKey: string): string {
+  const d = dateKeyToDate(dateKey)
+  const wd = d.getDay() // 0 = Sun … 6 = Sat
+  if (wd === 0) d.setDate(d.getDate() - 2)
+  else if (wd === 6) d.setDate(d.getDate() - 1)
+  return toDateKey(d)
+}
+
+/** Nearest weekday on or after `dateKey`: Sat/Sun roll forward to Monday, a
+ *  weekday is returned unchanged. Used where a weekend should advance to the
+ *  next trading day (the default range's `from` edge, a month's first fee). */
+export function nextWeekdayKey(dateKey: string): string {
+  const d = dateKeyToDate(dateKey)
+  const wd = d.getDay()
+  if (wd === 6) d.setDate(d.getDate() + 2)
+  else if (wd === 0) d.setDate(d.getDate() + 1)
+  return toDateKey(d)
+}

@@ -5,9 +5,12 @@ import { cn } from '@/lib/utils'
 
 interface StatsGridProps {
   stats: AggregateStats
+  /** When the day's net is a manual override, the trade-derived gross/fees
+   *  don't reconcile with the headline — suppress that sub-label. */
+  hideBreakdown?: boolean
 }
 
-export function StatsGrid({ stats }: StatsGridProps) {
+export function StatsGrid({ stats, hideBreakdown }: StatsGridProps) {
   const s = stats
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -15,7 +18,7 @@ export function StatsGrid({ stats }: StatsGridProps) {
         label="PnL"
         value={formatUsd(s.net_pnl)}
         tone={s.net_pnl > 0 ? 'win' : s.net_pnl < 0 ? 'loss' : 'neutral'}
-        sub={`gross ${formatUsd(s.gross_pnl)} / fees ${formatUsd(-s.fees)}`}
+        sub={hideBreakdown ? undefined : `gross ${formatUsd(s.gross_pnl)} / fees ${formatUsd(-s.fees)}`}
         big
       />
       <Stat

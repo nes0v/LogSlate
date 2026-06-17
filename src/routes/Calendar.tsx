@@ -258,7 +258,7 @@ export function CalendarRoute() {
               column. The two `aria-hidden` placeholders below the weekday
               labels fill the aisle and week-card slots so the header row
               keeps the same column template. */}
-          <div className="grid grid-cols-[repeat(7,minmax(0,1fr))_24px_minmax(0,1.2fr)] gap-1.5">
+          <div className="grid grid-cols-[repeat(7,minmax(0,1fr))_24px_minmax(0,1.3fr)] gap-1.5">
             {weekdayLabels.map(({ label, isWeekend: weekend }) => (
               <div
                 key={label}
