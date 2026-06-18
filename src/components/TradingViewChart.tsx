@@ -41,7 +41,7 @@ const BAR_SPACING = 10
  */
 // Whether a bucket gets a drawn candle (vs. flat whitespace). A bucket draws
 // when a trade happened on it OR the equity actually moved — the latter covers
-// a day-level P&L override on a day with no logged trades (`count === 0` but
+// a day-level PNL override on a day with no logged trades (`count === 0` but
 // `open !== close`). A truly empty/flat bucket (no trades, no move) stays
 // whitespace so the equity line holds level instead of drawing a flat candle.
 function hasCandleBody(p: CandlePoint): boolean {

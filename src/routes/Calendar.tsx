@@ -28,7 +28,7 @@ import { cn } from '@/lib/utils'
 
 const DATE_KEY = 'yyyy-MM-dd'
 
-// Shared PnL → text-tone mapping. Used by the month-net header tile and
+// Shared PNL → text-tone mapping. Used by the month-net header tile and
 // the WeekCard total so the sign-based color stays consistent.
 function pnlToneClass(amount: number): string {
   if (amount > 0) return 'text-(--color-win)'
@@ -113,7 +113,7 @@ export function CalendarRoute() {
 
   // Per-day map. Wins/losses are tracked separately from `count` so a
   // day that only contains scratches renders in the dim/scratch tone
-  // instead of being miscoloured by fee/slippage residue in the PnL
+  // instead of being miscoloured by fee/slippage residue in the PNL
   // sum. `wins` also feeds the per-day win-rate badge. `startEquity` is
   // the account equity right before that day's trades — used by the
   // ±0.4% scratch band so small-net days dim instead of going green/red.
@@ -130,8 +130,8 @@ export function CalendarRoute() {
       else if (outcome === 'loss') cur.losses += 1
       m.set(t.date, cur)
     }
-    // A day-level override replaces that day's trade P&L. Mark the cell so it
-    // colours by its P&L even with no decided trades (a tilt day reads red,
+    // A day-level override replaces that day's trade PNL. Mark the cell so it
+    // colours by its PNL even with no decided trades (a tilt day reads red,
     // not as a dim scratch).
     for (const d of dayRows ?? []) {
       if (typeof d.pnl_override !== 'number') continue
@@ -181,7 +181,7 @@ export function CalendarRoute() {
     [gridStart],
   )
 
-  // Chunk the day grid into weekly rows + per-week PnL & traded-day count.
+  // Chunk the day grid into weekly rows + per-week PNL & traded-day count.
   // Each card's total covers the FULL Mon–Fri trading week, so when a month
   // starts or ends mid-week the card includes the adjacent-month days of
   // that week — matching the card's drill-down link (from=Mon … to=Fri).
@@ -315,15 +315,15 @@ export function CalendarRoute() {
 
 // Per-day aggregate stored in the `perDay` map. `count` is total trades
 // on the day; `wins` / `losses` exclude scratches (so the win-rate badge
-// doesn't dilute on fee/slippage residue); `pnl` is the net PnL sum.
+// doesn't dilute on fee/slippage residue); `pnl` is the net PNL sum.
 interface PerDayCell {
   pnl: number
   count: number
   wins: number
   losses: number
   startEquity: number
-  // Set when the day's P&L comes from a manual `Day.pnl_override` rather than
-  // its trades — used so the tone classifies by P&L even with no decided trades.
+  // Set when the day's PNL comes from a manual `Day.pnl_override` rather than
+  // its trades — used so the tone classifies by PNL even with no decided trades.
   isOverride?: boolean
 }
 
@@ -450,7 +450,7 @@ function CellIcon({
 // Day-cell visual variants. Each variant rolls up every class the cell
 // needs — surface (bg/border/hover), date number color (default + today
 // override that also carries `font-bold`), and the three text tiers
-// (PnL, trades-count, win-rate) + corner icon color. Tweak a tone here
+// (PNL, trades-count, win-rate) + corner icon color. Tweak a tone here
 // and every dependent class moves together; adding a new variant is one
 // new row.
 type CellVariant = 'win' | 'loss' | 'scratch' | 'empty' | 'pad'
@@ -496,7 +496,7 @@ const CELL_PALETTE: Record<CellVariant, CellPalette> = {
     winRate: 'text-black/45',
     icon: 'text-(--color-cal-scratch-icon)',
   },
-  // In-month, no trades — PnL/meta/winRate slots go unused because the
+  // In-month, no trades — PNL/meta/winRate slots go unused because the
   // cell guard skips rendering them, but the entries stay defined so
   // the palette stays uniform.
   empty: {
@@ -530,7 +530,7 @@ function pickVariant(
 ): CellVariant {
   if (!inMonth) return 'pad'
   if (!cell) return 'empty'
-  // Override days carry a real P&L with no decided trades — colour them by
+  // Override days carry a real PNL with no decided trades — colour them by
   // that figure instead of forcing the neutral scratch tone.
   if (decided === 0 && !cell.isOverride) return 'scratch'
   return classifyDayPnl(cell.pnl, cell.startEquity)

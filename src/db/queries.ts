@@ -362,7 +362,7 @@ export async function getDayPnlOverride(
   return day?.pnl_override ?? null
 }
 
-/** All net-P&L overrides for an account as a `date → value` map. Overrides
+/** All net-PNL overrides for an account as a `date → value` map. Overrides
  *  are rare (one per tilt/revenge day) so loading the small days table and
  *  filtering in memory is cheaper than a dedicated index. */
 export async function listDayPnlOverrides(
@@ -376,7 +376,7 @@ export async function listDayPnlOverrides(
   return m
 }
 
-/** Upserts the per-day net-P&L override. Passing `null` clears it; if the
+/** Upserts the per-day net-PNL override. Passing `null` clears it; if the
  *  row then has no other content the whole row is removed so the days
  *  table doesn't grow with empty rows. */
 export async function setDayPnlOverride(

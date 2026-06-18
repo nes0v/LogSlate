@@ -171,7 +171,7 @@ export function OverviewRoute() {
   // `aggregate(filtered)` independently — same data, multiple
   // full-array passes per render.
   const baseStats = useMemo(() => aggregate(filtered), [filtered])
-  // Net P&L for the visible window with day overrides folded in: each
+  // Net PNL for the visible window with day overrides folded in: each
   // override date replaces its trades' sum. Population fields (wins, win
   // rate, best/worst) stay trade-only — an override day isn't a win or loss.
   const stats = useMemo<AggregateStats>(() => {
@@ -267,7 +267,7 @@ export function OverviewRoute() {
   // Bucket-aligned range that spans the earliest..latest dates across
   // chart trades, adjustments AND day overrides — picking up dates that
   // fall outside the trades' window (a deposit before the first trade, or
-  // a net-P&L override on a day with no logged trades).
+  // a net-PNL override on a day with no logged trades).
   const tfChartRange = useMemo(() => {
     const dates: string[] = []
     for (const t of chartFiltered) dates.push(t.date)

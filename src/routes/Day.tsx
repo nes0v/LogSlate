@@ -100,7 +100,7 @@ async function preloadDay(accountId: string, date: string): Promise<void> {
 
 // Weekend guard. The calendar already makes Saturday/Sunday cells
 // non-clickable, but a hand-typed `/day/2026-06-20` URL would still land on
-// a weekend page — which can carry no trades and no P&L override. Bounce it
+// a weekend page — which can carry no trades and no PNL override. Bounce it
 // to that date's month calendar. Kept in a thin wrapper so the heavy
 // `DayView` either mounts fully or not at all (stable hook order); a bare
 // early-return inside DayView would skip its hooks and trip rules-of-hooks
@@ -244,7 +244,7 @@ function DayView() {
     pendingFirstPaintDone
 
   // Every distinct day that holds something for this account — a trade OR a
-  // day row with content (note, screenshot, or P&L override) — used to skip
+  // day row with content (note, screenshot, or PNL override) — used to skip
   // genuinely-empty days in prev/next navigation. Trade dates come from the
   // compound index via `uniqueKeys()` (no rows pulled into memory); day rows
   // are filtered by the shared `dayHasContent` keep-rule and merged in.
@@ -292,7 +292,7 @@ function DayView() {
     if (nextDate) void preloadDay(accountId, nextDate)
   }, [accountId, prevDate, nextDate])
 
-  // When the day carries a manual net-P&L override, it replaces the trade-
+  // When the day carries a manual net-PNL override, it replaces the trade-
   // derived net in the day's headline stats (the per-trade counts below stay
   // as-is — the override isn't a trade).
   const stats = useMemo(() => {
@@ -354,7 +354,7 @@ function DayView() {
           {/* Keyed on `date` so the textarea's local `value` state can't
               flash the previous day's note for one frame after navigation
               while its internal `stored → value` sync effect catches up. */}
-          <DayNoteSection key={date} accountId={accountId} date={date} stored={note} />
+          <DayNoteSection key={`note-${date}`} accountId={accountId} date={date} stored={note} />
 
           <DayScreenshotSection
             accountId={accountId}
@@ -362,16 +362,7 @@ function DayView() {
             screenshots={screenshots}
           />
 
-          {showOverrideField && (
-            <DayPnlOverrideSection
-              key={date}
-              accountId={accountId}
-              date={date}
-              stored={pnlOverride ?? null}
-            />
-          )}
-
-          {!overrideActive && (
+          {!overrideActive && trades.length > 0 && (
             <section className="space-y-2">
               <h2 className="text-sm font-medium">
                 Trades{' '}
@@ -381,19 +372,22 @@ function DayView() {
                 <span className="text-(--color-win) font-normal">{stats.wins}W</span>{' '}
                 <span className="text-(--color-loss) font-normal">{stats.losses}L</span>
               </h2>
-              {trades.length > 0 ? (
-                <TradeTable
-                  trades={trades}
-                  expandedIds={expandedIds}
-                  onToggle={toggleExpanded}
-                  modelById={modelById}
-                />
-              ) : (
-                <div className="text-sm text-(--color-text-dim) text-center py-12 border border-dashed border-(--color-border) rounded-(--radius)">
-                  No trades on this day yet.
-                </div>
-              )}
+              <TradeTable
+                trades={trades}
+                expandedIds={expandedIds}
+                onToggle={toggleExpanded}
+                modelById={modelById}
+              />
             </section>
+          )}
+
+          {showOverrideField && (
+            <DayPnlOverrideSection
+              key={`override-${date}`}
+              accountId={accountId}
+              date={date}
+              stored={pnlOverride ?? null}
+            />
           )}
         </>
       ) : null}

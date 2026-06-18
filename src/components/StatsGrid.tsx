@@ -15,7 +15,7 @@ export function StatsGrid({ stats, hideBreakdown }: StatsGridProps) {
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
       <Stat
-        label="PnL"
+        label="PNL"
         value={formatUsd(s.net_pnl)}
         tone={s.net_pnl > 0 ? 'win' : s.net_pnl < 0 ? 'loss' : 'neutral'}
         sub={hideBreakdown ? undefined : `gross ${formatUsd(s.gross_pnl)} / fees ${formatUsd(-s.fees)}`}

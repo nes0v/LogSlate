@@ -96,7 +96,7 @@ describe('aggregate', () => {
     expect(s.avg_realized_rr).not.toBeNull()
   })
 
-  it('averages win and loss PnL separately (scratches excluded)', () => {
+  it('averages win and loss PNL separately (scratches excluded)', () => {
     // winner: +$195.5 net, loser: -$204.5 net
     const trades = [winningTrade(), winningTrade(), losingTrade(), scratchTrade()]
     const s = aggregate(trades)

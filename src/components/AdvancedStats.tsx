@@ -30,7 +30,7 @@ function buildDayRange(rangeStart: string | null, rangeEnd: string | null): stri
   // Weekdays only — futures don't trade Sat/Sun, so including weekend
   // days in the equity series inflates the "underwater duration" by
   // ~2 days per week (Fri-recovery rolls over Sat+Sun) and dilutes the
-  // ulcer-index / UPI denominators with zero-PnL flat points the user
+  // ulcer-index / UPI denominators with zero-PNL flat points the user
   // could never have traded through.
   return eachDayOfInterval({
     start: parseISO(rangeStart),
@@ -338,8 +338,8 @@ export const CompositeScoreSection = memo(function CompositeScoreSection({
    *  negative). Anchors `peak` so `maxDdPct` is measured against the
    *  user's real capital, not the trade-only cumulative. */
   adjByDate: Map<string, number>
-  /** Day-level P&L overrides (date → value). Each replaces its day's trade
-   *  P&L in the equity series. Keys outside the window are ignored. */
+  /** Day-level PNL overrides (date → value). Each replaces its day's trade
+   *  PNL in the equity series. Keys outside the window are ignored. */
   overridesByDate?: Map<string, number>
 }) {
   const days = useMemo(() => buildDayRange(rangeStart, rangeEnd), [rangeStart, rangeEnd])
@@ -427,8 +427,8 @@ export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
    *  negative). Anchors `peak` for the equity series and tracks real
    *  capital across the period for `dailyStats`'s scratch band. */
   adjByDate: Map<string, number>
-  /** Day-level P&L overrides (date → value). Each replaces its day's trade
-   *  P&L in the equity series. Keys outside the window are ignored. */
+  /** Day-level PNL overrides (date → value). Each replaces its day's trade
+   *  PNL in the equity series. Keys outside the window are ignored. */
   overridesByDate?: Map<string, number>
 }) {
   const days = useMemo(() => buildDayRange(rangeStart, rangeEnd), [rangeStart, rangeEnd])
@@ -548,7 +548,7 @@ export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
           label="Recovery"
           value={ddStats.recoveryFactor === null ? '—' : ddStats.recoveryFactor.toFixed(2)}
           caption={qualRecovery(ddStats.recoveryFactor)}
-          tooltip="Net PnL divided by your worst drawdown. 3 = you've earned 3× your worst drawdown back."
+          tooltip="Net PNL divided by your worst drawdown. 3 = you've earned 3× your worst drawdown back."
         />
         <KpiTile
           label="Ulcer Index"
@@ -596,16 +596,16 @@ export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
           label="Best day"
           value={dayStats.bestDay === null ? '—' : formatUsd(dayStats.bestDay)}
           tone={dayStats.bestDay === null ? 'dim' : 'win'}
-          tooltip="Highest single-day net PnL."
+          tooltip="Highest single-day net PNL."
         />
         <KpiTile
           label="Worst day"
           value={dayStats.worstDay === null ? '—' : formatUsd(dayStats.worstDay)}
           tone={dayStats.worstDay === null ? 'dim' : 'loss'}
-          tooltip="Lowest single-day net PnL."
+          tooltip="Lowest single-day net PNL."
         />
         <KpiTile
-          label="Avg daily PnL"
+          label="Avg daily PNL"
           value={dayStats.avgDailyPnl === null ? '—' : formatUsd(dayStats.avgDailyPnl)}
           tone={
             dayStats.avgDailyPnl === null
@@ -617,7 +617,7 @@ export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
                   : 'dim'
           }
           caption={`across ${totalDays} day${totalDays === 1 ? '' : 's'}`}
-          tooltip="Mean PnL across days that had at least one trade."
+          tooltip="Mean PNL across days that had at least one trade."
         />
         <KpiTile
           label="Day win rate"

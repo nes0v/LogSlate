@@ -106,7 +106,7 @@ export async function cleanEmptyHiddenRules(): Promise<void> {
 
 
 // True when a day row carries something worth keeping. Used by every
-// empty-row garbage collector so a day that holds ONLY a P&L override
+// empty-row garbage collector so a day that holds ONLY a PNL override
 // (no note, no screenshots) is never dropped.
 export function dayHasContent(day: Pick<Day, 'screenshots' | 'note' | 'pnl_override'>): boolean {
   return (

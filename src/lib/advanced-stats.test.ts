@@ -25,7 +25,7 @@ import {
 } from './advanced-stats'
 import { execution, tradeRecord } from '@/test/fixtures'
 
-// Helper: build a trade whose computed net PnL matches `pnl`. Uses NQ micro
+// Helper: build a trade whose computed net PNL matches `pnl`. Uses NQ micro
 // ($2 / handle, $0.62 fee × 2 sides = $1.24 fees) so even small dollar
 // values produce enough handles of price movement to clear the scratch
 // threshold (NQ: 4 handles); pnl=0 deliberately sits in the scratch band.
@@ -319,7 +319,7 @@ describe('dailyEquitySeries', () => {
     expect(series[2].dd).toBeCloseTo(-250, 5)
   })
 
-  it('fills no-trade days with zero PnL', () => {
+  it('fills no-trade days with zero PNL', () => {
     const trades = [tradeWithPnl(100, { date: '2026-04-01' })]
     const series = dailyEquitySeries(trades, ['2026-04-01', '2026-04-02'], 0)
     expect(series[0].pnl).toBeCloseTo(100, 5)
@@ -382,7 +382,7 @@ describe('ratioStats', () => {
   })
 
   it('uses the canonical N-basis downside deviation for Sortino', () => {
-    // Daily PnL +100, -50, +100. Downside deviation = sqrt((-50)² / 3)
+    // Daily PNL +100, -50, +100. Downside deviation = sqrt((-50)² / 3)
     // (squared losses ÷ TOTAL days), NOT sqrt((-50)² / 1) (÷ loss count).
     // mean = 50, dsd = 50/√3, so Sortino = √3 × √252.
     const dates = ['2026-04-01', '2026-04-02', '2026-04-03']
@@ -399,7 +399,7 @@ describe('ratioStats', () => {
   })
 
   it('tail ratio stays bounded when a single boundary loss is microscopic', () => {
-    // 60 days, one microscopic loss (-$0.01) plus normal PnL. Under the
+    // 60 days, one microscopic loss (-$0.01) plus normal PNL. Under the
     // old |p95|/|p5| formula a near-zero boundary value would blow the
     // ratio up to ~10,000+. The averaged-tail variant pulls in three or
     // more losses so the divisor reflects the user's typical loser, not

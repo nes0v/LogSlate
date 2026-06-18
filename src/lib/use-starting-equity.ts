@@ -8,7 +8,7 @@ import { netPnlByDate, sumNetPnl } from '@/lib/day-pnl'
 
 /**
  * Account equity immediately before `dateKey` (YYYY-MM-DD): signed cash flows
- * plus cumulative net PnL from every trade in the active account whose
+ * plus cumulative net PNL from every trade in the active account whose
  * `date` is strictly before `dateKey`. Used as the denominator for ROI
  * so that mid-period deposits/withdrawals don't skew the percentage.
  *
@@ -16,7 +16,7 @@ import { netPnlByDate, sumNetPnl } from '@/lib/day-pnl'
  * falsy). A non-positive return value means ROI has no meaningful baseline.
  */
 /**
- * Current account equity = all signed adjustments plus cumulative net PnL
+ * Current account equity = all signed adjustments plus cumulative net PNL
  * across every trade in the active account. Live-reactive to every
  * trade/adjustment change so the header indicator stays in sync.
  *

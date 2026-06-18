@@ -37,8 +37,8 @@ export interface AggregateStats {
   avg_planned_rr: number | null
   avg_realized_rr: number | null
   avg_risk: number | null // average stop_loss USD across trades with a defined stop
-  avg_win: number | null // average net PnL of winning trades (positive)
-  avg_loss: number | null // average net PnL of losing trades (negative)
+  avg_win: number | null // average net PNL of winning trades (positive)
+  avg_loss: number | null // average net PNL of losing trades (negative)
   avg_duration_ms: number | null // average total duration across trades with timing data
 }
 
@@ -139,7 +139,7 @@ export function aggregate(trades: TradeRecord[]): AggregateStats {
 // +200, then loses a -40 trade, shows a wick high at +200 and a close at +160.
 //
 //   open   — equity at start of bucket, INCLUDING this bucket's net cash flow
-//   close  — open + the bucket's trading P&L
+//   close  — open + the bucket's trading PNL
 //   high   — peak running equity reached within the bucket
 //   low    — trough running equity reached within the bucket
 //   fees   — total broker fees paid during the bucket
@@ -235,7 +235,7 @@ function candleFromBucket(
   }
 
   // Override dates inside this bucket. A day-level override replaces that day's
-  // trades (and their fees) with a single net-P&L step.
+  // trades (and their fees) with a single net-PNL step.
   const overrideDates = new Set<string>()
   if (overridesByDate) {
     for (const date of overridesByDate.keys()) {

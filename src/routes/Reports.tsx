@@ -50,10 +50,10 @@ import { Switch } from '@/components/form/Switch'
 import { loadJsonFromStorage, saveJsonToStorage } from '@/lib/storage'
 import { cn } from '@/lib/utils'
 
-// Persisted toggle: fold day-level P&L overrides into the date-grouped
+// Persisted toggle: fold day-level PNL overrides into the date-grouped
 // breakdowns (day-of-week / day-of-month / weekly / monthly). Off by default
 // so those views show real, deliberate trades only; flip on to include the
-// combined-P&L "override" days. (The equity chart, Net P&L, drawdown and the
+// combined-PNL "override" days. (The equity chart, Net PNL, drawdown and the
 // consistency stats always include overrides regardless of this toggle.)
 const INCLUDE_OVERRIDES_KEY = 'logslate:reports_time_include_overrides'
 const readIncludeOverrides = () =>
@@ -404,7 +404,7 @@ function DaysAndTimeReport({
       if (outcome === 'win') cell.wins++
       else if (outcome === 'loss') cell.losses++
     }
-    // PnL from the override-replaced per-day net so an override day lands on
+    // PNL from the override-replaced per-day net so an override day lands on
     // its day-of-month (consistent with the weekday / weekly / monthly views).
     for (const [date, net] of netPnlByDate(trades, dateOverrides)) {
       const d = Number(date.slice(8, 10))
@@ -436,10 +436,10 @@ function DaysAndTimeReport({
   return (
     <div className="space-y-8">
       <SectionGrid>
-        <Card title="PnL by hour" caption="bucketed by first execution">
+        <Card title="PNL by hour" caption="bucketed by first execution">
           <ReportTable rows={hourRowsFirst} />
         </Card>
-        <Card title="PnL by hour" caption="bucketed by last execution">
+        <Card title="PNL by hour" caption="bucketed by last execution">
           <ReportTable rows={hourRowsLast} />
         </Card>
       </SectionGrid>
@@ -459,7 +459,7 @@ function DaysAndTimeReport({
         <Card title="Day of week">
           <ReportTable
             rows={weekday
-              // Keep buckets with no trades but a non-zero P&L — an override
+              // Keep buckets with no trades but a non-zero PNL — an override
               // day (count 0) lands here when "Include override days" is on.
               .filter(w => w.count > 0 || w.pnl !== 0)
               .map(w => ({
@@ -474,7 +474,7 @@ function DaysAndTimeReport({
         <Card title="Day of month">
           <ReportTable
             rows={dayOfMonth
-              // Keep buckets with no trades but a non-zero P&L — an override
+              // Keep buckets with no trades but a non-zero PNL — an override
               // day (count 0) lands here when "Include override days" is on.
               .filter(d => d.count > 0 || d.pnl !== 0)
               .map(d => ({
@@ -549,7 +549,7 @@ function SymbolReport({ trades }: { trades: TradeRecord[] }) {
             </h3>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-y-3 gap-x-2">
               <Stat
-                label="Net PnL"
+                label="Net PNL"
                 value={formatUsd(stats.net_pnl)}
                 tone={stats.net_pnl > 0 ? 'win' : stats.net_pnl < 0 ? 'loss' : 'dim'}
               />
@@ -677,7 +677,7 @@ function RiskReport({
     <div className="space-y-8">
       <SectionGrid>
         <Card
-          title="PnL vs MFE"
+          title="PNL vs MFE"
           caption="how much each trade gave back from peak"
         >
           <Scatter
@@ -686,7 +686,7 @@ function RiskReport({
           />
         </Card>
         <Card
-          title="PnL vs MAE"
+          title="PNL vs MAE"
           caption="how much heat each trade took"
         >
           <Scatter
@@ -728,7 +728,7 @@ function RiskReport({
 // =====================================================================
 
 function CohortReport({ trades }: { trades: TradeRecord[] }) {
-  // Use classifyTrade so scratches (small AHPC trades whose PnL signs are
+  // Use classifyTrade so scratches (small AHPC trades whose PNL signs are
   // dominated by fees/slippage) don't get bucketed as winners or losers.
   const winners = useMemo(
     () => trades.filter(t => classifyTrade(t) === 'win'),
@@ -1122,7 +1122,7 @@ function ReportTable({ rows }: { rows: ReportRow[] }) {
           <div className="text-right">Trades</div>
           <div className="text-right">W / L</div>
           <div></div>
-          <div className="text-right">PnL</div>
+          <div className="text-right">PNL</div>
         </div>
         {rows.map(r => {
           const intensity = max === 0 ? 0 : Math.abs(r.pnl) / max
@@ -1348,7 +1348,7 @@ function Scatter({
   return (
     <div ref={containerRef} className="w-full">
     <svg viewBox={`0 0 ${W} ${H}`} className="block w-full h-[240px]">
-      {/* Horizontal zero line (X axis runs through PnL = 0). */}
+      {/* Horizontal zero line (X axis runs through PNL = 0). */}
       <line
         x1={PAD_L}
         x2={W - PAD_R}

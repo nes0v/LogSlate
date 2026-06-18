@@ -516,7 +516,7 @@ describe("computePlannedRr", () => {
 })
 
 describe('outcomeTextClass', () => {
-  it('dims the row when there is no PnL value yet', () => {
+  it('dims the row when there is no PNL value yet', () => {
     expect(outcomeTextClass('win', false)).toMatch(/text-dim/)
     expect(outcomeTextClass('loss', false)).toMatch(/text-dim/)
     expect(outcomeTextClass('scratch', false)).toMatch(/text-dim/)

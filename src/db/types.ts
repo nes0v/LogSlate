@@ -141,8 +141,8 @@ export interface Day {
   date: string // YYYY-MM-DD
   screenshots: string[]
   note?: string
-  // Manual net-P&L override for the whole day (signed USD). When set, this
-  // value REPLACES the sum of the day's trade P&Ls in every money/equity
+  // Manual net-PNL override for the whole day (signed USD). When set, this
+  // value REPLACES the sum of the day's trade PNLs in every money/equity
   // statistic — it's how a chaotic "tilt"/revenge day gets recorded as a
   // single net figure instead of logging each trade. Per-trade population
   // stats (win rate, R-distribution, donuts) still read actual trade rows,

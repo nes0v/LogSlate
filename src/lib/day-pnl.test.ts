@@ -58,7 +58,7 @@ describe('sumNetPnl', () => {
 })
 
 describe('dailyEquitySeries with overrides', () => {
-  it('uses the override for that day’s P&L step', () => {
+  it('uses the override for that day’s PNL step', () => {
     const dates = ['2026-04-01', '2026-04-02']
     const overrides = new Map([['2026-04-02', -1000]])
     const series = dailyEquitySeries(

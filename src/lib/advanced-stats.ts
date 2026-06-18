@@ -185,7 +185,7 @@ export function streakStats(
 
 export interface EquityPoint {
   date: string // YYYY-MM-DD
-  pnl: number // net PnL on this day (trades only, excludes adjustments)
+  pnl: number // net PNL on this day (trades only, excludes adjustments)
   equity: number // cumulative starting from `startEquity`
   peak: number // running max equity to date
   dd: number // equity - peak (≤ 0)
@@ -219,7 +219,7 @@ export function dailyEquitySeries(
   for (const t of trades) {
     byDay.set(t.date, (byDay.get(t.date) ?? 0) + (computeNetPnl(t) ?? 0))
   }
-  // A day-level override replaces that day's trade-derived P&L wholesale.
+  // A day-level override replaces that day's trade-derived PNL wholesale.
   if (overridesByDate) {
     for (const [date, value] of overridesByDate) byDay.set(date, value)
   }
@@ -590,7 +590,7 @@ export function pnlByWeekday(
     if (outcome === 'win') arr[day].wins++
     else if (outcome === 'loss') arr[day].losses++
   }
-  // PnL comes from the override-replaced per-day net so an override day's
+  // PNL comes from the override-replaced per-day net so an override day's
   // figure lands on its weekday (with no trade count of its own).
   for (const [date, net] of netPnlByDate(trades, overridesByDate)) {
     arr[dateKeyToDate(date).getDay()].pnl += net
@@ -598,7 +598,7 @@ export function pnlByWeekday(
   return arr
 }
 
-/** PnL grouped by ISO week (Mon..Sun). The label is the week's Monday
+/** PNL grouped by ISO week (Mon..Sun). The label is the week's Monday
  *  in `YYYY-MM-DD` form so it sorts naturally and is unambiguous across
  *  year boundaries. */
 export function pnlByWeek(
@@ -625,7 +625,7 @@ export function pnlByWeek(
     else if (outcome === 'loss') cur.losses++
     m.set(key, cur)
   }
-  // PnL comes from the override-replaced per-day net so a tilt day's figure
+  // PNL comes from the override-replaced per-day net so a tilt day's figure
   // lands in its week (override-only days appear with count 0).
   for (const [date, net] of netPnlByDate(trades, overridesByDate)) {
     const key = weekKey(date)
@@ -638,7 +638,7 @@ export function pnlByWeek(
     .sort((a, b) => (a.weekStart < b.weekStart ? -1 : 1))
 }
 
-/** PnL grouped by `YYYY-MM` (calendar month). */
+/** PNL grouped by `YYYY-MM` (calendar month). */
 export function pnlByMonth(
   trades: TradeRecord[],
   overridesByDate?: Map<string, number>,
@@ -765,7 +765,7 @@ export function compositeScore(args: {
       ? null
       : Math.max(0, Math.min(100, 100 - Math.abs(args.maxDdPct) * 100))
   // Recovery: <1.0 -> 0, 3.5+ -> 100, linear in between. A zero-drawdown
-  // window with positive PnL is a perfect drawdown record (recovery is
+  // window with positive PNL is a perfect drawdown record (recovery is
   // mathematically infinite); treat as the ceiling rather than 0.
   const noDrawdown = args.maxDdPct === 0
   const recovery =
@@ -858,7 +858,7 @@ export interface DailyStats {
   bestDay: number | null
   worstDay: number | null
   avgDailyPnl: number | null
-  /** Days with positive PnL ÷ days that had trades. */
+  /** Days with positive PNL ÷ days that had trades. */
   dayWinRate: number | null
   greenDays: number
   redDays: number
@@ -888,7 +888,7 @@ export function classifyDayPnl(
  *  days with at least one trade count toward the rates and average.
  *  `accountStartEquity` is the real account equity right before the first
  *  day of the series — needed so the ±0.4% scratch band uses real capital
- *  rather than period-relative PnL.
+ *  rather than period-relative PNL.
  *
  *  `adjustmentsByDate` (optional) lets the running-equity walk track
  *  mid-period deposits/withdrawals so the per-day scratch threshold

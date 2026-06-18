@@ -62,9 +62,9 @@ export function TradeExpandedDetails({ trade, model }: TradeExpandedDetailsProps
       <div className="shrink-0 space-y-4">
         {execs.length > 0 && (
           <div className="grid grid-cols-[auto_auto_auto_auto_auto] gap-x-4 gap-y-0.5 tabular-nums w-fit text-xs font-mono">
-            {execs.map(e => (
+            {execs.map((e, i) => (
               <ExecRow
-                key={`${e.time}-${e.kind}-${e.price}`}
+                key={i}
                 time={e.time.slice(11, 19)}
                 kind={e.kind}
                 orderType={e.order_type}

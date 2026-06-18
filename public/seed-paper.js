@@ -1,7 +1,7 @@
 // Paper-account seed for May 2025 → May 2026 (12 months).
 // Use via: fetch('/seed-paper.js').then(r => r.text()).then(eval)
 // Skips weekends. 3-5 days/week, 1-3 trades/day.
-// PnL is back-computed to land in [-40, +120] per trade.
+// PNL is back-computed to land in [-40, +120] per trade.
 //
 // May 4 2026 is hand-shaped: exactly 8 trades —
 //   2 reversal trades (one pair: prev's last exec price+time == next's first)
@@ -72,7 +72,7 @@ const iso = (date, totalMin) => {
 }
 const sessionFor = totalMin => SESS.find(s => totalMin >= s.a && totalMin <= s.b)?.n ?? 'aft'
 
-// Build a trade with a target net PnL inside [-40, +120], or with an
+// Build a trade with a target net PNL inside [-40, +120], or with an
 // explicit override. Returns the trade record only — doesn't mutate.
 function makeTrade({ date, sym, ct, startMin, endMin, long, rating, entryOverride, exitOverride, contracts }) {
   const [pa, pb] = PR[sym]

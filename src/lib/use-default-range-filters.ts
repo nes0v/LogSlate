@@ -12,7 +12,7 @@ import { nyToday } from '@/lib/tz'
 const EMPTY_OVERRIDES = new Map<string, number>()
 
 export interface DefaultRangeFilters {
-  /** Day-level P&L overrides (date → value). Stable empty map while loading. */
+  /** Day-level PNL overrides (date → value). Stable empty map while loading. */
   overridesByDate: Map<string, number>
   /** True once the data that feeds the default range — trades AND overrides —
    *  has resolved. Deliberately excludes models so the filter bar can fill its
@@ -32,7 +32,7 @@ export interface DefaultRangeFilters {
 
 /**
  * Shared filter/default-range plumbing for the Overview and Reports pages.
- * Both subscribe to day-level P&L overrides, derive the most recent activity
+ * Both subscribe to day-level PNL overrides, derive the most recent activity
  * date, and fill a default one-month window into any unset filter bound — with
  * identical load-flash avoidance. `overridesByDate` resolves to `undefined`
  * internally while loading so `rangeReady` genuinely waits for it.

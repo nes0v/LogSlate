@@ -266,13 +266,13 @@ export function outcomeTextClass(
   return 'text-(--color-text)'
 }
 
-// Win/loss/scratch classifier + the underlying ahpc and net PnL in a
+// Win/loss/scratch classifier + the underlying ahpc and net PNL in a
 // single pass. Many list views (TradeTable, Reports, advanced-stats) need
 // all three numbers per trade — returning them together avoids redundant
 // `weightedAvgPrice` / fee passes.
 //
 // Outcome rule: a trade whose absolute AHPC sits below `SCRATCH_HANDLES`
-// is a scratch even when net PnL is non-zero; above the threshold, PnL
+// is a scratch even when net PNL is non-zero; above the threshold, PNL
 // sign decides.
 export interface TradeMetrics {
   ahpc: number | null

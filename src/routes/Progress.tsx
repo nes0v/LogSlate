@@ -72,7 +72,7 @@ export function ProgressRoute() {
     [accountId, date, heatWindowStart],
   )
   // Set of dates in the heat window that the user actually traded — at least
-  // one trade OR a day-level P&L override (a tilt day logged as one net figure
+  // one trade OR a day-level PNL override (a tilt day logged as one net figure
   // instead of individual trades still counts as a traded day). Used by the
   // streak walk to skip non-trading days — weekdays where the user didn't
   // trade (sick day, holiday, etc.) shouldn't break a streak, since there was
