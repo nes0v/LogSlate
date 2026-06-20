@@ -54,8 +54,8 @@ import { cn } from '@/lib/utils'
 // Persisted toggle: fold day-level PNL overrides into the date-grouped
 // breakdowns (day-of-week / day-of-month / weekly / monthly). Off by default
 // so those views show real, deliberate trades only; flip on to include the
-// combined-PNL "override" days. (The equity chart, Net PNL, drawdown and the
-// consistency stats always include overrides regardless of this toggle.)
+// combined-PNL "override" days. (When no attribute filter is active, the equity
+// chart, Net PNL, drawdown and consistency stats also include overrides.)
 const INCLUDE_OVERRIDES_KEY = 'logslate:reports_time_include_overrides'
 const readIncludeOverrides = () =>
   loadJsonFromStorage(INCLUDE_OVERRIDES_KEY, v => (typeof v === 'boolean' ? v : null), false)

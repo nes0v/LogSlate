@@ -60,26 +60,45 @@ export async function createTrade(draft: TradeDraft, accountId?: string): Promis
   // Day-page UI already hides the New-trade button on an override day; this
   // is the data-layer backstop so a hand-typed `/trade/new?date=` URL or a
   // stale tab can't create the contradictory state either.
-  const day = await db.days.get(dayId(acct, draft.date))
-  if (day && typeof day.pnl_override === 'number') {
-    throw new Error(
-      `${draft.date} has a day-level PNL override — clear it before logging trades for that day.`,
-    )
-  }
-  const ts = now()
-  const rec: TradeRecord = {
-    ...draft,
-    id: newId(),
-    account_id: acct,
-    created_at: ts,
-    updated_at: ts,
-  }
-  await db.trades.add(rec)
+  let rec!: TradeRecord
+  await db.transaction('rw', db.days, db.trades, async () => {
+    const day = await db.days.get(dayId(acct, draft.date))
+    if (day && typeof day.pnl_override === 'number') {
+      throw new Error(
+        `${draft.date} has a day-level PNL override — clear it before logging trades for that day.`,
+      )
+    }
+    const ts = now()
+    rec = {
+      ...draft,
+      id: newId(),
+      account_id: acct,
+      created_at: ts,
+      updated_at: ts,
+    }
+    await db.trades.add(rec)
+  })
   return rec
 }
 
 export async function updateTrade(id: string, patch: Partial<TradeDraft>): Promise<void> {
-  if (patch.date !== undefined) assertWeekday(patch.date)
+  if (patch.date !== undefined) {
+    assertWeekday(patch.date)
+    const trade = await db.trades.get(id)
+    if (trade) {
+      const acct = trade.account_id
+      await db.transaction('rw', db.days, db.trades, async () => {
+        const day = await db.days.get(dayId(acct, patch.date!))
+        if (day && typeof day.pnl_override === 'number') {
+          throw new Error(
+            `${patch.date} has a day-level PNL override — clear it before moving a trade to that day.`,
+          )
+        }
+        await db.trades.update(id, { ...patch, updated_at: now() })
+      })
+      return
+    }
+  }
   await db.trades.update(id, { ...patch, updated_at: now() })
 }
 
