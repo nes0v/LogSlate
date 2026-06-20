@@ -10,6 +10,7 @@ import {
   applyFilters,
   FILTER_PARAM_KEYS,
   filtersFromParams,
+  hasAttributeFilter,
   paramsFromFilters,
   type TradeFilters,
 } from '@/lib/filters'
@@ -168,15 +169,19 @@ export function ReportsRoute() {
     [allTrades, filters],
   )
   const baseStats = useMemo(() => aggregate(filtered), [filtered])
+  const effectiveOverrides = useMemo(
+    () => hasAttributeFilter(filters) ? new Map<string, number>() : overridesByDate,
+    [filters, overridesByDate],
+  )
   const stats = useMemo<AggregateStats>(() => {
     const from = filters.from
     const to = filters.to
     const net = sumNetPnl(
-      netPnlByDate(filtered, overridesByDate),
+      netPnlByDate(filtered, effectiveOverrides),
       d => (from == null || d >= from) && (to == null || d <= to),
     )
     return { ...baseStats, net_pnl: net }
-  }, [baseStats, filtered, overridesByDate, filters.from, filters.to])
+  }, [baseStats, filtered, effectiveOverrides, filters.from, filters.to])
   const { rangeStart, rangeEnd } = useMemo(() => {
     if (filters.from && filters.to) return { rangeStart: filters.from, rangeEnd: filters.to }
     if (filtered.length === 0) return { rangeStart: null, rangeEnd: null }
@@ -222,13 +227,13 @@ export function ReportsRoute() {
   // into a bucket it isn't part of.
   const windowOverrides = useMemo(() => {
     const m = new Map<string, number>()
-    for (const [d, v] of overridesByDate) {
+    for (const [d, v] of effectiveOverrides) {
       if ((rangeStart == null || d >= rangeStart) && (rangeEnd == null || d <= rangeEnd)) {
         m.set(d, v)
       }
     }
     return m
-  }, [overridesByDate, rangeStart, rangeEnd])
+  }, [effectiveOverrides, rangeStart, rangeEnd])
 
   // Hoist current tab/compare URL values once per render so the
   // update/clear closures don't re-read `params` (the React Compiler
@@ -317,7 +322,7 @@ export function ReportsRoute() {
                   rangeEnd={rangeEnd}
                   accountStartEquity={advStartingEquity}
                   adjByDate={advAdjByDate}
-                  overridesByDate={overridesByDate}
+                  overridesByDate={effectiveOverrides}
                 />
               </div>
             ) : tab === 'time' ? (

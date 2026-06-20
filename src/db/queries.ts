@@ -1,3 +1,4 @@
+import { isWeekend, parseISO } from 'date-fns'
 import { db, dayHasContent } from '@/db/schema'
 import type {
   Account,
@@ -20,6 +21,20 @@ function newId(): string {
   return crypto.randomUUID()
 }
 
+// logslate records no weekend-dated activity: the futures the user trades are
+// closed Sat/Sun, deposits/withdrawals don't post then, and the equity chart's
+// Daily timeframe omits weekend buckets — so a weekend-dated money row would
+// make the D-curve diverge from the W/M/Q/Y zooms (which DO include it). The
+// date pickers already strip weekends; this is the data-layer backstop for the
+// paths a picker can't cover (hand-typed `?date=` URL, cross-device sync,
+// backup import). `parseISO` of a date-only string is interpreted as local
+// midnight, so the weekday is read off the calendar date itself.
+function assertWeekday(date: string): void {
+  if (isWeekend(parseISO(date))) {
+    throw new Error(`${date} is a weekend — logslate only records weekday activity.`)
+  }
+}
+
 // Accounts use a slug of their name as the id — so the same account name
 // created independently on two devices lands on the same row and merges
 // cleanly on sync, instead of showing up as two separate accounts.
@@ -38,11 +53,24 @@ export function slugifyAccountName(name: string): string {
 // ---------- trades ----------
 
 export async function createTrade(draft: TradeDraft, accountId?: string): Promise<TradeRecord> {
+  const acct = accountId ?? getActiveAccountId()
+  assertWeekday(draft.date)
+  // A day is logged EITHER as individual trades OR as one manual net-PNL
+  // override — never both (the override would silently hide the trades). The
+  // Day-page UI already hides the New-trade button on an override day; this
+  // is the data-layer backstop so a hand-typed `/trade/new?date=` URL or a
+  // stale tab can't create the contradictory state either.
+  const day = await db.days.get(dayId(acct, draft.date))
+  if (day && typeof day.pnl_override === 'number') {
+    throw new Error(
+      `${draft.date} has a day-level PNL override — clear it before logging trades for that day.`,
+    )
+  }
   const ts = now()
   const rec: TradeRecord = {
     ...draft,
     id: newId(),
-    account_id: accountId ?? getActiveAccountId(),
+    account_id: acct,
     created_at: ts,
     updated_at: ts,
   }
@@ -51,6 +79,7 @@ export async function createTrade(draft: TradeDraft, accountId?: string): Promis
 }
 
 export async function updateTrade(id: string, patch: Partial<TradeDraft>): Promise<void> {
+  if (patch.date !== undefined) assertWeekday(patch.date)
   await db.trades.update(id, { ...patch, updated_at: now() })
 }
 
@@ -118,6 +147,7 @@ export async function createAdjustment(
   draft: AdjustmentDraft,
   accountId?: string,
 ): Promise<EquityAdjustment> {
+  assertWeekday(draft.date)
   const ts = now()
   const rec: EquityAdjustment = {
     ...draft,
@@ -134,6 +164,7 @@ export async function updateAdjustment(
   id: string,
   patch: Partial<AdjustmentDraft>,
 ): Promise<void> {
+  if (patch.date !== undefined) assertWeekday(patch.date)
   await db.adjustments.update(id, { ...patch, updated_at: now() })
 }
 
@@ -386,7 +417,24 @@ export async function setDayPnlOverride(
 ): Promise<void> {
   const id = dayId(accountId, date)
   const ts = now()
-  await db.transaction('rw', db.days, async () => {
+  await db.transaction('rw', db.days, db.trades, async () => {
+    // Mutual exclusion (the override side): a day with logged trades can't
+    // also carry a net-PNL override — the override would hide them. Clearing
+    // (value == null) is always allowed so a legacy both-day OR a legacy
+    // weekend row can still be recovered.
+    if (value != null) {
+      assertWeekday(date)
+      const tradeCount = await db.trades
+        .where('[account_id+date]')
+        .equals([accountId, date])
+        .count()
+      if (tradeCount > 0) {
+        throw new Error(
+          `${date} has ${tradeCount} logged trade${tradeCount === 1 ? '' : 's'} — ` +
+            `a day-level PNL override replaces trades, so remove them first.`,
+        )
+      }
+    }
     const existing = await db.days.get(id)
     if (!existing) {
       if (value == null) return

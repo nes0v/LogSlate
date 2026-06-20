@@ -1630,7 +1630,7 @@ function CandleInfoRow({
           <InfoCell label="C" value={formatUsd(point.close)} />
           {tradingPnl !== 0 && (
             <InfoCell
-              label={point.count === 0 ? 'override' : 'pnl'}
+              label="pnl"
               value={formatUsd(tradingPnl)}
               tone={tradingPnl > 0 ? 'win' : 'loss'}
             />
@@ -1642,8 +1642,10 @@ function CandleInfoRow({
               tone={delta > 0 ? 'win' : 'loss'}
             />
           )}
+          {/* A day-override-only bucket has no trades and no fees — drop both
+              cells so it reads like any other day (just O/H/L/C + pnl). */}
           {point.fees > 0 && <InfoCell label="fees" value={formatUsd(point.fees)} />}
-          <InfoCell label="trades" value={String(point.count)} />
+          {point.count > 0 && <InfoCell label="trades" value={String(point.count)} />}
         </>
       ) : (
         <>

@@ -119,6 +119,14 @@ export const EMPTY_FILTERS: TradeFilters = {
   tag: null,
 }
 
+/** True when any non-date dimension is active (overrides should be excluded in this case). */
+export function hasAttributeFilter(f: TradeFilters): boolean {
+  return !!(
+    f.symbol || f.contract || f.session || f.rating || f.weekday ||
+    f.outcome || f.side || f.hold || f.emotion || f.model || f.tag
+  )
+}
+
 export function applyFilters(trades: TradeRecord[], f: TradeFilters): TradeRecord[] {
   return trades.filter(t => {
     if (f.from && t.date < f.from) return false

@@ -19,9 +19,11 @@ import {
   listAllTrades,
   listDayScreenshotsFor,
   listModels,
+  getDayPnlOverride,
   removeDayScreenshot,
   reorderModels,
   setDayNote,
+  setDayPnlOverride,
   slugifyAccountName,
   updateAdjustment,
   updateTrade,
@@ -89,6 +91,74 @@ describe('trade queries', () => {
   })
 })
 
+describe('weekend guard', () => {
+  // 2026-04-18 is a Saturday, 2026-04-19 a Sunday; 2026-04-17 a Friday.
+  it('createTrade rejects a weekend-dated trade', async () => {
+    await expect(createTrade(tradeDraft({ date: '2026-04-18' }))).rejects.toThrow(/weekend/i)
+    expect(await listAllTrades(MAIN_ACCOUNT_ID)).toHaveLength(0)
+  })
+
+  it('createAdjustment rejects a weekend-dated deposit', async () => {
+    await expect(createAdjustment(adjustmentDraft({ date: '2026-04-19' }))).rejects.toThrow(/weekend/i)
+    expect(await listAdjustments(MAIN_ACCOUNT_ID)).toHaveLength(0)
+  })
+
+  it('setDayPnlOverride rejects a weekend date but still allows clearing', async () => {
+    await expect(setDayPnlOverride(MAIN_ACCOUNT_ID, '2026-04-18', -500)).rejects.toThrow(/weekend/i)
+    // Clearing a (legacy) weekend row is always allowed.
+    await expect(setDayPnlOverride(MAIN_ACCOUNT_ID, '2026-04-18', null)).resolves.toBeUndefined()
+  })
+
+  it('accepts a weekday date', async () => {
+    await createTrade(tradeDraft({ date: '2026-04-17' }))
+    expect(await listAllTrades(MAIN_ACCOUNT_ID)).toHaveLength(1)
+  })
+})
+
+describe('day-override / trade mutual exclusion', () => {
+  it('createTrade rejects a trade on a day that has a PNL override', async () => {
+    await setDayPnlOverride(MAIN_ACCOUNT_ID, '2026-04-15', -1000)
+    await expect(createTrade(tradeDraft({ date: '2026-04-15' }))).rejects.toThrow(/override/i)
+    expect(await listAllTrades(MAIN_ACCOUNT_ID)).toHaveLength(0)
+  })
+
+  it('createTrade allows trades on a different day than the override', async () => {
+    await setDayPnlOverride(MAIN_ACCOUNT_ID, '2026-04-15', -1000)
+    await createTrade(tradeDraft({ date: '2026-04-16' }))
+    expect(await listAllTrades(MAIN_ACCOUNT_ID)).toHaveLength(1)
+  })
+
+  it('setDayPnlOverride rejects an override on a day that has trades', async () => {
+    await createTrade(tradeDraft({ date: '2026-04-15' }))
+    await expect(setDayPnlOverride(MAIN_ACCOUNT_ID, '2026-04-15', -1000)).rejects.toThrow(/trade/i)
+    expect(await getDayPnlOverride(MAIN_ACCOUNT_ID, '2026-04-15')).toBeNull()
+  })
+
+  it('setDayPnlOverride(null) clears even when trades exist (recovers a legacy both-day)', async () => {
+    // Force a contradictory legacy row directly, bypassing the guard.
+    await db.days.put({
+      id: `${MAIN_ACCOUNT_ID}:2026-04-15`,
+      account_id: MAIN_ACCOUNT_ID,
+      date: '2026-04-15',
+      screenshots: [],
+      pnl_override: -1000,
+      created_at: '2026-04-15T00:00:00.000Z',
+      updated_at: '2026-04-15T00:00:00.000Z',
+    })
+    await createTrade(tradeDraft({ date: '2026-04-15' })) // would normally be blocked
+      .catch(() => {})
+    await db.trades.add({
+      ...tradeDraft({ date: '2026-04-15' }),
+      id: 'legacy-trade',
+      account_id: MAIN_ACCOUNT_ID,
+      created_at: '2026-04-15T00:00:00.000Z',
+      updated_at: '2026-04-15T00:00:00.000Z',
+    })
+    await setDayPnlOverride(MAIN_ACCOUNT_ID, '2026-04-15', null)
+    expect(await getDayPnlOverride(MAIN_ACCOUNT_ID, '2026-04-15')).toBeNull()
+  })
+})
+
 describe('adjustment queries', () => {
   it('createAdjustment assigns id + timestamps + active account', async () => {
     const a = await createAdjustment(adjustmentDraft())
@@ -116,7 +186,7 @@ describe('adjustment queries', () => {
     await createAdjustment(adjustmentDraft({ date: '2026-04-20' }))
     await createAdjustment(adjustmentDraft({ date: '2026-04-01' }))
     await createAdjustment(adjustmentDraft({ date: '2026-04-10' }))
-    await createAdjustment(adjustmentDraft({ date: '2026-04-05' }), 'other-account')
+    await createAdjustment(adjustmentDraft({ date: '2026-04-06' }), 'other-account')
     const out = await listAdjustments(MAIN_ACCOUNT_ID)
     expect(out.map(a => a.date)).toEqual(['2026-04-01', '2026-04-10', '2026-04-20'])
   })

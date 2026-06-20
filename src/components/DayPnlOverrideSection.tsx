@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { setDayPnlOverride } from '@/db/queries'
 import { NumberInput } from '@/components/form/NumberInput'
@@ -18,10 +18,12 @@ interface DayPnlOverrideSectionProps {
  * a chaotic "tilt"/revenge day gets recorded as one net number instead of
  * logging each trade. Per-trade population stats still read actual trades.
  *
- * Persisted on blur (like the day note) so a single Dexie transaction runs
- * when the user leaves the field, not on every keystroke. The local `value`
- * shadows the stored value so typing feels immediate; it re-syncs from
- * `stored` only when the field isn't focused (e.g. cross-device sync).
+ * Persisted on blur (a single Dexie transaction when the user leaves the
+ * field, not on every keystroke) AND flushed on unmount as a backstop — this
+ * is a single high-value figure (a whole tilt day's net), so navigating away
+ * via the back button before the input blurs must not silently drop it. The
+ * local `value` shadows the stored value so typing feels immediate; it
+ * re-syncs from `stored` only when the field isn't focused (e.g. sync).
  */
 export function DayPnlOverrideSection({ accountId, date, stored }: DayPnlOverrideSectionProps) {
   const [value, setValue] = useState<number | null>(stored)
@@ -30,24 +32,40 @@ export function DayPnlOverrideSection({ accountId, date, stored }: DayPnlOverrid
   // Keyed by `date` at the call site, so it re-derives on each day's mount.
   const [open, setOpen] = useState(stored != null)
   const focused = useRef(false)
+  // Refs mirror the latest value/stored so the unmount cleanup (which runs
+  // with an empty dep array and would otherwise close over first-render
+  // values) flushes what's actually on screen against what's actually saved.
+  const valueRef = useRef(value)
+  valueRef.current = value
+  const storedRef = useRef(stored)
+  storedRef.current = stored
 
   useEffect(() => {
     if (focused.current) return
     setValue(stored)
   }, [stored])
 
-  async function commit(raw: number | null) {
-    // Money figure — round to cents so the stored value matches the 2-decimal
-    // display and never carries float noise into equity math.
-    const next = raw === null ? null : Math.round(raw * 100) / 100
-    if (next === stored) return
-    try {
-      await setDayPnlOverride(accountId, date, next)
-      setError(null)
-    } catch (e) {
-      setError(`Couldn't save override: ${errorMessage(e)}`)
-    }
-  }
+  const commit = useCallback(
+    async (raw: number | null) => {
+      // Money figure — round to cents so the stored value matches the
+      // 2-decimal display and never carries float noise into equity math.
+      const next = raw === null ? null : Math.round(raw * 100) / 100
+      if (next === storedRef.current) return
+      try {
+        await setDayPnlOverride(accountId, date, next)
+        setError(null)
+      } catch (e) {
+        setError(`Couldn't save override: ${errorMessage(e)}`)
+      }
+    },
+    [accountId, date],
+  )
+
+  // Flush on unmount: a route change (back button, prev/next-day nav) tears
+  // the field down before `onBlur` fires, so commit the latest value here.
+  // `commit` early-returns when nothing changed, so an untouched field writes
+  // nothing.
+  useEffect(() => () => void commit(valueRef.current), [commit])
 
   return (
     <details

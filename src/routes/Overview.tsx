@@ -24,6 +24,7 @@ import {
   EMPTY_FILTERS,
   FILTER_PARAM_KEYS,
   filtersFromParams,
+  hasAttributeFilter,
   paramsFromFilters,
   type TradeFilters,
 } from '@/lib/filters'
@@ -171,6 +172,10 @@ export function OverviewRoute() {
   // `aggregate(filtered)` independently — same data, multiple
   // full-array passes per render.
   const baseStats = useMemo(() => aggregate(filtered), [filtered])
+  const effectiveOverrides = useMemo(
+    () => hasAttributeFilter(filters) ? new Map<string, number>() : overridesByDate,
+    [filters, overridesByDate],
+  )
   // Net PNL for the visible window with day overrides folded in: each
   // override date replaces its trades' sum. Population fields (wins, win
   // rate, best/worst) stay trade-only — an override day isn't a win or loss.
@@ -178,11 +183,11 @@ export function OverviewRoute() {
     const from = filters.from
     const to = filters.to
     const net = sumNetPnl(
-      netPnlByDate(filtered, overridesByDate),
+      netPnlByDate(filtered, effectiveOverrides),
       d => (from == null || d >= from) && (to == null || d <= to),
     )
     return { ...baseStats, net_pnl: net }
-  }, [baseStats, filtered, overridesByDate, filters.from, filters.to])
+  }, [baseStats, filtered, effectiveOverrides, filters.from, filters.to])
 
   // Lazy-mount the TradingView chart on a tick after the rest of the
   // page has painted. The chart synchronously builds canvases, primitives,
@@ -272,7 +277,7 @@ export function OverviewRoute() {
     const dates: string[] = []
     for (const t of chartFiltered) dates.push(t.date)
     for (const a of allAdjustments ?? []) dates.push(a.date)
-    for (const d of overridesByDate.keys()) dates.push(d)
+    for (const d of effectiveOverrides.keys()) dates.push(d)
     if (dates.length === 0) return null
     dates.sort()
     const s = dateKeyToDate(dates[0])
@@ -284,7 +289,7 @@ export function OverviewRoute() {
       case 'Q': return { start: startOfQuarter(s), end: endOfQuarter(e) }
       case 'Y': return { start: startOfYear(s), end: endOfYear(e) }
     }
-  }, [chartFiltered, allAdjustments, overridesByDate, timeframe])
+  }, [chartFiltered, allAdjustments, effectiveOverrides, timeframe])
 
   const chartAdjByDate = useMemo(
     () => adjustmentsByDate(allAdjustments ?? []),
@@ -310,9 +315,9 @@ export function OverviewRoute() {
         // across timeframes, so candle highs/lows reconcile at every zoom.
         chartAdjByDate,
         chartStartingEquity ?? 0,
-        overridesByDate,
+        effectiveOverrides,
       ),
-    [tfBuckets, chartAdjByDate, chartStartingEquity, overridesByDate],
+    [tfBuckets, chartAdjByDate, chartStartingEquity, effectiveOverrides],
   )
 
   // Marker visibility is user-controlled per kind (Settings → Adjustments).
@@ -518,7 +523,7 @@ export function OverviewRoute() {
               rangeEnd={rangeEnd}
               accountStartEquity={compositeStartingEquity}
               adjByDate={compositeAdjByDate}
-              overridesByDate={overridesByDate}
+              overridesByDate={effectiveOverrides}
             />
           </div>
           <DistributionDonuts filtered={filtered} models={models ?? []} />
