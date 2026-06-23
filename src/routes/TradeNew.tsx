@@ -5,6 +5,7 @@ import { TradeForm } from '@/components/TradeForm'
 import { createTrade, getDayPnlOverride } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
 import { nyToday } from '@/lib/tz'
+import { errorMessage } from '@/lib/utils'
 import type { TradeDraft } from '@/db/types'
 
 export function TradeNewRoute() {
@@ -31,7 +32,12 @@ export function TradeNewRoute() {
   }
 
   async function handleSubmit(draft: TradeDraft) {
-    await createTrade(draft)
+    try {
+      await createTrade(draft)
+    } catch (e) {
+      alert(errorMessage(e))
+      return
+    }
     navigate(`/day/${draft.date}`)
   }
 

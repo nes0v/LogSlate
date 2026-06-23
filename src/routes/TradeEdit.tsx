@@ -49,7 +49,11 @@ export function TradeEditRoute() {
   }, [state, accountId, navigate])
 
   async function handleSubmit(draft: TradeDraft) {
-    await updateTrade(id, draft)
+    try {
+      await updateTrade(id, draft)
+    } catch (e) {
+      alert(errorMessage(e))
+    }
   }
 
   async function handleDelete() {
