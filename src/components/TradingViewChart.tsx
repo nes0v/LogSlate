@@ -104,17 +104,16 @@ interface CrosshairPrimitive extends ISeriesPrimitive<Time> {
   setColor(color: string): void
 }
 
-interface CandleHoverPrimitive extends ISeriesPrimitive<Time> {
-  setHoveredTime(t: number | null): void
-  setCandles(map: Map<number, CandlestickData<UTCTimestamp>>): void
-  setColor(color: string): void
-}
-
 interface CandleWicksPrimitive extends ISeriesPrimitive<Time> {
   setCandles(map: Map<number, CandlestickData<UTCTimestamp>>): void
   setColors(up: string, down: string): void
   setOverrideColors(up: string, down: string): void
   setOverrideTimes(times: Set<number>): void
+}
+
+interface FeeOverrideMarkersPrimitive extends ISeriesPrimitive<Time> {
+  setTimes(times: Set<number>): void
+  setColor(color: string): void
 }
 
 interface LineDotHoverPrimitive extends ISeriesPrimitive<Time> {
@@ -297,89 +296,50 @@ function createCandleWicksPrimitive(): CandleWicksPrimitive {
 }
 
 /**
- * Paints a white 1px outline + wick on top of the currently-hovered candle.
- * Reads open/high/low/close from a caller-provided map and converts them to
- * canvas coords via the attached series' priceToCoordinate. Runs at
- * `zOrder: 'top'` so it sits above the candles.
+ * Marks override days in the fees pane with a small "X". Override days have
+ * no trades and therefore no fee bar, so the glyph stands in the empty
+ * column (on the zero baseline) to show the day was a manual PNL override
+ * rather than a no-activity gap. Drawn as text so it scales cleanly.
  */
-// Mirror of lightweight-charts's internal `optimalCandlestickWidth` — the
-// only way to land the hover border exactly on the rendered body edges is
-// to reuse the library's exact width algorithm (copied from
-// `PaneRendererCandlesticks` in lightweight-charts 5.x).
-function optimalCandlestickWidth(barSpacing: number, pixelRatio: number): number {
-  const specialFrom = 2.5
-  const specialTo = 4
-  if (barSpacing >= specialFrom && barSpacing <= specialTo) {
-    return Math.floor(3 * pixelRatio)
-  }
-  const reducing = 0.2
-  const coeff = 1 - (reducing * Math.atan(Math.max(specialTo, barSpacing) - specialTo)) / (Math.PI * 0.5)
-  const res = Math.floor(barSpacing * coeff * pixelRatio)
-  const scaled = Math.floor(barSpacing * pixelRatio)
-  return Math.max(Math.floor(pixelRatio), Math.min(res, scaled))
-}
-
-function createCandleHoverPrimitive(): CandleHoverPrimitive {
+function createFeeOverrideMarkersPrimitive(): FeeOverrideMarkersPrimitive {
   let chart: IChartApi | null = null
   let series: ISeriesApi<'Candlestick'> | null = null
   let requestUpdate: (() => void) | null = null
-  let hoveredTime: number | null = null
-  let candles = new Map<number, CandlestickData<UTCTimestamp>>()
-  let color = '#ffffff'
+  let times = new Set<number>()
+  let color = '#9ea2b1'
+  // Resolved lazily and cached — `draw` runs every redraw frame and the
+  // body font never changes at runtime, so reading it each time would
+  // force a needless style recalc per frame.
+  let fontFamily = ''
 
   const renderer: IPrimitivePaneRenderer = {
     draw(target) {
-      if (hoveredTime === null || !chart || !series) return
-      const candle = candles.get(hoveredTime)
-      if (!candle) return
+      if (!chart || !series || times.size === 0) return
       const timeScale = chart.timeScale()
-      const xc = timeScale.timeToCoordinate(hoveredTime as UTCTimestamp)
-      if (xc === null) return
-      const yHi = series.priceToCoordinate(candle.high)
-      const yLo = series.priceToCoordinate(candle.low)
-      const yTop = series.priceToCoordinate(Math.max(candle.open, candle.close))
-      const yBot = series.priceToCoordinate(Math.min(candle.open, candle.close))
-      if (yHi === null || yLo === null || yTop === null || yBot === null) return
-      const barSpacing = timeScale.options().barSpacing
-
+      const yBase = series.priceToCoordinate(0)
+      if (yBase === null) return
+      if (!fontFamily) fontFamily = getComputedStyle(document.body).fontFamily
       target.useBitmapCoordinateSpace(scope => {
         const ctx = scope.context
         const { horizontalPixelRatio: hx, verticalPixelRatio: vy } = scope
         ctx.save()
         ctx.fillStyle = color
-
-        // Match lightweight-charts's internal candle geometry exactly.
-        let barWidth = optimalCandlestickWidth(barSpacing, hx)
-        if (barWidth >= 2) {
-          const wickW = Math.floor(hx)
-          if (wickW % 2 !== barWidth % 2) barWidth--
-        }
-        const scaledX = Math.round(xc * hx)
-        const left = scaledX - Math.floor(barWidth * 0.5)
-        const right = left + barWidth - 1
-        const top = Math.round(yTop * vy)
-        const bottom = Math.round(yBot * vy)
-        const high = Math.round(yHi * vy)
-        const low = Math.round(yLo * vy)
-
-        // Wick hover overlay — 1 device pixel, matching the custom
-        // `CandleWicksPrimitive` so the hover outline sits exactly on
-        // top of the rendered wick instead of overhanging it.
-        const wickWidth = 1
-        const wickLeft = scaledX - Math.floor(wickWidth * 0.5)
-        if (top > high) ctx.fillRect(wickLeft, high, wickWidth, top - high)
-        if (low > bottom) ctx.fillRect(wickLeft, bottom + 1, wickWidth, low - bottom)
-
-        // Inset body border — four 1-device-pixel rects aligned to the
-        // body's outermost pixel rows/columns, so it overlays the existing
-        // border without extending the candle's footprint.
-        const bodyWidth = right - left + 1
-        const bodyHeight = bottom - top + 1
-        if (bodyWidth > 0 && bodyHeight > 0) {
-          ctx.fillRect(left, top, bodyWidth, 1)
-          ctx.fillRect(left, bottom, bodyWidth, 1)
-          ctx.fillRect(left, top, 1, bodyHeight)
-          ctx.fillRect(right, top, 1, bodyHeight)
+        // Scale the "X" with the zoom (bar spacing) like the candle bodies
+        // do, clamped so it never shrinks to nothing or overruns its column.
+        const barSpacing = timeScale.options().barSpacing
+        const fontPx = Math.min(16, Math.max(9, barSpacing * 0.7))
+        ctx.font = `${Math.round(fontPx * vy)}px ${fontFamily}`
+        ctx.textAlign = 'center'
+        // Alphabetic baseline puts the X's actual bottom edge on the line
+        // (X has no descender), so it touches the pane's bottom border
+        // (the zero line, since fees scaleMargins.bottom is 0).
+        ctx.textBaseline = 'alphabetic'
+        const cy = Math.round(yBase * vy)
+        for (const ts of times) {
+          const xc = timeScale.timeToCoordinate(ts as UTCTimestamp)
+          if (xc === null) continue
+          const cx = Math.round(xc * hx)
+          ctx.fillText('X', cx, cy)
         }
         ctx.restore()
       })
@@ -412,13 +372,8 @@ function createCandleHoverPrimitive(): CandleHoverPrimitive {
     paneViews() {
       return [paneView]
     },
-    setHoveredTime(t) {
-      if (t === hoveredTime) return
-      hoveredTime = t
-      requestUpdate?.()
-    },
-    setCandles(m) {
-      candles = m
+    setTimes(t) {
+      times = t
       requestUpdate?.()
     },
     setColor(c) {
@@ -431,9 +386,9 @@ function createCandleHoverPrimitive(): CandleHoverPrimitive {
 
 /**
  * Draws our own crosshair — vertical + horizontal dashed lines at the
- * current mouse position — on the chart canvas with `zOrder: 'bottom'`,
- * so the crosshair sits BEHIND the candles. The built-in crosshair lines
- * are hidden (their labels stay visible).
+ * current mouse position — on the chart canvas with `zOrder: 'top'`, so the
+ * crosshair sits ON TOP of the candles. The built-in crosshair lines are
+ * hidden (their labels stay visible).
  */
 function createCrosshairPrimitive(opts: { ownPaneIndex: number }): CrosshairPrimitive {
   const ownPaneIndex = opts.ownPaneIndex
@@ -443,10 +398,10 @@ function createCrosshairPrimitive(opts: { ownPaneIndex: number }): CrosshairPrim
   let color = '#8b91a1'
 
   const renderer: IPrimitivePaneRenderer = {
-    // Crosshair lines also sit behind the candles — `drawBackground`, not
-    // `draw`. `zOrder: 'bottom'` alone only orders primitives WITHIN the
-    // same pass.
-    drawBackground(target) {
+    // Crosshair lines sit on top of the candles — `draw` (foreground),
+    // not `drawBackground`. `zOrder: 'top'` alone only orders primitives
+    // WITHIN the same pass.
+    draw(target) {
       const pos = position
       if (!pos) return
       target.useBitmapCoordinateSpace(scope => {
@@ -474,14 +429,11 @@ function createCrosshairPrimitive(opts: { ownPaneIndex: number }): CrosshairPrim
         ctx.restore()
       })
     },
-    draw() {
-      /* nothing in the foreground layer */
-    },
   }
 
   const paneView: IPrimitivePaneView = {
     zOrder(): PrimitivePaneViewZOrder {
-      return 'bottom'
+      return 'top'
     },
     renderer() {
       return renderer
@@ -703,10 +655,9 @@ export function TradingViewChart({
   const adjLinesPrimRef = useRef<AdjustmentLinesPrimitive | null>(null)
   const crosshairPrimRef = useRef<CrosshairPrimitive | null>(null)
   const feesCrosshairPrimRef = useRef<CrosshairPrimitive | null>(null)
-  const candleHoverPrimRef = useRef<CandleHoverPrimitive | null>(null)
+  const feeOverrideMarkersPrimRef = useRef<FeeOverrideMarkersPrimitive | null>(null)
   const lineDotHoverPrimRef = useRef<LineDotHoverPrimitive | null>(null)
   const wicksPrimRef = useRef<CandleWicksPrimitive | null>(null)
-  const feesHoverPrimRef = useRef<CandleHoverPrimitive | null>(null)
   // Single source of truth for per-bucket state — all hit-tests, click
   // navigation, and the hover info row read from this map keyed by the
   // bucket's UTC-second timestamp.
@@ -897,20 +848,17 @@ export function TradingViewChart({
     // Mirror the vertical cursor line into the fees pane. The horizontal
     // line is gated by `hoveredPaneIndex` so each pane only draws its own
     // horizontal cursor — no ghost line in the other pane.
-    const crossColor = '#6b7280'
+    const crossColor = '#767d8d'
     const feesCrossPrim = createCrosshairPrimitive({ ownPaneIndex: 1 })
     feesCrossPrim.setColor(crossColor)
     feesSeries.attachPrimitive(feesCrossPrim)
     feesCrosshairPrimRef.current = feesCrossPrim
 
-    // Same hover-border treatment for the fees pane, minus the
-    // pointer-cursor swap and click handling — fee bars aren't clickable.
-    // White border for contrast on dark fee bars.
-    const hoverBorderColor = '#ffffff'
-    const feesHoverPrim = createCandleHoverPrimitive()
-    feesHoverPrim.setColor(hoverBorderColor)
-    feesSeries.attachPrimitive(feesHoverPrim)
-    feesHoverPrimRef.current = feesHoverPrim
+    // "X" markers for override days, which have no fee bar of their own.
+    const feeOverrideMarkers = createFeeOverrideMarkersPrimitive()
+    feeOverrideMarkers.setColor(themeColor('--color-text-dim', '#9ea2b1'))
+    feesSeries.attachPrimitive(feeOverrideMarkers)
+    feeOverrideMarkersPrimRef.current = feeOverrideMarkers
 
     // Cursor flips to `grabbing` while the user is panning the chart.
     // Gated on actual pointer movement past `DRAG_THRESHOLD_PX` so a
@@ -931,14 +879,11 @@ export function TradingViewChart({
       crosshairPrimRef.current?.setHoveredPaneIndex(paneIdx)
       feesCrossPrim.setPosition(pos)
       feesCrossPrim.setHoveredPaneIndex(paneIdx)
-      // Hover highlight is gated by the same hit-test as the pointer
-      // cursor — the candle only lights up when the mouse is actually
-      // over its body or wick, not just in the same time column.
+      // The line-view dot and the pointer cursor are gated by the same
+      // hit-test — they only engage when the mouse is actually over the
+      // candle's body or wick, not just in the same time column.
       const overCandle = isOverCandle(param)
-      candleHoverPrimRef.current?.setHoveredTime(overCandle && typeof param.time === 'number' ? param.time : null)
       lineDotHoverPrimRef.current?.setHoveredTime(overCandle && typeof param.time === 'number' ? param.time : null)
-      const overFee = isOverFeeCandle(param)
-      feesHoverPrim.setHoveredTime(overFee && typeof param.time === 'number' ? param.time : null)
       // Info row appears whenever the crosshair sits over a real bucket
       // — no body-hit-test gate, so "empty candles" (count = 0 slots)
       // still report equity / trades=0 like the old Recharts version.
@@ -948,7 +893,7 @@ export function TradingViewChart({
           : null
       setHoveredPoint(prev => (prev === nextPt ? prev : nextPt))
       // Only equity candles are clickable, so only they swap the cursor
-      // to pointer. Fee bars get the hover border but stay default-cursor.
+      // to pointer. Fee bars stay default-cursor.
       const el = containerRef.current
       if (el && !isDragging) el.style.cursor = overCandle ? 'pointer' : ''
     }
@@ -1102,35 +1047,6 @@ export function TradingViewChart({
       return false
     }
 
-    // Fee-bar hit-test — same geometry as `isOverCandle` but scoped to
-    // the fees pane (paneIndex 1) and the fees series, using the stored
-    // fee values to reconstruct each bar's open=0/close=fee rect.
-    const isOverFeeCandle = (param: {
-      time?: Time
-      point?: { x: number; y: number }
-      paneIndex?: number
-    }) => {
-      const t = param.time
-      const pt = param.point
-      if (typeof t !== 'number' || !pt) return false
-      if (param.paneIndex !== 1) return false
-      const fSeries = feesSeriesRef.current
-      const p = pointByTimeRef.current.get(t as number)
-      if (!fSeries || !p || p.fees <= 0 || !chartRef.current) return false
-      const xc = chartRef.current.timeScale().timeToCoordinate(t as UTCTimestamp)
-      if (xc === null) return false
-      const barSpacing = chartRef.current.timeScale().options().barSpacing
-      const bodyHalf = Math.max(3, Math.round(barSpacing * 0.78)) / 2
-      const yTop = fSeries.priceToCoordinate(p.fees)
-      const yBot = fSeries.priceToCoordinate(0)
-      if (yTop === null || yBot === null) return false
-      const yBodyTop = Math.min(yTop, yBot)
-      const yBodyBot = Math.max(yTop, yBot)
-      const dx = Math.abs(pt.x - xc)
-      if (pt.y >= yBodyTop && pt.y <= yBodyBot && dx <= bodyHalf + BODY_PADDING) return true
-      return false
-    }
-
     return () => {
       chart.unsubscribeClick(handleClick)
       chart.unsubscribeCrosshairMove(handleCrosshair)
@@ -1142,9 +1058,9 @@ export function TradingViewChart({
         feesSeries.detachPrimitive(feesCrosshairPrimRef.current)
         feesCrosshairPrimRef.current = null
       }
-      if (feesHoverPrimRef.current) {
-        feesSeries.detachPrimitive(feesHoverPrimRef.current)
-        feesHoverPrimRef.current = null
+      if (feeOverrideMarkersPrimRef.current) {
+        feesSeries.detachPrimitive(feeOverrideMarkersPrimRef.current)
+        feeOverrideMarkersPrimRef.current = null
       }
       chart.remove()
       chartRef.current = null
@@ -1169,7 +1085,7 @@ export function TradingViewChart({
     const candleStroke = '#000000'
     const wickUp = bodyUp
     const wickDown = bodyDown
-    const crossColor = '#6b7280'
+    const crossColor = '#767d8d'
 
     const sharedPriceFormat = {
       type: 'price' as const,
@@ -1221,14 +1137,6 @@ export function TradingViewChart({
     series.attachPrimitive(crossPrim)
     crosshairPrimRef.current = crossPrim
 
-    const hoverPrim = view === 'candles' ? createCandleHoverPrimitive() : null
-    if (hoverPrim) {
-      // Hover-border in white for high contrast on the colored candle bodies.
-      hoverPrim.setColor('#ffffff')
-      series.attachPrimitive(hoverPrim)
-      candleHoverPrimRef.current = hoverPrim
-    }
-
     const wicksPrim = view === 'candles' ? createCandleWicksPrimitive() : null
     if (wicksPrim) {
       wicksPrim.setColors(wickUp, wickDown)
@@ -1257,10 +1165,6 @@ export function TradingViewChart({
       if (crosshairPrimRef.current) {
         series.detachPrimitive(crosshairPrimRef.current)
         crosshairPrimRef.current = null
-      }
-      if (candleHoverPrimRef.current) {
-        series.detachPrimitive(candleHoverPrimRef.current)
-        candleHoverPrimRef.current = null
       }
       if (wicksPrimRef.current) {
         series.detachPrimitive(wicksPrimRef.current)
@@ -1331,7 +1235,7 @@ export function TradingViewChart({
     // primitives, hit-tests) reads from `pointByTime`.
     const pointByTime = new Map<number, CandlePoint>()
     const candleByTime = new Map<number, CandlestickData<UTCTimestamp>>()
-    const feesHoverCandles = new Map<number, CandlestickData<UTCTimestamp>>()
+    const feesCandleByTime = new Map<number, CandlestickData<UTCTimestamp>>()
     // Override-day coloring is only meaningful on the daily timeframe — a
     // coarser bucket can mix override and normal days, so its candle keeps
     // the standard win/loss palette.
@@ -1362,7 +1266,7 @@ export function TradingViewChart({
         if (isOverrideDay) overrideTimestamps.add(ts)
       }
       if (p.fees > 0) {
-        feesHoverCandles.set(ts, {
+        feesCandleByTime.set(ts, {
           time: ts as UTCTimestamp,
           open: 0,
           high: p.fees,
@@ -1383,18 +1287,15 @@ export function TradingViewChart({
       const candle = candleByTime.get(ts)
       if (candle) lastCandleIdx = data.length
       data.push(candle ?? { time: ts as UTCTimestamp })
-      feesData.push(feesHoverCandles.get(ts) ?? { time: ts as UTCTimestamp })
+      feesData.push(feesCandleByTime.get(ts) ?? { time: ts as UTCTimestamp })
     }
     dataTimesRef.current = data.map(d => d.time as number)
     lastCandleIdxRef.current = lastCandleIdx
-    candleHoverPrimRef.current?.setCandles(candleByTime)
-    candleHoverPrimRef.current?.setHoveredTime(null)
     wicksPrimRef.current?.setCandles(candleByTime)
     wicksPrimRef.current?.setOverrideTimes(overrideTimestamps)
+    feeOverrideMarkersPrimRef.current?.setTimes(overrideTimestamps)
     lineDotHoverPrimRef.current?.setPoints(pointByTime)
     lineDotHoverPrimRef.current?.setHoveredTime(null)
-    feesHoverPrimRef.current?.setCandles(feesHoverCandles)
-    feesHoverPrimRef.current?.setHoveredTime(null)
     if (view === 'line') {
       const lineData: (LineData<UTCTimestamp> | WhitespaceData<UTCTimestamp>)[] = []
       for (const d of data) {
