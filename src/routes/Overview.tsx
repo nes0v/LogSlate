@@ -29,7 +29,6 @@ import {
   type TradeFilters,
 } from '@/lib/filters'
 import {
-  defaultRange,
   hasAnyFilter,
   loadSharedFilters,
   saveSharedFilters,
@@ -146,7 +145,7 @@ export function OverviewRoute() {
   // Reports). `rangeReady` is trades+overrides only — it deliberately excludes
   // models so the filter bar fills its default without waiting on the slower
   // models query (which would surface as a visible "Any"→date jump).
-  const { overridesByDate, rangeReady, lastActivityDate, filters } =
+  const { overridesByDate, rangeReady, defaultWindow, filters } =
     useDefaultRangeFilters(accountId, allTrades, urlFilters)
   // Models are resolved once at the route level so trade rows render
   // with the right name on first paint (instead of flashing "gambling"
@@ -352,19 +351,16 @@ export function OverviewRoute() {
   const rawFilterFromKey = rangeStart ? dateToBucketKey(rangeStart, timeframe) : undefined
   const rawFilterToKey = rangeEnd ? dateToBucketKey(rangeEnd, timeframe) : undefined
 
-  // The chart only ever renders real candles, so on first load it emits
-  // the candle keys nearest the filter window — the first bucket >= the
-  // filter's `from` and the last bucket <= its `to`. Comparing the
-  // filter's *literal* date keys against those flags a difference
-  // whenever a boundary lands on a non-trading day (true for nearly
-  // every default one-month window), which made "Set date to range" appear
-  // on a fresh load the user never touched. Snap the filter keys onto
-  // the candle grid so the comparison matches what the chart emits.
+  // Match what the chart's emit() reports for its default viewport so the
+  // "Set date to range" button only shows after a real pan/zoom:
+  //  - Left edge: the chart snaps to the calendar slot at `from`, so the
+  //    emitted key equals `rawFilterFromKey` as-is (no candle-grid snap).
+  //  - Right edge: emit() clamps to the last candle <= `to`, so snap
+  //    `rawFilterToKey` back to the last bucket at or before it.
   const { from: filterFromKey, to: filterToKey } = useMemo(() => {
     const keys = tfBuckets.map(b => b.key)
     if (keys.length === 0) return { from: rawFilterFromKey, to: rawFilterToKey }
-    let from = rawFilterFromKey
-    if (from !== undefined) from = keys.find(k => k >= from!) ?? keys[keys.length - 1]
+    const from = rawFilterFromKey
     let to = rawFilterToKey
     if (to !== undefined) {
       let hit: string | undefined
@@ -395,10 +391,9 @@ export function OverviewRoute() {
   // view. `tf` is preserved when not in `next` (so filter edits don't
   // reset the chart timeframe) and dropped when it equals the default D.
   function update(next: Partial<TradeFilters> & { tf?: Timeframe }) {
-    const d = defaultRange(lastActivityDate)
     const merged: TradeFilters = { ...urlFilters, ...next }
-    if (merged.from === d.from) merged.from = null
-    if (merged.to === d.to) merged.to = null
+    if (merged.from === defaultWindow.from) merged.from = null
+    if (merged.to === defaultWindow.to) merged.to = null
     saveSharedFilters(hasAnyFilter(merged) ? merged : null)
     const p = paramsFromFilters(merged)
     const tf = 'tf' in next ? next.tf : timeframeFromParams(params)

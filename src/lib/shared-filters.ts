@@ -24,8 +24,8 @@ const KEY = 'logslate.shared-filters.v1'
  *  `to` is usually a real activity date (already a weekday); the snap only
  *  matters when it falls back to today on an empty account opened on a
  *  weekend. */
-export function defaultRange(baseDate: string): { from: string; to: string } {
-  const from = format(subMonths(dateKeyToDate(baseDate), 1), 'yyyy-MM-dd')
+export function defaultRange(baseDate: string, months = 1): { from: string; to: string } {
+  const from = format(subMonths(dateKeyToDate(baseDate), months), 'yyyy-MM-dd')
   return {
     from: nextWeekdayKey(from),
     to: previousWeekdayKey(baseDate),

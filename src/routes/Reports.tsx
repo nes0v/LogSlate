@@ -15,7 +15,6 @@ import {
   type TradeFilters,
 } from '@/lib/filters'
 import {
-  defaultRange,
   hasAnyFilter,
   loadSharedFilters,
   saveSharedFilters,
@@ -156,11 +155,11 @@ export function ReportsRoute() {
     [accountId],
     [],
   )
-  // Day-level overrides + the default one-month filter window (shared with
-  // Overview). Reports has no models query, so its full `loaded` gate is just
-  // the hook's `rangeReady` (trades + overrides). The explicit `allTrades`
-  // check is redundant with `rangeReady` but lets TS narrow it in branches.
-  const { overridesByDate, rangeReady, lastActivityDate, filters } =
+  // Day-level overrides + the default filter window (shared with Overview).
+  // Reports has no models query, so its full `loaded` gate is just the hook's
+  // `rangeReady` (trades + overrides). The explicit `allTrades` check is
+  // redundant with `rangeReady` but lets TS narrow it in branches.
+  const { overridesByDate, rangeReady, defaultWindow, filters } =
     useDefaultRangeFilters(accountId, allTrades, urlFilters)
   const loaded = allTrades !== undefined && rangeReady
 
@@ -242,10 +241,9 @@ export function ReportsRoute() {
   const currentTabParam = params.get('tab')
   const currentCompareParam = params.get('compare')
   function update(next: Partial<TradeFilters>) {
-    const d = defaultRange(lastActivityDate)
     const merged: TradeFilters = { ...urlFilters, ...next }
-    if (merged.from === d.from) merged.from = null
-    if (merged.to === d.to) merged.to = null
+    if (merged.from === defaultWindow.from) merged.from = null
+    if (merged.to === defaultWindow.to) merged.to = null
     saveSharedFilters(hasAnyFilter(merged) ? merged : null)
     const p = paramsFromFilters(merged)
     // Preserve non-filter UI params (tab, compare) across filter edits.

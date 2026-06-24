@@ -11,6 +11,8 @@ import { exportBackup, importBackup } from '@/lib/backup'
 import { AccountsPanel } from '@/components/AccountsPanel'
 import { AdjustmentsPanel } from '@/components/AdjustmentsPanel'
 import { BTN_ACCENT, BTN_OUTLINED } from '@/components/form/buttonClass'
+import { Pills } from '@/components/form/Pills'
+import { setDefaultRangeMonths, useDefaultRangeMonths, type DefaultRangeMonths } from '@/lib/default-range-preference'
 import { cn, errorMessage } from '@/lib/utils'
 
 export function SettingsRoute() {
@@ -287,6 +289,8 @@ export function SettingsRoute() {
 
       <AdjustmentsPanel adjustments={adjustments} />
 
+      <DefaultRangeSection />
+
       <section>
         <h2 className="text-sm font-medium mb-2">Backup &amp; restore</h2>
         <div className="rounded-(--radius) bg-(--color-panel) p-3 space-y-3">
@@ -323,5 +327,30 @@ export function SettingsRoute() {
       </>
       )}
     </div>
+  )
+}
+
+const RANGE_OPTIONS: ReadonlyArray<{ value: DefaultRangeMonths; label: string }> = [
+  { value: 1, label: '1 month' },
+  { value: 2, label: '2 months' },
+  { value: 3, label: '3 months' },
+]
+
+function DefaultRangeSection() {
+  const months = useDefaultRangeMonths()
+  return (
+    <section>
+      <h2 className="text-sm font-medium mb-2">Default date range</h2>
+      <div className="rounded-(--radius) bg-(--color-panel) p-3 space-y-3">
+        <p className="text-sm text-(--color-text-dim)">
+          How far back Overview and Reports default to when no date filter is set.
+        </p>
+        <Pills
+          value={months}
+          options={RANGE_OPTIONS}
+          onChange={setDefaultRangeMonths}
+        />
+      </div>
+    </section>
   )
 }
