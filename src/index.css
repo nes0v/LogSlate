@@ -60,8 +60,8 @@
   --color-accent-deep: #2c2759;
 
   /* Trading colors. */
-  --color-win:  #22c55e;
-  --color-loss: #ef4444;
+  --color-win:  #1eae52;
+  --color-loss: #de3a3a;
   /* Override candles on the equity chart — match the calendar day-cell palette. */
   --color-win-override:  var(--color-cal-win-bg);
   --color-loss-override: var(--color-cal-loss-bg);
