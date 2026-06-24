@@ -113,6 +113,8 @@ interface CandleHoverPrimitive extends ISeriesPrimitive<Time> {
 interface CandleWicksPrimitive extends ISeriesPrimitive<Time> {
   setCandles(map: Map<number, CandlestickData<UTCTimestamp>>): void
   setColors(up: string, down: string): void
+  setOverrideColors(up: string, down: string): void
+  setOverrideTimes(times: Set<number>): void
 }
 
 interface LineDotHoverPrimitive extends ISeriesPrimitive<Time> {
@@ -209,6 +211,9 @@ function createCandleWicksPrimitive(): CandleWicksPrimitive {
   let candles = new Map<number, CandlestickData<UTCTimestamp>>()
   let upColor = '#22c55e'
   let downColor = '#ef4444'
+  let overrideUpColor = '#083e2a'
+  let overrideDownColor = '#5c1f1d'
+  let overrideTimes = new Set<number>()
 
   const renderer: IPrimitivePaneRenderer = {
     // `drawBackground` paints BEFORE the series body, so the wick sits
@@ -226,7 +231,11 @@ function createCandleWicksPrimitive(): CandleWicksPrimitive {
           const yHi = series!.priceToCoordinate(c.high)
           const yLo = series!.priceToCoordinate(c.low)
           if (yHi === null || yLo === null) continue
-          ctx.fillStyle = c.close >= c.open ? upColor : downColor
+          const isOv = overrideTimes.has(ts)
+          ctx.fillStyle =
+            c.close >= c.open
+              ? isOv ? overrideUpColor : upColor
+              : isOv ? overrideDownColor : downColor
           const px = Math.round(xc * hx)
           const left = px - Math.floor(wickW / 2)
           const top = Math.round(yHi * vy)
@@ -273,6 +282,15 @@ function createCandleWicksPrimitive(): CandleWicksPrimitive {
     setColors(u, d) {
       upColor = u
       downColor = d
+      requestUpdate?.()
+    },
+    setOverrideColors(u, d) {
+      overrideUpColor = u
+      overrideDownColor = d
+      requestUpdate?.()
+    },
+    setOverrideTimes(times) {
+      overrideTimes = times
       requestUpdate?.()
     },
   }
@@ -1145,6 +1163,8 @@ export function TradingViewChart({
     if (!chart) return
     const bodyUp = themeColor('--color-win', '#16a34a')
     const bodyDown = themeColor('--color-loss', '#dc2626')
+    const overrideBodyUp = themeColor('--color-win-override', '#083e2a')
+    const overrideBodyDown = themeColor('--color-loss-override', '#5c1f1d')
     const candleBorderVisible = false
     const candleStroke = '#000000'
     const wickUp = bodyUp
@@ -1212,6 +1232,7 @@ export function TradingViewChart({
     const wicksPrim = view === 'candles' ? createCandleWicksPrimitive() : null
     if (wicksPrim) {
       wicksPrim.setColors(wickUp, wickDown)
+      wicksPrim.setOverrideColors(overrideBodyUp, overrideBodyDown)
       series.attachPrimitive(wicksPrim)
       wicksPrimRef.current = wicksPrim
     }
@@ -1311,18 +1332,34 @@ export function TradingViewChart({
     const pointByTime = new Map<number, CandlePoint>()
     const candleByTime = new Map<number, CandlestickData<UTCTimestamp>>()
     const feesHoverCandles = new Map<number, CandlestickData<UTCTimestamp>>()
+    // Override-day coloring is only meaningful on the daily timeframe — a
+    // coarser bucket can mix override and normal days, so its candle keeps
+    // the standard win/loss palette.
+    const showOverrideColor = timeframe === 'D'
+    const overrideBodyUp = themeColor('--color-win-override', '#083e2a')
+    const overrideBodyDown = themeColor('--color-loss-override', '#5c1f1d')
+    const overrideTimestamps = new Set<number>()
     for (const p of points) {
       const ts = bucketKeyToTs(p.key)
       if (ts === 0) continue
       pointByTime.set(ts, p)
       if (hasCandleBody(p)) {
+        // Per-bar `color` overrides the series up/down palette for this candle.
+        // `borderColor` is intentionally omitted — the series sets
+        // `borderVisible: false`, so it would never render.
+        const isOverrideDay = showOverrideColor && p.isOverride
+        const overrideColor = isOverrideDay
+          ? p.close >= p.open ? overrideBodyUp : overrideBodyDown
+          : undefined
         candleByTime.set(ts, {
           time: ts as UTCTimestamp,
           open: p.open,
           high: p.high,
           low: p.low,
           close: p.close,
+          ...(overrideColor && { color: overrideColor }),
         })
+        if (isOverrideDay) overrideTimestamps.add(ts)
       }
       if (p.fees > 0) {
         feesHoverCandles.set(ts, {
@@ -1353,6 +1390,7 @@ export function TradingViewChart({
     candleHoverPrimRef.current?.setCandles(candleByTime)
     candleHoverPrimRef.current?.setHoveredTime(null)
     wicksPrimRef.current?.setCandles(candleByTime)
+    wicksPrimRef.current?.setOverrideTimes(overrideTimestamps)
     lineDotHoverPrimRef.current?.setPoints(pointByTime)
     lineDotHoverPrimRef.current?.setHoveredTime(null)
     feesHoverPrimRef.current?.setCandles(feesHoverCandles)

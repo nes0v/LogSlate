@@ -62,6 +62,9 @@
   /* Trading colors. */
   --color-win:  #22c55e;
   --color-loss: #ef4444;
+  /* Override candles on the equity chart — match the calendar day-cell palette. */
+  --color-win-override:  var(--color-cal-win-bg);
+  --color-loss-override: var(--color-cal-loss-bg);
   /* Cautionary tone — used on actions that gate something off (e.g. the
    *  Models "Mark as draft" button) without being destructive. */
   --color-warn: #f59e0b;

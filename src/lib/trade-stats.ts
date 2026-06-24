@@ -163,6 +163,7 @@ export interface CandlePoint {
   fees: number
   count: number
   adjustment: number // signed cash flow on this bucket (deposit+ / withdraw-)
+  isOverride: boolean
 }
 
 // Order by first-execution time, with `id` as a deterministic tie-break:
@@ -305,6 +306,7 @@ function candleFromBucket(
     fees,
     count: b.trades.length,
     adjustment: bucketAdjustment,
+    isOverride: overrideDates.size > 0,
   }
 }
 
