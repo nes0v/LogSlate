@@ -35,10 +35,14 @@ export function DayPnlOverrideSection({ accountId, date, stored }: DayPnlOverrid
   // Refs mirror the latest value/stored so the unmount cleanup (which runs
   // with an empty dep array and would otherwise close over first-render
   // values) flushes what's actually on screen against what's actually saved.
+  // Synced in an effect rather than during render (react-hooks/refs): the
+  // cleanup only reads them after mount, so the post-commit timing is fine.
   const valueRef = useRef(value)
-  valueRef.current = value
   const storedRef = useRef(stored)
-  storedRef.current = stored
+  useEffect(() => {
+    valueRef.current = value
+    storedRef.current = stored
+  })
 
   useEffect(() => {
     if (focused.current) return
