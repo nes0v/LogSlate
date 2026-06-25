@@ -72,8 +72,6 @@ export const HeroNetPnl = memo(function HeroNetPnl({
   )
 })
 
-// Same palette as the model donut; the legend label is the authoritative
-// signal, the hue just separates segments.
 const EMOTION_COLORS: Record<(typeof EMOTIONS)[number], string> = {
   calm: 'var(--color-accent)',
   focused: '#7dd3fc',
@@ -85,8 +83,6 @@ const EMOTION_COLORS: Record<(typeof EMOTIONS)[number], string> = {
   greedy: '#60a5fa',
 }
 
-// Hold-time gradient — quick scalps (cool blues) → long holds (warm
-// oranges). 8 stops, one per HOLD_BUCKETS entry; index-aligned.
 const HOLD_PALETTE: Record<(typeof HOLD_BUCKETS)[number], string> = {
   '<1m': '#60a5fa',
   '1-5m': '#38bdf8',
@@ -99,16 +95,17 @@ const HOLD_PALETTE: Record<(typeof HOLD_BUCKETS)[number], string> = {
 }
 
 // Palette for the model donut. Cycled by index when the user has more
-// models than colors — at 8 entries that should never realistically wrap.
+// models than colors — at 9 entries that should never realistically wrap.
 const MODEL_PALETTE = [
   'var(--color-accent)',
-  '#7dd3fc',
-  '#fbbf24',
   '#c4b5fd',
-  '#f472b6',
-  '#34d399',
-  '#fb923c',
+  '#7dd3fc',
   '#60a5fa',
+  '#34d399',
+  '#fbbf24',
+  '#2563eb',
+  '#f472b6',
+  '#fb923c',
 ]
 
 export const DistributionDonuts = memo(function DistributionDonuts({
@@ -488,6 +485,7 @@ export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
         <KpiTile
           label="Profit factor"
           value={pf === null ? '—' : pf === Infinity ? '∞' : pf.toFixed(2)}
+          tooltip="Total profit from winners divided by total loss from losers. Above 1 means you make more than you lose; 2 = you earn $2 for every $1 lost."
         />
         <KpiTile
           label="Expectancy"
@@ -507,7 +505,80 @@ export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
         />
       </MetricGroup>
 
-      <MetricGroup title="Risk metrics">
+      <MetricGroup title="Excursion">
+        <KpiTile
+          label="Avg MAE"
+          value={maeMfe.avgMae === null ? '—' : formatUsd(-maeMfe.avgMae)}
+          caption="Worst drawdown / trade"
+          tone={maeMfe.avgMae === null ? 'dim' : 'loss'}
+        />
+        <KpiTile
+          label="Avg MFE"
+          value={maeMfe.avgMfe === null ? '—' : formatUsd(maeMfe.avgMfe)}
+          caption="Best favourable / trade"
+          tone={maeMfe.avgMfe === null ? 'dim' : 'win'}
+        />
+        <KpiTile
+          label="MFE efficiency"
+          value={
+            maeMfe.mfeEfficiency === null
+              ? '—'
+              : `${Math.round(maeMfe.mfeEfficiency * 100)}%`
+          }
+          caption="held-to-peak (winners)"
+        />
+        <KpiTile
+          label="MAE / stop"
+          value={
+            maeMfe.maeStopRatio === null
+              ? '—'
+              : `${Math.round(maeMfe.maeStopRatio * 100)}%`
+          }
+          caption="losers excursion vs stop"
+        />
+      </MetricGroup>
+
+      <MetricGroup title="Days">
+        <KpiTile
+          label="Best day"
+          value={dayStats.bestDay === null ? '—' : formatUsd(dayStats.bestDay)}
+          tone={dayStats.bestDay === null ? 'dim' : 'win'}
+          tooltip="Highest single-day net PNL."
+        />
+        <KpiTile
+          label="Worst day"
+          value={dayStats.worstDay === null ? '—' : formatUsd(dayStats.worstDay)}
+          tone={dayStats.worstDay === null ? 'dim' : 'loss'}
+          tooltip="Lowest single-day net PNL."
+        />
+        <KpiTile
+          label="Avg daily PNL"
+          value={dayStats.avgDailyPnl === null ? '—' : formatUsd(dayStats.avgDailyPnl)}
+          tone={
+            dayStats.avgDailyPnl === null
+              ? 'dim'
+              : dayStats.avgDailyPnl > 0
+                ? 'win'
+                : dayStats.avgDailyPnl < 0
+                  ? 'loss'
+                  : 'dim'
+          }
+          caption={`across ${totalDays} day${totalDays === 1 ? '' : 's'}`}
+          tooltip="Mean PNL across days that had at least one trade."
+        />
+        <KpiTile
+          label="Day win rate"
+          value={
+            dayStats.dayWinRate === null
+              ? '—'
+              : `${Math.round(dayStats.dayWinRate * 100)}%`
+          }
+          caption={`${dayStats.greenDays}G / ${dayStats.redDays}R`}
+          tooltip="Share of trading days that closed green. Different from trade win rate — tells you how often a session ended profitable."
+        />
+      </MetricGroup>
+
+      <MetricGroup title="Risk">
         <KpiTile
           label="SQN"
           value={sqnVal === null ? '—' : sqnVal.toFixed(2)}
@@ -555,79 +626,6 @@ export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
           value={ddStats.ulcerIndex.toFixed(2)}
           caption={qualUlcer(ddStats.ulcerIndex)}
           tooltip="Pain index. Squared average of percentage drawdowns over the period — higher = deeper or longer underwater stretches. 0 = no drawdowns."
-        />
-      </MetricGroup>
-
-      <MetricGroup title="Excursion (per trade)">
-        <KpiTile
-          label="Avg MAE"
-          value={maeMfe.avgMae === null ? '—' : formatUsd(-maeMfe.avgMae)}
-          caption="Worst drawdown / trade"
-          tone={maeMfe.avgMae === null ? 'dim' : 'loss'}
-        />
-        <KpiTile
-          label="Avg MFE"
-          value={maeMfe.avgMfe === null ? '—' : formatUsd(maeMfe.avgMfe)}
-          caption="Best favourable / trade"
-          tone={maeMfe.avgMfe === null ? 'dim' : 'win'}
-        />
-        <KpiTile
-          label="MFE efficiency"
-          value={
-            maeMfe.mfeEfficiency === null
-              ? '—'
-              : `${Math.round(maeMfe.mfeEfficiency * 100)}%`
-          }
-          caption="held-to-peak (winners)"
-        />
-        <KpiTile
-          label="MAE / stop"
-          value={
-            maeMfe.maeStopRatio === null
-              ? '—'
-              : `${Math.round(maeMfe.maeStopRatio * 100)}%`
-          }
-          caption="losers excursion vs stop"
-        />
-      </MetricGroup>
-
-      <MetricGroup title="Daily">
-        <KpiTile
-          label="Best day"
-          value={dayStats.bestDay === null ? '—' : formatUsd(dayStats.bestDay)}
-          tone={dayStats.bestDay === null ? 'dim' : 'win'}
-          tooltip="Highest single-day net PNL."
-        />
-        <KpiTile
-          label="Worst day"
-          value={dayStats.worstDay === null ? '—' : formatUsd(dayStats.worstDay)}
-          tone={dayStats.worstDay === null ? 'dim' : 'loss'}
-          tooltip="Lowest single-day net PNL."
-        />
-        <KpiTile
-          label="Avg daily PNL"
-          value={dayStats.avgDailyPnl === null ? '—' : formatUsd(dayStats.avgDailyPnl)}
-          tone={
-            dayStats.avgDailyPnl === null
-              ? 'dim'
-              : dayStats.avgDailyPnl > 0
-                ? 'win'
-                : dayStats.avgDailyPnl < 0
-                  ? 'loss'
-                  : 'dim'
-          }
-          caption={`across ${totalDays} day${totalDays === 1 ? '' : 's'}`}
-          tooltip="Mean PNL across days that had at least one trade."
-        />
-        <KpiTile
-          label="Day win rate"
-          value={
-            dayStats.dayWinRate === null
-              ? '—'
-              : `${Math.round(dayStats.dayWinRate * 100)}%`
-          }
-          caption={`${dayStats.greenDays}G / ${dayStats.redDays}R`}
-          tooltip="Share of trading days that closed green. Different from trade win rate — tells you how often a session ended profitable."
         />
       </MetricGroup>
 

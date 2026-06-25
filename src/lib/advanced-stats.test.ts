@@ -8,7 +8,6 @@ import {
   expectancyDollars,
   expectancyR,
   extremeStats,
-  holdTimeBuckets,
   maeMfeStats,
   maeScatter,
   mfeScatter,
@@ -424,17 +423,33 @@ describe('ratioStats', () => {
     expect(Number.isFinite(stats.tailRatio!)).toBe(true)
   })
 
-  it('tail ratio returns null on samples smaller than 30 days', () => {
-    const trades: ReturnType<typeof tradeWithPnl>[] = []
-    const dates: string[] = []
-    for (let i = 0; i < 20; i++) {
-      const d = `2026-04-${String(i + 1).padStart(2, '0')}`
-      trades.push(tradeWithPnl(i % 3 === 0 ? -50 : 100, { date: d }))
-      dates.push(d)
-    }
-    const series = dailyEquitySeries(trades, dates, 0)
+  it('tail ratio computes once the period has five or more days', () => {
+    // Five days is the floor (kept low by request).
+    const dates = [
+      '2026-04-01',
+      '2026-04-02',
+      '2026-04-03',
+      '2026-04-04',
+      '2026-04-05',
+    ]
+    const series = dailyEquitySeries(
+      dates.map((d, i) => tradeWithPnl(i % 3 === 0 ? -50 : 100, { date: d })),
+      dates,
+      0,
+    )
     const stats = ratioStats(series)
-    expect(stats.tailRatio).toBeNull()
+    expect(stats.tailRatio).not.toBeNull()
+    expect(Number.isFinite(stats.tailRatio!)).toBe(true)
+  })
+
+  it('tail ratio returns null below the five-day floor', () => {
+    const dates = ['2026-04-01', '2026-04-02', '2026-04-03', '2026-04-04']
+    const series = dailyEquitySeries(
+      dates.map((d, i) => tradeWithPnl(i % 2 === 0 ? 100 : -50, { date: d })),
+      dates,
+      0,
+    )
+    expect(ratioStats(series).tailRatio).toBeNull()
   })
 })
 
@@ -557,32 +572,6 @@ describe('time-of-day / weekday / month aggregations', () => {
     expect(arr[1].month).toBe('2026-04')
     expect(arr[1].count).toBe(2)
     expect(arr[1].pnl).toBeCloseTo(25, 5)
-  })
-})
-
-describe('holdTimeBuckets', () => {
-  it('places a 7-minute trade into the 5-15m bucket', () => {
-    const t = tradeWithPnl(100, {
-      executions: [
-        execution({ kind: 'buy', time: '2026-04-15T10:00:00.000Z' }),
-        execution({ kind: 'sell', time: '2026-04-15T10:07:00.000Z' }),
-      ],
-    })
-    const buckets = holdTimeBuckets([t])
-    const target = buckets.find(b => b.label === '5-15m')!
-    expect(target.wins).toBe(1)
-  })
-
-  it('places losers into the losses column', () => {
-    const t = tradeWithPnl(-50, {
-      executions: [
-        execution({ kind: 'buy', time: '2026-04-15T10:00:00.000Z' }),
-        execution({ kind: 'sell', time: '2026-04-15T10:25:00.000Z' }),
-      ],
-    })
-    const buckets = holdTimeBuckets([t])
-    const target = buckets.find(b => b.label === '15-30m')!
-    expect(target.losses).toBe(1)
   })
 })
 

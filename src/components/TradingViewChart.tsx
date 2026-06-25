@@ -33,6 +33,13 @@ import { cn } from '@/lib/utils'
 // period instead of stretching each bar.
 const BAR_SPACING = 10
 
+// Fixed pixel height of the lower fees pane. The remainder of the chart's
+// total `height` goes to the equity pane, so growing `height` grows the
+// equity area without resizing fees. Asserted at chart creation and again
+// after a Line↔Candles swap (lightweight-charts re-distributes pane heights
+// when the main series is replaced).
+const FEE_PANE_HEIGHT = 155
+
 /**
  * Generates UTC-second timestamps on the selected timeframe's cadence so
  * candles land in consecutive slots (no 90-day gaps between quarterly
@@ -843,7 +850,7 @@ export function TradingViewChart({
     // Fixed-height fees pane — the remainder goes to the equity candles,
     // so bumping `height` grows the equity pane without resizing fees.
     const panes = chart.panes()
-    if (panes.length >= 2) panes[1].setHeight(160)
+    if (panes.length >= 2) panes[1].setHeight(FEE_PANE_HEIGHT)
 
     // Mirror the vertical cursor line into the fees pane. The horizontal
     // line is gated by `hoveredPaneIndex` so each pane only draws its own
@@ -1155,7 +1162,7 @@ export function TradingViewChart({
     // to the anchor series, but lightweight-charts may still
     // re-distribute heights when the visible main series swaps.
     const panes = chart.panes()
-    if (panes.length >= 2) panes[1].setHeight(160)
+    if (panes.length >= 2) panes[1].setHeight(FEE_PANE_HEIGHT)
 
     return () => {
       if (adjLinesPrimRef.current) {

@@ -4,6 +4,13 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- Paint the dark page background and scrollbars on the very first frame,
+         before the CSS module loads — otherwise a reload flashes browser-white
+         until index.css resolves. Mirrors --color-bg / color-scheme in src/index.css. -->
+    <meta name="color-scheme" content="dark" />
+    <style>
+      html { background-color: #0b0d12; }
+    </style>
     <!-- applyTheme() overwrites this from JS; the default keeps the
          status-bar dark on first paint, matching our default theme. -->
     <meta name="theme-color" content="#0f1117" />

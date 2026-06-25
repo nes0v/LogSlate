@@ -32,7 +32,6 @@ import {
 } from '@/lib/trade-math'
 import {
   cohortStats,
-  holdTimeBuckets,
   maeScatter,
   mfeScatter,
   pnlByHour,
@@ -59,13 +58,12 @@ const INCLUDE_OVERRIDES_KEY = 'logslate:reports_time_include_overrides'
 const readIncludeOverrides = () =>
   loadJsonFromStorage(INCLUDE_OVERRIDES_KEY, v => (typeof v === 'boolean' ? v : null), false)
 
-type ReportTab = 'general' | 'time' | 'symbol' | 'risk' | 'outcome' | 'compare'
+type ReportTab = 'general' | 'time' | 'symbol' | 'risk' | 'compare'
 const TABS: Array<{ value: ReportTab; label: string }> = [
   { value: 'general', label: 'General' },
   { value: 'symbol', label: 'Symbol' },
   { value: 'time', label: 'Time' },
   { value: 'risk', label: 'Risk' },
-  { value: 'outcome', label: 'Outcome' },
   { value: 'compare', label: 'Compare' },
 ]
 
@@ -341,10 +339,6 @@ export function ReportsRoute() {
                     })
                   }
                 />
-              </div>
-            ) : tab === 'outcome' ? (
-              <div className="bg-(--color-panel) rounded-(--radius) p-3 h-full">
-                <CohortReport trades={filtered} />
               </div>
             ) : (
               <div className="bg-(--color-panel) rounded-(--radius) p-3 h-full">
@@ -720,88 +714,6 @@ function RiskReport({
         </Card>
         <Card title="Position size" caption="contracts per trade">
           <ReportTable rows={sizeRows} />
-        </Card>
-      </SectionGrid>
-    </div>
-  )
-}
-
-// =====================================================================
-// Tab: Wins vs Losses
-// =====================================================================
-
-function CohortReport({ trades }: { trades: TradeRecord[] }) {
-  // Use classifyTrade so scratches (small AHPC trades whose PNL signs are
-  // dominated by fees/slippage) don't get bucketed as winners or losers.
-  const winners = useMemo(
-    () => trades.filter(t => classifyTrade(t) === 'win'),
-    [trades],
-  )
-  const losers = useMemo(
-    () => trades.filter(t => classifyTrade(t) === 'loss'),
-    [trades],
-  )
-  const w = useMemo(() => cohortStats(winners), [winners])
-  const l = useMemo(() => cohortStats(losers), [losers])
-  const wHold = useMemo(() => holdTimeBuckets(winners), [winners])
-  const lHold = useMemo(() => holdTimeBuckets(losers), [losers])
-
-  const rows: Array<{ label: string; w: string; l: string }> = [
-    { label: 'Trades', w: `${w.count}`, l: `${l.count}` },
-    {
-      label: 'Avg realised R',
-      w: w.avgRr === null ? '—' : w.avgRr.toFixed(2),
-      l: l.avgRr === null ? '—' : l.avgRr.toFixed(2),
-    },
-    {
-      label: 'Avg duration',
-      w: fmtDuration(w.avgDuration_ms),
-      l: fmtDuration(l.avgDuration_ms),
-    },
-    {
-      label: 'Avg MAE',
-      w: w.avgMae === null ? '—' : formatUsd(-w.avgMae),
-      l: l.avgMae === null ? '—' : formatUsd(-l.avgMae),
-    },
-    {
-      label: 'Avg MFE',
-      w: w.avgMfe === null ? '—' : formatUsd(w.avgMfe),
-      l: l.avgMfe === null ? '—' : formatUsd(l.avgMfe),
-    },
-    {
-      label: 'Avg fees',
-      w: formatUsd(-w.avgFees),
-      l: formatUsd(-l.avgFees),
-    },
-  ]
-  return (
-    <div className="space-y-8">
-      <Card title="Winners vs Losers">
-        <div className="text-sm">
-          <div className="grid grid-cols-[1fr_120px_120px] gap-2 py-1 mb-2 border-b border-(--color-panel-3) text-(--color-text-dim) text-xs">
-            <div></div>
-            <div className="text-right text-(--color-win)">Winners</div>
-            <div className="text-right text-(--color-loss)">Losers</div>
-          </div>
-          {rows.map(r => (
-            <div
-              key={r.label}
-              className="grid grid-cols-[1fr_120px_120px] gap-2 py-1"
-            >
-              <div className="text-(--color-text-dim)">{r.label}</div>
-              <div className="text-right font-mono tabular-nums">{r.w}</div>
-              <div className="text-right font-mono tabular-nums">{r.l}</div>
-            </div>
-          ))}
-        </div>
-      </Card>
-
-      <SectionGrid>
-        <Card title="Winners — duration">
-          <HoldRow data={wHold} />
-        </Card>
-        <Card title="Losers — duration">
-          <HoldRow data={lHold} />
         </Card>
       </SectionGrid>
     </div>
@@ -1213,37 +1125,6 @@ function PlannedRRTable({
             >
               {formatUsd(r.pnl)}
             </div>
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
-function HoldRow({ data }: { data: ReturnType<typeof holdTimeBuckets> }) {
-  const max = Math.max(1, ...data.map(d => d.wins + d.losses))
-  return (
-    <div className="grid grid-flow-col auto-cols-fr gap-2 h-[100px] items-end">
-      {data.map(d => {
-        const total = d.wins + d.losses
-        const pct = total === 0 ? 2 : (total / max) * 100
-        const winPct = total === 0 ? 0 : (d.wins / total) * 100
-        return (
-          <div key={d.label} className="flex flex-col items-center gap-1">
-            <div className="text-xs font-mono text-(--color-text-dim)">
-              {total || ''}
-            </div>
-            <div className="w-full flex flex-col" style={{ height: `${pct}%` }}>
-              <div
-                style={{ height: `${winPct}%`, backgroundColor: 'var(--color-win)', opacity: 0.85 }}
-                className="rounded-t-sm"
-              />
-              <div
-                style={{ height: `${100 - winPct}%`, backgroundColor: 'var(--color-loss)', opacity: 0.85 }}
-                className="rounded-b-sm"
-              />
-            </div>
-            <div className="text-xs font-mono text-(--color-text-dim)">{d.label}</div>
           </div>
         )
       })}

@@ -382,12 +382,11 @@ export function ratioStats(series: EquityPoint[]): RatioStats {
   // mean of the top 5% over the magnitude of the bottom 5%. The old
   // single-percentile form (|p95| / |p5|) exploded when one near-zero
   // value happened to land at the boundary; averaging at least three
-  // samples on each side smooths it. Requires ≥30 daily returns so
-  // the tails are statistically meaningful (and to keep tail size
-  // proportional rather than swallowing the whole sample on tiny
-  // datasets).
+  // samples on each side smooths it. Requires ≥5 daily returns. Note the
+  // three-sample tails overlap below six days (the middle day lands in
+  // both), so 5-day readings lean optimistic — kept low by request.
   let tailRatio: number | null = null
-  if (pnls.length >= 30) {
+  if (pnls.length >= 5) {
     const sorted = [...pnls].sort((a, b) => a - b)
     const tailSize = Math.max(3, Math.floor(sorted.length * 0.05))
     const losingTail = sorted.slice(0, tailSize)
@@ -659,33 +658,6 @@ export function pnlByMonth(
   return Array.from(m.entries())
     .map(([month, v]) => ({ month, ...v }))
     .sort((a, b) => (a.month < b.month ? -1 : 1))
-}
-
-// ---------- hold-time histogram ------------------------------------
-
-const HOLD_EDGES_MIN: Array<[number, number, string]> = [
-  [0, 1, '<1m'],
-  [1, 5, '1-5m'],
-  [5, 15, '5-15m'],
-  [15, 30, '15-30m'],
-  [30, 60, '30-60m'],
-  [60, 120, '1-2h'],
-  [120, 240, '2-4h'],
-  [240, Infinity, '4h+'],
-]
-export function holdTimeBuckets(trades: TradeRecord[]): Array<{ label: string; wins: number; losses: number }> {
-  const out = HOLD_EDGES_MIN.map(([, , label]) => ({ label, wins: 0, losses: 0 }))
-  for (const t of trades) {
-    const times = t.executions.map(e => Date.parse(e.time)).filter(n => !Number.isNaN(n))
-    if (times.length < 2) continue
-    const minutes = (Math.max(...times) - Math.min(...times)) / 60000
-    const idx = HOLD_EDGES_MIN.findIndex(([lo, hi]) => minutes >= lo && minutes < hi)
-    if (idx < 0) continue
-    const outcome = classifyTrade(t)
-    if (outcome === 'win') out[idx].wins++
-    else if (outcome === 'loss') out[idx].losses++
-  }
-  return out
 }
 
 // ---------- Zella-style composite score ----------------------------

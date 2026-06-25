@@ -61,6 +61,12 @@ import { loadJsonFromStorage, saveJsonToStorage } from '@/lib/storage'
 
 const TRADES_SECTION_OPEN_STORAGE_KEY = 'logslate.overview.tradesSectionOpen'
 
+// Total height of the equity/fees chart. The lazy-mount placeholder reserves
+// the same height so the slot doesn't jump when the chart swaps in. The fees
+// pane inside is fixed (see FEE_PANE_HEIGHT in TradingViewChart); the rest is
+// the equity area, so bump this to grow the equity curve.
+const EQUITY_CHART_HEIGHT = 752
+
 export function OverviewRoute() {
   const [params, setParams] = useSearchParams()
   const navigate = useNavigate()
@@ -543,7 +549,7 @@ export function OverviewRoute() {
             else navigate(bucketNavTarget(key, timeframe))
           }}
           title="Equity and fees"
-          height={698}
+          height={EQUITY_CHART_HEIGHT}
           view={equityView === 'curve' ? 'line' : 'candles'}
           headerRight={
             <div className="flex items-center gap-2">
@@ -567,7 +573,7 @@ export function OverviewRoute() {
           // the "no trades" empty-state before the chart mounts.
           <div
             aria-hidden
-            style={{ height: 698 }}
+            style={{ height: EQUITY_CHART_HEIGHT }}
             className="rounded-(--radius) bg-(--color-panel)"
           />
         )
