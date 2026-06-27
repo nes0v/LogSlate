@@ -148,6 +148,12 @@ export interface Day {
   // stats (win rate, R-distribution, donuts) still read actual trade rows,
   // so the override never masquerades as a trade. Absent/null = no override.
   pnl_override?: number | null
+  // Informational total broker fees for an OVERRIDE day (positive USD). Only
+  // meaningful when `pnl_override` is set. Never alters net or equity —
+  // `pnl_override` is already net of fees. This only (a) folds into the `fees`
+  // headline so it isn't blind to override days and (b) lets gross reconcile
+  // as net + fees. Absent/null = the override day's fees are unknown (0).
+  fees_override?: number | null
   created_at: string
   updated_at: string
 }

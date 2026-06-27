@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { listDayPnlOverrides } from '@/db/queries'
+import { listDayFeesOverrides, listDayPnlOverrides } from '@/db/queries'
 import type { TradeRecord } from '@/db/types'
 import { defaultRange } from '@/lib/shared-filters'
 import { useDefaultRangeMonths } from '@/lib/default-range-preference'
@@ -15,6 +15,9 @@ const EMPTY_OVERRIDES = new Map<string, number>()
 export interface DefaultRangeFilters {
   /** Day-level PNL overrides (date → value). Stable empty map while loading. */
   overridesByDate: Map<string, number>
+  /** Informational fees for override days (date → value). Sparse companion to
+   *  `overridesByDate`. Stable empty map while loading. */
+  feesOverridesByDate: Map<string, number>
   /** True once the data that feeds the default range — trades AND overrides —
    *  has resolved. Deliberately excludes models so the filter bar can fill its
    *  default window without waiting on the slower models query (which would
@@ -51,7 +54,15 @@ export function useDefaultRangeFilters(
     [accountId],
   )
   const overridesByDate = overridesQuery ?? EMPTY_OVERRIDES
-  const rangeReady = allTrades !== undefined && overridesQuery !== undefined
+  const feesOverridesQuery = useLiveQuery(
+    () => listDayFeesOverrides(accountId),
+    [accountId],
+  )
+  const feesOverridesByDate = feesOverridesQuery ?? EMPTY_OVERRIDES
+  const rangeReady =
+    allTrades !== undefined &&
+    overridesQuery !== undefined &&
+    feesOverridesQuery !== undefined
 
   const lastActivityDate = useMemo(() => {
     let max: string | null = null
@@ -74,5 +85,5 @@ export function useDefaultRangeFilters(
     }
   }, [urlFilters, rangeReady, defaultWindow])
 
-  return { overridesByDate, rangeReady, defaultWindow, filters }
+  return { overridesByDate, feesOverridesByDate, rangeReady, defaultWindow, filters }
 }

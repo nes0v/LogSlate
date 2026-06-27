@@ -151,7 +151,7 @@ export function OverviewRoute() {
   // Reports). `rangeReady` is trades+overrides only — it deliberately excludes
   // models so the filter bar fills its default without waiting on the slower
   // models query (which would surface as a visible "Any"→date jump).
-  const { overridesByDate, rangeReady, defaultWindow, filters } =
+  const { overridesByDate, feesOverridesByDate, rangeReady, defaultWindow, filters } =
     useDefaultRangeFilters(accountId, allTrades, urlFilters)
   // Models are resolved once at the route level so trade rows render
   // with the right name on first paint (instead of flashing "gambling"
@@ -181,18 +181,23 @@ export function OverviewRoute() {
     () => hasAttributeFilter(filters) ? new Map<string, number>() : overridesByDate,
     [filters, overridesByDate],
   )
+  const effectiveFeesOverrides = useMemo(
+    () => hasAttributeFilter(filters) ? new Map<string, number>() : feesOverridesByDate,
+    [filters, feesOverridesByDate],
+  )
   // Net PNL for the visible window with day overrides folded in: each
   // override date replaces its trades' sum. Population fields (wins, win
   // rate, best/worst) stay trade-only — an override day isn't a win or loss.
+  // Fees fold in the override days' informational fees so the total isn't
+  // blind to them, and gross is re-derived as net + fees so it reconciles.
   const stats = useMemo<AggregateStats>(() => {
     const from = filters.from
     const to = filters.to
-    const net = sumNetPnl(
-      netPnlByDate(filtered, effectiveOverrides),
-      d => (from == null || d >= from) && (to == null || d <= to),
-    )
-    return { ...baseStats, net_pnl: net }
-  }, [baseStats, filtered, effectiveOverrides, filters.from, filters.to])
+    const inWindow = (d: string) => (from == null || d >= from) && (to == null || d <= to)
+    const net = sumNetPnl(netPnlByDate(filtered, effectiveOverrides), inWindow)
+    const fees = baseStats.fees + sumNetPnl(effectiveFeesOverrides, inWindow)
+    return { ...baseStats, net_pnl: net, fees }
+  }, [baseStats, filtered, effectiveOverrides, effectiveFeesOverrides, filters.from, filters.to])
 
   // Lazy-mount the TradingView chart on a tick after the rest of the
   // page has painted. The chart synchronously builds canvases, primitives,
@@ -321,8 +326,9 @@ export function OverviewRoute() {
         chartAdjByDate,
         chartStartingEquity ?? 0,
         effectiveOverrides,
+        effectiveFeesOverrides,
       ),
-    [tfBuckets, chartAdjByDate, chartStartingEquity, effectiveOverrides],
+    [tfBuckets, chartAdjByDate, chartStartingEquity, effectiveOverrides, effectiveFeesOverrides],
   )
 
   // Marker visibility is user-controlled per kind (Settings → Adjustments).

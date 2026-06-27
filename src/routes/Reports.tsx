@@ -157,7 +157,7 @@ export function ReportsRoute() {
   // Reports has no models query, so its full `loaded` gate is just the hook's
   // `rangeReady` (trades + overrides). The explicit `allTrades` check is
   // redundant with `rangeReady` but lets TS narrow it in branches.
-  const { overridesByDate, rangeReady, defaultWindow, filters } =
+  const { overridesByDate, feesOverridesByDate, rangeReady, defaultWindow, filters } =
     useDefaultRangeFilters(accountId, allTrades, urlFilters)
   const loaded = allTrades !== undefined && rangeReady
 
@@ -170,15 +170,18 @@ export function ReportsRoute() {
     () => hasAttributeFilter(filters) ? new Map<string, number>() : overridesByDate,
     [filters, overridesByDate],
   )
+  const effectiveFeesOverrides = useMemo(
+    () => hasAttributeFilter(filters) ? new Map<string, number>() : feesOverridesByDate,
+    [filters, feesOverridesByDate],
+  )
   const stats = useMemo<AggregateStats>(() => {
     const from = filters.from
     const to = filters.to
-    const net = sumNetPnl(
-      netPnlByDate(filtered, effectiveOverrides),
-      d => (from == null || d >= from) && (to == null || d <= to),
-    )
-    return { ...baseStats, net_pnl: net }
-  }, [baseStats, filtered, effectiveOverrides, filters.from, filters.to])
+    const inWindow = (d: string) => (from == null || d >= from) && (to == null || d <= to)
+    const net = sumNetPnl(netPnlByDate(filtered, effectiveOverrides), inWindow)
+    const fees = baseStats.fees + sumNetPnl(effectiveFeesOverrides, inWindow)
+    return { ...baseStats, net_pnl: net, fees }
+  }, [baseStats, filtered, effectiveOverrides, effectiveFeesOverrides, filters.from, filters.to])
   const { rangeStart, rangeEnd } = useMemo(() => {
     if (filters.from && filters.to) return { rangeStart: filters.from, rangeEnd: filters.to }
     if (filtered.length === 0) return { rangeStart: null, rangeEnd: null }

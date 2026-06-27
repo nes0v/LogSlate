@@ -471,11 +471,62 @@ export async function setDayPnlOverride(
     const next: Day = {
       ...existing,
       pnl_override: value ?? undefined,
+      // Fees are informational about the net override; clearing the net
+      // orphans them, so drop fees_override whenever the override is cleared.
+      fees_override: value == null ? undefined : existing.fees_override,
       updated_at: ts,
     }
     if (!dayHasContent(next)) {
       await db.days.delete(id)
       return
+    }
+    await db.days.put(next)
+  })
+}
+
+export async function getDayFeesOverride(
+  accountId: string,
+  date: string,
+): Promise<number | null> {
+  const day = await getDay(accountId, date)
+  return day?.fees_override ?? null
+}
+
+/** All fees overrides for an account as a `date → value` map. Like
+ *  `listDayPnlOverrides` — small days table, filtered in memory. Only days
+ *  that also carry a `pnl_override` ever hold a `fees_override`, so this is
+ *  effectively a sparse companion to the net-override map. */
+export async function listDayFeesOverrides(
+  accountId: string,
+): Promise<Map<string, number>> {
+  const rows = await db.days.where('account_id').equals(accountId).toArray()
+  const m = new Map<string, number>()
+  for (const d of rows) {
+    if (typeof d.fees_override === 'number') m.set(d.date, d.fees_override)
+  }
+  return m
+}
+
+/** Sets the informational fees figure for an override day. No-op unless the
+ *  day already carries a `pnl_override` (fees alone is meaningless). Passing
+ *  `null` clears it. Never touches net or equity. Fees are a cost, so the
+ *  magnitude is stored regardless of sign — a negative entry would otherwise
+ *  subtract from the fees total instead of adding to it. */
+export async function setDayFeesOverride(
+  accountId: string,
+  date: string,
+  value: number | null,
+): Promise<void> {
+  const id = dayId(accountId, date)
+  const ts = now()
+  await db.transaction('rw', db.days, async () => {
+    const existing = await db.days.get(id)
+    // Fees are meaningless without a net override to attribute them to.
+    if (!existing || typeof existing.pnl_override !== 'number') return
+    const next: Day = {
+      ...existing,
+      fees_override: value == null ? undefined : Math.abs(value),
+      updated_at: ts,
     }
     await db.days.put(next)
   })

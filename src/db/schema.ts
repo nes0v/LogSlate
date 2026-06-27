@@ -65,6 +65,10 @@ class LogslateDB extends Dexie {
     // v11: adds optional `Day.pnl_override` (non-indexed) — no migration
     // needed, IndexedDB stores are schemaless for unindexed fields.
     this.version(11)
+
+    // v12: adds optional `Day.fees_override` (non-indexed) — informational
+    // fees for an override day. No migration needed (unindexed field).
+    this.version(12)
   }
 }
 

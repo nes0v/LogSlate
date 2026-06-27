@@ -20,9 +20,12 @@ import {
   listDayScreenshotsFor,
   listModels,
   getDayPnlOverride,
+  getDayFeesOverride,
+  listDayFeesOverrides,
   removeDayScreenshot,
   reorderModels,
   setDayNote,
+  setDayFeesOverride,
   setDayPnlOverride,
   slugifyAccountName,
   updateAdjustment,
@@ -156,6 +159,43 @@ describe('day-override / trade mutual exclusion', () => {
     })
     await setDayPnlOverride(MAIN_ACCOUNT_ID, '2026-04-15', null)
     expect(await getDayPnlOverride(MAIN_ACCOUNT_ID, '2026-04-15')).toBeNull()
+  })
+})
+
+describe('day fees override', () => {
+  it('no-ops when the day has no PNL override (fees alone is meaningless)', async () => {
+    await setDayFeesOverride(MAIN_ACCOUNT_ID, '2026-04-15', 80)
+    expect(await getDayFeesOverride(MAIN_ACCOUNT_ID, '2026-04-15')).toBeNull()
+    expect(await getDay(MAIN_ACCOUNT_ID, '2026-04-15')).toBeUndefined()
+  })
+
+  it('stores fees on an override day and clearing the net drops the fees', async () => {
+    await setDayPnlOverride(MAIN_ACCOUNT_ID, '2026-04-15', 295)
+    await setDayFeesOverride(MAIN_ACCOUNT_ID, '2026-04-15', 80)
+    expect(await getDayFeesOverride(MAIN_ACCOUNT_ID, '2026-04-15')).toBe(80)
+    expect(await listDayFeesOverrides(MAIN_ACCOUNT_ID)).toEqual(
+      new Map([['2026-04-15', 80]]),
+    )
+
+    // Clearing the net override orphans the fees, so they're dropped too —
+    // and the now-empty row is garbage-collected.
+    await setDayPnlOverride(MAIN_ACCOUNT_ID, '2026-04-15', null)
+    expect(await getDayFeesOverride(MAIN_ACCOUNT_ID, '2026-04-15')).toBeNull()
+    expect(await getDay(MAIN_ACCOUNT_ID, '2026-04-15')).toBeUndefined()
+  })
+
+  it('stores the magnitude so a negative fee adds to the total, not subtracts', async () => {
+    await setDayPnlOverride(MAIN_ACCOUNT_ID, '2026-04-15', 295)
+    await setDayFeesOverride(MAIN_ACCOUNT_ID, '2026-04-15', -80)
+    expect(await getDayFeesOverride(MAIN_ACCOUNT_ID, '2026-04-15')).toBe(80)
+  })
+
+  it('setDayFeesOverride(null) clears fees but keeps the net override', async () => {
+    await setDayPnlOverride(MAIN_ACCOUNT_ID, '2026-04-15', 295)
+    await setDayFeesOverride(MAIN_ACCOUNT_ID, '2026-04-15', 80)
+    await setDayFeesOverride(MAIN_ACCOUNT_ID, '2026-04-15', null)
+    expect(await getDayFeesOverride(MAIN_ACCOUNT_ID, '2026-04-15')).toBeNull()
+    expect(await getDayPnlOverride(MAIN_ACCOUNT_ID, '2026-04-15')).toBe(295)
   })
 })
 

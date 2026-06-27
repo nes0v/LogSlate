@@ -311,4 +311,17 @@ describe('computeCandles', () => {
     expect(c.high).toBeCloseTo(195.5, 5)
     expect(c.low).toBeLessThan(0)
   })
+
+  it('an override day steps by its net and counts its informational fees', () => {
+    // The override replaces the day's trades with a single net step; its fees
+    // never move equity (the net is already net of fees) but DO count toward
+    // the bucket's fees pane so it isn't blind to override days.
+    const day = bucketWith([], '2026-04-01')
+    const overrides = new Map<string, number>([['2026-04-01', 300]])
+    const feeOverrides = new Map<string, number>([['2026-04-01', 80]])
+    const [c] = computeCandles([day], new Map(), 0, overrides, feeOverrides)
+    expect(c.close).toBeCloseTo(300, 5) // equity steps by the net only
+    expect(c.fees).toBeCloseTo(80, 5) // fees pane picks up the override's fees
+    expect(c.isOverride).toBe(true)
+  })
 })

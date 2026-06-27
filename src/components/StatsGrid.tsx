@@ -8,18 +8,24 @@ interface StatsGridProps {
   /** When the day's net is a manual override, the trade-derived gross/fees
    *  don't reconcile with the headline — suppress that sub-label. */
   hideBreakdown?: boolean
+  /** An empty day (no trades, no override) has no PNL to speak of — show a
+   *  dash instead of $0.00 and drop the gross/fees breakdown entirely. */
+  emptyPnl?: boolean
 }
 
-export function StatsGrid({ stats, hideBreakdown }: StatsGridProps) {
+export function StatsGrid({ stats, hideBreakdown, emptyPnl }: StatsGridProps) {
   const s = stats
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
       <Stat
         label="PNL"
-        value={formatUsd(s.net_pnl)}
-        tone={s.net_pnl > 0 ? 'win' : s.net_pnl < 0 ? 'loss' : 'neutral'}
-        sub={hideBreakdown ? undefined : `gross ${formatUsd(s.gross_pnl)} / fees ${formatUsd(-s.fees)}`}
-        big
+        value={emptyPnl ? '—' : formatUsd(s.net_pnl)}
+        tone={emptyPnl ? 'neutral' : s.net_pnl > 0 ? 'win' : s.net_pnl < 0 ? 'loss' : 'neutral'}
+        sub={
+          emptyPnl || hideBreakdown
+            ? undefined
+            : `gross ${formatUsd(s.gross_pnl)} / fees ${formatUsd(-s.fees)}`
+        }
       />
       <Stat
         label="Avg risk"
@@ -28,7 +34,7 @@ export function StatsGrid({ stats, hideBreakdown }: StatsGridProps) {
       <Stat
         label="Avg RR"
         value={s.avg_realized_rr === null ? '—' : `${s.avg_realized_rr.toFixed(2)}x`}
-        sub={`planned ${s.avg_planned_rr === null ? '—' : `${s.avg_planned_rr.toFixed(2)}x`}`}
+        sub={s.avg_planned_rr === null ? undefined : `planned ${s.avg_planned_rr.toFixed(2)}x`}
         tone={
           s.avg_realized_rr === null
             ? 'neutral'
@@ -52,21 +58,18 @@ function Stat({
   value,
   sub,
   tone = 'neutral',
-  big,
 }: {
   label: React.ReactNode
   value: string
   sub?: string
   tone?: 'win' | 'loss' | 'neutral'
-  big?: boolean
 }) {
   return (
     <div className="bg-(--color-panel) rounded-(--radius) p-3">
       <div className="text-xs text-(--color-text-dim) uppercase tracking-wider">{label}</div>
       <div
         className={cn(
-          'font-mono mt-1',
-          big ? 'text-xl' : 'text-base',
+          'font-mono mt-1 text-base',
           tone === 'win' && 'text-(--color-win)',
           tone === 'loss' && 'text-(--color-loss)',
         )}

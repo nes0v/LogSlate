@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ChevronRight } from 'lucide-react'
-import { setDayPnlOverride } from '@/db/queries'
+import { setDayFeesOverride, setDayPnlOverride } from '@/db/queries'
 import { NumberInput } from '@/components/form/NumberInput'
 import { inputClass } from '@/components/form/Field'
 import { cn, errorMessage } from '@/lib/utils'
@@ -8,9 +8,15 @@ import { cn, errorMessage } from '@/lib/utils'
 interface DayPnlOverrideSectionProps {
   accountId: string
   date: string // YYYY-MM-DD
-  /** Stored override for this (account, date); null if none. */
+  /** Stored net override for this (account, date); null if none. */
   stored: number | null
+  /** Stored informational fees for this override day; null if none. */
+  storedFees: number | null
 }
+
+// Round a money figure to cents so the stored value matches the 2-decimal
+// display and never carries float noise into the fees stat / equity math.
+const cents = (n: number | null) => (n === null ? null : Math.round(n * 100) / 100)
 
 /**
  * Manual net-PNL override for the whole day. When set, this figure REPLACES
@@ -25,8 +31,14 @@ interface DayPnlOverrideSectionProps {
  * local `value` shadows the stored value so typing feels immediate; it
  * re-syncs from `stored` only when the field isn't focused (e.g. sync).
  */
-export function DayPnlOverrideSection({ accountId, date, stored }: DayPnlOverrideSectionProps) {
+export function DayPnlOverrideSection({
+  accountId,
+  date,
+  stored,
+  storedFees,
+}: DayPnlOverrideSectionProps) {
   const [value, setValue] = useState<number | null>(stored)
+  const [fees, setFees] = useState<number | null>(storedFees)
   const [error, setError] = useState<string | null>(null)
   // Default open on days that already carry an override; collapsed otherwise.
   // Keyed by `date` at the call site, so it re-derives on each day's mount.
@@ -39,24 +51,35 @@ export function DayPnlOverrideSection({ accountId, date, stored }: DayPnlOverrid
   // cleanup only reads them after mount, so the post-commit timing is fine.
   const valueRef = useRef(value)
   const storedRef = useRef(stored)
+  const feesRef = useRef(fees)
+  const storedFeesRef = useRef(storedFees)
   useEffect(() => {
     valueRef.current = value
     storedRef.current = stored
+    feesRef.current = fees
+    storedFeesRef.current = storedFees
   })
 
   useEffect(() => {
     if (focused.current) return
     setValue(stored)
-  }, [stored])
+    setFees(storedFees)
+  }, [stored, storedFees])
 
   const commit = useCallback(
-    async (raw: number | null) => {
-      // Money figure — round to cents so the stored value matches the
-      // 2-decimal display and never carries float noise into equity math.
-      const next = raw === null ? null : Math.round(raw * 100) / 100
-      if (next === storedRef.current) return
+    async (rawNet: number | null, rawFees: number | null) => {
+      const nextNet = cents(rawNet)
+      const nextFees = cents(rawFees)
+      const netChanged = nextNet !== storedRef.current
+      const feesChanged = nextFees !== storedFeesRef.current
+      if (!netChanged && !feesChanged) return
       try {
-        await setDayPnlOverride(accountId, date, next)
+        // Net first: it creates the day row. Clearing the net (null) also
+        // drops fees in the DB, so only write fees when a net override stands.
+        if (netChanged) await setDayPnlOverride(accountId, date, nextNet)
+        if (nextNet != null && feesChanged) {
+          await setDayFeesOverride(accountId, date, nextFees)
+        }
         setError(null)
       } catch (e) {
         setError(`Couldn't save override: ${errorMessage(e)}`)
@@ -66,10 +89,10 @@ export function DayPnlOverrideSection({ accountId, date, stored }: DayPnlOverrid
   )
 
   // Flush on unmount: a route change (back button, prev/next-day nav) tears
-  // the field down before `onBlur` fires, so commit the latest value here.
+  // the field down before `onBlur` fires, so commit the latest values here.
   // `commit` early-returns when nothing changed, so an untouched field writes
   // nothing.
-  useEffect(() => () => void commit(valueRef.current), [commit])
+  useEffect(() => () => void commit(valueRef.current, feesRef.current), [commit])
 
   return (
     <details
@@ -89,7 +112,7 @@ export function DayPnlOverrideSection({ accountId, date, stored }: DayPnlOverrid
         onBlur={() => {
           if (!document.hasFocus()) return
           focused.current = false
-          void commit(value)
+          void commit(value, fees)
         }}
       >
         <div className="flex items-center gap-3">
@@ -104,6 +127,23 @@ export function DayPnlOverrideSection({ accountId, date, stored }: DayPnlOverrid
             className={cn(inputClass, 'font-mono max-w-[12rem]')}
           />
         </div>
+        {value != null && (
+          <div className="flex items-center gap-3">
+            <p className="text-sm text-(--color-text-dim) flex-1">
+              Total broker fees for this day (optional). Informational only —
+              it doesn't change the net above, just the fees stat.
+            </p>
+            <NumberInput
+              value={fees}
+              // Fees are a cost — clamp to the magnitude so a negative entry
+              // adds to the fees total instead of subtracting from it. The
+              // field reformats to this absolute value on blur.
+              onChange={v => setFees(v == null ? null : Math.abs(v))}
+              decimals={2}
+              className={cn(inputClass, 'font-mono max-w-[12rem]')}
+            />
+          </div>
+        )}
         {error && <p className="text-xs text-(--color-loss)">{error}</p>}
       </div>
     </details>

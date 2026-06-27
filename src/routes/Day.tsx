@@ -5,7 +5,7 @@ import { format, isWeekend, parseISO } from 'date-fns'
 import { Plus } from 'lucide-react'
 import { db, dayHasContent } from '@/db/schema'
 import type { Model, NewsEvent, TradeRecord } from '@/db/types'
-import { getDayNote, getDayPnlOverride, listDayScreenshotsFor, listModels } from '@/db/queries'
+import { getDayFeesOverride, getDayNote, getDayPnlOverride, listDayScreenshotsFor, listModels } from '@/db/queries'
 import { parseScreenshotRef, resolveScreenshotUrl } from '@/lib/drive-images'
 import { useActiveAccountId } from '@/lib/active-account'
 import { firstExecutionMs } from '@/lib/trade-math'
@@ -36,6 +36,7 @@ interface CachedDay {
   note?: string
   screenshots?: string[]
   pnlOverride?: number | null
+  feesOverride?: number | null
 }
 const DAY_CACHE_CAP = 100
 const dayDataCache = new Map<string, CachedDay>()
@@ -73,12 +74,13 @@ async function preloadDay(accountId: string, date: string): Promise<void> {
   if (!accountId || !date) return
   const key = dayCacheKey(accountId, date)
   if (dayDataCache.has(key)) return
-  const [tradeRows, newsRows, note, screenshots, pnlOverride] = await Promise.all([
+  const [tradeRows, newsRows, note, screenshots, pnlOverride, feesOverride] = await Promise.all([
     db.trades.where('[account_id+date]').equals([accountId, date]).toArray(),
     db.news.where('date').equals(date).toArray(),
     getDayNote(accountId, date),
     listDayScreenshotsFor(accountId, date),
     getDayPnlOverride(accountId, date),
+    getDayFeesOverride(accountId, date),
   ])
   const trades = tradeRows.sort((a, b) => {
     const ka = firstExecutionMs(a) ?? Date.parse(a.created_at)
@@ -89,7 +91,7 @@ async function preloadDay(accountId: string, date: string): Promise<void> {
     return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
   })
   newsRows.sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at))
-  writeDayCache(key, { trades, news: newsRows, note, screenshots, pnlOverride })
+  writeDayCache(key, { trades, news: newsRows, note, screenshots, pnlOverride, feesOverride })
   // Warm the screenshot URL cache so thumbs paint as an image on the
   // first frame after navigation instead of flashing the "loading…"
   // placeholder while resolveScreenshotUrl awaits the IndexedDB blob.
@@ -175,6 +177,14 @@ function DayView() {
     },
     [accountId, date],
   )
+  const feesOverrideResult = useLiveQuery(
+    async () => {
+      const value = await getDayFeesOverride(accountId, date)
+      patchDayCache(accountId, date, { feesOverride: value })
+      return { forDate: date, forAccount: accountId, value }
+    },
+    [accountId, date],
+  )
   // Stale-while-revalidate: fall back to the module cache so a navigation
   // to a preloaded neighbour renders with data on the first frame instead
   // of unmounting the content section until Dexie settles. Reading
@@ -193,6 +203,9 @@ function DayView() {
   const pnlOverride = fresh(pnlOverrideResult)
     ? pnlOverrideResult!.value
     : cached?.pnlOverride
+  const feesOverride = fresh(feesOverrideResult)
+    ? feesOverrideResult!.value
+    : cached?.feesOverride
   // Models are resolved once at the route level so trade rows render with
   // the right name on first paint instead of flashing "gambling" → real.
   const models = useLiveQuery(
@@ -240,6 +253,7 @@ function DayView() {
     note !== undefined &&
     screenshots !== undefined &&
     pnlOverride !== undefined &&
+    feesOverride !== undefined &&
     models !== undefined &&
     pendingFirstPaintDone
 
@@ -297,8 +311,13 @@ function DayView() {
   // as-is — the override isn't a trade).
   const stats = useMemo(() => {
     const base = aggregate(trades ?? [])
-    return pnlOverride != null ? { ...base, net_pnl: pnlOverride } : base
-  }, [trades, pnlOverride])
+    if (pnlOverride == null) return base
+    // Override replaces the day's net. If informational fees were recorded,
+    // fold them in and re-derive gross as net + fees so the breakdown
+    // reconciles; otherwise fees are unknown (left at the trade-derived 0).
+    const fees = feesOverride ?? 0
+    return { ...base, net_pnl: pnlOverride, fees, gross_pnl: pnlOverride + fees }
+  }, [trades, pnlOverride, feesOverride])
 
   // The day-override and trades are mutually exclusive (a tilt day is logged
   // as one net figure INSTEAD of its individual trades). An override is
@@ -347,7 +366,11 @@ function DayView() {
           asynchronously and produce a multi-stage flicker. */}
       {loaded ? (
         <>
-          <StatsGrid stats={stats} hideBreakdown={overrideActive} />
+          <StatsGrid
+            stats={stats}
+            hideBreakdown={overrideActive && feesOverride == null}
+            emptyPnl={(trades?.length ?? 0) === 0 && !overrideActive}
+          />
 
           <DayNewsSection events={news} />
 
@@ -387,6 +410,7 @@ function DayView() {
               accountId={accountId}
               date={date}
               stored={pnlOverride ?? null}
+              storedFees={feesOverride ?? null}
             />
           )}
         </>
