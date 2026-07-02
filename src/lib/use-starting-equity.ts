@@ -67,6 +67,9 @@ export function useStartingEquity(dateKey: string | null | undefined): number | 
     for (const a of priorAdjustments) eq += signedAdjustment(a)
     // Override-only days before `dateKey` aren't in `priorTrades`; restricting
     // the day-net map by date picks them up while excluding on/after `dateKey`.
+    // Always folds in every override (no toggle): the equity baseline is real
+    // account value entering the range. The "Show override days" toggle only
+    // hides override days within the view, never rewrites past equity.
     eq += sumNetPnl(netPnlByDate(priorTrades, overrides), d => d < dateKey!)
     return eq
   }, [priorAdjustments, priorTrades, overrides, dateKey])

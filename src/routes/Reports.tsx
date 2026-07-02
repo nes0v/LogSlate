@@ -10,17 +10,19 @@ import {
   applyFilters,
   FILTER_PARAM_KEYS,
   filtersFromParams,
-  hasAttributeFilter,
+  overridesExcludedByFilters,
   paramsFromFilters,
   type TradeFilters,
 } from '@/lib/filters'
+import { useIncludeOverrides } from '@/lib/use-include-overrides'
+import { useWindowRange } from '@/lib/use-window-range'
 import {
   hasAnyFilter,
   loadSharedFilters,
   saveSharedFilters,
 } from '@/lib/shared-filters'
 import { useDefaultRangeFilters } from '@/lib/use-default-range-filters'
-import { aggregate, signedAdjustment, type AggregateStats } from '@/lib/trade-stats'
+import { aggregate, foldOverridesIntoStats, signedAdjustment, type AggregateStats } from '@/lib/trade-stats'
 import { netPnlByDate, sumNetPnl } from '@/lib/day-pnl'
 import {
   classifyTrade,
@@ -43,20 +45,10 @@ import {
 } from '@/lib/advanced-stats'
 import { formatUsd } from '@/lib/money'
 import { StatsFilterBar } from '@/components/StatsFilterBar'
+import { IncludeOverridesToggle } from '@/components/IncludeOverridesToggle'
 import { AdvancedMetricsSections } from '@/components/AdvancedStats'
 import { BTN_ACCENT } from '@/components/form/buttonClass'
-import { Switch } from '@/components/form/Switch'
-import { loadJsonFromStorage, saveJsonToStorage } from '@/lib/storage'
 import { cn } from '@/lib/utils'
-
-// Persisted toggle: fold day-level PNL overrides into the date-grouped
-// breakdowns (day-of-week / day-of-month / weekly / monthly). Off by default
-// so those views show real, deliberate trades only; flip on to include the
-// combined-PNL "override" days. (When no attribute filter is active, the equity
-// chart, Net PNL, drawdown and consistency stats also include overrides.)
-const INCLUDE_OVERRIDES_KEY = 'logslate:reports_time_include_overrides'
-const readIncludeOverrides = () =>
-  loadJsonFromStorage(INCLUDE_OVERRIDES_KEY, v => (typeof v === 'boolean' ? v : null), false)
 
 type ReportTab = 'general' | 'time' | 'symbol' | 'risk' | 'compare'
 const TABS: Array<{ value: ReportTab; label: string }> = [
@@ -166,31 +158,33 @@ export function ReportsRoute() {
     [allTrades, filters],
   )
   const baseStats = useMemo(() => aggregate(filtered), [filtered])
-  const effectiveOverrides = useMemo(
-    () => hasAttributeFilter(filters) ? new Map<string, number>() : overridesByDate,
-    [filters, overridesByDate],
+  const { rangeStart, rangeEnd } = useWindowRange(filtered, filters)
+  // Global "Show override days" toggle. Beyond attribute filters, the
+  // trade-level tabs (Symbol / Risk / Compare) can't fold overrides in, so
+  // they force it off; General and Time honour it. Weekday keeps overrides
+  // (filtered to that weekday), so it isn't a disabling filter here.
+  const {
+    intent: includeOverridesIntent,
+    disabled: overridesDisabled,
+    hasOverridesInWindow,
+    effectiveOverrides,
+    effectiveFeesOverrides,
+    setIncludeOverrides,
+    preserveParam: preserveOverrideParam,
+  } = useIncludeOverrides({
+    params,
+    setParams,
+    filters,
+    overridesByDate,
+    feesOverridesByDate,
+    rangeStart,
+    rangeEnd,
+    extraDisabled: tab === 'symbol' || tab === 'risk' || tab === 'compare',
+  })
+  const stats = useMemo<AggregateStats>(
+    () => foldOverridesIntoStats(baseStats, filtered, effectiveOverrides, effectiveFeesOverrides, filters.from, filters.to),
+    [baseStats, filtered, effectiveOverrides, effectiveFeesOverrides, filters.from, filters.to],
   )
-  const effectiveFeesOverrides = useMemo(
-    () => hasAttributeFilter(filters) ? new Map<string, number>() : feesOverridesByDate,
-    [filters, feesOverridesByDate],
-  )
-  const stats = useMemo<AggregateStats>(() => {
-    const from = filters.from
-    const to = filters.to
-    const inWindow = (d: string) => (from == null || d >= from) && (to == null || d <= to)
-    const net = sumNetPnl(netPnlByDate(filtered, effectiveOverrides), inWindow)
-    const fees = baseStats.fees + sumNetPnl(effectiveFeesOverrides, inWindow)
-    return { ...baseStats, net_pnl: net, fees }
-  }, [baseStats, filtered, effectiveOverrides, effectiveFeesOverrides, filters.from, filters.to])
-  const { rangeStart, rangeEnd } = useMemo(() => {
-    if (filters.from && filters.to) return { rangeStart: filters.from, rangeEnd: filters.to }
-    if (filtered.length === 0) return { rangeStart: null, rangeEnd: null }
-    const dates = filtered.map(t => t.date).sort()
-    return {
-      rangeStart: filters.from ?? dates[0],
-      rangeEnd: filters.to ?? dates[dates.length - 1],
-    }
-  }, [filtered, filters.from, filters.to])
 
   // Inputs the Risk-metrics card needs. Computed locally from already-
   // loaded `allTrades` + `allAdjustments` so the card doesn't open its
@@ -204,6 +198,9 @@ export function ReportsRoute() {
       if (a.date < rangeStart) eq += signedAdjustment(a)
     }
     // Day-net before the range, with override days replacing their trades.
+    // Raw (not toggled) overrides on purpose: this is real account equity
+    // entering the window. The "Show override days" toggle only hides override
+    // days *within* the view, it doesn't rewrite past equity.
     eq += sumNetPnl(
       netPnlByDate(allTrades ?? [], overridesByDate),
       d => d < rangeStart,
@@ -247,9 +244,10 @@ export function ReportsRoute() {
     if (merged.to === defaultWindow.to) merged.to = null
     saveSharedFilters(hasAnyFilter(merged) ? merged : null)
     const p = paramsFromFilters(merged)
-    // Preserve non-filter UI params (tab, compare) across filter edits.
+    // Preserve non-filter UI params (tab, compare, override-days intent).
     if (currentTabParam) p.set('tab', currentTabParam)
     if (currentCompareParam) p.set('compare', currentCompareParam)
+    preserveOverrideParam(p)
     setParams(p)
   }
   function clear() {
@@ -257,6 +255,8 @@ export function ReportsRoute() {
     const p = new URLSearchParams()
     if (currentTabParam) p.set('tab', currentTabParam)
     if (currentCompareParam) p.set('compare', currentCompareParam)
+    // Clearing filters shouldn't flip the override-days checkbox back on.
+    preserveOverrideParam(p)
     setParams(p)
   }
 
@@ -267,11 +267,25 @@ export function ReportsRoute() {
     <div className="pt-1 space-y-8">
       <div className="flex items-center justify-between mb-8">
         <h1 className="h-8 flex items-center text-lg font-semibold">Reports</h1>
-        {!isDefault && (
-          <button onClick={clear} className={BTN_ACCENT}>
-            <X className="size-4" /> Clear filters
-          </button>
-        )}
+        <div className="flex items-center gap-4">
+          {hasOverridesInWindow && (
+            <IncludeOverridesToggle
+              checked={includeOverridesIntent}
+              disabled={overridesDisabled}
+              disabledReason={
+                overridesExcludedByFilters(filters)
+                  ? "Override days don't apply to the active filter"
+                  : "Override days aren't included in this report"
+              }
+              onChange={setIncludeOverrides}
+            />
+          )}
+          {!isDefault && (
+            <button onClick={clear} className={BTN_ACCENT}>
+              <X className="size-4" /> Clear filters
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Always present (no layout jump). Date values stay "Any" until
@@ -374,11 +388,11 @@ function DaysAndTimeReport({
   trades: TradeRecord[]
   overridesByDate?: Map<string, number>
 }) {
-  const [includeOverrides, setIncludeOverrides] = useState(readIncludeOverrides)
-  const hasOverrides = !!overridesByDate && overridesByDate.size > 0
-  // Only the date-grouped breakdowns honour the toggle. When off (default) they
-  // see real trades only; when on, override days fold into their date bucket.
-  const dateOverrides = includeOverrides ? overridesByDate : undefined
+  // Override inclusion is decided globally (the "Include override days" filter).
+  // `overridesByDate` is already the effective, window-scoped set: empty when
+  // overrides are excluded, otherwise the override days that fold into their
+  // date bucket here.
+  const dateOverrides = overridesByDate
 
   const weekday = useMemo(() => pnlByWeekday(trades, dateOverrides), [trades, dateOverrides])
   const hourFirst = useMemo(() => pnlByHour(trades, 'first'), [trades])
@@ -443,17 +457,6 @@ function DaysAndTimeReport({
           <ReportTable rows={hourRowsLast} />
         </Card>
       </SectionGrid>
-
-      {hasOverrides && (
-        <Switch
-          checked={includeOverrides}
-          onChange={next => {
-            setIncludeOverrides(next)
-            saveJsonToStorage(INCLUDE_OVERRIDES_KEY, next)
-          }}
-          label="Include override days"
-        />
-      )}
 
       <SectionGrid>
         <Card title="Day of week">

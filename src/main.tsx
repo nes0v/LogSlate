@@ -7,6 +7,7 @@ import {
   ensureMainAccount,
 } from '@/db/schema'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
+import { pruneLegacyStorageKeys } from '@/lib/storage'
 import { router } from '@/router'
 import '@/index.css'
 import '@/db/seed' // registers dev helpers on window in dev builds; no-op in prod
@@ -14,6 +15,7 @@ import '@/db/seed' // registers dev helpers on window in dev builds; no-op in pr
 void ensureMainAccount()
 void cleanOrphanedPendingRefs()
 void cleanEmptyHiddenRules()
+pruneLegacyStorageKeys()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

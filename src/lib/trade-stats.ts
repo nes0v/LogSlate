@@ -2,6 +2,7 @@ import { addDays, format } from 'date-fns'
 import type { EquityAdjustment, TradeRecord } from '@/db/types'
 import type { Bucket } from '@/lib/buckets'
 import { dateKeyToDate } from '@/lib/tz'
+import { netPnlByDate, sumNetPnl } from '@/lib/day-pnl'
 import {
   classifyTrade,
   computeDuration,
@@ -40,6 +41,28 @@ export interface AggregateStats {
   avg_win: number | null // average net PNL of winning trades (positive)
   avg_loss: number | null // average net PNL of losing trades (negative)
   avg_duration_ms: number | null // average total duration across trades with timing data
+}
+
+/**
+ * Fold day-level overrides into an aggregate over the visible `[from, to]`
+ * window (null bound = open-ended). Each override date replaces its trades'
+ * net sum, and the override days' informational fees are added so the fee
+ * total isn't blind to them. Population fields (wins, win rate, best/worst)
+ * stay trade-only — an override day isn't a win or a loss. Shared by the
+ * Overview and Reports pages so the two can't drift on override math.
+ */
+export function foldOverridesIntoStats(
+  base: AggregateStats,
+  trades: TradeRecord[],
+  overrides: Map<string, number>,
+  feeOverrides: Map<string, number>,
+  from: string | null,
+  to: string | null,
+): AggregateStats {
+  const inWindow = (d: string) => (from == null || d >= from) && (to == null || d <= to)
+  const net = sumNetPnl(netPnlByDate(trades, overrides), inWindow)
+  const fees = base.fees + sumNetPnl(feeOverrides, inWindow)
+  return { ...base, net_pnl: net, fees }
 }
 
 export function aggregate(trades: TradeRecord[]): AggregateStats {

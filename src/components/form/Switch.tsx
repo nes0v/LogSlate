@@ -6,20 +6,35 @@ interface SwitchProps {
   label: string
   ariaLabel?: string
   className?: string
+  disabled?: boolean
+  title?: string
 }
 
 // Pill-style on/off switch. Label sits left, the track/knob right; the
 // whole row is the click target.
-export function Switch({ checked, onChange, label, ariaLabel, className }: SwitchProps) {
+export function Switch({
+  checked,
+  onChange,
+  label,
+  ariaLabel,
+  className,
+  disabled,
+  title,
+}: SwitchProps) {
   return (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
       aria-label={ariaLabel ?? label}
+      disabled={disabled}
+      title={title}
       onClick={() => onChange(!checked)}
       className={cn(
-        'group flex items-center gap-2 text-sm text-(--color-text-dim) hover:text-(--color-text) transition-colors',
+        'group flex items-center gap-2 text-sm transition-colors',
+        disabled
+          ? 'cursor-not-allowed text-(--color-text-faint)'
+          : 'text-(--color-text-dim) hover:text-(--color-text)',
         className,
       )}
     >

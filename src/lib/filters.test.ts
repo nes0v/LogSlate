@@ -4,8 +4,11 @@ import {
   MODEL_NONE,
   applyFilters,
   coerceFilters,
+  filterOverridesByWeekday,
   filtersFromParams,
   holdBucketOf,
+  includeOverridesFromParams,
+  overridesExcludedByFilters,
   paramsFromFilters,
 } from './filters'
 import { tradeRecord } from '@/test/fixtures'
@@ -268,5 +271,56 @@ describe('filtersFromParams — rejects garbage on every enum', () => {
     expect(f.side).toBeNull()
     expect(f.hold).toBeNull()
     expect(f.emotion).toBeNull()
+  })
+})
+
+describe('overridesExcludedByFilters', () => {
+  it('is false with no filters, or with only date-shaped dimensions', () => {
+    expect(overridesExcludedByFilters(EMPTY_FILTERS)).toBe(false)
+    expect(overridesExcludedByFilters({ ...EMPTY_FILTERS, from: '2026-04-01', to: '2026-04-30' })).toBe(false)
+    // Weekday is date-shaped — override days have a date, so it must NOT exclude.
+    expect(overridesExcludedByFilters({ ...EMPTY_FILTERS, weekday: 'mon' })).toBe(false)
+  })
+
+  it('is true for every per-trade field override days lack', () => {
+    const keys = ['symbol', 'contract', 'session', 'rating', 'outcome', 'side', 'hold', 'emotion', 'model', 'tag'] as const
+    for (const k of keys) {
+      expect(overridesExcludedByFilters({ ...EMPTY_FILTERS, [k]: 'x' })).toBe(true)
+    }
+  })
+})
+
+describe('filterOverridesByWeekday', () => {
+  // 2026-04-13 is a Monday; 2026-04-14 a Tuesday; 2026-04-20 a Monday.
+  const overrides = new Map<string, number>([
+    ['2026-04-13', 100],
+    ['2026-04-14', -50],
+    ['2026-04-20', 75],
+  ])
+
+  it('returns the map unchanged when no weekday is active', () => {
+    expect(filterOverridesByWeekday(overrides, null)).toBe(overrides)
+  })
+
+  it('keeps only entries whose date falls on the weekday', () => {
+    expect(Array.from(filterOverridesByWeekday(overrides, 'mon').entries())).toEqual([
+      ['2026-04-13', 100],
+      ['2026-04-20', 75],
+    ])
+    expect(Array.from(filterOverridesByWeekday(overrides, 'tue').entries())).toEqual([
+      ['2026-04-14', -50],
+    ])
+    expect(filterOverridesByWeekday(overrides, 'wed').size).toBe(0)
+  })
+})
+
+describe('includeOverridesFromParams', () => {
+  it('defaults on when the param is absent', () => {
+    expect(includeOverridesFromParams(new URLSearchParams(''))).toBe(true)
+  })
+
+  it('is off only for the explicit "0" value', () => {
+    expect(includeOverridesFromParams(new URLSearchParams('overrides=0'))).toBe(false)
+    expect(includeOverridesFromParams(new URLSearchParams('overrides=1'))).toBe(true)
   })
 })

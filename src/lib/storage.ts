@@ -38,3 +38,15 @@ export function removeFromStorage(key: string): void {
     // localStorage unavailable — no-op.
   }
 }
+
+// localStorage keys retired by past features. Pruned once at boot so they
+// don't linger in users' browsers after the code that wrote them is gone.
+const LEGACY_STORAGE_KEYS = [
+  // Time-tab "Include override days" switch, replaced by the global
+  // header toggle (a URL param) — see IncludeOverridesToggle.
+  'logslate:reports_time_include_overrides',
+] as const
+
+export function pruneLegacyStorageKeys(): void {
+  for (const key of LEGACY_STORAGE_KEYS) removeFromStorage(key)
+}

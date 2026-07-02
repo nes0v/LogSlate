@@ -24,10 +24,11 @@ import {
   EMPTY_FILTERS,
   FILTER_PARAM_KEYS,
   filtersFromParams,
-  hasAttributeFilter,
   paramsFromFilters,
   type TradeFilters,
 } from '@/lib/filters'
+import { useIncludeOverrides } from '@/lib/use-include-overrides'
+import { useWindowRange } from '@/lib/use-window-range'
 import {
   hasAnyFilter,
   loadSharedFilters,
@@ -35,7 +36,7 @@ import {
 } from '@/lib/shared-filters'
 import { useDefaultRangeFilters } from '@/lib/use-default-range-filters'
 import { firstExecutionMs } from '@/lib/trade-math'
-import { adjustmentsByDate, aggregate, computeCandles, signedAdjustment, type AggregateStats } from '@/lib/trade-stats'
+import { adjustmentsByDate, aggregate, computeCandles, foldOverridesIntoStats, signedAdjustment, type AggregateStats } from '@/lib/trade-stats'
 import { netPnlByDate, sumNetPnl } from '@/lib/day-pnl'
 import { useStartingEquity } from '@/lib/use-starting-equity'
 import { useChartAdjustmentPrefs } from '@/lib/chart-adjustment-prefs'
@@ -56,6 +57,7 @@ import {
   HeroNetPnl,
 } from '@/components/AdvancedStats'
 import { StatsFilterBar } from '@/components/StatsFilterBar'
+import { IncludeOverridesToggle } from '@/components/IncludeOverridesToggle'
 import { BTN_ACCENT } from '@/components/form/buttonClass'
 import { loadJsonFromStorage, saveJsonToStorage } from '@/lib/storage'
 
@@ -177,27 +179,31 @@ export function OverviewRoute() {
   // `aggregate(filtered)` independently — same data, multiple
   // full-array passes per render.
   const baseStats = useMemo(() => aggregate(filtered), [filtered])
-  const effectiveOverrides = useMemo(
-    () => hasAttributeFilter(filters) ? new Map<string, number>() : overridesByDate,
-    [filters, overridesByDate],
+  const { rangeStart, rangeEnd } = useWindowRange(filtered, filters)
+  // Global "Show override days" toggle: intent, gating, the effective
+  // (toggle- and weekday-gated) override maps, and window visibility.
+  const {
+    intent: includeOverridesIntent,
+    disabled: overridesDisabled,
+    hasOverridesInWindow,
+    effectiveOverrides,
+    effectiveFeesOverrides,
+    setIncludeOverrides,
+    preserveParam: preserveOverrideParam,
+  } = useIncludeOverrides({
+    params,
+    setParams,
+    filters,
+    overridesByDate,
+    feesOverridesByDate,
+    rangeStart,
+    rangeEnd,
+  })
+  // Net PNL / fees for the visible window with day overrides folded in.
+  const stats = useMemo<AggregateStats>(
+    () => foldOverridesIntoStats(baseStats, filtered, effectiveOverrides, effectiveFeesOverrides, filters.from, filters.to),
+    [baseStats, filtered, effectiveOverrides, effectiveFeesOverrides, filters.from, filters.to],
   )
-  const effectiveFeesOverrides = useMemo(
-    () => hasAttributeFilter(filters) ? new Map<string, number>() : feesOverridesByDate,
-    [filters, feesOverridesByDate],
-  )
-  // Net PNL for the visible window with day overrides folded in: each
-  // override date replaces its trades' sum. Population fields (wins, win
-  // rate, best/worst) stay trade-only — an override day isn't a win or loss.
-  // Fees fold in the override days' informational fees so the total isn't
-  // blind to them, and gross is re-derived as net + fees so it reconciles.
-  const stats = useMemo<AggregateStats>(() => {
-    const from = filters.from
-    const to = filters.to
-    const inWindow = (d: string) => (from == null || d >= from) && (to == null || d <= to)
-    const net = sumNetPnl(netPnlByDate(filtered, effectiveOverrides), inWindow)
-    const fees = baseStats.fees + sumNetPnl(effectiveFeesOverrides, inWindow)
-    return { ...baseStats, net_pnl: net, fees }
-  }, [baseStats, filtered, effectiveOverrides, effectiveFeesOverrides, filters.from, filters.to])
 
   // Lazy-mount the TradingView chart on a tick after the rest of the
   // page has painted. The chart synchronously builds canvases, primitives,
@@ -227,19 +233,6 @@ export function OverviewRoute() {
     }
   }, [chartReady])
 
-  // Bucket trades by day across the filter range (falling back to first/last
-  // traded day when no explicit from/to). Using the filter bounds makes charts
-  // show every day in the period, not just days that had trades.
-  const { rangeStart, rangeEnd } = useMemo(() => {
-    if (filters.from && filters.to) return { rangeStart: filters.from, rangeEnd: filters.to }
-    if (filtered.length === 0) return { rangeStart: null, rangeEnd: null }
-    const dates = filtered.map(t => t.date).sort()
-    return {
-      rangeStart: filters.from ?? dates[0],
-      rangeEnd: filters.to ?? dates[dates.length - 1],
-    }
-  }, [filtered, filters.from, filters.to])
-
   // Inputs the composite-score card needs. Computed locally from the
   // already-loaded `allTrades` + `allAdjustments` so the card doesn't
   // need its own Dexie subscriptions — that's what was causing the
@@ -253,6 +246,9 @@ export function OverviewRoute() {
       if (a.date < rangeStart) eq += signedAdjustment(a)
     }
     // Day-net before the range, with override days replacing their trades.
+    // Uses the raw (not toggled) overrides on purpose: the baseline is real
+    // account equity entering the window. The "Show override days" toggle only
+    // hides override days *within* the view, it doesn't rewrite past equity.
     eq += sumNetPnl(
       netPnlByDate(allTrades ?? [], overridesByDate),
       d => d < rangeStart,
@@ -410,6 +406,8 @@ export function OverviewRoute() {
     const p = paramsFromFilters(merged)
     const tf = 'tf' in next ? next.tf : timeframeFromParams(params)
     if (tf && tf !== 'D') p.set('tf', tf)
+    // Preserve the override-days intent (a UI param, not a filter).
+    preserveOverrideParam(p)
     setParams(p)
   }
 
@@ -472,7 +470,11 @@ export function OverviewRoute() {
   // persisted preference itself, so it stays where the user left it.
   function clear() {
     saveSharedFilters(null)
-    setParams(paramsFromFilters(EMPTY_FILTERS))
+    const p = paramsFromFilters(EMPTY_FILTERS)
+    // The override-days intent isn't a filter — clearing filters shouldn't
+    // flip the user's checkbox choice back on.
+    preserveOverrideParam(p)
+    setParams(p)
     setViewportEpoch(e => e + 1)
   }
 
@@ -482,11 +484,21 @@ export function OverviewRoute() {
     <div className="pt-1 space-y-8">
       <div className="flex items-center justify-between mb-8">
         <h1 className="h-8 flex items-center text-lg font-semibold">Overview</h1>
-        {!isDefault && (
-          <button onClick={clear} className={BTN_ACCENT}>
-            <X className="size-4" /> Clear filters
-          </button>
-        )}
+        <div className="flex items-center gap-4">
+          {hasOverridesInWindow && (
+            <IncludeOverridesToggle
+              checked={includeOverridesIntent}
+              disabled={overridesDisabled}
+              disabledReason="Override days don't apply to the active filter"
+              onChange={setIncludeOverrides}
+            />
+          )}
+          {!isDefault && (
+            <button onClick={clear} className={BTN_ACCENT}>
+              <X className="size-4" /> Clear filters
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Always present (no layout jump on load). Its date values stay blank

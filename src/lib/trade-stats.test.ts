@@ -3,6 +3,7 @@ import {
   adjustmentsByDate,
   aggregate,
   computeCandles,
+  foldOverridesIntoStats,
   signedAdjustment,
 } from './trade-stats'
 import type { Bucket } from '@/lib/buckets'
@@ -323,5 +324,46 @@ describe('computeCandles', () => {
     expect(c.close).toBeCloseTo(300, 5) // equity steps by the net only
     expect(c.fees).toBeCloseTo(80, 5) // fees pane picks up the override's fees
     expect(c.isOverride).toBe(true)
+  })
+})
+
+describe('foldOverridesIntoStats', () => {
+  it('adds an override-only day to net + fees but leaves population fields', () => {
+    const t = { ...winningTrade(), date: '2026-04-10' }
+    const base = aggregate([t])
+    const folded = foldOverridesIntoStats(
+      base,
+      [t],
+      new Map([['2026-04-13', 500]]),
+      new Map([['2026-04-13', 4.5]]),
+      null,
+      null,
+    )
+    expect(folded.net_pnl).toBeCloseTo(base.net_pnl + 500)
+    expect(folded.fees).toBeCloseTo(base.fees + 4.5)
+    // An override day isn't a win/loss — the population stats are untouched.
+    expect(folded.wins).toBe(base.wins)
+    expect(folded.losses).toBe(base.losses)
+    expect(folded.win_rate).toBe(base.win_rate)
+  })
+
+  it('replaces a traded day’s net with the override value', () => {
+    const t = { ...winningTrade(), date: '2026-04-13' }
+    const base = aggregate([t])
+    const folded = foldOverridesIntoStats(base, [t], new Map([['2026-04-13', -999]]), new Map(), null, null)
+    expect(folded.net_pnl).toBe(-999)
+  })
+
+  it('ignores overrides outside the [from, to] window', () => {
+    const base = aggregate([])
+    const folded = foldOverridesIntoStats(
+      base,
+      [],
+      new Map([['2026-04-13', 500]]),
+      new Map(),
+      '2026-04-01',
+      '2026-04-10',
+    )
+    expect(folded.net_pnl).toBe(0)
   })
 })

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   loadJsonFromStorage,
+  pruneLegacyStorageKeys,
   removeFromStorage,
   saveJsonToStorage,
 } from './storage'
@@ -79,5 +80,19 @@ describe('removeFromStorage', () => {
       throw new Error('quota')
     })
     expect(() => removeFromStorage('k')).not.toThrow()
+  })
+})
+
+describe('pruneLegacyStorageKeys', () => {
+  it('removes the retired Time-tab override switch key and leaves others intact', () => {
+    localStorage.setItem('logslate:reports_time_include_overrides', 'true')
+    saveJsonToStorage('logslate.shared-filters.v1', { from: '2026-06-01' })
+    pruneLegacyStorageKeys()
+    expect(localStorage.getItem('logslate:reports_time_include_overrides')).toBeNull()
+    expect(localStorage.getItem('logslate.shared-filters.v1')).not.toBeNull()
+  })
+
+  it('is a no-op when the legacy keys are absent', () => {
+    expect(() => pruneLegacyStorageKeys()).not.toThrow()
   })
 })

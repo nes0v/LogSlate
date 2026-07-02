@@ -597,6 +597,20 @@ function makeTickFormatter(tf: Timeframe) {
   }
 }
 
+/** Crosshair vertical-line label formatter. Replaces lightweight-charts'
+ *  default ("10 Jun '26") so day-level buckets lead with the weekday
+ *  ("Wed 10 Jun '26"); coarser buckets read at their own granularity. */
+function makeCrosshairTimeFormatter(tf: Timeframe) {
+  return (time: Time): string => {
+    if (typeof time !== 'number') return ''
+    const d = dateKeyToDate(utcSecToDateKey(time))
+    if (tf === 'M') return format(d, "MMM ''yy")
+    if (tf === 'Q') return format(d, "QQQ ''yy")
+    if (tf === 'Y') return format(d, 'yyyy')
+    return format(d, "EEE d MMM ''yy")
+  }
+}
+
 interface TradingViewChartProps {
   points: CandlePoint[]
   height?: number
@@ -1188,12 +1202,13 @@ export function TradingViewChart({
     }
   }, [view])
 
-  // Tick-mark formatter follows the active timeframe.
+  // Tick-mark + crosshair-label formatters follow the active timeframe.
   useEffect(() => {
     const chart = chartRef.current
     if (!chart) return
     chart.applyOptions({
       timeScale: { tickMarkFormatter: makeTickFormatter(timeframe) },
+      localization: { timeFormatter: makeCrosshairTimeFormatter(timeframe) },
     })
   }, [timeframe])
 

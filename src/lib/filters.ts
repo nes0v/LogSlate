@@ -119,12 +119,40 @@ export const EMPTY_FILTERS: TradeFilters = {
   tag: null,
 }
 
-/** True when any non-date dimension is active (overrides should be excluded in this case). */
-export function hasAttributeFilter(f: TradeFilters): boolean {
+/** True when a filter references a per-trade field that override days don't
+ *  have (symbol, session, rating, …) — so day-level overrides can't be
+ *  classified against it and must be excluded. `from`/`to` and `weekday` are
+ *  deliberately absent: those are date-shaped, and an override day has a date
+ *  (hence a weekday), so it still participates in those dimensions. */
+export function overridesExcludedByFilters(f: TradeFilters): boolean {
   return !!(
-    f.symbol || f.contract || f.session || f.rating || f.weekday ||
+    f.symbol || f.contract || f.session || f.rating ||
     f.outcome || f.side || f.hold || f.emotion || f.model || f.tag
   )
+}
+
+/** Keep only the override entries whose date falls on `weekday`. Returns the
+ *  map unchanged when no weekday filter is active. Override days carry a real
+ *  date, so they're filtered by weekday just like real trading days. */
+export function filterOverridesByWeekday(
+  overrides: Map<string, number>,
+  weekday: Weekday | null,
+): Map<string, number> {
+  if (!weekday) return overrides
+  const out = new Map<string, number>()
+  for (const [date, v] of overrides) {
+    if (WEEKDAYS[dateKeyToDate(date).getDay()] === weekday) out.set(date, v)
+  }
+  return out
+}
+
+/** URL param carrying the "include override days" intent. Absent = on (the
+ *  default); only written as `overrides=0` when the user turns it off. It's a
+ *  UI param (not in `FILTER_PARAM_KEYS`), preserved across filter edits/clear
+ *  like `tf`/`tab`. */
+export const OVERRIDES_PARAM = 'overrides'
+export function includeOverridesFromParams(p: URLSearchParams): boolean {
+  return p.get(OVERRIDES_PARAM) !== '0'
 }
 
 export function applyFilters(trades: TradeRecord[], f: TradeFilters): TradeRecord[] {
