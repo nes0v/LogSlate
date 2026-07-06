@@ -5,6 +5,7 @@ import { DayRoute } from '@/routes/Day'
 import { OverviewRoute } from '@/routes/Overview'
 import { ReportsRoute } from '@/routes/Reports'
 import { ModelsRoute } from '@/routes/Models'
+import { SymbolsRoute } from '@/routes/Symbols'
 import { ProgressRoute } from '@/routes/Progress'
 import { SettingsRoute } from '@/routes/Settings'
 import { TradeNewRoute } from '@/routes/TradeNew'
@@ -22,6 +23,7 @@ export const router = createBrowserRouter([
       { path: 'overview', Component: OverviewRoute },
       { path: 'reports', Component: ReportsRoute },
       { path: 'models', Component: ModelsRoute },
+      { path: 'symbols', Component: SymbolsRoute },
       { path: 'progress', Component: ProgressRoute },
       { path: 'settings', Component: SettingsRoute },
       { path: 'trade/new', Component: TradeNewRoute },

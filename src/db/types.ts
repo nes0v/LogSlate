@@ -1,5 +1,10 @@
 // Runtime-authoritative enum values. Types are derived from these so adding
-// a new session/symbol/etc. is a one-line change.
+// a new session/etc. is a one-line change.
+//
+// SYMBOLS / CONTRACT_TYPES are LEGACY: symbols are now user-defined per-account
+// rows (`TradingSymbol`) and a trade freezes its economics in `symbol_spec`.
+// These two survive only as the v13 migration seed + the Symbols-page presets
+// (see `src/lib/symbols.ts`); no live TradeRecord references them.
 export const SYMBOLS = ['NQ', 'ES', 'YM'] as const
 export const CONTRACT_TYPES = ['micro', 'mini'] as const
 export const SESSIONS = ['pre', 'am', 'lunch', 'pm', 'aft'] as const
@@ -22,6 +27,46 @@ export interface Execution {
   price: number
   time: string // ISO 8601
   contracts: number
+}
+
+// A user-defined instrument, scoped to one account (mirrors `Model`). Holds the
+// economics the math layer needs: point value, tick size, broker fee, and the
+// scratch threshold. Editing a symbol only affects NEW trades — existing trades
+// carry a frozen `SymbolSnapshot` (see `TradeRecord.symbol_spec`).
+export interface TradingSymbol {
+  id: string
+  account_id: string
+  name: string // ticker label, e.g. "NQ", "MNQ", "GC", "EURUSD"
+  description: string // free-text notes about the instrument
+  point_value: number // USD per 1.0 price move per contract
+  tick_size: number // minimum price increment
+  fee_per_side: number // USD per contract per side
+  scratch_handles: number // |AHPC| below this (in points) counts as a scratch
+  /** Drafts stay visible on the Symbols page but are hidden from the trade
+   *  form's symbol picker, so a half-configured symbol can't be logged against. */
+  draft: boolean
+  /** User-controlled ordinal for the Symbols sidebar (drag-and-drop). Lower =
+   *  higher up. Optional so existing rows back-fill lazily on first reorder. */
+  sort?: number
+  created_at: string
+  updated_at: string
+}
+
+export type TradingSymbolDraft = Omit<
+  TradingSymbol,
+  'id' | 'account_id' | 'created_at' | 'updated_at'
+>
+
+// The subset of a `TradingSymbol`'s economics frozen onto a trade at log time.
+// Snapshot semantics: the math layer reads these off the trade so PnL/fees stay
+// a pure function of the record and never shift when the symbol is later edited
+// or deleted.
+export interface SymbolSnapshot {
+  name: string
+  point_value: number
+  tick_size: number
+  fee_per_side: number
+  scratch_handles: number
 }
 
 export interface Account {
@@ -58,8 +103,8 @@ export interface TradeRecord {
   id: string
   account_id: string
   date: string // YYYY-MM-DD (local), set by day-click in calendar
-  symbol: SymbolKey
-  contract_type: ContractType
+  symbol_id: string // → TradingSymbol.id (grouping, filtering, in-use count, live name)
+  symbol_spec: SymbolSnapshot // frozen economics used by the math layer
   session: Session
   idea?: string
   executions: Execution[] // stored sorted by time ascending

@@ -22,7 +22,7 @@ import {
   sqn,
   streakStats,
 } from './advanced-stats'
-import { execution, tradeRecord } from '@/test/fixtures'
+import { execution, symbolSnapshot, tradeRecord } from '@/test/fixtures'
 
 // Helper: build a trade whose computed net PNL matches `pnl`. Uses NQ micro
 // ($2 / handle, $0.62 fee × 2 sides = $1.24 fees) so even small dollar
@@ -44,8 +44,7 @@ function tradeWithPnl(
   const buyTime = execOverrides?.[0]?.time ?? '2026-04-15T14:30:00.000Z'
   const sellTime = execOverrides?.[1]?.time ?? '2026-04-15T14:45:00.000Z'
   return tradeRecord({
-    symbol: 'NQ',
-    contract_type: 'micro',
+    symbol_spec: symbolSnapshot({ name: 'MNQ', point_value: 2, fee_per_side: 0.62 }),
     executions: [
       execution({ kind: 'buy', price: 20000, time: buyTime }),
       execution({ kind: 'sell', price: 20000 + handles, time: sellTime }),

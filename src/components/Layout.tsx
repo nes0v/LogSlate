@@ -15,6 +15,7 @@ const links = [
   { to: '/overview', label: 'Overview' },
   { to: '/reports', label: 'Reports' },
   { to: '/models', label: 'Models' },
+  { to: '/symbols', label: 'Symbols' },
   { to: '/progress', label: 'Progress' },
   { to: '/settings', label: 'Settings' },
 ]

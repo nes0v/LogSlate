@@ -1,16 +1,12 @@
 import {
-  CONTRACT_TYPES,
   EMOTIONS,
   RATINGS,
   SESSIONS,
   SIDES,
-  SYMBOLS,
-  type ContractType,
   type Emotion,
   type Rating,
   type Session,
   type Side,
-  type SymbolKey,
   type TradeRecord,
 } from '@/db/types'
 import {
@@ -88,8 +84,9 @@ export const MODEL_NONE = 'none'
 export interface TradeFilters {
   from: string | null // YYYY-MM-DD, inclusive
   to: string | null // YYYY-MM-DD, inclusive
-  symbol: SymbolKey | null
-  contract: ContractType | null
+  /** TradingSymbol id, or null for "All". Validated against the account's
+   *  symbols in the UI; a stale id just matches no trades. */
+  symbol_id: string | null
   session: Session | null
   rating: Rating | null
   weekday: Weekday | null
@@ -106,8 +103,7 @@ export interface TradeFilters {
 export const EMPTY_FILTERS: TradeFilters = {
   from: null,
   to: null,
-  symbol: null,
-  contract: null,
+  symbol_id: null,
   session: null,
   rating: null,
   weekday: null,
@@ -126,7 +122,7 @@ export const EMPTY_FILTERS: TradeFilters = {
  *  (hence a weekday), so it still participates in those dimensions. */
 export function overridesExcludedByFilters(f: TradeFilters): boolean {
   return !!(
-    f.symbol || f.contract || f.session || f.rating ||
+    f.symbol_id || f.session || f.rating ||
     f.outcome || f.side || f.hold || f.emotion || f.model || f.tag
   )
 }
@@ -159,8 +155,7 @@ export function applyFilters(trades: TradeRecord[], f: TradeFilters): TradeRecor
   return trades.filter(t => {
     if (f.from && t.date < f.from) return false
     if (f.to && t.date > f.to) return false
-    if (f.symbol && t.symbol !== f.symbol) return false
-    if (f.contract && t.contract_type !== f.contract) return false
+    if (f.symbol_id && t.symbol_id !== f.symbol_id) return false
     if (f.session && t.session !== f.session) return false
     if (f.rating && t.rating !== f.rating) return false
     if (f.weekday) {
@@ -192,11 +187,13 @@ export function filtersFromParams(p: URLSearchParams): TradeFilters {
     return v !== null && (allowed as readonly string[]).includes(v) ? (v as K) : null
   }
   const rawModel = p.get('model')
+  const rawSymbol = p.get('symbol')
   return {
     from: p.get('from'),
     to: p.get('to'),
-    symbol: get<SymbolKey>('symbol', SYMBOLS),
-    contract: get<ContractType>('contract', CONTRACT_TYPES),
+    // Symbol id is a free-form string (UUID) like `model`; the UI validates it
+    // against the account's symbols, a stale id just matches no trades.
+    symbol_id: rawSymbol && rawSymbol.length > 0 ? rawSymbol : null,
     session: get<Session>('session', SESSIONS),
     rating: get<Rating>('rating', RATINGS),
     weekday: get<Weekday>('weekday', WEEKDAYS),
@@ -229,8 +226,7 @@ export function coerceFilters(raw: unknown): TradeFilters {
   return {
     from: str(o.from),
     to: str(o.to),
-    symbol: oneOf<SymbolKey>(o.symbol, SYMBOLS),
-    contract: oneOf<ContractType>(o.contract, CONTRACT_TYPES),
+    symbol_id: str(o.symbol_id),
     session: oneOf<Session>(o.session, SESSIONS),
     rating: oneOf<Rating>(o.rating, RATINGS),
     weekday: oneOf<Weekday>(o.weekday, WEEKDAYS),
@@ -250,7 +246,6 @@ export const FILTER_PARAM_KEYS = [
   'from',
   'to',
   'symbol',
-  'contract',
   'session',
   'rating',
   'weekday',
@@ -266,8 +261,7 @@ export function paramsFromFilters(f: TradeFilters): URLSearchParams {
   const p = new URLSearchParams()
   if (f.from) p.set('from', f.from)
   if (f.to) p.set('to', f.to)
-  if (f.symbol) p.set('symbol', f.symbol)
-  if (f.contract) p.set('contract', f.contract)
+  if (f.symbol_id) p.set('symbol', f.symbol_id)
   if (f.session) p.set('session', f.session)
   if (f.rating) p.set('rating', f.rating)
   if (f.weekday) p.set('weekday', f.weekday)

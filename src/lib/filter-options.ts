@@ -1,23 +1,11 @@
-import type { ContractType, Side, Session, SymbolKey } from '@/db/types'
+import type { Side, Session } from '@/db/types'
 import type { HoldBucket, Weekday } from '@/lib/filters'
 import { HOLD_BUCKETS } from '@/lib/filters'
 import type { TradeOutcome } from '@/lib/trade-math'
 
 // Canonical option lists for the All-prefixed Pills selectors used on
 // Stats, Reports, and the Models editor. `null` is the "All" sentinel.
-
-export const SYMBOL_OPTS = [
-  { value: null, label: 'All' },
-  { value: 'NQ' as const, label: 'NQ' },
-  { value: 'ES' as const, label: 'ES' },
-  { value: 'YM' as const, label: 'YM' },
-] satisfies Array<{ value: SymbolKey | null; label: string }>
-
-export const CONTRACT_OPTS = [
-  { value: null, label: 'All' },
-  { value: 'micro' as const, label: 'micro' },
-  { value: 'mini' as const, label: 'mini' },
-] satisfies Array<{ value: ContractType | null; label: string }>
+// (Symbol options are per-account and built dynamically in StatsFilterBar.)
 
 export const SESSION_OPTS = [
   { value: null, label: 'All' },

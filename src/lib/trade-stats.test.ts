@@ -7,12 +7,11 @@ import {
   signedAdjustment,
 } from './trade-stats'
 import type { Bucket } from '@/lib/buckets'
-import { adjustmentRecord, execution, tradeRecord } from '@/test/fixtures'
+import { adjustmentRecord, execution, symbolSnapshot, tradeRecord } from '@/test/fixtures'
 
 function winningTrade() {
   return tradeRecord({
-    symbol: 'NQ',
-    contract_type: 'mini',
+    symbol_spec: symbolSnapshot(),
     executions: [
       execution({ kind: 'buy', price: 20000, contracts: 1 }),
       execution({ kind: 'sell', price: 20010, contracts: 1 }),
@@ -24,8 +23,7 @@ function winningTrade() {
 
 function losingTrade() {
   return tradeRecord({
-    symbol: 'NQ',
-    contract_type: 'mini',
+    symbol_spec: symbolSnapshot(),
     executions: [
       execution({ kind: 'buy', price: 20000, contracts: 1 }),
       execution({ kind: 'sell', price: 19990, contracts: 1 }),
@@ -39,8 +37,7 @@ function losingTrade() {
 // and the net pnl is just −fees.
 function scratchTrade() {
   return tradeRecord({
-    symbol: 'NQ',
-    contract_type: 'mini',
+    symbol_spec: symbolSnapshot(),
     executions: [
       execution({ kind: 'buy', price: 20000, contracts: 1 }),
       execution({ kind: 'sell', price: 20000, contracts: 1 }),

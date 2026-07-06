@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Controller, useFieldArray, useForm, useWatch, type Control } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import type { z } from 'zod'
@@ -6,9 +7,16 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { ArrowLeft, Plus, Save, Trash2, X } from 'lucide-react'
 import { detectSession, emptyForm, formToDraft, tradeFormSchema, type TradeFormValues } from '@/lib/form-schema'
 import { SESSION_BADGE, SESSION_BADGE_CLASS } from '@/lib/session-badge'
-import { listAllTrades, listModels } from '@/db/queries'
+import { listAllTrades, listModels, listSymbols } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
-import { EMOTIONS, type Emotion, type TradeDraft } from '@/db/types'
+import {
+  EMOTIONS,
+  type Emotion,
+  type SymbolSnapshot,
+  type TradeDraft,
+  type TradingSymbol,
+} from '@/db/types'
+import { symbolSnapshotOf } from '@/lib/symbols'
 import { Pills } from '@/components/form/Pills'
 import { StarRating } from '@/components/form/StarRating'
 import { RATING_TO_STARS, STARS_TO_RATING } from '@/lib/rating'
@@ -25,15 +33,6 @@ import { formatUsd } from '@/lib/money'
 import { useAutosizeTextarea } from '@/lib/use-autosize-textarea'
 import { cn, mergeRefs } from '@/lib/utils'
 
-const SYMBOLS = [
-  { value: 'NQ', label: 'NQ' },
-  { value: 'ES', label: 'ES' },
-  { value: 'YM', label: 'YM' },
-] as const
-const CONTRACT_TYPES = [
-  { value: 'micro', label: 'micro' },
-  { value: 'mini', label: 'mini' },
-] as const
 const EXECUTION_KINDS = [
   { value: 'buy', label: 'buy' },
   { value: 'sell', label: 'sell' },
@@ -56,6 +55,10 @@ interface TradeFormProps {
   initialDate: string // YYYY-MM-DD
   onSubmit: (draft: TradeDraft) => Promise<void> | void
   onCancel: () => void
+  /** The editing trade's frozen symbol, if any. Snapshot semantics: its spec
+   *  is preserved on save unless the user picks a different symbol. Omitted for
+   *  new trades (always snapshot the chosen symbol's current config). */
+  original?: { symbol_id: string; symbol_spec: SymbolSnapshot }
 }
 
 export function TradeForm({
@@ -63,8 +66,22 @@ export function TradeForm({
   initialDate,
   onSubmit,
   onCancel,
+  original,
 }: TradeFormProps) {
   const accountId = useActiveAccountId()
+  const symbols = useLiveQuery(() => listSymbols(accountId), [accountId])
+  const symbolsById = useMemo(() => {
+    const m = new Map<string, TradingSymbol>()
+    for (const s of symbols ?? []) m.set(s.id, s)
+    return m
+  }, [symbols])
+  // Draft symbols stay off the picker (like draft models) so a half-configured
+  // symbol can't be logged against. `symbolsById` still holds all of them so an
+  // existing trade on a now-draft symbol still resolves its spec.
+  const symbolOpts = useMemo(
+    () => (symbols ?? []).filter(s => !s.draft).map(s => ({ value: s.id, label: s.name })),
+    [symbols],
+  )
   // No default — the form's right column waits on the model list so the
   // checklist (which only renders when an existing trade has a `model_id`
   // matching a live model) doesn't pop in late and shove the tags row
@@ -101,6 +118,7 @@ export function TradeForm({
     handleSubmit,
     formState: { errors, isSubmitting, isDirty },
     getValues,
+    setValue,
     reset,
   } = useForm<TradeFormValues, unknown, z.output<typeof tradeFormSchema>>({
     resolver: zodResolver(tradeFormSchema),
@@ -108,6 +126,19 @@ export function TradeForm({
     mode: 'onSubmit',
     reValidateMode: 'onSubmit',
   })
+
+  // Keep a brand-new trade pointed at a valid, pickable symbol: default to the
+  // first one so the user isn't forced to choose, and re-select if the current
+  // choice stops being valid (the account was switched — symbol_id is
+  // account-scoped — or the symbol was deleted/drafted). Leaves a still-valid
+  // user choice alone. Edits never run this (their symbol comes from the record).
+  const isNewTrade = initialValues === undefined
+  useEffect(() => {
+    if (!isNewTrade || symbols === undefined) return
+    const current = getValues('symbol_id')
+    const stillValid = !!current && symbols.some(s => s.id === current && !s.draft)
+    if (!stillValid) setValue('symbol_id', symbolOpts[0]?.value ?? null)
+  }, [symbols, symbolOpts, isNewTrade, getValues, setValue])
 
   const executions = useFieldArray({ control, name: 'executions' })
   // Scope the top-level subscription to a single field. The Idea/Notes
@@ -125,7 +156,21 @@ export function TradeForm({
   )
 
   async function submit(v: TradeFormValues) {
-    await onSubmit(formToDraft(v))
+    // Freeze the symbol's economics. On edit, keep the trade's existing spec
+    // unless the symbol changed (so past fees never shift under the user); for
+    // a new trade or a changed symbol, snapshot the picked symbol's config. A
+    // changed symbol must resolve to a live row — never fall back to the old
+    // spec, which would pair the new id with the previous symbol's economics.
+    const symbolId = v.symbol_id as string
+    let spec: SymbolSnapshot | undefined
+    if (original && original.symbol_id === symbolId) {
+      spec = original.symbol_spec
+    } else {
+      const sym = symbolsById.get(symbolId)
+      spec = sym ? symbolSnapshotOf(sym) : undefined
+    }
+    if (!spec) return // selected symbol vanished (deleted mid-edit) — abort save
+    await onSubmit(formToDraft(v, spec))
     reset(getValues(), { keepValues: true })
   }
 
@@ -144,9 +189,10 @@ export function TradeForm({
     })
   }
 
-  // Gate the entire form on `models` having resolved. The right column's
-  // ModelRuleChecklist depends on which model is selected.
-  if (models === undefined) return null
+  // Gate the entire form on `models` + `symbols` having resolved. The right
+  // column's ModelRuleChecklist depends on which model is selected, and the
+  // Symbol picker needs the account's symbol list.
+  if (models === undefined || symbols === undefined) return null
 
   return (
     <form onSubmit={handleSubmit(submit)}>
@@ -155,19 +201,20 @@ export function TradeForm({
           <div className="space-y-3">
             <section className="bg-(--color-panel) rounded-(--radius) p-3 space-y-3">
           <div className="flex flex-wrap items-start gap-3">
-            <Field label="Symbol" error={errors.symbol?.message}>
-              <Controller
-                control={control}
-                name="symbol"
-                render={({ field }) => <Pills value={field.value} onChange={field.onChange} options={SYMBOLS} />}
-              />
-            </Field>
-            <Field label="Contract" error={errors.contract_type?.message}>
-              <Controller
-                control={control}
-                name="contract_type"
-                render={({ field }) => <Pills value={field.value} onChange={field.onChange} options={CONTRACT_TYPES} />}
-              />
+            <Field label="Symbol" error={errors.symbol_id?.message}>
+              {symbolOpts.length > 0 ? (
+                <Controller
+                  control={control}
+                  name="symbol_id"
+                  render={({ field }) => (
+                    <Pills value={field.value} onChange={field.onChange} options={symbolOpts} />
+                  )}
+                />
+              ) : (
+                <Link to="/symbols" className="inline-flex items-center h-8 text-sm text-(--color-accent) underline">
+                  Add a symbol first
+                </Link>
+              )}
             </Field>
             <Field label="Rating" error={errors.rating?.message}>
               <Controller
@@ -386,7 +433,7 @@ export function TradeForm({
 
             </section>
 
-            <LiveStatsSection control={control} />
+            <LiveStatsSection control={control} symbolsById={symbolsById} />
 
             {/* Buttons live inside the left column on lg+ so growing the
                 Notes textarea (right column) doesn't push them down. */}
@@ -516,10 +563,16 @@ function ActionButtons({ isSubmitting, isDirty, onCancel }: ActionButtonsProps) 
 
 // Subscribes only to the four fields it needs; idea/notes/tag keystrokes
 // don't recompute the stats.
-function LiveStatsSection({ control }: { control: Control<TradeFormValues> }) {
-  const [executions, symbol, contract_type, stop_loss] = useWatch({
+function LiveStatsSection({
+  control,
+  symbolsById,
+}: {
+  control: Control<TradeFormValues>
+  symbolsById: Map<string, TradingSymbol>
+}) {
+  const [executions, symbol_id, stop_loss] = useWatch({
     control,
-    name: ['executions', 'symbol', 'contract_type', 'stop_loss'],
+    name: ['executions', 'symbol_id', 'stop_loss'],
   })
   const stats = useMemo(() => {
     const execs = (executions ?? [])
@@ -532,13 +585,11 @@ function LiveStatsSection({ control }: { control: Control<TradeFormValues> }) {
         contracts: e.contracts as number,
       }))
     const ahpc = computeAhpc({ executions: execs })
-    const pnl =
-      symbol && contract_type
-        ? computeNetPnl({ executions: execs, symbol, contract_type })
-        : null
+    const sym = symbol_id ? symbolsById.get(symbol_id) : undefined
+    const pnl = sym ? computeNetPnl({ executions: execs, symbol_spec: symbolSnapshotOf(sym) }) : null
     const rr = stop_loss && stop_loss > 0 && pnl !== null ? pnl / stop_loss : null
     return { ahpc, pnl, rr }
-  }, [executions, symbol, contract_type, stop_loss])
+  }, [executions, symbol_id, stop_loss, symbolsById])
 
   const { session, durationMs } = useMemo(() => {
     const times = (executions ?? [])

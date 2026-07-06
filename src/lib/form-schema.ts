@@ -1,12 +1,11 @@
 import { z } from 'zod'
 import {
-  CONTRACT_TYPES,
   EMOTIONS,
   EXECUTION_KINDS,
   ORDER_TYPES,
   RATINGS,
-  SYMBOLS,
   type Session,
+  type SymbolSnapshot,
   type TradeDraft,
   type TradeRecord,
 } from '@/db/types'
@@ -105,11 +104,11 @@ const executionSchema = z.object({
 export const tradeFormSchema = z
   .object({
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'invalid date'),
-    // Symbol/contract/session/rating start blank on new trades so the user
-    // makes an explicit choice rather than silently submitting a default.
-    // Required on submit via the superRefine below.
-    symbol: z.enum(SYMBOLS).nullable(),
-    contract_type: z.enum(CONTRACT_TYPES).nullable(),
+    // Symbol/rating/emotion start blank on new trades so the user makes an
+    // explicit choice rather than silently submitting a default. Required on
+    // submit via the superRefine below. `symbol_id` references a per-account
+    // TradingSymbol; its economics are frozen into the draft at save time.
+    symbol_id: z.string().nullable(),
     idea: z.string(),
     executions: z.array(executionSchema).min(2, 'at least one buy and one sell'),
     stop_loss: requiredPositive('stop loss must be > 0'),
@@ -126,11 +125,8 @@ export const tradeFormSchema = z
     model_rules_followed: z.array(z.string()),
   })
   .superRefine((v, ctx) => {
-    if (!v.symbol) {
-      ctx.addIssue({ code: 'custom', path: ['symbol'], message: 'pick a symbol' })
-    }
-    if (!v.contract_type) {
-      ctx.addIssue({ code: 'custom', path: ['contract_type'], message: 'pick a contract' })
+    if (!v.symbol_id) {
+      ctx.addIssue({ code: 'custom', path: ['symbol_id'], message: 'pick a symbol' })
     }
     if (!v.rating) {
       ctx.addIssue({ code: 'custom', path: ['rating'], message: 'pick a rating' })
@@ -172,7 +168,10 @@ function toIso(date: string, time: string): string {
   return `${date}T${time}.000Z`
 }
 
-export function formToDraft(v: TradeFormValues): TradeDraft {
+// `symbol_spec` is resolved by the caller (TradeForm) from the selected symbol
+// and passed in — form-schema stays free of DB access. Snapshot semantics: on
+// edit the caller reuses the trade's existing spec unless the symbol changed.
+export function formToDraft(v: TradeFormValues, symbol_spec: SymbolSnapshot): TradeDraft {
   // After zod validation the required-positive fields are guaranteed
   // non-null; refine's type guards don't propagate through zod's inferred
   // type, so we narrow here at the boundary.
@@ -205,8 +204,8 @@ export function formToDraft(v: TradeFormValues): TradeDraft {
 
   return {
     date: v.date,
-    symbol: v.symbol as NonNullable<typeof v.symbol>,
-    contract_type: v.contract_type as NonNullable<typeof v.contract_type>,
+    symbol_id: v.symbol_id as string,
+    symbol_spec,
     session,
     idea: v.idea,
     executions,
@@ -237,8 +236,7 @@ export function recordToForm(r: TradeRecord): TradeFormValues {
 
   return {
     date: r.date,
-    symbol: r.symbol,
-    contract_type: r.contract_type,
+    symbol_id: r.symbol_id,
     idea: r.idea ?? '',
     executions,
     stop_loss: r.stop_loss,
@@ -257,8 +255,7 @@ export function recordToForm(r: TradeRecord): TradeFormValues {
 export function emptyForm(date: string): TradeFormValues {
   return {
     date,
-    symbol: 'NQ',
-    contract_type: 'micro',
+    symbol_id: null,
     idea: '',
     executions: [
       { kind: 'buy', order_type: 'mkt', price: null, time: '', contracts: 1 },

@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 import {
   filterOverridesByWeekday,
   includeOverridesFromParams,
@@ -11,7 +11,21 @@ import {
 // identity keeps downstream memos from re-running on every render.
 const EMPTY: ReadonlyMap<string, number> = new Map()
 
+// Last-known "window has override days" answer per account, kept at module
+// scope so it survives the Overview⇄Reports route remount. On a fresh mount
+// Dexie's live queries return `undefined` for a frame before resolving, which
+// made the toggle pop in a beat after the page title. Seeding the first render
+// from this cache lets the toggle appear immediately; the value self-corrects
+// once `ready` and is written back for next time.
+const lastHasOverrides = new Map<string, boolean>()
+
 interface UseIncludeOverridesArgs {
+  /** Active account — keys the cross-navigation visibility cache. */
+  accountId: string
+  /** True once trades + overrides have resolved. Until then the window
+   *  visibility falls back to the cached value so the toggle can render on the
+   *  first frame instead of popping in after the queries settle. */
+  ready: boolean
   /** Current URL search params (source of the toggle intent). */
   params: URLSearchParams
   setParams: (next: URLSearchParams) => void
@@ -56,6 +70,8 @@ export interface IncludeOverrides {
  * drift on override semantics.
  */
 export function useIncludeOverrides({
+  accountId,
+  ready,
   params,
   setParams,
   filters,
@@ -82,13 +98,25 @@ export function useIncludeOverrides({
     [active, feesOverridesByDate, weekday],
   )
 
-  const hasOverridesInWindow = useMemo(() => {
+  const liveHasOverrides = useMemo(() => {
     if (!rangeStart || !rangeEnd) return false
     for (const d of overridesByDate.keys()) {
       if (d >= rangeStart && d <= rangeEnd) return true
     }
     return false
   }, [overridesByDate, rangeStart, rangeEnd])
+
+  // Once the data has settled the live answer is authoritative; remember it so
+  // the next mount of either page can show the toggle on frame one.
+  useEffect(() => {
+    if (ready) lastHasOverrides.set(accountId, liveHasOverrides)
+  }, [ready, accountId, liveHasOverrides])
+
+  // While loading, trust the last-known answer for this account (default:
+  // hidden) rather than the not-yet-resolved live value.
+  const hasOverridesInWindow = ready
+    ? liveHasOverrides
+    : (lastHasOverrides.get(accountId) ?? false)
 
   const preserveParam = useCallback(
     (p: URLSearchParams) => {

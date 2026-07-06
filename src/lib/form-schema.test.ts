@@ -8,13 +8,12 @@ import {
   tradeFormSchema,
   type TradeFormValues,
 } from './form-schema'
-import { tradeRecord } from '@/test/fixtures'
+import { symbolSnapshot, tradeRecord } from '@/test/fixtures'
 
 function validForm(overrides: Partial<TradeFormValues> = {}): TradeFormValues {
   return {
     ...emptyForm('2026-04-15'),
-    symbol: 'NQ',
-    contract_type: 'micro',
+    symbol_id: 'sym-nq',
     rating: 'good',
     stop_loss: 100,
     profit_target: 200,
@@ -99,6 +98,7 @@ describe('formToDraft', () => {
           { kind: 'buy', order_type: 'lmt', price: 20000, time: '10:00:00', contracts: 1 },
         ],
       }),
+      symbolSnapshot(),
     )
     expect(draft.executions[0].kind).toBe('buy')
     expect(draft.executions[1].kind).toBe('sell')
@@ -198,17 +198,17 @@ describe('recordToForm ↔ formToDraft round-trip', () => {
   it('preserves key fields', () => {
     const record = tradeRecord({
       date: '2026-04-15',
-      symbol: 'NQ',
-      contract_type: 'mini',
+      symbol_id: 'sym-nq',
+      symbol_spec: symbolSnapshot(),
       stop_loss: 100,
       profit_target: 200,
       drawdown: 20,
       runup: 200,
       rating: 'good',
     })
-    const roundTrip = formToDraft(recordToForm(record))
-    expect(roundTrip.symbol).toBe(record.symbol)
-    expect(roundTrip.contract_type).toBe(record.contract_type)
+    const roundTrip = formToDraft(recordToForm(record), record.symbol_spec)
+    expect(roundTrip.symbol_id).toBe(record.symbol_id)
+    expect(roundTrip.symbol_spec).toEqual(record.symbol_spec)
     // session is now derived from executions on save; session round-trips via
     // execution times rather than as a stored field on the form.
     expect(roundTrip.stop_loss).toBe(record.stop_loss)

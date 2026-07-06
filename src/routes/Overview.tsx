@@ -35,6 +35,7 @@ import {
   saveSharedFilters,
 } from '@/lib/shared-filters'
 import { useDefaultRangeFilters } from '@/lib/use-default-range-filters'
+import { useValidAccountFilters } from '@/lib/use-valid-account-filters'
 import { firstExecutionMs } from '@/lib/trade-math'
 import { adjustmentsByDate, aggregate, computeCandles, foldOverridesIntoStats, signedAdjustment, type AggregateStats } from '@/lib/trade-stats'
 import { netPnlByDate, sumNetPnl } from '@/lib/day-pnl'
@@ -174,6 +175,9 @@ export function OverviewRoute() {
   const loaded = allTrades !== undefined && rangeReady && models !== undefined
 
   const filtered = useMemo(() => applyFilters(allTrades ?? [], filters), [allTrades, filters])
+  // Drop symbol/model filters carried over from another account (their
+  // per-account ids match nothing here) so the page doesn't render empty.
+  useValidAccountFilters(allTrades, filters.symbol_id, filters.model, patch => update(patch))
   // Aggregate once at the route level and pass down. Previously each
   // memo'd child (HeroNetPnl, CompositeScoreSection) computed
   // `aggregate(filtered)` independently — same data, multiple
@@ -191,6 +195,8 @@ export function OverviewRoute() {
     setIncludeOverrides,
     preserveParam: preserveOverrideParam,
   } = useIncludeOverrides({
+    accountId,
+    ready: loaded,
     params,
     setParams,
     filters,

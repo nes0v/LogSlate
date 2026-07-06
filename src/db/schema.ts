@@ -9,6 +9,7 @@ import type {
   ProgressCheck,
   ProgressRule,
   TradeRecord,
+  TradingSymbol,
 } from '@/db/types'
 import { MAIN_ACCOUNT_ID } from '@/db/types'
 
@@ -19,6 +20,7 @@ class LogslateDB extends Dexie {
   pending_uploads!: EntityTable<PendingUpload, 'id'>
   days!: EntityTable<Day, 'id'>
   models!: EntityTable<Model, 'id'>
+  symbols!: EntityTable<TradingSymbol, 'id'>
   progress_rules!: EntityTable<ProgressRule, 'id'>
   progress_checks!: EntityTable<ProgressCheck, 'id'>
   news!: EntityTable<NewsEvent, 'id'>
@@ -69,6 +71,16 @@ class LogslateDB extends Dexie {
     // v12: adds optional `Day.fees_override` (non-indexed) — informational
     // fees for an override day. No migration needed (unindexed field).
     this.version(12)
+
+    // v13: user-defined per-account symbols. Adds the `symbols` store and the
+    // `[account_id+symbol_id]` trades index. The one-time upgrade that turned
+    // each legacy (symbol, contract_type) pair into a TradingSymbol row +
+    // frozen `symbol_spec` has run and been stripped per MIGRATION-PATTERN.
+    this.version(13).stores({
+      trades:
+        '&id, [account_id+date], [account_id+model_id], [account_id+symbol_id], account_id, updated_at',
+      symbols: '&id, account_id, updated_at',
+    })
   }
 }
 

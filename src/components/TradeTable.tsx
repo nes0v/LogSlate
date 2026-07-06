@@ -40,7 +40,7 @@ export const TradeTable = memo(function TradeTable({
   modelById,
   showDate = false,
 }: TradeTableProps) {
-  const cols = showDate ? 14 : 13
+  const cols = showDate ? 13 : 12
   return (
     <div className="bg-(--color-panel) rounded-(--radius) overflow-hidden">
       <table className="w-full text-sm border-collapse">
@@ -142,11 +142,8 @@ function TradeTableRow({
           {trade.session}
         </span>
       </td>
-      <td className="pl-3 pr-3 py-2 font-mono whitespace-nowrap w-px">
-        {trade.symbol}
-      </td>
-      <td className="pl-0 pr-7 py-2 text-xs font-mono text-(--color-text-dim) whitespace-nowrap w-px">
-        {trade.contract_type}
+      <td className="pl-3 pr-7 py-2 font-mono whitespace-nowrap w-px">
+        {trade.symbol_spec.name}
       </td>
       <td className="pl-0 pr-3 py-2 w-px">
         <span

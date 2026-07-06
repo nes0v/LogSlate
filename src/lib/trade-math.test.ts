@@ -16,7 +16,7 @@ import {
   totalContracts,
   tradeMetrics,
 } from './trade-math'
-import { execution, tradeRecord } from '@/test/fixtures'
+import { execution, symbolSnapshot, tradeRecord } from '@/test/fixtures'
 
 describe('inferSide', () => {
   it('returns long when first execution is a buy', () => {
@@ -80,7 +80,7 @@ describe('totalContracts', () => {
 describe('computeFees', () => {
   it('micro: $0.62 × total contracts on both sides', () => {
     const t = tradeRecord({
-      contract_type: 'micro',
+      symbol_spec: symbolSnapshot({ fee_per_side: 0.62 }),
       executions: [
         execution({ kind: 'buy', contracts: 1 }),
         execution({ kind: 'sell', contracts: 1 }),
@@ -91,7 +91,7 @@ describe('computeFees', () => {
 
   it('mini: $2.25 × total contracts on both sides', () => {
     const t = tradeRecord({
-      contract_type: 'mini',
+      symbol_spec: symbolSnapshot(),
       executions: [
         execution({ kind: 'buy', contracts: 1 }),
         execution({ kind: 'sell', contracts: 1 }),
@@ -102,7 +102,7 @@ describe('computeFees', () => {
 
   it('scales with contract count', () => {
     const t = tradeRecord({
-      contract_type: 'mini',
+      symbol_spec: symbolSnapshot(),
       executions: [
         execution({ kind: 'buy', contracts: 2 }),
         execution({ kind: 'sell', contracts: 2 }),
@@ -115,8 +115,7 @@ describe('computeFees', () => {
 describe('computeGrossPnl', () => {
   it('NQ mini: 10 handles × $20 × 1 contract = $200 regardless of side', () => {
     const longTrade = tradeRecord({
-      symbol: 'NQ',
-      contract_type: 'mini',
+      symbol_spec: symbolSnapshot(),
       executions: [
         execution({ kind: 'buy', price: 20000, contracts: 1 }),
         execution({ kind: 'sell', price: 20010, contracts: 1 }),
@@ -125,8 +124,7 @@ describe('computeGrossPnl', () => {
     expect(computeGrossPnl(longTrade)).toBe(200)
 
     const shortTrade = tradeRecord({
-      symbol: 'NQ',
-      contract_type: 'mini',
+      symbol_spec: symbolSnapshot(),
       executions: [
         execution({ kind: 'sell', price: 20010, time: '2026-04-15T10:00:00Z', contracts: 1 }),
         execution({ kind: 'buy', price: 20000, time: '2026-04-15T10:05:00Z', contracts: 1 }),
@@ -137,8 +135,7 @@ describe('computeGrossPnl', () => {
 
   it('MNQ micro: 10 handles × $2 × 1 contract = $20', () => {
     const t = tradeRecord({
-      symbol: 'NQ',
-      contract_type: 'micro',
+      symbol_spec: symbolSnapshot({ name: 'MNQ', point_value: 2, fee_per_side: 0.62 }),
       executions: [
         execution({ kind: 'buy', price: 20000, contracts: 1 }),
         execution({ kind: 'sell', price: 20010, contracts: 1 }),
@@ -149,8 +146,7 @@ describe('computeGrossPnl', () => {
 
   it('ES mini: 4 handles × $50 × 2 contracts = $400', () => {
     const t = tradeRecord({
-      symbol: 'ES',
-      contract_type: 'mini',
+      symbol_spec: symbolSnapshot({ name: 'ES', point_value: 50, scratch_handles: 1.6 }),
       executions: [
         execution({ kind: 'buy', price: 5000, contracts: 2 }),
         execution({ kind: 'sell', price: 5004, contracts: 2 }),
@@ -161,8 +157,7 @@ describe('computeGrossPnl', () => {
 
   it('uses weighted-average entry/exit prices', () => {
     const t = tradeRecord({
-      symbol: 'NQ',
-      contract_type: 'mini',
+      symbol_spec: symbolSnapshot(),
       executions: [
         execution({ kind: 'buy', price: 20000, contracts: 1 }),
         execution({ kind: 'buy', price: 20020, contracts: 1 }),
@@ -184,8 +179,7 @@ describe('computeGrossPnl', () => {
 describe('computeNetPnl', () => {
   it('net = gross − fees', () => {
     const t = tradeRecord({
-      symbol: 'NQ',
-      contract_type: 'mini',
+      symbol_spec: symbolSnapshot(),
       executions: [
         execution({ kind: 'buy', price: 20000, contracts: 1 }),
         execution({ kind: 'sell', price: 20010, contracts: 1 }),
@@ -221,8 +215,7 @@ describe('computeRealizedRr', () => {
   it('returns pnl / stop_loss', () => {
     // Net pnl = 200 − 4.5 fees = 195.5; stop_loss 100 → 1.955.
     const t = tradeRecord({
-      symbol: 'NQ',
-      contract_type: 'mini',
+      symbol_spec: symbolSnapshot(),
       stop_loss: 100,
       executions: [
         execution({ kind: 'buy', price: 20000, contracts: 1 }),
@@ -281,8 +274,7 @@ describe('computeDuration', () => {
 describe('classifyTrade', () => {
   it('NQ: <= 4 handles is scratch', () => {
     const t = tradeRecord({
-      symbol: 'NQ',
-      contract_type: 'mini',
+      symbol_spec: symbolSnapshot(),
       executions: [
         execution({ kind: 'buy', price: 20000, contracts: 1 }),
         execution({ kind: 'sell', price: 20004, contracts: 1 }),
@@ -293,8 +285,7 @@ describe('classifyTrade', () => {
 
   it('NQ: > 4 handles is win when positive', () => {
     const t = tradeRecord({
-      symbol: 'NQ',
-      contract_type: 'mini',
+      symbol_spec: symbolSnapshot(),
       executions: [
         execution({ kind: 'buy', price: 20000, contracts: 1 }),
         execution({ kind: 'sell', price: 20005, contracts: 1 }),
@@ -305,8 +296,7 @@ describe('classifyTrade', () => {
 
   it('ES: <= 1.6 handles is scratch', () => {
     const t = tradeRecord({
-      symbol: 'ES',
-      contract_type: 'mini',
+      symbol_spec: symbolSnapshot({ name: 'ES', point_value: 50, scratch_handles: 1.6 }),
       executions: [
         execution({ kind: 'buy', price: 5000, contracts: 1 }),
         execution({ kind: 'sell', price: 5001, contracts: 1 }),
@@ -317,8 +307,7 @@ describe('classifyTrade', () => {
 
   it('ES: > 1.6 handles is win when positive', () => {
     const t = tradeRecord({
-      symbol: 'ES',
-      contract_type: 'mini',
+      symbol_spec: symbolSnapshot({ name: 'ES', point_value: 50, scratch_handles: 1.6 }),
       executions: [
         execution({ kind: 'buy', price: 5000, contracts: 1 }),
         execution({ kind: 'sell', price: 5002, contracts: 1 }),
@@ -334,8 +323,7 @@ describe('isReversal', () => {
     const flipPrice = 20020
     const a = tradeRecord({
       id: 'a',
-      symbol: 'NQ',
-      contract_type: 'mini',
+      symbol_spec: symbolSnapshot(),
       executions: [
         execution({ kind: 'buy', price: 20000, time: '2026-04-15T14:30:00.000Z' }),
         execution({ kind: 'sell', price: flipPrice, time: flipTime }),
@@ -343,8 +331,7 @@ describe('isReversal', () => {
     })
     const b = tradeRecord({
       id: 'b',
-      symbol: 'NQ',
-      contract_type: 'mini',
+      symbol_spec: symbolSnapshot(),
       executions: [
         execution({ kind: 'sell', price: flipPrice, time: flipTime }),
         execution({ kind: 'buy', price: 19990, time: '2026-04-15T15:30:00.000Z' }),
@@ -404,16 +391,14 @@ describe('isReversal', () => {
   it('rejects when symbols differ', () => {
     const flipTime = '2026-04-15T15:00:00.000Z'
     const a = tradeRecord({
-      symbol: 'NQ',
-      contract_type: 'mini',
+      symbol_id: 'sym-nq',
       executions: [
         execution({ kind: 'buy', price: 20000, time: '2026-04-15T14:00:00.000Z' }),
         execution({ kind: 'sell', price: 20020, time: flipTime }),
       ],
     })
     const b = tradeRecord({
-      symbol: 'ES',
-      contract_type: 'mini',
+      symbol_id: 'sym-es',
       executions: [
         execution({ kind: 'sell', price: 20020, time: flipTime }),
         execution({ kind: 'buy', price: 20010, time: '2026-04-15T15:30:00.000Z' }),
@@ -426,8 +411,7 @@ describe('isReversal', () => {
 describe("tradeMetrics", () => {
   it("returns ahpc, pnl, and outcome from a single pass", () => {
     const t = tradeRecord({
-      symbol: "NQ",
-      contract_type: "mini",
+      symbol_spec: symbolSnapshot(),
       executions: [
         execution({ kind: "buy", price: 20000, contracts: 1 }),
         execution({ kind: "sell", price: 20010, contracts: 1 }),
@@ -443,8 +427,7 @@ describe("tradeMetrics", () => {
     // NQ threshold is 4 handles; 3 handles × $20 − fees = +$55.50 net.
     // The handle band still wins → 'scratch'.
     const t = tradeRecord({
-      symbol: "NQ",
-      contract_type: "mini",
+      symbol_spec: symbolSnapshot(),
       executions: [
         execution({ kind: "buy", price: 20000, contracts: 1 }),
         execution({ kind: "sell", price: 20003, contracts: 1 }),

@@ -1,5 +1,4 @@
-import type { Execution, Side, SymbolKey, TradeRecord } from '@/db/types'
-import { feePerSide, handleValue } from '@/lib/symbols'
+import type { Execution, Side, TradeRecord } from '@/db/types'
 
 // ---------- small helpers ----------
 
@@ -146,17 +145,17 @@ export function computeDuration(t: Pick<TradeRecord, 'executions'>): TradeDurati
   return result
 }
 
-export function computeFees(t: Pick<TradeRecord, 'executions' | 'contract_type'>): number {
+export function computeFees(t: Pick<TradeRecord, 'executions' | 'symbol_spec'>): number {
   const cached = _feesCache.get(t as object)
   if (cached !== undefined) return cached
   const sides = sumContracts(t.executions)
-  const result = sides * feePerSide(t.contract_type)
+  const result = sides * t.symbol_spec.fee_per_side
   _feesCache.set(t as object, result)
   return result
 }
 
 export function computeGrossPnl(
-  t: Pick<TradeRecord, 'executions' | 'symbol' | 'contract_type'>,
+  t: Pick<TradeRecord, 'executions' | 'symbol_spec'>,
 ): number | null {
   const cached = _grossPnlCache.get(t as object)
   if (cached !== undefined) return cached
@@ -172,7 +171,7 @@ export function computeGrossPnl(
     else {
       // Symmetric: profit = avgSell − avgBuy regardless of side (long or short).
       const handles = avgSell - avgBuy
-      result = handles * contracts * handleValue(t.symbol, t.contract_type)
+      result = handles * contracts * t.symbol_spec.point_value
     }
   }
   _grossPnlCache.set(t as object, result)
@@ -180,7 +179,7 @@ export function computeGrossPnl(
 }
 
 export function computeNetPnl(
-  t: Pick<TradeRecord, 'executions' | 'symbol' | 'contract_type'>,
+  t: Pick<TradeRecord, 'executions' | 'symbol_spec'>,
 ): number | null {
   const cached = _netPnlCache.get(t as object)
   if (cached !== undefined) return cached
@@ -203,7 +202,7 @@ export function computeAhpc(t: Pick<TradeRecord, 'executions'>): number | null {
 }
 
 export function computeRealizedRr(
-  t: Pick<TradeRecord, 'executions' | 'symbol' | 'contract_type' | 'stop_loss'>,
+  t: Pick<TradeRecord, 'executions' | 'symbol_spec' | 'stop_loss'>,
 ): number | null {
   if (!t.stop_loss || t.stop_loss === 0) return null
   const pnl = computeNetPnl(t)
@@ -226,10 +225,10 @@ export function computePlannedRr(
 // captures the real-world "flip" where one fill closes the long and opens
 // the short (or vice versa) at the same price.
 export function isReversal(
-  prev: Pick<TradeRecord, 'executions' | 'symbol' | 'contract_type'>,
-  next: Pick<TradeRecord, 'executions' | 'symbol' | 'contract_type'>,
+  prev: Pick<TradeRecord, 'executions' | 'symbol_id'>,
+  next: Pick<TradeRecord, 'executions' | 'symbol_id'>,
 ): boolean {
-  if (prev.symbol !== next.symbol || prev.contract_type !== next.contract_type) return false
+  if (prev.symbol_id !== next.symbol_id) return false
   const prevSide = inferSide(prev)
   const nextSide = inferSide(next)
   if (!prevSide || !nextSide || prevSide === nextSide) return false
@@ -240,15 +239,6 @@ export function isReversal(
   const nextFirst = nextExecs[0]
   if (!prevLast || !nextFirst) return false
   return prevLast.price === nextFirst.price && prevLast.time === nextFirst.time
-}
-
-// Trades that didn't move the market by at least this many handles in
-// either direction count as "scratch" — neither a winner nor a loser.
-// NQ moves in larger ticks than ES, so the bands differ per symbol.
-export const SCRATCH_HANDLES: Record<SymbolKey, number> = {
-  NQ: 4,
-  ES: 1.6,
-  YM: 16,
 }
 
 export const TRADE_OUTCOMES = ['win', 'loss', 'scratch'] as const
@@ -271,23 +261,23 @@ export function outcomeTextClass(
 // all three numbers per trade — returning them together avoids redundant
 // `weightedAvgPrice` / fee passes.
 //
-// Outcome rule: a trade whose absolute AHPC sits below `SCRATCH_HANDLES`
-// is a scratch even when net PNL is non-zero; above the threshold, PNL
-// sign decides.
+// Outcome rule: a trade whose absolute AHPC sits below the symbol's frozen
+// `scratch_handles` band is a scratch even when net PNL is non-zero; above the
+// threshold, PNL sign decides.
 export interface TradeMetrics {
   ahpc: number | null
   pnl: number | null
   outcome: TradeOutcome
 }
 export function tradeMetrics(
-  t: Pick<TradeRecord, 'executions' | 'symbol' | 'contract_type'>,
+  t: Pick<TradeRecord, 'executions' | 'symbol_spec'>,
 ): TradeMetrics {
   const cached = _metricsCache.get(t as object)
   if (cached !== undefined) return cached
   const ahpc = computeAhpc(t)
   const pnl = computeNetPnl(t)
   let outcome: TradeOutcome
-  if (ahpc !== null && Math.abs(ahpc) <= SCRATCH_HANDLES[t.symbol]) outcome = 'scratch'
+  if (ahpc !== null && Math.abs(ahpc) <= t.symbol_spec.scratch_handles) outcome = 'scratch'
   else if (pnl === null || pnl === 0) outcome = 'scratch'
   else outcome = pnl > 0 ? 'win' : 'loss'
   const result: TradeMetrics = { ahpc, pnl, outcome }
@@ -297,7 +287,7 @@ export function tradeMetrics(
 
 // Outcome-only helper kept for callers that don't need ahpc/pnl.
 export function classifyTrade(
-  t: Pick<TradeRecord, 'executions' | 'symbol' | 'contract_type'>,
+  t: Pick<TradeRecord, 'executions' | 'symbol_spec'>,
 ): TradeOutcome {
   return tradeMetrics(t).outcome
 }

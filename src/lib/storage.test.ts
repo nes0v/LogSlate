@@ -84,12 +84,15 @@ describe('removeFromStorage', () => {
 })
 
 describe('pruneLegacyStorageKeys', () => {
-  it('removes the retired Time-tab override switch key and leaves others intact', () => {
+  it('removes retired keys (Time-tab switch, shared-filters v1) and leaves others intact', () => {
     localStorage.setItem('logslate:reports_time_include_overrides', 'true')
     saveJsonToStorage('logslate.shared-filters.v1', { from: '2026-06-01' })
+    saveJsonToStorage('logslate.shared-filters.v2', { from: '2026-06-01' })
     pruneLegacyStorageKeys()
     expect(localStorage.getItem('logslate:reports_time_include_overrides')).toBeNull()
-    expect(localStorage.getItem('logslate.shared-filters.v1')).not.toBeNull()
+    expect(localStorage.getItem('logslate.shared-filters.v1')).toBeNull()
+    // The current (v2) slot is untouched.
+    expect(localStorage.getItem('logslate.shared-filters.v2')).not.toBeNull()
   })
 
   it('is a no-op when the legacy keys are absent', () => {

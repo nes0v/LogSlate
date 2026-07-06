@@ -1,17 +1,16 @@
 import { useMemo } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { listAllTrades, listModels } from '@/db/queries'
+import { listAllTrades, listModels, listSymbols } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
 import { DEFAULT_MODEL_NAME, EMOTIONS, type Emotion } from '@/db/types'
 import {
-  CONTRACT_OPTS,
   HOLD_OPTS,
   OUTCOME_OPTS,
   SESSION_OPTS,
   SIDE_OPTS,
-  SYMBOL_OPTS,
   WEEKDAY_OPTS,
 } from '@/lib/filter-options'
+import { readSymbolFilterCache, writeSymbolFilterCache } from '@/lib/symbol-filter-cache'
 import {
   MODEL_NONE,
   type HoldBucket,
@@ -24,8 +23,8 @@ import { DatePicker } from '@/components/form/DatePicker'
 import { Field } from '@/components/form/Field'
 
 /**
- * Shared Stats/Reports filter bar. Two visual rows — symbol/contract/session/
- * rating up top (the "what trade" axis) and outcome/side/weekday/hold/emotion/
+ * Shared Stats/Reports filter bar. Two visual rows — symbol/session/rating up
+ * top (the "what trade" axis) and outcome/side/weekday/hold/emotion/
  * model below (the "what kind of result / how you got there" axis). Each row
  * wraps individually on narrow screens.
  */
@@ -38,7 +37,33 @@ export function StatsFilterBar({
 }) {
   const accountId = useActiveAccountId()
   const models = useLiveQuery(() => listModels(accountId), [accountId], [])
+  // Warm the cache from inside the querier so it's written with the account the
+  // query actually resolved for (an account switch can otherwise leave `symbols`
+  // holding the previous account's list for a frame). The cached list is the
+  // initial value on the next mount, killing the "pills appear late" flicker.
+  // Seed only depends on the account, so parse localStorage once per account
+  // instead of on every keystroke re-render.
+  const symbolSeed = useMemo(() => readSymbolFilterCache(accountId) ?? [], [accountId])
+  const symbols = useLiveQuery(
+    async () => {
+      const rows = await listSymbols(accountId)
+      writeSymbolFilterCache(accountId, rows)
+      return rows
+    },
+    [accountId],
+    symbolSeed,
+  )
   const trades = useLiveQuery(() => listAllTrades(accountId), [accountId], [])
+
+  // Per-account symbol options, in the user's sidebar order, "All" first.
+  // Drafts are hidden (they can't have trades logged against them).
+  const symbolOpts = useMemo(
+    () => [
+      { value: null, label: 'All' },
+      ...symbols.filter(s => !s.draft).map(s => ({ value: s.id, label: s.name })),
+    ],
+    [symbols],
+  )
 
   // Memoised so child FilterDropdowns don't see fresh array identity on every
   // keystroke / unrelated render. `listModels` already returns alphabetical.
@@ -87,10 +112,7 @@ export function StatsFilterBar({
           />
         </Field>
         <Field label="Symbol">
-          <Pills value={filters.symbol} onChange={v => update({ symbol: v })} options={SYMBOL_OPTS} />
-        </Field>
-        <Field label="Contract">
-          <Pills value={filters.contract} onChange={v => update({ contract: v })} options={CONTRACT_OPTS} />
+          <Pills value={filters.symbol_id} onChange={v => update({ symbol_id: v })} options={symbolOpts} />
         </Field>
         <Field label="Session">
           <Pills value={filters.session} onChange={v => update({ session: v })} options={SESSION_OPTS} />

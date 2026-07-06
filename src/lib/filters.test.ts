@@ -15,9 +15,9 @@ import { tradeRecord } from '@/test/fixtures'
 
 describe('applyFilters', () => {
   const trades = [
-    tradeRecord({ date: '2026-04-05', symbol: 'NQ', contract_type: 'mini', session: 'am', rating: 'good' }),
-    tradeRecord({ date: '2026-04-10', symbol: 'ES', contract_type: 'micro', session: 'pm', rating: 'poor' }),
-    tradeRecord({ date: '2026-04-20', symbol: 'NQ', contract_type: 'micro', session: 'lunch', rating: 'excellent' }),
+    tradeRecord({ date: '2026-04-05', symbol_id: 'nq', session: 'am', rating: 'good' }),
+    tradeRecord({ date: '2026-04-10', symbol_id: 'es', session: 'pm', rating: 'poor' }),
+    tradeRecord({ date: '2026-04-20', symbol_id: 'nq', session: 'lunch', rating: 'excellent' }),
   ]
 
   it('filters by date range inclusively', () => {
@@ -27,14 +27,9 @@ describe('applyFilters', () => {
   })
 
   it('filters by symbol', () => {
-    const out = applyFilters(trades, { ...EMPTY_FILTERS, symbol: 'NQ' })
+    const out = applyFilters(trades, { ...EMPTY_FILTERS, symbol_id: 'nq' })
     expect(out).toHaveLength(2)
-    expect(out.every(t => t.symbol === 'NQ')).toBe(true)
-  })
-
-  it('filters by contract type', () => {
-    const out = applyFilters(trades, { ...EMPTY_FILTERS, contract: 'micro' })
-    expect(out).toHaveLength(2)
+    expect(out.every(t => t.symbol_id === 'nq')).toBe(true)
   })
 
   it('filters by session', () => {
@@ -48,7 +43,7 @@ describe('applyFilters', () => {
   })
 
   it('combines multiple filters', () => {
-    const out = applyFilters(trades, { ...EMPTY_FILTERS, symbol: 'NQ', contract: 'micro' })
+    const out = applyFilters(trades, { ...EMPTY_FILTERS, symbol_id: 'nq', session: 'lunch' })
     expect(out).toHaveLength(1)
     expect(out[0].date).toBe('2026-04-20')
   })
@@ -115,8 +110,7 @@ describe('filtersFromParams ↔ paramsFromFilters round-trip', () => {
       ...EMPTY_FILTERS,
       from: '2026-04-01',
       to: '2026-04-30',
-      symbol: 'NQ' as const,
-      contract: 'mini' as const,
+      symbol_id: 'sym-nq',
       session: 'am' as const,
       rating: 'good' as const,
       weekday: 'mon' as const,
@@ -135,12 +129,15 @@ describe('filtersFromParams ↔ paramsFromFilters round-trip', () => {
   })
 
   it('rejects unknown enum values', () => {
-    const p = new URLSearchParams('symbol=XX&contract=huge&session=foo&rating=bad')
+    const p = new URLSearchParams('session=foo&rating=bad')
     const f = filtersFromParams(p)
-    expect(f.symbol).toBeNull()
-    expect(f.contract).toBeNull()
     expect(f.session).toBeNull()
     expect(f.rating).toBeNull()
+  })
+
+  it('keeps a free-form symbol id', () => {
+    const f = filtersFromParams(new URLSearchParams('symbol=sym-abc'))
+    expect(f.symbol_id).toBe('sym-abc')
   })
 
   it('preserves free-form date strings', () => {
@@ -156,7 +153,7 @@ describe('coerceFilters', () => {
     const f = coerceFilters({
       from: 42, // wrong type — not a string
       to: '2026-04-30',
-      symbol: 'DOGE', // not in SYMBOLS
+      symbol_id: 'sym-123', // free-form string kept
       session: 'am', // valid
       rating: 'bad', // not in RATINGS
       weekday: 'funday', // not in WEEKDAYS
@@ -165,7 +162,7 @@ describe('coerceFilters', () => {
     })
     expect(f.from).toBeNull()
     expect(f.to).toBe('2026-04-30')
-    expect(f.symbol).toBeNull()
+    expect(f.symbol_id).toBe('sym-123')
     expect(f.session).toBe('am')
     expect(f.rating).toBeNull()
     expect(f.weekday).toBeNull()
@@ -283,7 +280,7 @@ describe('overridesExcludedByFilters', () => {
   })
 
   it('is true for every per-trade field override days lack', () => {
-    const keys = ['symbol', 'contract', 'session', 'rating', 'outcome', 'side', 'hold', 'emotion', 'model', 'tag'] as const
+    const keys = ['symbol_id', 'session', 'rating', 'outcome', 'side', 'hold', 'emotion', 'model', 'tag'] as const
     for (const k of keys) {
       expect(overridesExcludedByFilters({ ...EMPTY_FILTERS, [k]: 'x' })).toBe(true)
     }

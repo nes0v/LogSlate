@@ -1,31 +1,32 @@
 import { describe, expect, it } from 'vitest'
-import { feePerSide, handleValue, FEE_PER_SIDE_BY_CONTRACT, HANDLE_VALUE } from './symbols'
+import { SYMBOL_PRESETS } from './symbols'
 
-describe('handleValue', () => {
-  it('returns CME spec values per symbol × contract', () => {
-    expect(handleValue('NQ', 'mini')).toBe(20)
-    expect(handleValue('NQ', 'micro')).toBe(2)
-    expect(handleValue('ES', 'mini')).toBe(50)
-    expect(handleValue('ES', 'micro')).toBe(5)
-    expect(handleValue('YM', 'mini')).toBe(5)
-    expect(handleValue('YM', 'micro')).toBe(0.5)
+describe('SYMBOL_PRESETS', () => {
+  it('carries CME point values per symbol × contract', () => {
+    expect(SYMBOL_PRESETS.NQ.mini.point_value).toBe(20)
+    expect(SYMBOL_PRESETS.NQ.micro.point_value).toBe(2)
+    expect(SYMBOL_PRESETS.ES.mini.point_value).toBe(50)
+    expect(SYMBOL_PRESETS.ES.micro.point_value).toBe(5)
+    expect(SYMBOL_PRESETS.YM.mini.point_value).toBe(5)
+    expect(SYMBOL_PRESETS.YM.micro.point_value).toBe(0.5)
   })
 
-  it('table covers every (symbol, contract) cell', () => {
-    expect(Object.keys(HANDLE_VALUE).sort()).toEqual(['ES', 'NQ', 'YM'])
-    for (const sym of Object.keys(HANDLE_VALUE) as Array<keyof typeof HANDLE_VALUE>) {
-      expect(Object.keys(HANDLE_VALUE[sym]).sort()).toEqual(['micro', 'mini'])
+  it('names micro contracts with an M prefix', () => {
+    expect(SYMBOL_PRESETS.NQ.micro.name).toBe('MNQ')
+    expect(SYMBOL_PRESETS.ES.micro.name).toBe('MES')
+    expect(SYMBOL_PRESETS.YM.micro.name).toBe('MYM')
+  })
+
+  it('applies broker fee by contract size (mini 2.25, micro 0.62)', () => {
+    expect(SYMBOL_PRESETS.NQ.mini.fee_per_side).toBe(2.25)
+    expect(SYMBOL_PRESETS.NQ.micro.fee_per_side).toBe(0.62)
+    expect(SYMBOL_PRESETS.ES.micro.fee_per_side).toBe(0.62)
+  })
+
+  it('covers every (symbol, contract) cell', () => {
+    expect(Object.keys(SYMBOL_PRESETS).sort()).toEqual(['ES', 'NQ', 'YM'])
+    for (const sym of Object.keys(SYMBOL_PRESETS) as Array<keyof typeof SYMBOL_PRESETS>) {
+      expect(Object.keys(SYMBOL_PRESETS[sym]).sort()).toEqual(['micro', 'mini'])
     }
-  })
-})
-
-describe('feePerSide', () => {
-  it('returns broker fee per side by contract type', () => {
-    expect(feePerSide('micro')).toBe(0.62)
-    expect(feePerSide('mini')).toBe(2.25)
-  })
-
-  it('table has both contract types', () => {
-    expect(Object.keys(FEE_PER_SIDE_BY_CONTRACT).sort()).toEqual(['micro', 'mini'])
   })
 })

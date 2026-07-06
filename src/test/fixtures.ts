@@ -2,8 +2,10 @@ import type {
   AdjustmentDraft,
   EquityAdjustment,
   Execution,
+  SymbolSnapshot,
   TradeDraft,
   TradeRecord,
+  TradingSymbol,
 } from '@/db/types'
 import { MAIN_ACCOUNT_ID } from '@/db/types'
 
@@ -11,6 +13,37 @@ let idSeq = 0
 function nextId(): string {
   idSeq += 1
   return `test-id-${idSeq}`
+}
+
+// Default frozen economics = NQ mini (point $20, fee $2.25/side, scratch 4pts),
+// matching the pre-symbols hard-coded defaults so existing assertions hold.
+export function symbolSnapshot(overrides: Partial<SymbolSnapshot> = {}): SymbolSnapshot {
+  return {
+    name: 'NQ',
+    point_value: 20,
+    tick_size: 0.25,
+    fee_per_side: 2.25,
+    scratch_handles: 4,
+    ...overrides,
+  }
+}
+
+export function tradingSymbol(overrides: Partial<TradingSymbol> = {}): TradingSymbol {
+  const now = '2026-04-15T15:00:00.000Z'
+  return {
+    id: overrides.id ?? nextId(),
+    account_id: overrides.account_id ?? MAIN_ACCOUNT_ID,
+    name: 'NQ',
+    description: '',
+    point_value: 20,
+    tick_size: 0.25,
+    fee_per_side: 2.25,
+    scratch_handles: 4,
+    draft: false,
+    created_at: now,
+    updated_at: now,
+    ...overrides,
+  }
 }
 
 export function execution(overrides: Partial<Execution> = {}): Execution {
@@ -27,8 +60,8 @@ export function execution(overrides: Partial<Execution> = {}): Execution {
 export function tradeDraft(overrides: Partial<TradeDraft> = {}): TradeDraft {
   return {
     date: '2026-04-15',
-    symbol: 'NQ',
-    contract_type: 'mini',
+    symbol_id: 'sym-nq',
+    symbol_spec: symbolSnapshot(),
     session: 'am',
     idea: 'test trade',
     executions: [

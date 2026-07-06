@@ -5,7 +5,6 @@ import { deleteTrade } from '@/db/queries'
 import { useConfirm } from '@/components/ConfirmDialog'
 import { computeOrphanRules } from '@/lib/model-rules'
 import { computeAhpc, totalContracts } from '@/lib/trade-math'
-import { handleValue } from '@/lib/symbols'
 import { formatUsd } from '@/lib/money'
 import { BTN_BASE } from '@/components/form/buttonClass'
 import { cn } from '@/lib/utils'
@@ -28,7 +27,7 @@ export function TradeExpandedDetails({ trade, model }: TradeExpandedDetailsProps
   const location = useLocation()
   const contracts = totalContracts(trade)
   const ahpc = computeAhpc(trade)
-  const hv = handleValue(trade.symbol, trade.contract_type)
+  const hv = trade.symbol_spec.point_value
 
   const execs = [...trade.executions].sort(
     (a, b) => Date.parse(a.time) - Date.parse(b.time),

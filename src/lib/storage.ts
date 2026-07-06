@@ -45,6 +45,10 @@ const LEGACY_STORAGE_KEYS = [
   // Time-tab "Include override days" switch, replaced by the global
   // header toggle (a URL param) — see IncludeOverridesToggle.
   'logslate:reports_time_include_overrides',
+  // Shared filter slot from before symbols became `symbol_id` (schema v13).
+  // Superseded by `…shared-filters.v2`; the old blob's symbol/contract fields
+  // are meaningless now.
+  'logslate.shared-filters.v1',
 ] as const
 
 export function pruneLegacyStorageKeys(): void {

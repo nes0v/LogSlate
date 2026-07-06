@@ -469,6 +469,19 @@ describe('account queries', () => {
       created_at: '2026-04-15T00:00:00Z',
       updated_at: '2026-04-15T00:00:00Z',
     })
+    await db.symbols.put({
+      id: 's1',
+      account_id: a.id,
+      name: 'NQ',
+      description: '',
+      point_value: 20,
+      tick_size: 0.25,
+      fee_per_side: 2.25,
+      scratch_handles: 4,
+      draft: false,
+      created_at: '2026-04-15T00:00:00Z',
+      updated_at: '2026-04-15T00:00:00Z',
+    })
     await db.progress_rules.put({
       id: 'pr1',
       account_id: a.id,
@@ -494,6 +507,7 @@ describe('account queries', () => {
       adjustments: 1,
       days: 1,
       models: 1,
+      symbols: 1,
       progressRules: 1,
       progressChecks: 1,
     })
@@ -502,6 +516,7 @@ describe('account queries', () => {
       adjustments: 0,
       days: 0,
       models: 0,
+      symbols: 0,
       progressRules: 0,
       progressChecks: 0,
     })

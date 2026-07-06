@@ -1,28 +1,38 @@
-import type { ContractType, SymbolKey } from '@/db/types'
+import type { ContractType, SymbolKey, SymbolSnapshot, TradingSymbol } from '@/db/types'
 
-// USD value of one handle (one point of price movement) for each symbol × contract_type.
-// https://www.cmegroup.com/ spec:
-//   NQ  mini  = $20/pt      MNQ micro = $2/pt
-//   ES  mini  = $50/pt      MES micro = $5/pt
-//   YM  mini  = $5/pt       MYM micro = $0.50/pt
-export const HANDLE_VALUE: Record<SymbolKey, Record<ContractType, number>> = {
-  NQ: { mini: 20, micro: 2 },
-  ES: { mini: 50, micro: 5 },
-  YM: { mini: 5, micro: 0.5 },
+// The frozen-economics subset of a symbol, copied onto a trade at log time.
+// Single source of truth for the snapshot so the trade form, dev seed, and any
+// future caller stay in lockstep.
+export function symbolSnapshotOf(s: TradingSymbol): SymbolSnapshot {
+  return {
+    name: s.name,
+    point_value: s.point_value,
+    tick_size: s.tick_size,
+    fee_per_side: s.fee_per_side,
+    scratch_handles: s.scratch_handles,
+  }
 }
 
-export function handleValue(symbol: SymbolKey, contract_type: ContractType): number {
-  return HANDLE_VALUE[symbol][contract_type]
-}
-
-// Broker fee per contract per side, by contract type.
-// Micro: $0.62/side → 1 buy + 1 sell = $1.24
-// Mini:  $2.25/side → 1 buy + 1 sell = $4.50
-export const FEE_PER_SIDE_BY_CONTRACT: Record<ContractType, number> = {
-  micro: 0.62,
-  mini: 2.25,
-}
-
-export function feePerSide(contract_type: ContractType): number {
-  return FEE_PER_SIDE_BY_CONTRACT[contract_type]
+// Preset economics for the built-in CME index futures, keyed by the legacy
+// (symbol, contract_type) pair. This is the single source of truth for BOTH:
+//   1. the Dexie v13 migration, which turns each pair used by an existing trade
+//      into a per-account `TradingSymbol` row, and
+//   2. the Symbols-page "quick add" preset buttons.
+// Micro contracts take an "M"-prefixed ticker (MNQ / MES / MYM).
+//
+// CME spec — point value ($/pt), tick size, broker fee ($/side), scratch band
+// (points below which |AHPC| counts as a scratch).
+export const SYMBOL_PRESETS: Record<SymbolKey, Record<ContractType, SymbolSnapshot>> = {
+  NQ: {
+    mini: { name: 'NQ', point_value: 20, tick_size: 0.25, fee_per_side: 2.25, scratch_handles: 4 },
+    micro: { name: 'MNQ', point_value: 2, tick_size: 0.25, fee_per_side: 0.62, scratch_handles: 4 },
+  },
+  ES: {
+    mini: { name: 'ES', point_value: 50, tick_size: 0.25, fee_per_side: 2.25, scratch_handles: 1.6 },
+    micro: { name: 'MES', point_value: 5, tick_size: 0.25, fee_per_side: 0.62, scratch_handles: 1.6 },
+  },
+  YM: {
+    mini: { name: 'YM', point_value: 5, tick_size: 1, fee_per_side: 2.25, scratch_handles: 16 },
+    micro: { name: 'MYM', point_value: 0.5, tick_size: 1, fee_per_side: 0.62, scratch_handles: 16 },
+  },
 }

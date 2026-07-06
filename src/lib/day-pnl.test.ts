@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { execution, tradeRecord } from '@/test/fixtures'
+import { execution, symbolSnapshot, tradeRecord } from '@/test/fixtures'
 import { netPnlByDate, sumNetPnl } from '@/lib/day-pnl'
 import { dailyEquitySeries } from '@/lib/advanced-stats'
 import { computeCandles } from '@/lib/trade-stats'
@@ -9,8 +9,7 @@ import type { Bucket } from '@/lib/buckets'
 function winningTrade(date = '2026-04-01') {
   return tradeRecord({
     date,
-    symbol: 'NQ',
-    contract_type: 'mini',
+    symbol_spec: symbolSnapshot(),
     executions: [
       execution({ kind: 'buy', price: 20000, contracts: 1 }),
       execution({ kind: 'sell', price: 20010, contracts: 1 }),

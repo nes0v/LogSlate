@@ -10,8 +10,11 @@ import type {
   PendingUpload,
   TradeDraft,
   TradeRecord,
+  TradingSymbol,
+  TradingSymbolDraft,
 } from '@/db/types'
 import { getActiveAccountId } from '@/lib/active-account'
+import { clearSymbolFilterCache } from '@/lib/symbol-filter-cache'
 
 function now(): string {
   return new Date().toISOString()
@@ -160,6 +163,73 @@ export async function countTradesUsingModel(
     .count()
 }
 
+// ---------- symbols ----------
+
+// Canonical symbol list for an account — ordered by the user's manual `sort`
+// (drag-and-drop in the Symbols sidebar), with rows that have no sort value
+// falling through to alphabetical at the bottom. The sidebar, trade-form
+// picker, and filter dropdowns all read this so they stay in sync.
+export async function listSymbols(accountId: string): Promise<TradingSymbol[]> {
+  const rows = await db.symbols.where('account_id').equals(accountId).toArray()
+  return rows.sort((a, b) => {
+    const sa = a.sort ?? Number.MAX_SAFE_INTEGER
+    const sb = b.sort ?? Number.MAX_SAFE_INTEGER
+    if (sa !== sb) return sa - sb
+    return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+  })
+}
+
+export async function createSymbol(
+  draft: TradingSymbolDraft,
+  accountId?: string,
+): Promise<TradingSymbol> {
+  const ts = now()
+  const rec: TradingSymbol = {
+    ...draft,
+    id: newId(),
+    account_id: accountId ?? getActiveAccountId(),
+    created_at: ts,
+    updated_at: ts,
+  }
+  await db.symbols.add(rec)
+  return rec
+}
+
+export async function updateSymbol(
+  id: string,
+  patch: Partial<TradingSymbolDraft>,
+): Promise<void> {
+  await db.symbols.update(id, { ...patch, updated_at: now() })
+}
+
+export async function deleteSymbol(id: string): Promise<void> {
+  await db.symbols.delete(id)
+}
+
+// Persists the user's drag-and-drop order. Renumbers 1..N in one transaction
+// so stored values stay dense. Mirrors `reorderModels`.
+export async function reorderSymbols(orderedIds: string[]): Promise<void> {
+  if (orderedIds.length === 0) return
+  const ts = now()
+  await db.transaction('rw', db.symbols, async () => {
+    for (let i = 0; i < orderedIds.length; i++) {
+      await db.symbols.update(orderedIds[i], { sort: i + 1, updated_at: ts })
+    }
+  })
+}
+
+// Count of trades on `accountId` that reference `symbolId`. Powers the "in use"
+// note in the Symbols editor. Hits the `[account_id+symbol_id]` compound index.
+export async function countTradesUsingSymbol(
+  accountId: string,
+  symbolId: string,
+): Promise<number> {
+  return db.trades
+    .where('[account_id+symbol_id]')
+    .equals([accountId, symbolId])
+    .count()
+}
+
 // ---------- equity adjustments ----------
 
 export async function createAdjustment(
@@ -245,6 +315,7 @@ export async function deleteAccount(id: string): Promise<void> {
       db.days,
       db.pending_uploads,
       db.models,
+      db.symbols,
       db.progress_rules,
       db.progress_checks,
     ],
@@ -254,6 +325,7 @@ export async function deleteAccount(id: string): Promise<void> {
       await db.days.where('account_id').equals(id).delete()
       await db.pending_uploads.where('account_id').equals(id).delete()
       await db.models.where('account_id').equals(id).delete()
+      await db.symbols.where('account_id').equals(id).delete()
       await db.progress_rules.where('account_id').equals(id).delete()
       await db.progress_checks.where('account_id').equals(id).delete()
       await db.accounts.delete(id)
@@ -268,6 +340,7 @@ export async function deleteAccount(id: string): Promise<void> {
   } catch {
     // localStorage unavailable — keys will linger but are harmless.
   }
+  clearSymbolFilterCache(id)
 }
 
 // Counts the data an account owns — used by the UI confirm dialog before a
@@ -278,18 +351,21 @@ export async function countAccountData(id: string): Promise<{
   adjustments: number
   days: number
   models: number
+  symbols: number
   progressRules: number
   progressChecks: number
 }> {
-  const [trades, adjustments, days, models, progressRules, progressChecks] = await Promise.all([
-    db.trades.where('account_id').equals(id).count(),
-    db.adjustments.where('account_id').equals(id).count(),
-    db.days.where('account_id').equals(id).count(),
-    db.models.where('account_id').equals(id).count(),
-    db.progress_rules.where('account_id').equals(id).count(),
-    db.progress_checks.where('account_id').equals(id).count(),
-  ])
-  return { trades, adjustments, days, models, progressRules, progressChecks }
+  const [trades, adjustments, days, models, symbols, progressRules, progressChecks] =
+    await Promise.all([
+      db.trades.where('account_id').equals(id).count(),
+      db.adjustments.where('account_id').equals(id).count(),
+      db.days.where('account_id').equals(id).count(),
+      db.models.where('account_id').equals(id).count(),
+      db.symbols.where('account_id').equals(id).count(),
+      db.progress_rules.where('account_id').equals(id).count(),
+      db.progress_checks.where('account_id').equals(id).count(),
+    ])
+  return { trades, adjustments, days, models, symbols, progressRules, progressChecks }
 }
 
 // ---------- days ----------

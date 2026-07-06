@@ -353,6 +353,7 @@ describe('syncNow', () => {
         'news',
         'progress_checks',
         'progress_rules',
+        'symbols',
         'trades',
       ].sort(),
     )

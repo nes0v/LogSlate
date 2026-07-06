@@ -111,6 +111,7 @@ export function TradeEditRoute() {
           key={id}
           initialValues={state.values}
           initialDate={record.date}
+          original={{ symbol_id: record.symbol_id, symbol_spec: record.symbol_spec }}
           onSubmit={handleSubmit}
           onCancel={() => navigate(cameFrom ?? `/day/${record.date}`)}
         />

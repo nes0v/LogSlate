@@ -22,6 +22,7 @@ import {
   saveSharedFilters,
 } from '@/lib/shared-filters'
 import { useDefaultRangeFilters } from '@/lib/use-default-range-filters'
+import { useValidAccountFilters } from '@/lib/use-valid-account-filters'
 import { aggregate, foldOverridesIntoStats, signedAdjustment, type AggregateStats } from '@/lib/trade-stats'
 import { netPnlByDate, sumNetPnl } from '@/lib/day-pnl'
 import {
@@ -59,11 +60,11 @@ const TABS: Array<{ value: ReportTab; label: string }> = [
   { value: 'compare', label: 'Compare' },
 ]
 
-type CompareAxis = 'symbol' | 'contract' | 'session' | 'rating' | 'side' | 'emotion' | 'model'
+type CompareAxis = 'symbol' | 'session' | 'rating' | 'side' | 'emotion' | 'model'
 
 const TAB_VALUES = TABS.map(t => t.value) as readonly ReportTab[]
 const COMPARE_VALUES: readonly CompareAxis[] = [
-  'symbol', 'contract', 'session', 'rating', 'side', 'emotion', 'model',
+  'symbol', 'session', 'rating', 'side', 'emotion', 'model',
 ]
 
 export function ReportsRoute() {
@@ -157,6 +158,9 @@ export function ReportsRoute() {
     () => applyFilters(allTrades ?? [], filters),
     [allTrades, filters],
   )
+  // Drop symbol/model filters carried over from another account (their
+  // per-account ids match nothing here) so the page doesn't render empty.
+  useValidAccountFilters(allTrades, filters.symbol_id, filters.model, patch => update(patch))
   const baseStats = useMemo(() => aggregate(filtered), [filtered])
   const { rangeStart, rangeEnd } = useWindowRange(filtered, filters)
   // Global "Show override days" toggle. Beyond attribute filters, the
@@ -172,6 +176,8 @@ export function ReportsRoute() {
     setIncludeOverrides,
     preserveParam: preserveOverrideParam,
   } = useIncludeOverrides({
+    accountId,
+    ready: loaded,
     params,
     setParams,
     filters,
@@ -526,26 +532,29 @@ function DaysAndTimeReport({
 
 function SymbolReport({ trades }: { trades: TradeRecord[] }) {
   const groups = useMemo(() => {
+    // Group by symbol_id (stable across renames); label from the frozen
+    // snapshot name so a since-deleted symbol still reads correctly.
     const map = new Map<string, TradeRecord[]>()
     for (const t of trades) {
-      const k = `${t.symbol} ${t.contract_type}`
-      if (!map.has(k)) map.set(k, [])
-      map.get(k)!.push(t)
+      if (!map.has(t.symbol_id)) map.set(t.symbol_id, [])
+      map.get(t.symbol_id)!.push(t)
     }
-    return Array.from(map.entries()).sort((a, b) => (a[0] < b[0] ? -1 : 1))
+    return Array.from(map.entries())
+      .map(([id, list]) => ({ id, label: list[0].symbol_spec.name, list }))
+      .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }))
   }, [trades])
   if (groups.length === 0) {
     return <div className="text-sm text-(--color-text-dim) text-center py-12">No data.</div>
   }
   return (
     <div className="space-y-8">
-      {groups.map(([key, list]) => {
+      {groups.map(({ id, label, list }) => {
         const stats = aggregate(list)
         const cohort = cohortStats(list)
         return (
-          <div key={key}>
+          <div key={id}>
             <h3 className="text-sm font-medium mb-2">
-              {key}{' '}
+              {label}{' '}
               <span className="text-(--color-text-dim) font-normal">
                 ({stats.count})
               </span>
@@ -732,7 +741,6 @@ function RiskReport({
 
 const COMPARE_AXES: Array<{ value: CompareAxis; label: string }> = [
   { value: 'symbol', label: 'Symbol' },
-  { value: 'contract', label: 'Contract' },
   { value: 'session', label: 'Session' },
   { value: 'rating', label: 'Rating' },
   { value: 'emotion', label: 'Emotion' },
@@ -813,17 +821,18 @@ function splitByAxis(
   modelNameById: Map<string, string>,
 ): Array<{ label: string; trades: TradeRecord[] }> {
   switch (axis) {
-    case 'symbol':
-      return [
-        { label: 'NQ', trades: trades.filter(t => t.symbol === 'NQ') },
-        { label: 'ES', trades: trades.filter(t => t.symbol === 'ES') },
-        { label: 'YM', trades: trades.filter(t => t.symbol === 'YM') },
-      ].filter(g => g.trades.length > 0)
-    case 'contract':
-      return [
-        { label: 'micro', trades: trades.filter(t => t.contract_type === 'micro') },
-        { label: 'mini', trades: trades.filter(t => t.contract_type === 'mini') },
-      ].filter(g => g.trades.length > 0)
+    case 'symbol': {
+      // Group by symbol_id, label from the frozen snapshot name.
+      const bySymbol = new Map<string, { label: string; trades: TradeRecord[] }>()
+      for (const t of trades) {
+        const g = bySymbol.get(t.symbol_id)
+        if (g) g.trades.push(t)
+        else bySymbol.set(t.symbol_id, { label: t.symbol_spec.name, trades: [t] })
+      }
+      return Array.from(bySymbol.values()).sort((a, b) =>
+        a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }),
+      )
+    }
     case 'session':
       return (['pre', 'am', 'lunch', 'pm', 'aft'] as const)
         .map(s => ({ label: s, trades: trades.filter(t => t.session === s) }))

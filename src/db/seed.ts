@@ -1,5 +1,6 @@
 import { db } from '@/db/schema'
-import { createTrade } from '@/db/queries'
+import { createSymbol, createTrade } from '@/db/queries'
+import { SYMBOL_PRESETS, symbolSnapshotOf } from '@/lib/symbols'
 import { clearNotifications, pushError, pushInfo } from '@/lib/notifications'
 
 // Small deterministic sample spanning a couple of days — used for dev.
@@ -8,11 +9,15 @@ export async function seedSampleTrades(): Promise<number> {
   const existing = await db.trades.count()
   if (existing > 0) return 0
 
+  // Sample uses micro contracts, so seed MNQ + MES symbols to reference.
+  const mnq = await createSymbol({ ...SYMBOL_PRESETS.NQ.micro, description: '', draft: false })
+  const mes = await createSymbol({ ...SYMBOL_PRESETS.ES.micro, description: '', draft: false })
+
   const drafts: Array<Parameters<typeof createTrade>[0]> = [
     {
       date: '2026-04-14',
-      symbol: 'NQ',
-      contract_type: 'micro',
+      symbol_id: mnq.id,
+      symbol_spec: symbolSnapshotOf(mnq),
       session: 'am',
       idea: 'Opening range break — held vwap reclaim, target prior day high.',
       executions: [
@@ -30,8 +35,8 @@ export async function seedSampleTrades(): Promise<number> {
     },
     {
       date: '2026-04-14',
-      symbol: 'NQ',
-      contract_type: 'micro',
+      symbol_id: mnq.id,
+      symbol_spec: symbolSnapshotOf(mnq),
       session: 'pm',
       idea: 'Fade the pop at resistance — got stopped.',
       executions: [
@@ -47,8 +52,8 @@ export async function seedSampleTrades(): Promise<number> {
     },
     {
       date: '2026-04-15',
-      symbol: 'ES',
-      contract_type: 'micro',
+      symbol_id: mes.id,
+      symbol_spec: symbolSnapshotOf(mes),
       session: 'am',
       idea: 'Support bounce, scaled in.',
       executions: [

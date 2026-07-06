@@ -69,8 +69,7 @@ describe('hasAnyFilter', () => {
     const cases: Array<Partial<TradeFilters>> = [
       { from: '2026-04-01' },
       { to: '2026-04-30' },
-      { symbol: 'NQ' },
-      { contract: 'micro' },
+      { symbol_id: 'sym-nq' },
       { session: 'am' },
       { rating: 'excellent' },
     ]
@@ -90,8 +89,7 @@ describe('saveSharedFilters / loadSharedFilters', () => {
       ...EMPTY_FILTERS,
       from: '2026-04-01',
       to: '2026-04-30',
-      symbol: 'NQ',
-      contract: 'micro',
+      symbol_id: 'sym-nq',
       session: 'am',
       rating: 'excellent',
     }
@@ -100,7 +98,7 @@ describe('saveSharedFilters / loadSharedFilters', () => {
   })
 
   it('clears storage when given null', () => {
-    saveSharedFilters({ ...EMPTY_FILTERS, symbol: 'NQ' })
+    saveSharedFilters({ ...EMPTY_FILTERS, symbol_id: 'sym-nq' })
     expect(loadSharedFilters()).not.toBeNull()
     saveSharedFilters(null)
     expect(loadSharedFilters()).toBeNull()
