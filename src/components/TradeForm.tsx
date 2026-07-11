@@ -156,19 +156,8 @@ export function TradeForm({
   )
 
   async function submit(v: TradeFormValues) {
-    // Freeze the symbol's economics. On edit, keep the trade's existing spec
-    // unless the symbol changed (so past fees never shift under the user); for
-    // a new trade or a changed symbol, snapshot the picked symbol's config. A
-    // changed symbol must resolve to a live row — never fall back to the old
-    // spec, which would pair the new id with the previous symbol's economics.
-    const symbolId = v.symbol_id as string
-    let spec: SymbolSnapshot | undefined
-    if (original && original.symbol_id === symbolId) {
-      spec = original.symbol_spec
-    } else {
-      const sym = symbolsById.get(symbolId)
-      spec = sym ? symbolSnapshotOf(sym) : undefined
-    }
+    // Freeze the symbol's economics onto the trade (see resolveSymbolSpec).
+    const spec = resolveSymbolSpec(original, v.symbol_id as string, symbolsById)
     if (!spec) return // selected symbol vanished (deleted mid-edit) — abort save
     await onSubmit(formToDraft(v, spec))
     reset(getValues(), { keepValues: true })
@@ -433,7 +422,7 @@ export function TradeForm({
 
             </section>
 
-            <LiveStatsSection control={control} symbolsById={symbolsById} />
+            <LiveStatsSection control={control} symbolsById={symbolsById} original={original} />
 
             {/* Buttons live inside the left column on lg+ so growing the
                 Notes textarea (right column) doesn't push them down. */}
@@ -561,14 +550,31 @@ function ActionButtons({ isSubmitting, isDirty, onCancel }: ActionButtonsProps) 
   )
 }
 
+// The economics used by both save and the live preview: keep the trade's
+// frozen `symbol_spec` while its symbol is unchanged (so editing a symbol's
+// fee never retroactively shifts past trades or the preview under the user);
+// snapshot the live row only for a new trade or a changed symbol.
+function resolveSymbolSpec(
+  original: { symbol_id: string; symbol_spec: SymbolSnapshot } | undefined,
+  symbolId: string | null | undefined,
+  symbolsById: Map<string, TradingSymbol>,
+): SymbolSnapshot | undefined {
+  if (!symbolId) return undefined
+  if (original && original.symbol_id === symbolId) return original.symbol_spec
+  const sym = symbolsById.get(symbolId)
+  return sym ? symbolSnapshotOf(sym) : undefined
+}
+
 // Subscribes only to the four fields it needs; idea/notes/tag keystrokes
 // don't recompute the stats.
 function LiveStatsSection({
   control,
   symbolsById,
+  original,
 }: {
   control: Control<TradeFormValues>
   symbolsById: Map<string, TradingSymbol>
+  original?: { symbol_id: string; symbol_spec: SymbolSnapshot }
 }) {
   const [executions, symbol_id, stop_loss] = useWatch({
     control,
@@ -585,11 +591,11 @@ function LiveStatsSection({
         contracts: e.contracts as number,
       }))
     const ahpc = computeAhpc({ executions: execs })
-    const sym = symbol_id ? symbolsById.get(symbol_id) : undefined
-    const pnl = sym ? computeNetPnl({ executions: execs, symbol_spec: symbolSnapshotOf(sym) }) : null
+    const spec = resolveSymbolSpec(original, symbol_id, symbolsById)
+    const pnl = spec ? computeNetPnl({ executions: execs, symbol_spec: spec }) : null
     const rr = stop_loss && stop_loss > 0 && pnl !== null ? pnl / stop_loss : null
     return { ahpc, pnl, rr }
-  }, [executions, symbol_id, stop_loss, symbolsById])
+  }, [executions, symbol_id, stop_loss, symbolsById, original])
 
   const { session, durationMs } = useMemo(() => {
     const times = (executions ?? [])
