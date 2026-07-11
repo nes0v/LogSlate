@@ -68,6 +68,19 @@ let state: DriveState = {
   error: null,
 }
 
+// Cheap, synchronous re-check of the stored token's expiry. The boot-time
+// `initStatus()` only runs once; a token can lapse on the clock while the tab
+// stays open, leaving `status` stuck on 'signed-in' (so "Sync now" shows even
+// though the next Drive call will fail). Call this when a screen that trusts
+// `status` mounts (e.g. Settings) to flip to 'signed-out' up front. No network.
+export function revalidateDriveToken(): void {
+  if (state.status !== 'signed-in') return
+  const stored = loadToken()
+  if (stored && stored.expiresAt > Date.now() + 30_000) return
+  saveToken(null)
+  update({ status: 'signed-out', error: 'Google sign-in expired.' })
+}
+
 const listeners = new Set<() => void>()
 
 export function subscribeDrive(fn: () => void): () => void {

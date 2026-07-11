@@ -1,7 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
+import { useEditor, EditorContent, type Editor } from '@tiptap/react'
+import StarterKit from '@tiptap/starter-kit'
+import { Placeholder } from '@tiptap/extensions'
+import { Bold, Heading1, Heading3, Italic, List, Strikethrough, Underline } from 'lucide-react'
 import { setDayNote } from '@/db/queries'
-import { useAutosizeTextarea } from '@/lib/use-autosize-textarea'
-import { errorMessage } from '@/lib/utils'
+import { cn, errorMessage } from '@/lib/utils'
 
 interface DayNoteSectionProps {
   accountId: string
@@ -11,51 +14,183 @@ interface DayNoteSectionProps {
 }
 
 /**
- * Free-text journal entry for the day. Stored on the Day row's `note`
- * field (one row per (account, date)). Persisted on blur — typing-time
- * writes would cause a Dexie transaction per keystroke.
+ * Day journal entry — a live WYSIWYG editor (TipTap) whose content is stored as
+ * **HTML** on the Day row's `note` field (one row per (account, date)). HTML
+ * round-trips the document exactly: paragraph breaks, blank lines, and hard
+ * (Shift+Enter) breaks all reload byte-for-byte as they were typed, so the
+ * saved note always matches what was on screen while editing. Plain-text notes
+ * (no markup) load unchanged — TipTap just wraps them in a paragraph.
  *
- * Local `value` state shadows the parent-supplied stored value so typing
- * feels immediate; we re-sync from `stored` only when it changes from a
- * different source (cross-device sync) and the textarea isn't currently
- * focused.
+ * Persisted on blur — keystroke-time writes would mean a Dexie transaction per
+ * character. The editor is only re-synced from `stored` when the value changes
+ * from another source (cross-device sync) and the editor isn't focused.
  */
 export function DayNoteSection({ accountId, date, stored }: DayNoteSectionProps) {
-  const [value, setValue] = useState(stored)
-  const [error, setError] = useState<string | null>(null)
-  const textareaRef = useAutosizeTextarea()
+  const editor = useEditor(
+    {
+      extensions: [
+        // - trailingNode off: StarterKit otherwise force-appends an empty
+        //   paragraph after any non-paragraph last block (e.g. a heading),
+        //   showing as an undeletable blank line below a bottom heading.
+        // - heading levels [1,3] to match the toolbar; otherwise the `##` /
+        //   `####` markdown shortcuts create H2/H4 the buttons can't toggle.
+        StarterKit.configure({ trailingNode: false, heading: { levels: [1, 3] } }),
+        Placeholder.configure({ placeholder: 'What did you notice today?' }),
+      ],
+      content: toEditorContent(stored),
+      onBlur: ({ editor }) => void persist(getHtml(editor)),
+      // TipTap v3 doesn't re-render on transactions by default, which would
+      // leave the toolbar's active highlights (isActive) stale as the cursor
+      // moves or marks toggle. Opt back into per-transaction re-render so the
+      // buttons reflect the current selection.
+      shouldRerenderOnTransaction: true,
+    },
+    // Rebuild the editor per (account, date) so navigating between days starts
+    // clean rather than carrying the previous day's document.
+    [accountId, date],
+  )
 
-  useEffect(() => {
-    if (document.activeElement === textareaRef.current) return
-    setValue(stored)
-    // textareaRef is a stable ref object; intentionally omitted from deps.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stored])
-
-  async function handleBlur() {
-    if (value === stored) return
+  async function persist(next: string) {
+    // getHtml returns "" for an empty doc — matches an empty stored note.
+    if (next === stored) return
     try {
-      await setDayNote(accountId, date, value)
-      setError(null)
+      await setDayNote(accountId, date, next)
     } catch (e) {
-      setError(`Couldn't save note: ${errorMessage(e)}`)
+      // Surfacing is best-effort; a failed note write shouldn't break the page.
+      console.error(`Couldn't save note: ${errorMessage(e)}`)
     }
   }
+
+  // Pull in an externally-changed value (e.g. a cross-device sync landed) only
+  // when the user isn't mid-edit, so we never clobber in-progress typing.
+  useEffect(() => {
+    if (!editor || editor.isFocused) return
+    const next = toEditorContent(stored)
+    if (getHtml(editor) === next) return
+    editor.commands.setContent(next)
+  }, [editor, stored])
 
   return (
     <section className="space-y-2">
       <h2 className="text-sm font-medium">Notes</h2>
-      <div className="bg-(--color-panel) rounded-(--radius)">
-        <textarea
-          ref={textareaRef}
-          value={value}
-          onChange={e => setValue(e.target.value)}
-          onBlur={handleBlur}
-          placeholder="What did you notice today?"
-          className="block w-full bg-(--color-panel) rounded-(--radius) px-2.5 py-1.5 text-sm font-sans text-(--color-text) placeholder:text-(--color-text-faint) min-h-[95px] resize-none overflow-hidden focus:outline-none"
+      <div className="bg-(--color-panel) rounded-(--radius) p-3 space-y-2">
+        <Toolbar editor={editor} />
+        <EditorContent
+          editor={editor}
+          className="md-body md-paper min-h-[95px] rounded-(--radius) bg-(--color-paper) px-2.5 py-1.5 text-sm text-(--color-paper-text) transition-colors focus-within:ring-2 focus-within:ring-(--color-accent-soft)"
         />
       </div>
-      {error && <div className="text-xs text-(--color-loss)">{error}</div>}
     </section>
+  )
+}
+
+/** Serialises the current document to HTML, collapsing an empty doc to "" so
+ *  it matches an empty stored note (and clears the row rather than persisting
+ *  a stray "<p></p>"). */
+function getHtml(editor: Editor): string {
+  return editor.isEmpty ? '' : editor.getHTML()
+}
+
+// Any HTML this editor emits starts with a block tag (ProseMirror wraps even
+// inline content in a paragraph), so a stored value carrying one of these is
+// already rich text and loads as-is.
+const RICH_TEXT = /<(?:p|h[1-6]|ul|ol|hr|pre|blockquote)[\s/>]/i
+
+/** Prepares a stored note for the editor. Legacy notes from the old plain-text
+ *  textarea have no markup; feeding their raw `\n` text as HTML would collapse
+ *  every line break into a space. Map each line to a paragraph instead (our
+ *  paragraphs are one visual line each), preserving the layout exactly. HTML
+ *  notes pass through untouched. The note migrates to HTML on the next blur. */
+function toEditorContent(stored: string): string {
+  if (stored === '' || RICH_TEXT.test(stored)) return stored
+  const esc = (s: string) =>
+    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  return stored.split('\n').map(line => `<p>${esc(line)}</p>`).join('')
+}
+
+function Toolbar({ editor }: { editor: Editor | null }) {
+  if (!editor) return null
+
+  const tools: Array<{
+    key: string
+    label: string
+    icon: typeof Bold
+    run: () => void
+    active: boolean
+  }> = [
+    {
+      key: 'bold',
+      label: 'Bold',
+      icon: Bold,
+      run: () => editor.chain().focus().toggleBold().run(),
+      active: editor.isActive('bold'),
+    },
+    {
+      key: 'italic',
+      label: 'Italic',
+      icon: Italic,
+      run: () => editor.chain().focus().toggleItalic().run(),
+      active: editor.isActive('italic'),
+    },
+    {
+      key: 'underline',
+      label: 'Underline',
+      icon: Underline,
+      run: () => editor.chain().focus().toggleUnderline().run(),
+      active: editor.isActive('underline'),
+    },
+    {
+      key: 'strike',
+      label: 'Strikethrough',
+      icon: Strikethrough,
+      run: () => editor.chain().focus().toggleStrike().run(),
+      active: editor.isActive('strike'),
+    },
+    {
+      key: 'h1',
+      label: 'Heading 1',
+      icon: Heading1,
+      run: () => editor.chain().focus().toggleHeading({ level: 1 }).run(),
+      active: editor.isActive('heading', { level: 1 }),
+    },
+    {
+      key: 'h3',
+      label: 'Heading 3',
+      icon: Heading3,
+      run: () => editor.chain().focus().toggleHeading({ level: 3 }).run(),
+      active: editor.isActive('heading', { level: 3 }),
+    },
+    {
+      key: 'bullet',
+      label: 'Bullet list',
+      icon: List,
+      run: () => editor.chain().focus().toggleBulletList().run(),
+      active: editor.isActive('bulletList'),
+    },
+  ]
+
+  return (
+    <div className="flex items-center gap-0.5">
+      {tools.map(t => (
+        <button
+          key={t.key}
+          type="button"
+          aria-label={t.label}
+          aria-pressed={t.active}
+          title={t.label}
+          // Keep the editor selection while the button takes the click.
+          onMouseDown={ev => ev.preventDefault()}
+          onClick={t.run}
+          className={cn(
+            'grid size-7 place-items-center rounded-(--radius) transition-colors',
+            t.active
+              ? 'bg-(--color-panel-2) text-(--color-text)'
+              : 'text-(--color-text-dim) hover:bg-(--color-panel-2) hover:text-(--color-text)',
+          )}
+        >
+          <t.icon className="size-4" />
+        </button>
+      ))}
+    </div>
   )
 }

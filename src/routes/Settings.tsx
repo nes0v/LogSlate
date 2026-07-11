@@ -1,11 +1,11 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { formatDistanceToNow } from 'date-fns'
 import { AlertTriangle, CheckCircle2, CloudDownload, CloudUpload, LogIn, LogOut, RefreshCw } from 'lucide-react'
 import { clearAutoSyncState, requestManualSync, useAutoSyncState } from '@/lib/auto-sync'
 import { listAccounts, listAdjustments } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
-import { isConfigured, signIn, signOut, useDriveState } from '@/lib/drive'
+import { isConfigured, revalidateDriveToken, signIn, signOut, useDriveState } from '@/lib/drive'
 import { lastSyncAt } from '@/lib/sync'
 import { exportBackup, importBackup } from '@/lib/backup'
 import { AccountsPanel } from '@/components/AccountsPanel'
@@ -24,6 +24,13 @@ export function SettingsRoute() {
   const syncing = autoSync.status === 'syncing'
   const [importing, setImporting] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // A token can lapse on the clock while the tab sits open, leaving the drive
+  // state stuck on 'signed-in' ("Sync now" shows but every call 401s). Re-check
+  // expiry each time Settings opens so the UI drops to "Connect" up front.
+  useEffect(() => {
+    revalidateDriveToken()
+  }, [])
 
   // Drive the page-level loaded gate so the whole Settings body reveals
   // at once. Panels keep their own internal queries (Dexie de-duplicates

@@ -51,10 +51,9 @@ import { AdvancedMetricsSections } from '@/components/AdvancedStats'
 import { BTN_ACCENT } from '@/components/form/buttonClass'
 import { cn } from '@/lib/utils'
 
-type ReportTab = 'general' | 'time' | 'symbol' | 'risk' | 'compare'
+type ReportTab = 'general' | 'time' | 'risk' | 'compare'
 const TABS: Array<{ value: ReportTab; label: string }> = [
   { value: 'general', label: 'General' },
-  { value: 'symbol', label: 'Symbol' },
   { value: 'time', label: 'Time' },
   { value: 'risk', label: 'Risk' },
   { value: 'compare', label: 'Compare' },
@@ -136,6 +135,17 @@ export function ReportsRoute() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params])
 
+  // Legacy: the standalone Symbol tab was folded into Compare's Symbol axis.
+  // Send old ?tab=symbol links there instead of silently falling back to
+  // General. `compare` defaults to 'symbol', so it's left off the URL.
+  useEffect(() => {
+    if (params.get('tab') !== 'symbol') return
+    const p = new URLSearchParams(params)
+    p.set('tab', 'compare')
+    p.delete('compare')
+    setParams(p, { replace: true })
+  }, [params, setParams])
+
   const accountId = useActiveAccountId()
   // No default value — `allTrades` stays undefined while Dexie resolves so
   // we can suppress the empty-state placeholder until the real data lands
@@ -185,7 +195,7 @@ export function ReportsRoute() {
     feesOverridesByDate,
     rangeStart,
     rangeEnd,
-    extraDisabled: tab === 'symbol' || tab === 'risk' || tab === 'compare',
+    extraDisabled: tab === 'risk' || tab === 'compare',
   })
   const stats = useMemo<AggregateStats>(
     () => foldOverridesIntoStats(baseStats, filtered, effectiveOverrides, effectiveFeesOverrides, filters.from, filters.to),
@@ -348,10 +358,6 @@ export function ReportsRoute() {
               <div className="bg-(--color-panel) rounded-(--radius) p-3 h-full">
                 <DaysAndTimeReport trades={filtered} overridesByDate={windowOverrides} />
               </div>
-            ) : tab === 'symbol' ? (
-              <div className="bg-(--color-panel) rounded-(--radius) p-3 h-full">
-                <SymbolReport trades={filtered} />
-              </div>
             ) : tab === 'risk' ? (
               <div className="bg-(--color-panel) rounded-(--radius) p-3 h-full">
                 <RiskReport
@@ -364,9 +370,7 @@ export function ReportsRoute() {
                 />
               </div>
             ) : (
-              <div className="bg-(--color-panel) rounded-(--radius) p-3 h-full">
-                <CompareReport trades={filtered} axis={compareAxis} onAxisChange={setCompareAxis} />
-              </div>
+              <CompareReport trades={filtered} axis={compareAxis} onAxisChange={setCompareAxis} />
             )}
           </div>
         </div>
@@ -402,48 +406,10 @@ function DaysAndTimeReport({
 
   const weekday = useMemo(() => pnlByWeekday(trades, dateOverrides), [trades, dateOverrides])
   const hourFirst = useMemo(() => pnlByHour(trades, 'first'), [trades])
-  const hourLast = useMemo(() => pnlByHour(trades, 'last'), [trades])
   const week = useMemo(() => pnlByWeek(trades, dateOverrides), [trades, dateOverrides])
   const month = useMemo(() => pnlByMonth(trades, dateOverrides), [trades, dateOverrides])
 
-  const dayOfMonth = useMemo(() => {
-    const map = Array.from({ length: 31 }, (_, i) => ({
-      day: i + 1,
-      pnl: 0,
-      count: 0,
-      wins: 0,
-      losses: 0,
-    }))
-    // Counts/wins/losses from real trades only.
-    for (const t of trades) {
-      const d = Number(t.date.slice(8, 10))
-      if (d < 1 || d > 31) continue
-      const cell = map[d - 1]
-      const { outcome } = tradeMetrics(t)
-      cell.count++
-      if (outcome === 'win') cell.wins++
-      else if (outcome === 'loss') cell.losses++
-    }
-    // PNL from the override-replaced per-day net so an override day lands on
-    // its day-of-month (consistent with the weekday / weekly / monthly views).
-    for (const [date, net] of netPnlByDate(trades, dateOverrides)) {
-      const d = Number(date.slice(8, 10))
-      if (d < 1 || d > 31) continue
-      map[d - 1].pnl += net
-    }
-    return map
-  }, [trades, dateOverrides])
-
   const hourRowsFirst = hourFirst
-    .filter(h => h.count > 0)
-    .map(h => ({
-      label: `${String(h.hour).padStart(2, '0')}:00`,
-      count: h.count,
-      wins: h.wins,
-      losses: h.losses,
-      pnl: h.pnl,
-    }))
-  const hourRowsLast = hourLast
     .filter(h => h.count > 0)
     .map(h => ({
       label: `${String(h.hour).padStart(2, '0')}:00`,
@@ -459,12 +425,6 @@ function DaysAndTimeReport({
         <Card title="PNL by hour" caption="bucketed by first execution">
           <ReportTable rows={hourRowsFirst} />
         </Card>
-        <Card title="PNL by hour" caption="bucketed by last execution">
-          <ReportTable rows={hourRowsLast} />
-        </Card>
-      </SectionGrid>
-
-      <SectionGrid>
         <Card title="Day of week">
           <ReportTable
             rows={weekday
@@ -477,21 +437,6 @@ function DaysAndTimeReport({
                 wins: w.wins,
                 losses: w.losses,
                 pnl: w.pnl,
-              }))}
-          />
-        </Card>
-        <Card title="Day of month">
-          <ReportTable
-            rows={dayOfMonth
-              // Keep buckets with no trades but a non-zero PNL — an override
-              // day (count 0) lands here when "Include override days" is on.
-              .filter(d => d.count > 0 || d.pnl !== 0)
-              .map(d => ({
-                label: String(d.day),
-                count: d.count,
-                wins: d.wins,
-                losses: d.losses,
-                pnl: d.pnl,
               }))}
           />
         </Card>
@@ -527,72 +472,72 @@ function DaysAndTimeReport({
 }
 
 // =====================================================================
-// Tab: Symbol
+// Shared: per-group stat cards (used by every Compare axis)
 // =====================================================================
 
-function SymbolReport({ trades }: { trades: TradeRecord[] }) {
-  const groups = useMemo(() => {
-    // Group by symbol_id (stable across renames); label from the frozen
-    // snapshot name so a since-deleted symbol still reads correctly.
-    const map = new Map<string, TradeRecord[]>()
-    for (const t of trades) {
-      if (!map.has(t.symbol_id)) map.set(t.symbol_id, [])
-      map.get(t.symbol_id)!.push(t)
-    }
-    return Array.from(map.entries())
-      .map(([id, list]) => ({ id, label: list[0].symbol_spec.name, list }))
-      .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }))
-  }, [trades])
-  if (groups.length === 0) {
-    return <div className="text-sm text-(--color-text-dim) text-center py-12">No data.</div>
-  }
+/**
+ * One row per cohort: Trades, Win %, Net PNL, Avg win/loss, Avg duration,
+ * Total fees. Shared by every Compare axis; the Symbol axis reproduces what
+ * the old standalone Symbol tab showed, which is why that tab was folded into
+ * Compare. Scrolls horizontally on narrow screens rather than crushing the
+ * columns.
+ */
+function CompareTable({ groups }: { groups: Array<{ label: string; trades: TradeRecord[] }> }) {
+  const cell = 'text-right px-2 py-2'
   return (
-    <div className="space-y-8">
-      {groups.map(({ id, label, list }) => {
-        const stats = aggregate(list)
-        const cohort = cohortStats(list)
-        return (
-          <div key={id}>
-            <h3 className="text-sm font-medium mb-2">
-              {label}{' '}
-              <span className="text-(--color-text-dim) font-normal">
-                ({stats.count})
-              </span>
-            </h3>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-y-3 gap-x-2">
-              <Stat
-                label="Net PNL"
-                value={formatUsd(stats.net_pnl)}
-                tone={stats.net_pnl > 0 ? 'win' : stats.net_pnl < 0 ? 'loss' : 'dim'}
-              />
-              <Stat
-                label="Win rate"
-                value={
-                  stats.win_rate === null
-                    ? '—'
-                    : `${Math.round(stats.win_rate * 100)}%`
-                }
-                caption={`${stats.wins}W / ${stats.losses}L`}
-              />
-              <Stat
-                label="Avg win"
-                value={stats.avg_win === null ? '—' : formatUsd(stats.avg_win)}
-                tone={stats.avg_win === null ? 'dim' : 'win'}
-              />
-              <Stat
-                label="Avg loss"
-                value={stats.avg_loss === null ? '—' : formatUsd(stats.avg_loss)}
-                tone={stats.avg_loss === null ? 'dim' : 'loss'}
-              />
-              <Stat
-                label="Avg duration"
-                value={fmtDuration(cohort.avgDuration_ms)}
-              />
-              <Stat label="Total fees" value={formatUsd(-stats.fees)} />
-            </div>
-          </div>
-        )
-      })}
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[760px] text-sm border-collapse table-fixed">
+        <thead>
+          <tr className="text-(--color-text-dim) border-b border-(--color-panel-2)">
+            <th className="text-left font-normal py-2 pr-3 w-36"></th>
+            <th className={cn(cell, 'font-normal')}>Trades</th>
+            <th className={cn(cell, 'font-normal')}>Win %</th>
+            <th className={cn(cell, 'font-normal')}>Net PNL</th>
+            <th className={cn(cell, 'font-normal')}>Avg win</th>
+            <th className={cn(cell, 'font-normal')}>Avg loss</th>
+            <th className={cn(cell, 'font-normal')}>Avg dur</th>
+            <th className="text-right font-normal pl-2 py-2">Fees</th>
+          </tr>
+        </thead>
+        <tbody className="font-mono tabular-nums">
+          {groups.map(({ label, trades }, i) => {
+            const s = aggregate(trades)
+            const dur = cohortStats(trades).avgDuration_ms
+            return (
+              // Key by index: two groups can share a label (e.g. a deleted and
+              // a live symbol both named "MNQ", or multiple "(deleted)" models).
+              <tr key={i} className="border-b border-(--color-panel-2) last:border-0">
+                <td className="py-2 pr-3 font-sans text-(--color-text-dim) truncate">
+                  {label}
+                </td>
+                <td className={cell}>{s.count}</td>
+                <td className={cell}>
+                  {s.win_rate === null ? '—' : `${Math.round(s.win_rate * 100)}%`}
+                </td>
+                <td
+                  className={cn(
+                    cell,
+                    s.net_pnl > 0 && 'text-(--color-win)',
+                    s.net_pnl < 0 && 'text-(--color-loss)',
+                  )}
+                >
+                  {formatUsd(s.net_pnl)}
+                </td>
+                <td className={cn(cell, 'text-(--color-win)')}>
+                  {s.avg_win === null ? '—' : formatUsd(s.avg_win)}
+                </td>
+                <td className={cn(cell, 'text-(--color-loss)')}>
+                  {s.avg_loss === null ? '—' : formatUsd(s.avg_loss)}
+                </td>
+                <td className={cell}>{fmtDuration(dur)}</td>
+                <td className={cn('text-right pl-2 py-2 text-(--color-text-dim)')}>
+                  {formatUsd(-s.fees)}
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
     </div>
   )
 }
@@ -600,6 +545,12 @@ function SymbolReport({ trades }: { trades: TradeRecord[] }) {
 // =====================================================================
 // Tab: Risk (volume / position size / R-multiples)
 // =====================================================================
+
+// The PNL-vs-MFE / PNL-vs-MAE excursion scatter plots are hidden for now — the
+// "MFE efficiency" stat covers the headline and the scatters are hard to read.
+// Everything they need (Scatter, mae/mfeScatter, the point memos) is kept
+// wired up; flip this to `true` to bring both cards back.
+const SHOW_EXCURSION_SCATTERS: boolean = false
 
 function RiskReport({
   trades,
@@ -687,35 +638,28 @@ function RiskReport({
 
   return (
     <div className="space-y-8">
-      <SectionGrid>
-        <Card
-          title="PNL vs MFE"
-          caption="how much each trade gave back from peak"
-        >
-          <Scatter
-            points={mfePoints}
-            onClick={onTradeClick ? p => onTradeClick(p.id) : undefined}
-          />
-        </Card>
-        <Card
-          title="PNL vs MAE"
-          caption="how much heat each trade took"
-        >
-          <Scatter
-            points={maePoints}
-            onClick={onTradeClick ? p => onTradeClick(p.id) : undefined}
-          />
-        </Card>
-      </SectionGrid>
-
-      <SectionGrid>
-        <Card title="R-multiple distribution">
-          <RDistRows buckets={rDist} />
-        </Card>
-        <Card title="Planned R" caption="how often does each R target fire?">
-          <PlannedRRTable rows={plannedRows} />
-        </Card>
-      </SectionGrid>
+      {SHOW_EXCURSION_SCATTERS && (
+        <SectionGrid>
+          <Card
+            title="PNL vs MFE"
+            caption="how much each trade gave back from peak"
+          >
+            <Scatter
+              points={mfePoints}
+              onClick={onTradeClick ? p => onTradeClick(p.id) : undefined}
+            />
+          </Card>
+          <Card
+            title="PNL vs MAE"
+            caption="how much heat each trade took"
+          >
+            <Scatter
+              points={maePoints}
+              onClick={onTradeClick ? p => onTradeClick(p.id) : undefined}
+            />
+          </Card>
+        </SectionGrid>
+      )}
 
       <SectionGrid>
         <Card
@@ -726,6 +670,15 @@ function RiskReport({
             points={plannedVsRealized}
             onClick={onTradeClick ? p => onTradeClick(p.id) : undefined}
           />
+        </Card>
+        <Card title="Planned R" caption="how often does each R target fire?">
+          <PlannedRRTable rows={plannedRows} />
+        </Card>
+      </SectionGrid>
+
+      <SectionGrid>
+        <Card title="R-multiple distribution">
+          <RDistRows buckets={rDist} />
         </Card>
         <Card title="Position size" caption="contracts per trade">
           <ReportTable rows={sizeRows} />
@@ -795,8 +748,8 @@ function CompareReport({
               className={cn(
                 'px-2.5 py-1.5 rounded-t-(--radius) transition-colors whitespace-nowrap',
                 active
-                  ? 'text-(--color-text) bg-(--color-panel-2)'
-                  : 'text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)/60',
+                  ? 'text-(--color-text) bg-(--color-panel)'
+                  : 'text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel)/60',
               )}
             >
               {opt.label}
@@ -804,7 +757,7 @@ function CompareReport({
           )
         })}
       </div>
-      <div className="bg-(--color-panel-2) rounded-(--radius) rounded-tl-none p-3 space-y-3 flex-1">
+      <div className="bg-(--color-panel) rounded-(--radius) rounded-tl-none p-3 space-y-3 flex-1">
         {groups.length === 0 ? (
           <EmptyState>Nothing to compare on this axis.</EmptyState>
         ) : (
@@ -886,66 +839,6 @@ function splitByAxis(
   }
 }
 
-function CompareTable({ groups }: { groups: Array<{ label: string; trades: TradeRecord[] }> }) {
-  return (
-    <div className="text-xs">
-      <div className="grid grid-cols-[100px_repeat(6,1fr)] gap-2 py-1 mb-2 border-b border-(--color-panel-3) text-(--color-text-dim)">
-        <div></div>
-        <div className="text-right">Trades</div>
-        <div className="text-right">Win %</div>
-        <div className="text-right">Net</div>
-        <div className="text-right">Avg win</div>
-        <div className="text-right">Avg loss</div>
-        <div className="text-right">PF</div>
-      </div>
-      {groups.map(g => {
-        const s = aggregate(g.trades)
-        // PF uses the classifyTrade-aware buckets so scratches don't pollute
-        // the gross-wins / gross-losses sums.
-        let wins = 0
-        let losses = 0
-        for (const t of g.trades) {
-          const { pnl, outcome } = tradeMetrics(t)
-          const p = pnl ?? 0
-          if (outcome === 'win') wins += p
-          else if (outcome === 'loss') losses += p
-        }
-        const pf = losses === 0 ? (wins > 0 ? Infinity : null) : wins / Math.abs(losses)
-        return (
-          <div
-            key={g.label}
-            className="grid grid-cols-[100px_repeat(6,1fr)] gap-2 py-1 font-mono tabular-nums"
-          >
-            <div className="text-(--color-text-dim) font-sans">{g.label}</div>
-            <div className="text-right">{s.count}</div>
-            <div className="text-right">
-              {s.win_rate === null ? '—' : `${Math.round(s.win_rate * 100)}%`}
-            </div>
-            <div
-              className={cn(
-                'text-right',
-                s.net_pnl > 0 && 'text-(--color-win)',
-                s.net_pnl < 0 && 'text-(--color-loss)',
-              )}
-            >
-              {formatUsd(s.net_pnl)}
-            </div>
-            <div className="text-right text-(--color-win)">
-              {s.avg_win === null ? '—' : formatUsd(s.avg_win)}
-            </div>
-            <div className="text-right text-(--color-loss)">
-              {s.avg_loss === null ? '—' : formatUsd(s.avg_loss)}
-            </div>
-            <div className="text-right">
-              {pf === null ? '—' : pf === Infinity ? '∞' : pf.toFixed(2)}
-            </div>
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
 // =====================================================================
 // presentational helpers
 // =====================================================================
@@ -991,39 +884,6 @@ function Card({
       >
         {children}
       </div>
-    </div>
-  )
-}
-
-function Stat({
-  label,
-  value,
-  caption,
-  tone,
-}: {
-  label: string
-  value: string
-  caption?: string
-  tone?: 'win' | 'loss' | 'dim'
-}) {
-  return (
-    <div className="bg-(--color-panel-2) rounded-(--radius) p-3">
-      <div className="text-xs uppercase tracking-[0.08em] font-medium text-(--color-text-dim)">
-        {label}
-      </div>
-      <div
-        className={cn(
-          'text-xl font-mono font-medium tabular-nums mt-1.5',
-          tone === 'win' && 'text-(--color-win)',
-          tone === 'loss' && 'text-(--color-loss)',
-          tone === 'dim' && 'text-(--color-text-dim)',
-        )}
-      >
-        {value}
-      </div>
-      {caption ? (
-        <div className="text-xs text-(--color-text-dim) mt-1">{caption}</div>
-      ) : null}
     </div>
   )
 }

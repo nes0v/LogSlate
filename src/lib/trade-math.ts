@@ -221,9 +221,9 @@ export function computePlannedRr(
 }
 
 // True when `next` reverses `prev`: prev's closing exec price equals next's
-// opening exec price, sides are opposite, and the instrument matches. This
-// captures the real-world "flip" where one fill closes the long and opens
-// the short (or vice versa) at the same price.
+// opening exec price, sides are opposite, the order type (mkt/lmt) matches,
+// and the instrument matches. This captures the real-world "flip" where one
+// fill closes the long and opens the short (or vice versa) at the same price.
 export function isReversal(
   prev: Pick<TradeRecord, 'executions' | 'symbol_id'>,
   next: Pick<TradeRecord, 'executions' | 'symbol_id'>,
@@ -238,7 +238,11 @@ export function isReversal(
   const prevLast = prevExecs[prevExecs.length - 1]
   const nextFirst = nextExecs[0]
   if (!prevLast || !nextFirst) return false
-  return prevLast.price === nextFirst.price && prevLast.time === nextFirst.time
+  return (
+    prevLast.price === nextFirst.price &&
+    prevLast.time === nextFirst.time &&
+    prevLast.order_type === nextFirst.order_type
+  )
 }
 
 export const TRADE_OUTCOMES = ['win', 'loss', 'scratch'] as const

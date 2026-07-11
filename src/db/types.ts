@@ -91,6 +91,7 @@ export const EMOTIONS = [
   'frustrated',
   'tired',
   'greedy',
+  'confused',
 ] as const
 export type Emotion = (typeof EMOTIONS)[number]
 

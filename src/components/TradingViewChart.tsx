@@ -1146,6 +1146,11 @@ export function TradingViewChart({
             0,
           )
     seriesRef.current = series
+    // Tight, symmetric headroom above/below the equity curve (defaults are
+    // 0.2 top / 0.1 bottom).
+    series.priceScale().applyOptions({
+      scaleMargins: { top: 0.1, bottom: 0.1 },
+    })
 
     const adjPrim = createAdjustmentLinesPrimitive()
     // Dashed adjustment lines — mid-gray for contrast on the dark panel.

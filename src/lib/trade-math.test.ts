@@ -388,6 +388,24 @@ describe('isReversal', () => {
     expect(isReversal(a, b)).toBe(false)
   })
 
+  it('rejects when the flip order type differs (lmt close vs mkt open)', () => {
+    const flipTime = '2026-04-15T15:00:00.000Z'
+    const flipPrice = 20020
+    const a = tradeRecord({
+      executions: [
+        execution({ kind: 'buy', price: 20000, time: '2026-04-15T14:00:00.000Z' }),
+        execution({ kind: 'sell', order_type: 'lmt', price: flipPrice, time: flipTime }),
+      ],
+    })
+    const b = tradeRecord({
+      executions: [
+        execution({ kind: 'sell', order_type: 'mkt', price: flipPrice, time: flipTime }),
+        execution({ kind: 'buy', price: 20010, time: '2026-04-15T15:30:00.000Z' }),
+      ],
+    })
+    expect(isReversal(a, b)).toBe(false)
+  })
+
   it('rejects when symbols differ', () => {
     const flipTime = '2026-04-15T15:00:00.000Z'
     const a = tradeRecord({

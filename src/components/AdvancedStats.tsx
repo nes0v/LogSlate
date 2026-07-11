@@ -81,6 +81,7 @@ const EMOTION_COLORS: Record<(typeof EMOTIONS)[number], string> = {
   frustrated: '#34d399',
   tired: '#fb923c',
   greedy: '#60a5fa',
+  confused: 'var(--color-chart-muted)',
 }
 
 const HOLD_PALETTE: Record<(typeof HOLD_BUCKETS)[number], string> = {
