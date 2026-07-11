@@ -118,11 +118,6 @@ interface CandleWicksPrimitive extends ISeriesPrimitive<Time> {
   setOverrideTimes(times: Set<number>): void
 }
 
-interface FeeOverrideMarkersPrimitive extends ISeriesPrimitive<Time> {
-  setTimes(times: Set<number>): void
-  setColor(color: string): void
-}
-
 interface LineDotHoverPrimitive extends ISeriesPrimitive<Time> {
   setHoveredTime(t: number | null): void
   setPoints(map: Map<number, CandlePoint>): void
@@ -297,95 +292,6 @@ function createCandleWicksPrimitive(): CandleWicksPrimitive {
     },
     setOverrideTimes(times) {
       overrideTimes = times
-      requestUpdate?.()
-    },
-  }
-}
-
-/**
- * Marks override days in the fees pane with a small "X". Override days have
- * no trades and therefore no fee bar, so the glyph stands in the empty
- * column (on the zero baseline) to show the day was a manual PNL override
- * rather than a no-activity gap. Drawn as text so it scales cleanly.
- */
-function createFeeOverrideMarkersPrimitive(): FeeOverrideMarkersPrimitive {
-  let chart: IChartApi | null = null
-  let series: ISeriesApi<'Candlestick'> | null = null
-  let requestUpdate: (() => void) | null = null
-  let times = new Set<number>()
-  let color = '#9ea2b1'
-  // Resolved lazily and cached — `draw` runs every redraw frame and the
-  // body font never changes at runtime, so reading it each time would
-  // force a needless style recalc per frame.
-  let fontFamily = ''
-
-  const renderer: IPrimitivePaneRenderer = {
-    draw(target) {
-      if (!chart || !series || times.size === 0) return
-      const timeScale = chart.timeScale()
-      const yBase = series.priceToCoordinate(0)
-      if (yBase === null) return
-      if (!fontFamily) fontFamily = getComputedStyle(document.body).fontFamily
-      target.useBitmapCoordinateSpace(scope => {
-        const ctx = scope.context
-        const { horizontalPixelRatio: hx, verticalPixelRatio: vy } = scope
-        ctx.save()
-        ctx.fillStyle = color
-        // Scale the "X" with the zoom (bar spacing) like the candle bodies
-        // do, clamped so it never shrinks to nothing or overruns its column.
-        const barSpacing = timeScale.options().barSpacing
-        const fontPx = Math.min(16, Math.max(9, barSpacing * 0.7))
-        ctx.font = `${Math.round(fontPx * vy)}px ${fontFamily}`
-        ctx.textAlign = 'center'
-        // Alphabetic baseline puts the X's actual bottom edge on the line
-        // (X has no descender), so it touches the pane's bottom border
-        // (the zero line, since fees scaleMargins.bottom is 0).
-        ctx.textBaseline = 'alphabetic'
-        const cy = Math.round(yBase * vy)
-        for (const ts of times) {
-          const xc = timeScale.timeToCoordinate(ts as UTCTimestamp)
-          if (xc === null) continue
-          const cx = Math.round(xc * hx)
-          ctx.fillText('X', cx, cy)
-        }
-        ctx.restore()
-      })
-    },
-  }
-
-  const paneView: IPrimitivePaneView = {
-    zOrder(): PrimitivePaneViewZOrder {
-      return 'top'
-    },
-    renderer() {
-      return renderer
-    },
-  }
-
-  return {
-    attached(param: SeriesAttachedParameter<Time>) {
-      chart = param.chart
-      series = param.series as ISeriesApi<'Candlestick'>
-      requestUpdate = param.requestUpdate
-    },
-    detached() {
-      chart = null
-      series = null
-      requestUpdate = null
-    },
-    updateAllViews() {
-      /* renderer reads latest state */
-    },
-    paneViews() {
-      return [paneView]
-    },
-    setTimes(t) {
-      times = t
-      requestUpdate?.()
-    },
-    setColor(c) {
-      if (c === color) return
-      color = c
       requestUpdate?.()
     },
   }
@@ -676,7 +582,6 @@ export function TradingViewChart({
   const adjLinesPrimRef = useRef<AdjustmentLinesPrimitive | null>(null)
   const crosshairPrimRef = useRef<CrosshairPrimitive | null>(null)
   const feesCrosshairPrimRef = useRef<CrosshairPrimitive | null>(null)
-  const feeOverrideMarkersPrimRef = useRef<FeeOverrideMarkersPrimitive | null>(null)
   const lineDotHoverPrimRef = useRef<LineDotHoverPrimitive | null>(null)
   const wicksPrimRef = useRef<CandleWicksPrimitive | null>(null)
   // Single source of truth for per-bucket state — all hit-tests, click
@@ -874,12 +779,6 @@ export function TradingViewChart({
     feesCrossPrim.setColor(crossColor)
     feesSeries.attachPrimitive(feesCrossPrim)
     feesCrosshairPrimRef.current = feesCrossPrim
-
-    // "X" markers for override days, which have no fee bar of their own.
-    const feeOverrideMarkers = createFeeOverrideMarkersPrimitive()
-    feeOverrideMarkers.setColor(themeColor('--color-text-dim', '#9ea2b1'))
-    feesSeries.attachPrimitive(feeOverrideMarkers)
-    feeOverrideMarkersPrimRef.current = feeOverrideMarkers
 
     // Cursor flips to `grabbing` while the user is panning the chart.
     // Gated on actual pointer movement past `DRAG_THRESHOLD_PX` so a
@@ -1079,10 +978,6 @@ export function TradingViewChart({
         feesSeries.detachPrimitive(feesCrosshairPrimRef.current)
         feesCrosshairPrimRef.current = null
       }
-      if (feeOverrideMarkersPrimRef.current) {
-        feesSeries.detachPrimitive(feeOverrideMarkersPrimRef.current)
-        feeOverrideMarkersPrimRef.current = null
-      }
       chart.remove()
       chartRef.current = null
       feesSeriesRef.current = null
@@ -1269,16 +1164,17 @@ export function TradingViewChart({
     const showOverrideColor = timeframe === 'D'
     const overrideBodyUp = themeColor('--color-win-override', '#083e2a')
     const overrideBodyDown = themeColor('--color-loss-override', '#5c1f1d')
+    const overrideFee = themeColor('--color-fee-override', '#565c66')
     const overrideTimestamps = new Set<number>()
     for (const p of points) {
       const ts = bucketKeyToTs(p.key)
       if (ts === 0) continue
       pointByTime.set(ts, p)
+      const isOverrideDay = showOverrideColor && p.isOverride
       if (hasCandleBody(p)) {
         // Per-bar `color` overrides the series up/down palette for this candle.
         // `borderColor` is intentionally omitted — the series sets
         // `borderVisible: false`, so it would never render.
-        const isOverrideDay = showOverrideColor && p.isOverride
         const overrideColor = isOverrideDay
           ? p.close >= p.open ? overrideBodyUp : overrideBodyDown
           : undefined
@@ -1299,6 +1195,10 @@ export function TradingViewChart({
           high: p.fees,
           low: 0,
           close: p.fees,
+          // Darker bar for an override day's fees, matching the darkened
+          // override equity candle. wickColor too, though the wick is
+          // hidden (low=open=0, high=close=fees, so no wick shows).
+          ...(isOverrideDay && { color: overrideFee, wickColor: overrideFee }),
         })
       }
     }
@@ -1320,7 +1220,6 @@ export function TradingViewChart({
     lastCandleIdxRef.current = lastCandleIdx
     wicksPrimRef.current?.setCandles(candleByTime)
     wicksPrimRef.current?.setOverrideTimes(overrideTimestamps)
-    feeOverrideMarkersPrimRef.current?.setTimes(overrideTimestamps)
     lineDotHoverPrimRef.current?.setPoints(pointByTime)
     lineDotHoverPrimRef.current?.setHoveredTime(null)
     if (view === 'line') {

@@ -105,8 +105,10 @@
   /* Out-of-month padding cells in the calendar grid — a notch lighter
    * than `--color-panel` so they read as faint placeholders. */
   --color-cal-pad-border: var(--color-panel-2);
-  /* Fee bars. */
-  --color-fee:  #9ca3af;
+  /* Fee bars. Override days use a darker shade, mirroring how override
+   * equity candles darken (see --color-win/loss-override). */
+  --color-fee:          #9ca3af;
+  --color-fee-override: #565c66;
   --color-line: #6892ff;
   /* Muted grey reserved for chart segments (donut "Other"/scratch/etc.).
    * A touch lighter than text-dim so the slice reads as background rather
