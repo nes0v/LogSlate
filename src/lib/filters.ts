@@ -151,7 +151,23 @@ export function includeOverridesFromParams(p: URLSearchParams): boolean {
   return p.get(OVERRIDES_PARAM) !== '0'
 }
 
-export function applyFilters(trades: TradeRecord[], f: TradeFilters): TradeRecord[] {
+/** URL param carrying the "show scratch trades" intent. Absent = on (the
+ *  default); only written as `scratches=0` when the user turns it off. Like
+ *  `overrides`, it's a UI param (not in `FILTER_PARAM_KEYS`), preserved across
+ *  filter edits/clear. */
+export const SCRATCHES_PARAM = 'scratches'
+export function includeScratchesFromParams(p: URLSearchParams): boolean {
+  return p.get(SCRATCHES_PARAM) !== '0'
+}
+
+export function applyFilters(
+  trades: TradeRecord[],
+  f: TradeFilters,
+  // The "Show scratch trades" toggle. When false, scratch trades drop out of
+  // every stat/chart entirely (global, like the override-days toggle). Default
+  // true so the many other callers (and tests) keep their existing behavior.
+  includeScratches = true,
+): TradeRecord[] {
   return trades.filter(t => {
     if (f.from && t.date < f.from) return false
     if (f.to && t.date > f.to) return false
@@ -162,6 +178,7 @@ export function applyFilters(trades: TradeRecord[], f: TradeFilters): TradeRecor
       const wd = WEEKDAYS[dateKeyToDate(t.date).getDay()]
       if (wd !== f.weekday) return false
     }
+    if (!includeScratches && classifyTrade(t) === 'scratch') return false
     if (f.outcome && classifyTrade(t) !== f.outcome) return false
     if (f.side) {
       const s = inferSide(t)

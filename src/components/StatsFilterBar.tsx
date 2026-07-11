@@ -31,9 +31,13 @@ import { Field } from '@/components/form/Field'
 export function StatsFilterBar({
   filters,
   update,
+  includeScratches = true,
 }: {
   filters: TradeFilters
   update: (next: Partial<TradeFilters>) => void
+  /** When false, scratches are hidden globally, so the Outcome filter drops
+   *  its "scratch" option (there'd be nothing to select). */
+  includeScratches?: boolean
 }) {
   const accountId = useActiveAccountId()
   const models = useLiveQuery(() => listModels(accountId), [accountId], [])
@@ -123,7 +127,11 @@ export function StatsFilterBar({
       </div>
       <div className="flex flex-wrap items-end gap-3">
         <Field label="Outcome">
-          <Pills value={filters.outcome} onChange={v => update({ outcome: v })} options={OUTCOME_OPTS} />
+          <Pills
+            value={filters.outcome}
+            onChange={v => update({ outcome: v })}
+            options={includeScratches ? OUTCOME_OPTS : OUTCOME_OPTS.filter(o => o.value !== 'scratch')}
+          />
         </Field>
         <Field label="Side">
           <Pills value={filters.side} onChange={v => update({ side: v })} options={SIDE_OPTS} />

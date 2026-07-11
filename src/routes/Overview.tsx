@@ -25,8 +25,15 @@ import {
   FILTER_PARAM_KEYS,
   filtersFromParams,
   paramsFromFilters,
+  SCRATCHES_PARAM,
   type TradeFilters,
 } from '@/lib/filters'
+import {
+  hydrateHeaderToggleParams,
+  includeScratchesIntent,
+  saveHeaderToggles,
+} from '@/lib/header-toggle-prefs'
+import { useHasScratchesInWindow } from '@/lib/use-has-scratches'
 import { useIncludeOverrides } from '@/lib/use-include-overrides'
 import { useWindowRange } from '@/lib/use-window-range'
 import {
@@ -59,6 +66,7 @@ import {
 } from '@/components/AdvancedStats'
 import { StatsFilterBar } from '@/components/StatsFilterBar'
 import { IncludeOverridesToggle } from '@/components/IncludeOverridesToggle'
+import { ShowScratchesToggle } from '@/components/ShowScratchesToggle'
 import { BTN_ACCENT } from '@/components/form/buttonClass'
 import { loadJsonFromStorage, saveJsonToStorage } from '@/lib/storage'
 
@@ -114,20 +122,29 @@ export function OverviewRoute() {
   // instead of dropping them.
   useEffect(() => {
     const hasFilterParam = FILTER_PARAM_KEYS.some(k => params.has(k))
+    const next = new URLSearchParams(params)
+    // Restore the header-toggle intents from their store when the URL omits
+    // them (e.g. arriving via a nav link), in the same pass as the filters so
+    // there's a single setParams.
+    let changed = hydrateHeaderToggleParams(next)
     if (!hasFilterParam) {
       const stored = loadSharedFilters()
       if (stored && hasAnyFilter(stored)) {
-        const next = new URLSearchParams(params)
         paramsFromFilters(stored).forEach((v, k) => next.set(k, v))
-        setParams(next, { replace: true })
+        changed = true
       }
-      return
+    } else {
+      const f = filtersFromParams(params)
+      saveSharedFilters(hasAnyFilter(f) ? f : null)
     }
-    const f = filtersFromParams(params)
-    saveSharedFilters(hasAnyFilter(f) ? f : null)
+    if (changed) setParams(next, { replace: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params])
   const timeframe = timeframeFromParams(params)
+  // "Show scratch trades" intent (default on). When off, scratch trades are
+  // dropped from every stat/chart via applyFilters. Store-backed so it
+  // persists across page navigation (URL param wins when present).
+  const includeScratches = includeScratchesIntent(params)
   // Latest visible bucket-key range reported by the chart. The chart
   // emits this on every drag/zoom frame, so it lives in a ref to avoid
   // re-rendering Stats per frame; only the derived "off-default" boolean
@@ -174,7 +191,10 @@ export function OverviewRoute() {
   // lets TS narrow `allTrades` inside `loaded` branches below.
   const loaded = allTrades !== undefined && rangeReady && models !== undefined
 
-  const filtered = useMemo(() => applyFilters(allTrades ?? [], filters), [allTrades, filters])
+  const filtered = useMemo(() => applyFilters(allTrades ?? [], filters, includeScratches), [allTrades, filters, includeScratches])
+  // Hide the scratch toggle when the current view has no scratch trades to
+  // hide (mirrors the override toggle's hasOverridesInWindow).
+  const hasScratchesInWindow = useHasScratchesInWindow(accountId, allTrades, filters, loaded)
   // Drop symbol/model filters carried over from another account (their
   // per-account ids match nothing here) so the page doesn't render empty.
   useValidAccountFilters(allTrades, filters.symbol_id, filters.model, patch => update(patch))
@@ -277,8 +297,8 @@ export function OverviewRoute() {
   // so the chart contains every trade ever recorded for this account
   // and the user can pan/zoom outside the filter window to see the rest.
   const chartFiltered = useMemo(
-    () => applyFilters(allTrades ?? [], { ...filters, from: null, to: null }),
-    [allTrades, filters],
+    () => applyFilters(allTrades ?? [], { ...filters, from: null, to: null }, includeScratches),
+    [allTrades, filters, includeScratches],
   )
 
   // Bucket-aligned range that spans the earliest..latest dates across
@@ -412,13 +432,35 @@ export function OverviewRoute() {
     const p = paramsFromFilters(merged)
     const tf = 'tf' in next ? next.tf : timeframeFromParams(params)
     if (tf && tf !== 'D') p.set('tf', tf)
-    // Preserve the override-days intent (a UI param, not a filter).
+    // Preserve the override-days + scratch-trades intents (UI params, not
+    // filters) across a filter edit.
     preserveOverrideParam(p)
+    if (!includeScratches) p.set(SCRATCHES_PARAM, '0')
     setParams(p)
   }
 
   function setTimeframe(tf: Timeframe) {
     update({ tf })
+  }
+
+  // Flip the "show scratch trades" intent. When turning off while the Outcome
+  // filter is on 'scratch', drop that filter too (its pill disappears) so the
+  // view isn't left empty. Rebuilds params like `update` so the shared slot,
+  // timeframe, and override intent stay in sync.
+  function setIncludeScratches(next: boolean) {
+    // Persist first so the hydration effect sees the new value.
+    saveHeaderToggles({ includeScratches: next })
+    const nextFilters =
+      !next && urlFilters.outcome === 'scratch'
+        ? { ...urlFilters, outcome: null }
+        : urlFilters
+    saveSharedFilters(hasAnyFilter(nextFilters) ? nextFilters : null)
+    const p = paramsFromFilters(nextFilters)
+    const tf = timeframeFromParams(params)
+    if (tf && tf !== 'D') p.set('tf', tf)
+    preserveOverrideParam(p)
+    if (!next) p.set(SCRATCHES_PARAM, '0')
+    setParams(p)
   }
 
   // Expand a single bucket key under the active timeframe to the full
@@ -477,9 +519,10 @@ export function OverviewRoute() {
   function clear() {
     saveSharedFilters(null)
     const p = paramsFromFilters(EMPTY_FILTERS)
-    // The override-days intent isn't a filter — clearing filters shouldn't
-    // flip the user's checkbox choice back on.
+    // The override-days + scratch-trades intents aren't filters — clearing
+    // filters shouldn't flip the user's toggle choices back on.
     preserveOverrideParam(p)
+    if (!includeScratches) p.set(SCRATCHES_PARAM, '0')
     setParams(p)
     setViewportEpoch(e => e + 1)
   }
@@ -499,6 +542,9 @@ export function OverviewRoute() {
               onChange={setIncludeOverrides}
             />
           )}
+          {hasScratchesInWindow && (
+            <ShowScratchesToggle checked={includeScratches} onChange={setIncludeScratches} />
+          )}
           {!isDefault && (
             <button onClick={clear} className={BTN_ACCENT}>
               <X className="size-4" /> Clear filters
@@ -510,7 +556,7 @@ export function OverviewRoute() {
       {/* Always present (no layout jump on load). Its date values stay blank
           ("Any") until `loaded`, so it never flashes a today-based default —
           everything data-dependent below waits for the full `loaded` gate. */}
-      <StatsFilterBar filters={filters} update={update} />
+      <StatsFilterBar filters={filters} update={update} includeScratches={includeScratches} />
 
       {loaded && filtered.length > 0 && (
         <details
@@ -551,7 +597,7 @@ export function OverviewRoute() {
               overridesByDate={effectiveOverrides}
             />
           </div>
-          <DistributionDonuts filtered={filtered} models={models ?? []} />
+          <DistributionDonuts filtered={filtered} models={models ?? []} includeScratches={includeScratches} />
         </>
       )}
 

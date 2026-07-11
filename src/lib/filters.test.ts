@@ -208,6 +208,27 @@ describe('applyFilters — newer filter dimensions', () => {
     expect(applyFilters(all, { ...EMPTY_FILTERS, outcome: 'loss' })).toEqual([lossT])
   })
 
+  it('includeScratches=false drops scratch trades globally', () => {
+    const winT = tradeRecord({
+      executions: [
+        buys(20000, '2026-04-15T14:00:00.000Z'),
+        sells(20100, '2026-04-15T14:30:00.000Z'),
+      ],
+    })
+    // 1-handle round trip sits inside the 5-handle scratch band.
+    const scratchT = tradeRecord({
+      executions: [
+        buys(20000, '2026-04-15T14:00:00.000Z'),
+        sells(20001, '2026-04-15T14:30:00.000Z'),
+      ],
+    })
+    const all = [winT, scratchT]
+    // Default keeps scratches (back-compat with every other caller).
+    expect(applyFilters(all, EMPTY_FILTERS)).toEqual(all)
+    // Off removes them entirely.
+    expect(applyFilters(all, EMPTY_FILTERS, false)).toEqual([winT])
+  })
+
   it('emotion filter matches exact value', () => {
     const calm = tradeRecord({ emotion: 'calm' })
     const anxious = tradeRecord({ emotion: 'anxious' })

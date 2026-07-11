@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo } from 'react'
 import {
   filterOverridesByWeekday,
-  includeOverridesFromParams,
   OVERRIDES_PARAM,
   overridesExcludedByFilters,
   type TradeFilters,
 } from '@/lib/filters'
+import { includeOverridesIntent, saveHeaderToggles } from '@/lib/header-toggle-prefs'
 
 // Shared read-only empty map returned whenever overrides are off. A stable
 // identity keeps downstream memos from re-running on every render.
@@ -81,7 +81,8 @@ export function useIncludeOverrides({
   rangeEnd,
   extraDisabled = false,
 }: UseIncludeOverridesArgs): IncludeOverrides {
-  const intent = includeOverridesFromParams(params)
+  // Store-backed: URL param wins, else the persisted cross-page intent.
+  const intent = includeOverridesIntent(params)
   const disabled = overridesExcludedByFilters(filters) || extraDisabled
   // Overrides feed the stats only when the user wants them AND they can apply.
   // Weekday stays in play (an override day has a weekday), so it's filtered
@@ -127,6 +128,9 @@ export function useIncludeOverrides({
 
   const setIncludeOverrides = useCallback(
     (next: boolean) => {
+      // Persist first so the hydration effect (which reads the store) sees the
+      // new value and doesn't fight this change.
+      saveHeaderToggles({ includeOverrides: next })
       const p = new URLSearchParams(params)
       if (next) p.delete(OVERRIDES_PARAM)
       else p.set(OVERRIDES_PARAM, '0')

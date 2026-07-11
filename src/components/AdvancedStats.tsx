@@ -112,8 +112,12 @@ const MODEL_PALETTE = [
 export const DistributionDonuts = memo(function DistributionDonuts({
   filtered,
   models,
+  includeScratches = true,
 }: {
   filtered: TradeRecord[]
+  /** When false, scratches are already excluded from `filtered` (global
+   *  toggle), so the Outcomes donut drops its scratch slice too. */
+  includeScratches?: boolean
   /** Resolved by the parent route so the Models donut paints with the
    *  right names on first frame. Without this, a fresh useLiveQuery here
    *  starts with `[]` for one tick and the donut briefly reads "gambling
@@ -182,9 +186,13 @@ export const DistributionDonuts = memo(function DistributionDonuts({
     () => [
       { label: 'win', value: donutCounts.outcome.win, color: 'var(--color-win)' },
       { label: 'loss', value: donutCounts.outcome.loss, color: 'var(--color-loss)' },
-      { label: 'scratch', value: donutCounts.outcome.be, color: 'var(--color-chart-muted)' },
+      // Scratches are hidden globally when the toggle is off — drop the slice
+      // rather than show an empty "scratch 0%".
+      ...(includeScratches
+        ? [{ label: 'scratch', value: donutCounts.outcome.be, color: 'var(--color-chart-muted)' }]
+        : []),
     ],
-    [donutCounts],
+    [donutCounts, includeScratches],
   )
 
   const sessionDonut = useMemo(

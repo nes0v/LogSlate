@@ -12,9 +12,17 @@ import {
   filtersFromParams,
   overridesExcludedByFilters,
   paramsFromFilters,
+  SCRATCHES_PARAM,
   type TradeFilters,
 } from '@/lib/filters'
+import {
+  hydrateHeaderToggleParams,
+  includeScratchesIntent,
+  saveHeaderToggles,
+} from '@/lib/header-toggle-prefs'
+import { useHasScratchesInWindow } from '@/lib/use-has-scratches'
 import { useIncludeOverrides } from '@/lib/use-include-overrides'
+import { ShowScratchesToggle } from '@/components/ShowScratchesToggle'
 import { useWindowRange } from '@/lib/use-window-range'
 import {
   hasAnyFilter,
@@ -121,17 +129,21 @@ export function ReportsRoute() {
   // instead of being cleared by the resulting bare URL.
   useEffect(() => {
     const hasFilterParam = FILTER_PARAM_KEYS.some(k => params.has(k))
+    const next = new URLSearchParams(params)
+    // Restore the header-toggle intents from their store when the URL omits
+    // them, in the same pass as the filters (single setParams).
+    let changed = hydrateHeaderToggleParams(next)
     if (!hasFilterParam) {
       const stored = loadSharedFilters()
       if (stored && hasAnyFilter(stored)) {
-        const next = new URLSearchParams(params)
         paramsFromFilters(stored).forEach((v, k) => next.set(k, v))
-        setParams(next, { replace: true })
+        changed = true
       }
-      return
+    } else {
+      const f = filtersFromParams(params)
+      saveSharedFilters(hasAnyFilter(f) ? f : null)
     }
-    const f = filtersFromParams(params)
-    saveSharedFilters(hasAnyFilter(f) ? f : null)
+    if (changed) setParams(next, { replace: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params])
 
@@ -164,10 +176,15 @@ export function ReportsRoute() {
     useDefaultRangeFilters(accountId, allTrades, urlFilters)
   const loaded = allTrades !== undefined && rangeReady
 
+  // "Show scratch trades" intent (default on); off drops scratches from every
+  // stat via applyFilters. Store-backed so it persists across page navigation.
+  const includeScratches = includeScratchesIntent(params)
   const filtered = useMemo(
-    () => applyFilters(allTrades ?? [], filters),
-    [allTrades, filters],
+    () => applyFilters(allTrades ?? [], filters, includeScratches),
+    [allTrades, filters, includeScratches],
   )
+  // Hide the scratch toggle when the view has no scratch trades to hide.
+  const hasScratchesInWindow = useHasScratchesInWindow(accountId, allTrades, filters, loaded)
   // Drop symbol/model filters carried over from another account (their
   // per-account ids match nothing here) so the page doesn't render empty.
   useValidAccountFilters(allTrades, filters.symbol_id, filters.model, patch => update(patch))
@@ -264,6 +281,7 @@ export function ReportsRoute() {
     if (currentTabParam) p.set('tab', currentTabParam)
     if (currentCompareParam) p.set('compare', currentCompareParam)
     preserveOverrideParam(p)
+    if (!includeScratches) p.set(SCRATCHES_PARAM, '0')
     setParams(p)
   }
   function clear() {
@@ -271,8 +289,25 @@ export function ReportsRoute() {
     const p = new URLSearchParams()
     if (currentTabParam) p.set('tab', currentTabParam)
     if (currentCompareParam) p.set('compare', currentCompareParam)
-    // Clearing filters shouldn't flip the override-days checkbox back on.
+    // Clearing filters shouldn't flip the override-days / scratch toggles back on.
     preserveOverrideParam(p)
+    if (!includeScratches) p.set(SCRATCHES_PARAM, '0')
+    setParams(p)
+  }
+  // Flip the "show scratch trades" intent; drop an Outcome='scratch' filter
+  // when turning off (its pill disappears). Rebuilds params like `update`.
+  function setIncludeScratches(next: boolean) {
+    saveHeaderToggles({ includeScratches: next })
+    const nextFilters =
+      !next && urlFilters.outcome === 'scratch'
+        ? { ...urlFilters, outcome: null }
+        : urlFilters
+    saveSharedFilters(hasAnyFilter(nextFilters) ? nextFilters : null)
+    const p = paramsFromFilters(nextFilters)
+    if (currentTabParam) p.set('tab', currentTabParam)
+    if (currentCompareParam) p.set('compare', currentCompareParam)
+    preserveOverrideParam(p)
+    if (!next) p.set(SCRATCHES_PARAM, '0')
     setParams(p)
   }
 
@@ -296,6 +331,9 @@ export function ReportsRoute() {
               onChange={setIncludeOverrides}
             />
           )}
+          {hasScratchesInWindow && (
+            <ShowScratchesToggle checked={includeScratches} onChange={setIncludeScratches} />
+          )}
           {!isDefault && (
             <button onClick={clear} className={BTN_ACCENT}>
               <X className="size-4" /> Clear filters
@@ -306,7 +344,7 @@ export function ReportsRoute() {
 
       {/* Always present (no layout jump). Date values stay "Any" until
           `loaded`, so the bar never flashes a today-based default. */}
-      <StatsFilterBar filters={filters} update={update} />
+      <StatsFilterBar filters={filters} update={update} includeScratches={includeScratches} />
 
       {!loaded ? null : filtered.length === 0 ? (
         <EmptyState>
