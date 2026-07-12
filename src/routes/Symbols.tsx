@@ -1,6 +1,6 @@
 import { memo, useCallback, useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Check, Pencil, Plus, Save, Trash2 } from 'lucide-react'
+import { Check, Info, Pencil, Plus, Save, Trash2 } from 'lucide-react'
 import {
   countTradesUsingSymbol,
   createSymbol,
@@ -153,7 +153,9 @@ function SymbolEditorImpl({ symbol, onSave, onDelete }: SymbolEditorProps) {
   const accountId = useActiveAccountId()
   const confirm = useConfirm()
   const [name, setName] = useState(symbol.name)
-  const [description, setDescription] = useState(symbol.description)
+  // Normalise a legacy `undefined` description to '' so clearing the field
+  // returns to the initial state (else `'' !== undefined` keeps it dirty).
+  const [description, setDescription] = useState(symbol.description ?? '')
   const [pointValue, setPointValue] = useState<number | null>(symbol.point_value)
   const [tickSize, setTickSize] = useState<number | null>(symbol.tick_size)
   const [feePerSide, setFeePerSide] = useState<number | null>(symbol.fee_per_side)
@@ -163,7 +165,7 @@ function SymbolEditorImpl({ symbol, onSave, onDelete }: SymbolEditorProps) {
 
   const isDirty =
     name !== symbol.name ||
-    description !== symbol.description ||
+    description !== (symbol.description ?? '') ||
     pointValue !== symbol.point_value ||
     tickSize !== symbol.tick_size ||
     feePerSide !== symbol.fee_per_side ||
@@ -260,6 +262,28 @@ function SymbolEditorImpl({ symbol, onSave, onDelete }: SymbolEditorProps) {
         <Field label="Scratch threshold (points)">
           <NumberInput value={scratch} onChange={setScratch} className={inputClass} />
         </Field>
+      </div>
+
+      <div className="text-xs text-(--color-text-dim) space-y-3">
+        <div className="flex gap-2">
+          <Info className="size-4 shrink-0 mt-px text-(--color-text-faint)" />
+          <p>
+            Editing a symbol only affects new trades. Every past trade keeps the
+            fee, point value and tick size it was entered with — they stay frozen
+            so your history never shifts.
+          </p>
+        </div>
+        <div className="rounded-(--radius) bg-(--color-panel-2) p-3 space-y-1">
+          <p className="text-(--color-text-faint)">
+            To apply the new values to an existing trade:
+          </p>
+          <ol className="list-decimal pl-4 space-y-0.5">
+            <li>Save your change here.</li>
+            <li>Open that trade, switch its symbol to a different one, and Save.</li>
+            <li>Reload the page.</li>
+            <li>Switch its symbol back, and Save.</li>
+          </ol>
+        </div>
       </div>
     </div>
   )

@@ -157,6 +157,16 @@ export function OverviewRoute() {
   const [viewportEpoch, setViewportEpoch] = useState(0)
 
   const accountId = useActiveAccountId()
+  // Day-level overrides + the default one-month filter window (shared with
+  // Reports). `rangeReady` is last-trade-date + overrides only — it reads just
+  // the last-trade-date index key (not every trade record) and excludes
+  // models, so the filter bar fills its default without waiting on the full
+  // trades load or the models query (either of which would surface as a
+  // visible "Any"→date jump). Subscribed BEFORE `listAllTrades` below so Dexie
+  // runs this tiny keys-only read first and it resolves ahead of the larger
+  // toArray() — otherwise the filled dates paint no earlier than the old code.
+  const { overridesByDate, feesOverridesByDate, rangeReady, defaultWindow, filters } =
+    useDefaultRangeFilters(accountId, urlFilters)
   // No default value — `allTrades` is `undefined` while Dexie resolves so
   // we can suppress the empty-state placeholder + downstream sections
   // until the real data arrives. Without this, "No trades yet" shows for
@@ -167,12 +177,6 @@ export function OverviewRoute() {
     [accountId],
     [],
   )
-  // Day-level overrides + the default one-month filter window (shared with
-  // Reports). `rangeReady` is trades+overrides only — it deliberately excludes
-  // models so the filter bar fills its default without waiting on the slower
-  // models query (which would surface as a visible "Any"→date jump).
-  const { overridesByDate, feesOverridesByDate, rangeReady, defaultWindow, filters } =
-    useDefaultRangeFilters(accountId, allTrades, urlFilters)
   // Models are resolved once at the route level so trade rows render
   // with the right name on first paint (instead of flashing "gambling"
   // before the lookup map populates).
@@ -185,10 +189,10 @@ export function OverviewRoute() {
     for (const p of models ?? []) m.set(p.id, p)
     return m
   }, [models])
-  // `rangeReady` (from the hook) is trades + overrides; the full page-content
-  // gate also waits on models so trade rows never flash an unresolved name.
-  // The explicit `allTrades !== undefined` is redundant with `rangeReady` but
-  // lets TS narrow `allTrades` inside `loaded` branches below.
+  // `rangeReady` (from the hook) is last-trade-date + overrides — it does NOT
+  // wait on the full trades payload, so the page-content gate must check
+  // `allTrades !== undefined` itself (and models, so trade rows never flash an
+  // unresolved name). That check also lets TS narrow `allTrades` below.
   const loaded = allTrades !== undefined && rangeReady && models !== undefined
 
   const filtered = useMemo(() => applyFilters(allTrades ?? [], filters, includeScratches), [allTrades, filters, includeScratches])

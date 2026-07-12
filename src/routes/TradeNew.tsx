@@ -1,10 +1,9 @@
 import { Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { format, parseISO } from 'date-fns'
 import { TradeForm } from '@/components/TradeForm'
 import { createTrade, getDayPnlOverride } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
-import { nyToday } from '@/lib/tz'
+import { formatDisplayDate, nyToday } from '@/lib/tz'
 import { errorMessage } from '@/lib/utils'
 import type { TradeDraft } from '@/db/types'
 
@@ -15,7 +14,7 @@ export function TradeNewRoute() {
   const accountId = useActiveAccountId()
   const cameFrom = (location.state as { from?: string } | null)?.from ?? null
   // `||` alone would let a malformed but non-empty param (e.g. ?date=foo)
-  // reach parseISO below and throw on format() → ErrorBoundary. Require a
+  // reach the date formatter below and render "Invalid Date". Require a
   // real YYYY-MM-DD, else fall back to today.
   const rawDate = params.get('date')
   const date = rawDate && /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : nyToday()
@@ -46,7 +45,7 @@ export function TradeNewRoute() {
       <div className="flex items-center justify-between mb-8">
         <h1 className="h-8 flex items-center text-lg font-semibold">New trade</h1>
         <span className="text-sm text-(--color-text-dim) font-mono">
-          {format(parseISO(date), 'MMM d, yyyy')}
+          {formatDisplayDate(date)}
         </span>
       </div>
       <TradeForm

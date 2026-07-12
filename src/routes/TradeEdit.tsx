@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { format, parseISO } from 'date-fns'
 import { Trash2 } from 'lucide-react'
 import { TradeForm } from '@/components/TradeForm'
 import { useConfirm } from '@/components/ConfirmDialog'
@@ -9,6 +8,7 @@ import { useActiveAccountId } from '@/lib/active-account'
 import { recordToForm, type TradeFormValues } from '@/lib/form-schema'
 import { BTN_BASE } from '@/components/form/buttonClass'
 import { errorMessage } from '@/lib/utils'
+import { formatDisplayDate } from '@/lib/tz'
 import type { TradeDraft, TradeRecord } from '@/db/types'
 
 export function TradeEditRoute() {
@@ -94,7 +94,7 @@ export function TradeEditRoute() {
         <h1 className="h-8 flex items-center text-lg font-semibold">Edit trade</h1>
         <div className="flex items-center gap-3">
           <span className="text-sm text-(--color-text-dim) font-mono">
-            {record ? format(parseISO(record.date), 'MMM d, yyyy') : ' '}
+            {record ? formatDisplayDate(record.date) : ' '}
           </span>
           <button
             type="button"

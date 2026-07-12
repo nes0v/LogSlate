@@ -39,7 +39,7 @@ export function AdjustmentsPanel({ adjustments }: AdjustmentsPanelProps) {
                     'px-2.5 py-1.5 rounded-t-(--radius) transition-colors whitespace-nowrap',
                     active
                       ? 'text-(--color-text) bg-(--color-panel)'
-                      : 'text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)/60',
+                      : 'text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel)/60',
                   )}
                 >
                   {opt.label}

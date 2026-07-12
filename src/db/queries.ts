@@ -120,6 +120,22 @@ export async function listAllTrades(accountId: string): Promise<TradeRecord[]> {
     .toArray()
 }
 
+// Most recent trade date for an account, or null if it has no trades. Reads
+// only the `[account_id+date]` index keys and stops at the newest one, so it
+// never materializes the trade records the way `listAllTrades().toArray()`
+// does (which structured-clones every row). Used to fill the default
+// date-range window without waiting on the full trades load.
+export async function getLastTradeDate(accountId: string): Promise<string | null> {
+  const keys = await db.trades
+    .where('[account_id+date]')
+    .between([accountId, ''], [accountId, '￿'], true, true)
+    .reverse()
+    .limit(1)
+    .keys()
+  const first = keys[0] as unknown as [string, string] | undefined
+  return first ? first[1] : null
+}
+
 // ---------- models ----------
 
 // Canonical model list for an account — ordered by the user's manual

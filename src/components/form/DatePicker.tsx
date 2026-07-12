@@ -14,7 +14,7 @@ import {
   ChevronRight,
 } from 'lucide-react'
 import { monthDayGrid } from '@/lib/calendar-grid'
-import { dateKeyToDate, nyToday } from '@/lib/tz'
+import { dateKeyToDate, formatDisplayDate, nyToday } from '@/lib/tz'
 import { useOutsideClick } from '@/lib/use-outside-click'
 import { cn } from '@/lib/utils'
 
@@ -87,7 +87,7 @@ export function DatePicker({
     setOpen(false)
   }
 
-  const display = selectedDate ? format(selectedDate, 'MMM d, yyyy') : placeholder
+  const display = selectedDate ? formatDisplayDate(selectedDate) : placeholder
 
   // Trigger mirrors the recessed-input look (`bg-(--color-bg)`, no border,
   // accent-soft focus ring) used by FilterDropdown — matching height, font,

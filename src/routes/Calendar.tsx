@@ -392,16 +392,11 @@ function DayCell({ date, inMonth, cell, isToday, hasScreenshot, hasNote }: DayCe
             {formatUsd(cell.pnl)}
           </div>
           <div className={cn('text-xs', palette.meta)}>
-            {cell.isOverride && cell.count === 0 ? (
-              <span className="underline">override</span>
-            ) : cell.isOverride ? (
-              <>
-                <span className="underline">override</span>
-                {` + ${cell.count} trade${cell.count === 1 ? '' : 's'}`}
-              </>
-            ) : (
-              `${cell.count} trade${cell.count === 1 ? '' : 's'}`
-            )}
+            {cell.isOverride && cell.count === 0
+              ? 'override'
+              : cell.isOverride
+                ? `override + ${cell.count} trade${cell.count === 1 ? '' : 's'}`
+                : `${cell.count} trade${cell.count === 1 ? '' : 's'}`}
           </div>
           {winRate !== null ? (
             <div className={cn('text-xs font-mono tabular-nums mt-0.5', palette.winRate)}>

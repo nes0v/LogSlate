@@ -1,7 +1,6 @@
 import { useMemo } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { listDayFeesOverrides, listDayPnlOverrides } from '@/db/queries'
-import type { TradeRecord } from '@/db/types'
+import { getLastTradeDate, listDayFeesOverrides, listDayPnlOverrides } from '@/db/queries'
 import { defaultRange } from '@/lib/shared-filters'
 import { useDefaultRangeMonths } from '@/lib/default-range-preference'
 import type { TradeFilters } from '@/lib/filters'
@@ -18,11 +17,13 @@ export interface DefaultRangeFilters {
   /** Informational fees for override days (date → value). Sparse companion to
    *  `overridesByDate`. Stable empty map while loading. */
   feesOverridesByDate: Map<string, number>
-  /** True once the data that feeds the default range — trades AND overrides —
-   *  has resolved. Deliberately excludes models so the filter bar can fill its
-   *  default window without waiting on the slower models query (which would
-   *  otherwise leave the always-present bar showing "Any" longer, surfacing as
-   *  a visible jump). Each route folds this into its own `loaded` gate. */
+  /** True once the data that feeds the default range — the most recent trade
+   *  date AND overrides — has resolved. Reads only the last-trade-date index
+   *  key rather than materializing every trade the way `listAllTrades` does,
+   *  so the filter bar fills its default window without waiting on the full
+   *  trades load. Deliberately excludes models too. Each route folds this into
+   *  its own `loaded` gate (which still waits on the full trades load for
+   *  content). */
   rangeReady: boolean
   /** The default range — anchored on the most recent activity date, sized by
    *  the user's default-range-months preference. Routes compare against it to
@@ -38,17 +39,21 @@ export interface DefaultRangeFilters {
 /**
  * Shared filter/default-range plumbing for the Overview and Reports pages.
  * Both subscribe to day-level PNL overrides, derive the most recent activity
- * date, and fill the default range window (sized by the user's preference)
- * into any unset filter bound — with identical load-flash avoidance.
- * `overridesByDate` resolves to `undefined` internally while loading so
- * `rangeReady` genuinely waits for it.
+ * date (from a fast last-trade-date index lookup plus the overrides), and fill
+ * the default range window (sized by the user's preference) into any unset
+ * filter bound — with identical load-flash avoidance. The last-trade-date and
+ * overrides queries resolve to `undefined` while loading so `rangeReady`
+ * genuinely waits for them.
  */
 export function useDefaultRangeFilters(
   accountId: string,
-  allTrades: TradeRecord[] | undefined,
   urlFilters: TradeFilters,
 ): DefaultRangeFilters {
   const defaultMonths = useDefaultRangeMonths()
+  const lastTradeDateQuery = useLiveQuery(
+    () => getLastTradeDate(accountId),
+    [accountId],
+  )
   const overridesQuery = useLiveQuery(
     () => listDayPnlOverrides(accountId),
     [accountId],
@@ -60,16 +65,15 @@ export function useDefaultRangeFilters(
   )
   const feesOverridesByDate = feesOverridesQuery ?? EMPTY_OVERRIDES
   const rangeReady =
-    allTrades !== undefined &&
+    lastTradeDateQuery !== undefined &&
     overridesQuery !== undefined &&
     feesOverridesQuery !== undefined
 
   const lastActivityDate = useMemo(() => {
-    let max: string | null = null
-    for (const t of allTrades ?? []) if (max === null || t.date > max) max = t.date
+    let max: string | null = lastTradeDateQuery ?? null
     for (const d of overridesByDate.keys()) if (max === null || d > max) max = d
     return max ?? nyToday()
-  }, [allTrades, overridesByDate])
+  }, [lastTradeDateQuery, overridesByDate])
 
   const defaultWindow = useMemo(
     () => defaultRange(lastActivityDate, defaultMonths),

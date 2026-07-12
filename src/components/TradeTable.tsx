@@ -1,6 +1,6 @@
 import { Fragment, memo } from 'react'
 import { Link } from 'react-router-dom'
-import { format, parseISO } from 'date-fns'
+import { formatDisplayDate } from '@/lib/tz'
 import { ArrowDown, ArrowRight, ArrowUp, ArrowUpDown } from 'lucide-react'
 import { DEFAULT_MODEL_NAME, type Model, type TradeRecord } from '@/db/types'
 import {
@@ -224,7 +224,7 @@ function TradeTableRow({
             onClick={e => e.stopPropagation()}
             className="rounded-(--radius) px-1 -mx-1 hover:text-(--color-text) hover:underline focus:outline-none focus-visible:bg-(--color-panel-2)/40"
           >
-            {format(parseISO(trade.date), 'dd-MMM-yyyy')}
+            {formatDisplayDate(trade.date)}
           </Link>
         </td>
       )}

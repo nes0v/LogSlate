@@ -120,7 +120,7 @@ function DayView() {
   const { date = '' } = useParams()
   const navigate = useNavigate()
   const parsed = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? parseISO(date) : null
-  const pretty = parsed ? format(parsed, 'EEEE, MMMM d, yyyy') : date
+  const pretty = parsed ? format(parsed, 'EEEE, dd MMM yyyy') : date
 
   const accountId = useActiveAccountId()
   // All four day-scoped queries live here so the page can reveal as a

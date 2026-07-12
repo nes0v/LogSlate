@@ -641,17 +641,21 @@ export function pnlByWeek(
 export function pnlByMonth(
   trades: TradeRecord[],
   overridesByDate?: Map<string, number>,
-): Array<{ month: string; pnl: number; count: number }> {
-  const m = new Map<string, { pnl: number; count: number }>()
+): Array<{ month: string; pnl: number; count: number; wins: number; losses: number }> {
+  const m = new Map<string, { pnl: number; count: number; wins: number; losses: number }>()
+  // Counts/wins/losses come from real trades only.
   for (const t of trades) {
     const ym = t.date.slice(0, 7)
-    const cur = m.get(ym) ?? { pnl: 0, count: 0 }
+    const cur = m.get(ym) ?? { pnl: 0, count: 0, wins: 0, losses: 0 }
+    const { outcome } = tradeMetrics(t)
     cur.count++
+    if (outcome === 'win') cur.wins++
+    else if (outcome === 'loss') cur.losses++
     m.set(ym, cur)
   }
   for (const [date, net] of netPnlByDate(trades, overridesByDate)) {
     const ym = date.slice(0, 7)
-    const cur = m.get(ym) ?? { pnl: 0, count: 0 }
+    const cur = m.get(ym) ?? { pnl: 0, count: 0, wins: 0, losses: 0 }
     cur.pnl += net
     m.set(ym, cur)
   }

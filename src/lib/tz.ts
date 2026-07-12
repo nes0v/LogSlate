@@ -7,6 +7,8 @@
 // NY wallclock encoded as `${date}T${HH:MM:SS}.000Z` and read back via
 // string slicing or `getUTCHours()`. No timezone math involved.
 
+import { format } from 'date-fns'
+
 export const NY_TZ = 'America/New_York'
 
 const nyDateFmt = new Intl.DateTimeFormat('en-CA', {
@@ -54,6 +56,14 @@ export function nyTimeHHmm(d: Date): string {
  *  helper rather than scattering `new Date(key + 'T00:00:00')` everywhere. */
 export function dateKeyToDate(dateKey: string): Date {
   return new Date(dateKey + 'T00:00:00')
+}
+
+/** The app-wide display format for a full date: `06 Jun 2026`. Accepts a
+ *  Date or a `YYYY-MM-DD` key. Use this anywhere a date is shown to the user
+ *  so the format stays consistent everywhere. */
+export function formatDisplayDate(date: Date | string): string {
+  const d = typeof date === 'string' ? dateKeyToDate(date) : date
+  return format(d, 'dd MMM yyyy')
 }
 
 function toDateKey(d: Date): string {

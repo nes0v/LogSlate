@@ -53,6 +53,8 @@ import {
   type ScatterPoint,
 } from '@/lib/advanced-stats'
 import { formatUsd } from '@/lib/money'
+import { format } from 'date-fns'
+import { dateKeyToDate, formatDisplayDate } from '@/lib/tz'
 import { StatsFilterBar } from '@/components/StatsFilterBar'
 import { IncludeOverridesToggle } from '@/components/IncludeOverridesToggle'
 import { AdvancedMetricsSections } from '@/components/AdvancedStats'
@@ -169,11 +171,11 @@ export function ReportsRoute() {
     [],
   )
   // Day-level overrides + the default filter window (shared with Overview).
-  // Reports has no models query, so its full `loaded` gate is just the hook's
-  // `rangeReady` (trades + overrides). The explicit `allTrades` check is
-  // redundant with `rangeReady` but lets TS narrow it in branches.
+  // `rangeReady` is last-trade-date + overrides only — it does NOT wait on the
+  // full trades payload, so the `loaded` gate below checks `allTrades` itself
+  // (which also lets TS narrow it in branches).
   const { overridesByDate, feesOverridesByDate, rangeReady, defaultWindow, filters } =
-    useDefaultRangeFilters(accountId, allTrades, urlFilters)
+    useDefaultRangeFilters(accountId, urlFilters)
   const loaded = allTrades !== undefined && rangeReady
 
   // "Show scratch trades" intent (default on); off drops scratches from every
@@ -484,7 +486,7 @@ function DaysAndTimeReport({
         <Card title="Weekly returns">
           <ReportTable
             rows={week.map(w => ({
-              label: w.weekStart,
+              label: formatDisplayDate(w.weekStart),
               count: w.count,
               wins: w.wins,
               losses: w.losses,
@@ -495,12 +497,11 @@ function DaysAndTimeReport({
         <Card title="Monthly returns">
           <ReportTable
             rows={month.map(m => ({
-              label: m.month,
+              label: format(dateKeyToDate(`${m.month}-01`), 'MMM yyyy'),
               count: m.count,
-              wins: 0,
-              losses: 0,
+              wins: m.wins,
+              losses: m.losses,
               pnl: m.pnl,
-              hideWl: true,
             }))}
           />
         </Card>
@@ -523,11 +524,11 @@ function DaysAndTimeReport({
 function CompareTable({ groups }: { groups: Array<{ label: string; trades: TradeRecord[] }> }) {
   const cell = 'text-right px-2 py-2'
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[760px] text-sm border-collapse table-fixed">
+    <div className="overflow-x-auto bg-(--color-panel-2) rounded-(--radius) p-3">
+      <table className="w-full min-w-[760px] text-xs border-collapse table-fixed">
         <thead>
-          <tr className="text-(--color-text-dim) border-b border-(--color-panel-2)">
-            <th className="text-left font-normal py-2 pr-3 w-36"></th>
+          <tr className="text-(--color-text-dim) border-b border-(--color-panel-3)">
+            <th className="text-left font-normal py-2 pr-3 w-[70px]"></th>
             <th className={cn(cell, 'font-normal')}>Trades</th>
             <th className={cn(cell, 'font-normal')}>Win %</th>
             <th className={cn(cell, 'font-normal')}>Net PNL</th>
@@ -544,7 +545,7 @@ function CompareTable({ groups }: { groups: Array<{ label: string; trades: Trade
             return (
               // Key by index: two groups can share a label (e.g. a deleted and
               // a live symbol both named "MNQ", or multiple "(deleted)" models).
-              <tr key={i} className="border-b border-(--color-panel-2) last:border-0">
+              <tr key={i}>
                 <td className="py-2 pr-3 font-sans text-(--color-text-dim) truncate">
                   {label}
                 </td>
@@ -617,21 +618,33 @@ function RiskReport({
 
   // Position size (by contract count) breakdown.
   const sizeRows = useMemo(() => {
-    const map = new Map<number, { count: number; wins: number; losses: number; pnl: number }>()
+    const map = new Map<number, { count: number; wins: number; losses: number; pnl: number; realizedSum: number; realizedN: number }>()
     for (const t of trades) {
       const c = totalContracts(t)
       if (c === 0) continue
-      const cur = map.get(c) ?? { count: 0, wins: 0, losses: 0, pnl: 0 }
+      const cur = map.get(c) ?? { count: 0, wins: 0, losses: 0, pnl: 0, realizedSum: 0, realizedN: 0 }
       const { pnl, outcome } = tradeMetrics(t)
       cur.count++
       if (outcome === 'win') cur.wins++
       else if (outcome === 'loss') cur.losses++
       cur.pnl += pnl ?? 0
+      const rr = computeRealizedRr(t)
+      if (rr !== null) {
+        cur.realizedSum += rr
+        cur.realizedN++
+      }
       map.set(c, cur)
     }
     return Array.from(map.entries())
       .sort((a, b) => a[0] - b[0])
-      .map(([k, v]) => ({ label: `${k} ct`, ...v }))
+      .map(([k, v]) => ({
+        label: `${k} ct`,
+        count: v.count,
+        wins: v.wins,
+        losses: v.losses,
+        pnl: v.pnl,
+        avgRealized: v.realizedN > 0 ? v.realizedSum / v.realizedN : null,
+      }))
   }, [trades])
 
   // Planned R analysis.
@@ -719,7 +732,7 @@ function RiskReport({
           <RDistRows buckets={rDist} />
         </Card>
         <Card title="Position size" caption="contracts per trade">
-          <ReportTable rows={sizeRows} />
+          <PlannedRRTable rows={sizeRows} labelHeader="Size" />
         </Card>
       </SectionGrid>
     </div>
@@ -932,7 +945,6 @@ interface ReportRow {
   wins: number
   losses: number
   pnl: number
-  hideWl?: boolean
 }
 function ReportTable({ rows }: { rows: ReportRow[] }) {
   if (rows.length === 0) {
@@ -943,12 +955,17 @@ function ReportTable({ rows }: { rows: ReportRow[] }) {
     )
   }
   const max = Math.max(0, ...rows.map(r => Math.abs(r.pnl)))
+  // Column layout: first column (date/label) fixed; Trades / Win % / PNL each
+  // take an equal share of the remaining space (1fr); the stripes column is
+  // free to grow between a min and max so it never collapses or hogs the row.
+  const cols =
+    'grid grid-cols-[80px_50px_50px_minmax(100px,170px)_1fr] gap-2'
   return (
     <div className="text-xs">
-        <div className="grid grid-cols-[80px_60px_80px_1fr_80px] gap-2 py-1 mb-2 border-b border-(--color-panel-3) text-(--color-text-dim)">
+        <div className={cn(cols, 'py-1 mb-2 border-b border-(--color-panel-3) text-(--color-text-dim)')}>
           <div></div>
           <div className="text-right">Trades</div>
-          <div className="text-right">W / L</div>
+          <div className="text-right">Win %</div>
           <div></div>
           <div className="text-right">PNL</div>
         </div>
@@ -960,24 +977,28 @@ function ReportTable({ rows }: { rows: ReportRow[] }) {
           return (
             <div
               key={r.label}
-              className="grid grid-cols-[80px_60px_80px_1fr_80px] gap-2 py-1 items-center"
+              className={cn(cols, 'py-1 items-center')}
             >
               <div className="text-(--color-text-dim) font-mono">{r.label}</div>
               <div className="text-right font-mono">{r.count}</div>
               <div className="text-right font-mono text-xs">
-                {r.hideWl ? '' : `${r.wins}/${r.losses}`}
+                {r.wins + r.losses === 0
+                  ? '—'
+                  : `${Math.round((r.wins / (r.wins + r.losses)) * 100)}%`}
               </div>
-              <div className="relative h-2 bg-(--color-panel-2) rounded-full">
-                <div className="absolute top-0 bottom-0 left-1/2 w-px bg-(--color-border)" />
-                <div
-                  className="absolute top-0 bottom-0 rounded-full"
-                  style={{
-                    width: `${half}%`,
-                    left: r.pnl >= 0 ? '50%' : `${50 - half}%`,
-                    backgroundColor: tone,
-                    opacity: 0.85,
-                  }}
-                />
+              <div className="pl-6">
+                <div className="relative h-2 bg-(--color-panel-3)/50 rounded-xs">
+                  <div className="absolute top-0 bottom-0 left-1/2 w-px bg-(--color-border)" />
+                  <div
+                    className="absolute top-0 bottom-0 rounded-xs"
+                    style={{
+                      width: `${half}%`,
+                      left: r.pnl >= 0 ? '50%' : `${50 - half}%`,
+                      backgroundColor: tone,
+                      opacity: 0.85,
+                    }}
+                  />
+                </div>
               </div>
               <div
                 className={cn(
@@ -998,8 +1019,10 @@ function ReportTable({ rows }: { rows: ReportRow[] }) {
 
 function PlannedRRTable({
   rows,
+  labelHeader = 'Plan',
 }: {
   rows: Array<{ label: string; count: number; wins: number; losses: number; pnl: number; avgRealized: number | null }>
+  labelHeader?: string
 }) {
   if (rows.length === 0) {
     return (
@@ -1008,19 +1031,19 @@ function PlannedRRTable({
   }
   return (
     <div className="text-xs">
-      <div className="grid grid-cols-[60px_60px_80px_80px_1fr] gap-2 py-1 mb-2 border-b border-(--color-panel-3) text-(--color-text-dim)">
-        <div>Plan</div>
+      <div className="grid grid-cols-[30px_1fr_1fr_1fr_1fr] gap-2 py-1 mb-2 border-b border-(--color-panel-3) text-(--color-text-dim)">
+        <div>{labelHeader}</div>
         <div className="text-right">Trades</div>
         <div className="text-right">Win %</div>
         <div className="text-right">Realised R</div>
-        <div className="text-right">Net</div>
+        <div className="text-right">PNL</div>
       </div>
       {rows.map(r => {
         const wr = r.wins + r.losses === 0 ? null : r.wins / (r.wins + r.losses)
         return (
           <div
             key={r.label}
-            className="grid grid-cols-[60px_60px_80px_80px_1fr] gap-2 py-1 font-mono tabular-nums"
+            className="grid grid-cols-[30px_1fr_1fr_1fr_1fr] gap-2 py-1 font-mono tabular-nums"
           >
             <div className="text-(--color-text-dim)">{r.label}</div>
             <div className="text-right">{r.count}</div>
@@ -1084,9 +1107,9 @@ function RDistRows({ buckets }: { buckets: ReturnType<typeof rDistribution> }) {
         return (
           <div key={b.label} className="grid grid-cols-[48px_1fr_28px] items-center gap-2 py-1">
             <div className="text-xs font-mono text-(--color-text-dim)">{b.label}</div>
-            <div className="h-2 bg-(--color-panel-2) rounded-full overflow-hidden">
+            <div className="h-2 bg-(--color-panel-3)/50 rounded-xs overflow-hidden">
               <div
-                className="h-full rounded-full"
+                className="h-full rounded-xs"
                 style={{ width: `${pct}%`, backgroundColor: color, opacity: b.count > 0 ? 0.85 : 0.15 }}
               />
             </div>
@@ -1248,7 +1271,7 @@ function PlannedRealizedScatter({
     return () => obs.disconnect()
   }, [])
   const H = 240
-  const PAD_L = 32
+  const PAD_L = 24
   const PAD_R = 6
   const PAD_T = 6
   const PAD_B = 18
@@ -1300,11 +1323,11 @@ function PlannedRealizedScatter({
       {yTicks.map(v => (
         <text
           key={`yt-${v}`}
-          x={PAD_L - 10}
+          x={PAD_L - 8}
           y={y(v)}
           textAnchor="end"
           dominantBaseline="central"
-          fontSize="10"
+          fontSize="11"
           fill="var(--color-text-dim)"
         >
           {v}R
@@ -1314,9 +1337,9 @@ function PlannedRealizedScatter({
         <text
           key={`xt-${v}`}
           x={x(v)}
-          y={H - PAD_B + 12}
+          y={H - PAD_B + 16}
           textAnchor="middle"
-          fontSize="10"
+          fontSize="11"
           fill="var(--color-text-dim)"
         >
           {v}R
