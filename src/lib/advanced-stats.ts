@@ -18,6 +18,7 @@ import {
   type TradeOutcome,
 } from '@/lib/trade-math'
 import { netPnlByDate } from '@/lib/day-pnl'
+import { WEEKDAYS } from '@/lib/filters'
 import { dateKeyToDate } from '@/lib/tz'
 
 // ---------- profit factor / payoff / expectancy ---------------------
@@ -575,12 +576,19 @@ export function pnlByHour(
   return arr
 }
 
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 export function pnlByWeekday(
   trades: TradeRecord[],
   overridesByDate?: Map<string, number>,
 ): Array<{ name: string; pnl: number; count: number; wins: number; losses: number }> {
-  const arr = WEEKDAYS.map(name => ({ name, pnl: 0, count: 0, wins: 0, losses: 0 }))
+  // Canonical `WEEKDAYS` is Sun-first (aligns with `Date.getDay()`); the
+  // table label is just its Title-cased form ("sun" → "Sun").
+  const arr = WEEKDAYS.map(d => ({
+    name: d[0].toUpperCase() + d.slice(1),
+    pnl: 0,
+    count: 0,
+    wins: 0,
+    losses: 0,
+  }))
   // Counts/wins/losses come from real trades only.
   for (const t of trades) {
     const day = dateKeyToDate(t.date).getDay()
@@ -852,7 +860,7 @@ export const SCRATCH_DAY_MIN_USD = 8
 export function classifyDayPnl(
   pnl: number,
   startEquity: number,
-): 'win' | 'loss' | 'scratch' {
+): TradeOutcome {
   const band = Math.max(startEquity * SCRATCH_DAY_PCT, SCRATCH_DAY_MIN_USD)
   if (Math.abs(pnl) <= band) return 'scratch'
   if (pnl > 0) return 'win'

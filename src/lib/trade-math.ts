@@ -248,6 +248,15 @@ export function isReversal(
 export const TRADE_OUTCOMES = ['win', 'loss', 'scratch'] as const
 export type TradeOutcome = (typeof TRADE_OUTCOMES)[number]
 
+// Chart swatch per outcome. Defined once (mirrors `SESSION_BG` /
+// `EMOTION_COLORS`) so the Outcomes donut and any future outcome-colored
+// chart agree. Text tinting is a separate concern — see `outcomeTextClass`.
+export const OUTCOME_COLORS: Record<TradeOutcome, string> = {
+  win: 'var(--color-win)',
+  loss: 'var(--color-loss)',
+  scratch: 'var(--color-chart-muted)',
+}
+
 // Tailwind class for tinting text by outcome. Centralised so the trade
 // table, LiveStatsSection, and any future row-shaped UI agree on the mapping.
 export function outcomeTextClass(

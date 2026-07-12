@@ -3,8 +3,9 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { X } from 'lucide-react'
 import type { TradeRecord } from '@/db/types'
-import { EMOTIONS, DEFAULT_MODEL_NAME } from '@/db/types'
-import { listAdjustments, listAllTrades, listModels } from '@/db/queries'
+import { EMOTIONS, SESSIONS, DEFAULT_MODEL_NAME } from '@/db/types'
+import { RATING_DISPLAY_ORDER } from '@/lib/rating'
+import { listAdjustments, listAllTrades, listModels, listSymbols } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
 import {
   applyFilters,
@@ -774,9 +775,21 @@ function CompareReport({
     for (const p of models ?? []) m.set(p.id, p.name)
     return m
   }, [models])
+  // Canonical symbol order (drag-and-drop sort) so the Symbol axis matches
+  // the sidebar / pickers / dropdowns rather than sorting alphabetically.
+  const symbols = useLiveQuery(
+    () => listSymbols(accountId),
+    [accountId],
+    [],
+  )
+  const symbolOrderById = useMemo(() => {
+    const m = new Map<string, number>()
+    ;(symbols ?? []).forEach((s, i) => m.set(s.id, i))
+    return m
+  }, [symbols])
   const groups = useMemo(
-    () => splitByAxis(trades, axis, modelNameById),
-    [trades, axis, modelNameById],
+    () => splitByAxis(trades, axis, modelNameById, symbolOrderById),
+    [trades, axis, modelNameById, symbolOrderById],
   )
   return (
     <section className="h-full flex flex-col">
@@ -823,30 +836,38 @@ function splitByAxis(
   trades: TradeRecord[],
   axis: CompareAxis,
   modelNameById: Map<string, string>,
+  symbolOrderById: Map<string, number>,
 ): Array<{ label: string; trades: TradeRecord[] }> {
   switch (axis) {
     case 'symbol': {
       // Group by symbol_id, label from the frozen snapshot name.
-      const bySymbol = new Map<string, { label: string; trades: TradeRecord[] }>()
+      const bySymbol = new Map<string, { id: string; label: string; trades: TradeRecord[] }>()
       for (const t of trades) {
         const g = bySymbol.get(t.symbol_id)
         if (g) g.trades.push(t)
-        else bySymbol.set(t.symbol_id, { label: t.symbol_spec.name, trades: [t] })
+        else bySymbol.set(t.symbol_id, { id: t.symbol_id, label: t.symbol_spec.name, trades: [t] })
       }
-      return Array.from(bySymbol.values()).sort((a, b) =>
-        a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }),
-      )
+      // Follow the canonical symbol order; symbols no longer in the account
+      // (deleted) sort after the live ones, alphabetically among themselves.
+      const FALLBACK = Number.MAX_SAFE_INTEGER
+      return Array.from(bySymbol.values())
+        .sort((a, b) => {
+          const oa = symbolOrderById.get(a.id) ?? FALLBACK
+          const ob = symbolOrderById.get(b.id) ?? FALLBACK
+          if (oa !== ob) return oa - ob
+          return a.label.localeCompare(b.label, undefined, { sensitivity: 'base' })
+        })
+        .map(({ label, trades }) => ({ label, trades }))
     }
     case 'session':
-      return (['pre', 'am', 'lunch', 'pm', 'aft'] as const)
+      return SESSIONS
         .map(s => ({ label: s, trades: trades.filter(t => t.session === s) }))
         .filter(g => g.trades.length > 0)
     case 'rating':
-      return [
-        { label: 'excellent', trades: trades.filter(t => t.rating === 'excellent') },
-        { label: 'good', trades: trades.filter(t => t.rating === 'good') },
-        { label: 'poor', trades: trades.filter(t => t.rating === 'poor') },
-      ].filter(g => g.trades.length > 0)
+      // Shared best→worst order (excellent, good, poor), same as the donut.
+      return RATING_DISPLAY_ORDER
+        .map(r => ({ label: r, trades: trades.filter(t => t.rating === r) }))
+        .filter(g => g.trades.length > 0)
     case 'side': {
       const longs: TradeRecord[] = []
       const shorts: TradeRecord[] = []
@@ -878,12 +899,23 @@ function splitByAxis(
         if (!map.has(t.model_id)) map.set(t.model_id, [])
         map.get(t.model_id)!.push(t)
       }
-      const buckets = Array.from(map.entries())
-        .map(([id, v]) => ({
-          label: modelNameById.get(id) ?? '(deleted)',
-          trades: v,
-        }))
-        .sort((a, b) => b.trades.length - a.trades.length)
+      const buckets: Array<{ label: string; trades: TradeRecord[] }> = []
+      // Follow the models' canonical order (modelNameById is built from
+      // listModels, whose insertion order is the user's chosen sort).
+      for (const [id, name] of modelNameById) {
+        const v = map.get(id)
+        if (v) {
+          buckets.push({ label: name, trades: v })
+          map.delete(id)
+        }
+      }
+      // Any remaining ids reference deleted models; keep them after the
+      // known ones, largest first.
+      for (const [, v] of Array.from(map.entries()).sort(
+        (a, b) => b[1].length - a[1].length,
+      )) {
+        buckets.push({ label: '(deleted)', trades: v })
+      }
       if (unset.length > 0) buckets.push({ label: DEFAULT_MODEL_NAME, trades: unset })
       return buckets
     }

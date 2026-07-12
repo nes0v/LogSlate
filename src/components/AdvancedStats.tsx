@@ -3,11 +3,12 @@ import { eachDayOfInterval, format, isWeekend, parseISO } from 'date-fns'
 import { DonutChart } from '@/components/DonutChart'
 import { type AggregateStats } from '@/lib/trade-stats'
 import { formatUsd } from '@/lib/money'
-import { classifyTrade } from '@/lib/trade-math'
+import { classifyTrade, OUTCOME_COLORS, TRADE_OUTCOMES } from '@/lib/trade-math'
+import { RATING_COLORS, RATING_DISPLAY_ORDER } from '@/lib/rating'
 import { HOLD_BUCKETS, holdBucketOf } from '@/lib/filters'
 import { cn } from '@/lib/utils'
-import type { Model, Session, TradeRecord } from '@/db/types'
-import { EMOTIONS, DEFAULT_MODEL_NAME } from '@/db/types'
+import type { Model, Rating, Session, TradeRecord } from '@/db/types'
+import { EMOTIONS, RATINGS, SESSIONS, DEFAULT_MODEL_NAME } from '@/db/types'
 import { SESSION_BG } from '@/lib/session-colors'
 import {
   compositeScore,
@@ -130,9 +131,12 @@ export const DistributionDonuts = memo(function DistributionDonuts({
   // calls (which are themselves O(executions) without their own caches).
   // Single-pass keeps everything to N.
   const donutCounts = useMemo(() => {
-    let win = 0, loss = 0, be = 0
-    let good = 0, excellent = 0, poor = 0
-    const session: Record<Session, number> = { pre: 0, am: 0, lunch: 0, pm: 0, aft: 0 }
+    const outcome = Object.fromEntries(TRADE_OUTCOMES.map(o => [o, 0])) as Record<
+      (typeof TRADE_OUTCOMES)[number],
+      number
+    >
+    const rating = Object.fromEntries(RATINGS.map(r => [r, 0])) as Record<Rating, number>
+    const session = Object.fromEntries(SESSIONS.map(s => [s, 0])) as Record<Session, number>
     const hold = Object.fromEntries(HOLD_BUCKETS.map(b => [b, 0])) as Record<
       (typeof HOLD_BUCKETS)[number],
       number
@@ -147,14 +151,9 @@ export const DistributionDonuts = memo(function DistributionDonuts({
     let modelOther = 0
 
     for (const t of filtered) {
-      const o = classifyTrade(t)
-      if (o === 'win') win++
-      else if (o === 'loss') loss++
-      else be++
+      outcome[classifyTrade(t)]++
 
-      if (t.rating === 'good') good++
-      else if (t.rating === 'excellent') excellent++
-      else if (t.rating === 'poor') poor++
+      if (t.rating) rating[t.rating]++
 
       session[t.session]++
 
@@ -170,8 +169,8 @@ export const DistributionDonuts = memo(function DistributionDonuts({
     }
 
     return {
-      outcome: { win, loss, be },
-      rating: { good, excellent, poor },
+      outcome,
+      rating,
       session,
       hold,
       holdUnknown,
@@ -183,26 +182,22 @@ export const DistributionDonuts = memo(function DistributionDonuts({
   }, [filtered])
 
   const outcomeDonut = useMemo(
-    () => [
-      { label: 'win', value: donutCounts.outcome.win, color: 'var(--color-win)' },
-      { label: 'loss', value: donutCounts.outcome.loss, color: 'var(--color-loss)' },
-      // Scratches are hidden globally when the toggle is off — drop the slice
-      // rather than show an empty "scratch 0%".
-      ...(includeScratches
-        ? [{ label: 'scratch', value: donutCounts.outcome.be, color: 'var(--color-chart-muted)' }]
-        : []),
-    ],
+    () =>
+      TRADE_OUTCOMES
+        // Scratches are hidden globally when the toggle is off — drop the
+        // slice rather than show an empty "scratch 0%".
+        .filter(o => includeScratches || o !== 'scratch')
+        .map(o => ({ label: o, value: donutCounts.outcome[o], color: OUTCOME_COLORS[o] })),
     [donutCounts, includeScratches],
   )
 
   const sessionDonut = useMemo(
-    () => [
-      { label: 'pre', value: donutCounts.session.pre, color: SESSION_BG.pre },
-      { label: 'am', value: donutCounts.session.am, color: SESSION_BG.am },
-      { label: 'lunch', value: donutCounts.session.lunch, color: SESSION_BG.lunch },
-      { label: 'pm', value: donutCounts.session.pm, color: SESSION_BG.pm },
-      { label: 'aft', value: donutCounts.session.aft, color: SESSION_BG.aft },
-    ],
+    () =>
+      SESSIONS.map(s => ({
+        label: s,
+        value: donutCounts.session[s],
+        color: SESSION_BG[s],
+      })),
     [donutCounts],
   )
 
@@ -233,23 +228,12 @@ export const DistributionDonuts = memo(function DistributionDonuts({
   }, [donutCounts])
 
   const ratingDonut = useMemo(
-    () => [
-      {
-        label: 'excellent',
-        value: donutCounts.rating.excellent,
-        color: 'var(--color-win)',
-      },
-      {
-        label: 'good',
-        value: donutCounts.rating.good,
-        color: 'var(--color-accent)',
-      },
-      {
-        label: 'poor',
-        value: donutCounts.rating.poor,
-        color: 'var(--color-chart-muted)',
-      },
-    ],
+    () =>
+      RATING_DISPLAY_ORDER.map(r => ({
+        label: r,
+        value: donutCounts.rating[r],
+        color: RATING_COLORS[r],
+      })),
     [donutCounts],
   )
 
