@@ -38,6 +38,30 @@ export function DayNoteSection({ accountId, date, stored }: DayNoteSectionProps)
         Placeholder.configure({ placeholder: 'What did you notice today?' }),
       ],
       content: toEditorContent(stored),
+      editorProps: {
+        // Each paragraph is one visual line, so a plain-text copy must put a
+        // single "\n" at each block boundary. ProseMirror's default serializer
+        // uses "\n\n", which turns one empty paragraph into three blank lines
+        // (text\n\n + \n\n = text, empty, empty, empty, text) when pasted into a
+        // plain-text target. One "\n" round-trips the layout exactly.
+        clipboardTextSerializer: slice =>
+          slice.content.textBetween(0, slice.content.size, '\n'),
+        // Copying inside the editor and pasting back stacked blank <br> lines
+        // above and below the content on Windows Chrome. It wraps clipboard HTML
+        // as `<html>\n<body>\n<!--StartFragment-->…<!--EndFragment-->\n</body>…`,
+        // and because the copied nodes carry ProseMirror's `data-pm-slice`
+        // marker, paste takes the internal-slice path that keeps those wrapper
+        // newlines as literal hard breaks. The StartFragment/EndFragment comments
+        // delimit the actual copied content, so slicing to them drops the wrapper
+        // (and its stray whitespace) while keeping the marker intact — paste
+        // fidelity (block vs inline, blank lines, Shift+Enter breaks) is
+        // preserved. When the markers are absent (other platforms) we leave the
+        // HTML untouched.
+        transformPastedHTML: html => {
+          const m = html.match(/<!--\s*StartFragment\s*-->([\s\S]*?)<!--\s*EndFragment\s*-->/i)
+          return m ? m[1] : html
+        },
+      },
       onBlur: ({ editor }) => void persist(getHtml(editor)),
       // TipTap v3 doesn't re-render on transactions by default, which would
       // leave the toolbar's active highlights (isActive) stale as the cursor
