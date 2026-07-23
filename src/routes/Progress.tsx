@@ -431,7 +431,7 @@ export function ProgressRoute() {
         <div className="bg-(--color-panel) rounded-(--radius) p-3 space-y-2">
           <div className="text-sm font-medium mb-2">Today's checklist</div>
           {rulesActiveOnDate.length === 0 ? (
-            <div className="text-xs text-(--color-text-dim) text-center py-6">
+            <div className="text-xs text-(--color-text-dim) text-center py-3">
               No active rules on this day. Add some on the right →
             </div>
           ) : (

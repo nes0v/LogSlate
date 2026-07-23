@@ -14,10 +14,11 @@ import type {
   ProgressCheck,
   ProgressRule,
   TradeRecord,
+  TradingSymbol,
 } from '@/db/types'
 import { MAIN_ACCOUNT_ID } from '@/db/types'
 
-const BACKUP_VERSION = 6
+const BACKUP_VERSION = 7
 
 interface Row {
   id: string
@@ -34,6 +35,7 @@ const SPECS = [
   { fileKey: 'adjustments',     table: () => db.adjustments },
   { fileKey: 'days', table: () => db.days },
   { fileKey: 'models',          table: () => db.models },
+  { fileKey: 'symbols',         table: () => db.symbols },
   { fileKey: 'progress_rules',  table: () => db.progress_rules },
   { fileKey: 'progress_checks', table: () => db.progress_checks },
   { fileKey: 'news',     table: () => db.news },
@@ -47,6 +49,7 @@ interface BackupFile {
   accounts?: Account[]
   days?: Day[]
   models?: Model[]
+  symbols?: TradingSymbol[]
   progress_rules?: ProgressRule[]
   progress_checks?: ProgressCheck[]
   news?: NewsEvent[]
