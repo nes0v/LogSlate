@@ -280,7 +280,6 @@ export const DistributionDonuts = memo(function DistributionDonuts({
         value: donutCounts.model.get(p.id) ?? 0,
         color: MODEL_PALETTE[i % MODEL_PALETTE.length],
       }))
-      .filter(s => s.value > 0)
     if (unmodelled > 0) {
       segments.push({
         label: DEFAULT_MODEL_NAME,
@@ -758,13 +757,9 @@ function CompositeScoreCard({ score }: { score: ReturnType<typeof compositeScore
   ]
   const total = score.total
   const totalDisplay = Math.round(total).toString()
-  const tone = total >= 70 ? 'win' : total >= 40 ? 'dim' : 'loss'
-  const fillColor =
-    tone === 'win'
-      ? 'var(--color-win)'
-      : tone === 'loss'
-        ? 'var(--color-loss)'
-        : 'var(--color-accent)'
+  // Composite score is always shown in the accent (purple) — the score value
+  // conveys quality on its own; the color shouldn't also swing win/loss.
+  const fillColor = 'var(--color-accent)'
 
   // Hex chart geometry. Center is at (C, C) inside a 520×520 origin space;
   // the rendered viewBox is cropped tightly around the hex + labels.
@@ -899,12 +894,7 @@ function CompositeScoreCard({ score }: { score: ReturnType<typeof compositeScore
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
             <div
-              className={cn(
-                'text-5xl font-mono font-medium tabular-nums leading-none',
-                tone === 'win' && 'text-(--color-win)',
-                tone === 'loss' && 'text-(--color-loss)',
-                tone === 'dim' && 'text-(--color-text)',
-              )}
+              className="text-5xl font-mono font-medium tabular-nums leading-none text-(--color-text)"
             >
               {totalDisplay}
             </div>
