@@ -264,7 +264,7 @@ function SymbolEditorImpl({ symbol, onSave, onDelete }: SymbolEditorProps) {
         </Field>
       </div>
 
-      <div className="text-xs text-(--color-text-dim) space-y-3">
+      <div className="text-xs text-(--color-text-dim) space-y-3 pt-2">
         <div className="flex gap-2">
           <Info className="size-4 shrink-0 mt-px text-(--color-text-faint)" />
           <p>
