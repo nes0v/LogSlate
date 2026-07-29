@@ -73,20 +73,8 @@ export const HeroNetPnl = memo(function HeroNetPnl({
   )
 })
 
-const EMOTION_COLORS: Record<(typeof EMOTIONS)[number], string> = {
-  calm: 'var(--color-accent)',
-  focused: '#7dd3fc',
-  anxious: '#fbbf24',
-  fearful: '#c4b5fd',
-  impatient: '#f472b6',
-  frustrated: '#34d399',
-  tired: '#fb923c',
-  greedy: '#60a5fa',
-  confused: 'var(--color-chart-muted)',
-}
-
 const HOLD_PALETTE: Record<(typeof HOLD_BUCKETS)[number], string> = {
-  '<1m': '#60a5fa',
+  '1m': '#60a5fa',
   '1-5m': '#38bdf8',
   '5-15m': '#22d3ee',
   '15-30m': '#34d399',
@@ -94,6 +82,20 @@ const HOLD_PALETTE: Record<(typeof HOLD_BUCKETS)[number], string> = {
   '1-2h': '#fb923c',
   '2-4h': '#f97316',
   '4h+': '#ef4444',
+}
+
+// Emotions borrow the duration ramp, walked in EMOTIONS order — so the list
+// reads cool-to-warm from `calm` through to `lost`. Referenced by bucket
+// rather than re-typing the hexes, so the two donuts can never drift apart.
+const EMOTION_COLORS: Record<(typeof EMOTIONS)[number], string> = {
+  calm: HOLD_PALETTE['1m'],
+  focused: HOLD_PALETTE['1-5m'],
+  anxious: HOLD_PALETTE['5-15m'],
+  impatient: HOLD_PALETTE['15-30m'],
+  drained: HOLD_PALETTE['30-60m'],
+  greedy: HOLD_PALETTE['1-2h'],
+  tilted: HOLD_PALETTE['2-4h'],
+  lost: HOLD_PALETTE['4h+'],
 }
 
 // Palette for the model donut. Cycled by index when the user has more

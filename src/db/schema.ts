@@ -81,6 +81,11 @@ class LogslateDB extends Dexie {
         '&id, [account_id+date], [account_id+model_id], [account_id+symbol_id], account_id, updated_at',
       symbols: '&id, account_id, updated_at',
     })
+
+    // v14–v18: the emotion vocabulary was renamed while it settled. The
+    // one-time upgrade that rewrote the stored values has run and been stripped
+    // per MIGRATION-PATTERN.
+    this.version(18)
   }
 }
 

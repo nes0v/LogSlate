@@ -48,7 +48,7 @@ export async function seedSampleTrades(): Promise<number> {
       drawdown: 50,
       runup: 5,
       rating: 'poor',
-      emotion: 'frustrated',
+      emotion: 'tilted',
     },
     {
       date: '2026-04-15',

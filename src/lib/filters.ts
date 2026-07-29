@@ -21,7 +21,7 @@ export const WEEKDAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as con
 export type Weekday = (typeof WEEKDAYS)[number]
 
 export const HOLD_BUCKETS = [
-  '<1m',
+  '1m',
   '1-5m',
   '5-15m',
   '15-30m',
@@ -33,7 +33,7 @@ export const HOLD_BUCKETS = [
 export type HoldBucket = (typeof HOLD_BUCKETS)[number]
 
 const HOLD_BUCKET_RANGES_MIN: Record<HoldBucket, [number, number]> = {
-  '<1m': [0, 1],
+  '1m': [0, 1],
   '1-5m': [1, 5],
   '5-15m': [5, 15],
   '15-30m': [15, 30],

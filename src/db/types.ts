@@ -85,13 +85,12 @@ export type AccountDraft = Pick<Account, 'name'>
 export const EMOTIONS = [
   'calm',
   'focused',
-  'fearful',
   'anxious',
   'impatient',
-  'frustrated',
-  'tired',
+  'drained',
   'greedy',
-  'confused',
+  'tilted',
+  'lost',
 ] as const
 export type Emotion = (typeof EMOTIONS)[number]
 
