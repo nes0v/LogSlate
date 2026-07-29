@@ -374,10 +374,19 @@ function DayView() {
 
           <DayNewsSection events={news} />
 
-          {/* Keyed on `date` so the textarea's local `value` state can't
-              flash the previous day's note for one frame after navigation
-              while its internal `stored → value` sync effect catches up. */}
-          <DayNoteSection key={`note-${date}`} accountId={accountId} date={date} stored={note} />
+          {/* Keyed on account AND date so the local `value` state can't flash
+              the previous day's note for one frame after navigation while its
+              internal `stored → value` sync effect catches up. The account half
+              matters just as much: an account switch keeps the same URL, so
+              without it React reuses the mounted component and only swaps the
+              props — leaving one account's draft state sitting above the other
+              account's stored value. */}
+          <DayNoteSection
+            key={`note-${accountId}-${date}`}
+            accountId={accountId}
+            date={date}
+            stored={note}
+          />
 
           <DayScreenshotSection
             accountId={accountId}
@@ -406,7 +415,12 @@ function DayView() {
 
           {showOverrideField && (
             <DayPnlOverrideSection
-              key={`override-${date}`}
+              // Account + date. This section flushes its local value on unmount,
+              // and that write is addressed by whatever (account, date) the
+              // component currently holds — so state carried across an account
+              // switch wrote one account's figure, or a stale blank, onto the
+              // other's day. Remounting per account keeps the two in lockstep.
+              key={`override-${accountId}-${date}`}
               accountId={accountId}
               date={date}
               stored={pnlOverride ?? null}

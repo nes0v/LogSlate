@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useEditor, EditorContent, type Editor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { Placeholder } from '@tiptap/extensions'
@@ -26,6 +26,7 @@ interface DayNoteSectionProps {
  * from another source (cross-device sync) and the editor isn't focused.
  */
 export function DayNoteSection({ accountId, date, stored }: DayNoteSectionProps) {
+  const [error, setError] = useState<string | null>(null)
   const editor = useEditor(
     {
       extensions: [
@@ -79,16 +80,26 @@ export function DayNoteSection({ accountId, date, stored }: DayNoteSectionProps)
     if (next === stored) return
     try {
       await setDayNote(accountId, date, next)
+      setError(null)
     } catch (e) {
-      // Surfacing is best-effort; a failed note write shouldn't break the page.
-      console.error(`Couldn't save note: ${errorMessage(e)}`)
+      // A failed write shouldn't break the page, but it must not be silent
+      // either: the note is still on screen, so without this the user walks
+      // away believing a day's journal was saved when nothing was written.
+      setError(`Couldn't save note: ${errorMessage(e)}`)
     }
   }
 
   // Pull in an externally-changed value (e.g. a cross-device sync landed) only
   // when the user isn't mid-edit, so we never clobber in-progress typing.
+  //
+  // `isDestroyed` matters as much as `isFocused`: `useEditor` tears the instance
+  // down and rebuilds it when [accountId, date] change, but this effect can
+  // still fire against the OLD one in the same commit — switching accounts
+  // changes `stored` and the deps together. Reading `getHtml`/`commands` off a
+  // destroyed editor throws (its view is already null), which crashed the whole
+  // Day route into the error boundary.
   useEffect(() => {
-    if (!editor || editor.isFocused) return
+    if (!editor || editor.isDestroyed || editor.isFocused) return
     const next = toEditorContent(stored)
     if (getHtml(editor) === next) return
     editor.commands.setContent(next)
@@ -103,6 +114,7 @@ export function DayNoteSection({ accountId, date, stored }: DayNoteSectionProps)
           editor={editor}
           className="md-body md-paper min-h-[95px] rounded-(--radius) bg-(--color-paper) px-2.5 py-1.5 text-sm text-(--color-paper-text) transition-colors focus-within:ring-2 focus-within:ring-(--color-accent-soft)"
         />
+        {error && <p className="text-xs text-(--color-loss)">{error}</p>}
       </div>
     </section>
   )

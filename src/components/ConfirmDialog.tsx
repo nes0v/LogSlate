@@ -114,8 +114,10 @@ function ConfirmModal({
           >
             {pending.title}
           </h2>
+          {/* pre-line so a caller can break a long consequence list into
+              paragraphs (the backup-import warning) instead of one run-on. */}
           {pending.description ? (
-            <p className="text-sm text-(--color-text-dim)">
+            <p className="text-sm text-(--color-text-dim) whitespace-pre-line">
               {pending.description}
             </p>
           ) : null}

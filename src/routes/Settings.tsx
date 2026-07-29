@@ -9,6 +9,7 @@ import { isConfigured, revalidateDriveToken, signIn, signOut, useDriveState } fr
 import { lastSyncAt } from '@/lib/sync'
 import { exportBackup, importBackup } from '@/lib/backup'
 import { AccountsPanel } from '@/components/AccountsPanel'
+import { useConfirm } from '@/components/ConfirmDialog'
 import { AdjustmentsPanel } from '@/components/AdjustmentsPanel'
 import { BTN_ACCENT, BTN_OUTLINED } from '@/components/form/buttonClass'
 import { Pills } from '@/components/form/Pills'
@@ -24,6 +25,7 @@ export function SettingsRoute() {
   const syncing = autoSync.status === 'syncing'
   const [importing, setImporting] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const confirm = useConfirm()
 
   // A token can lapse on the clock while the tab sits open, leaving the drive
   // state stuck on 'signed-in' ("Sync now" shows but every call 401s). Re-check
@@ -82,8 +84,26 @@ export function SettingsRoute() {
 
   async function handleImport(file: File) {
     if (importing) return
+    // Import truncates EVERY table, and it used to run the instant a file was
+    // picked — the "Local DB replaced" alert arrived after the fact. It's the
+    // most destructive action in the app, so it gets an explicit confirm, and
+    // the current data is exported first: a mis-picked file (or an old backup
+    // predating a feature, which empties the tables it says nothing about) is
+    // then always recoverable from the downloaded copy.
+    const ok = await confirm({
+      title: 'Replace ALL local data with this backup?',
+      description:
+        `Every trade, day note, override, model, symbol and progress rule on ` +
+        `this device is deleted and replaced by the contents of "${file.name}". ` +
+        `Anything the file doesn't contain is emptied.\n\n` +
+        `This cannot be undone. A backup of your current data downloads first.`,
+      confirmLabel: 'Replace everything',
+      destructive: true,
+    })
+    if (!ok) return
     setImporting(true)
     try {
+      await exportBackup()
       const r = await importBackup(file)
       const summary = Object.entries(r)
         .filter(([, n]) => n > 0)

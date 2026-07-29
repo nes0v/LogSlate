@@ -43,6 +43,7 @@ export function AccountsPanel({ accounts }: AccountsPanelProps) {
     push(counts.adjustments, 'adjustment')
     push(counts.days, 'day note/screenshots entry', 'day note/screenshot entries')
     push(counts.models, 'model')
+    push(counts.symbols, 'symbol')
     push(counts.progressRules, 'progress rule')
     push(counts.progressChecks, 'historical check')
     const description = parts.length === 0
