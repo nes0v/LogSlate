@@ -103,7 +103,19 @@ export function SettingsRoute() {
     if (!ok) return
     setImporting(true)
     try {
-      await exportBackup()
+      try {
+        await exportBackup()
+      } catch (e) {
+        // The dialog promised a rescue copy before anything is destroyed, so a
+        // failure here has to stop the import — and has to say which step
+        // failed. Rolled into the outer catch it would read "Import failed",
+        // pointing the user at their backup file when nothing was touched.
+        alert(
+          `Couldn't save a backup of your current data, so the import was ` +
+            `cancelled. Nothing was changed. (${errorMessage(e)})`,
+        )
+        return
+      }
       const r = await importBackup(file)
       const summary = Object.entries(r)
         .filter(([, n]) => n > 0)
