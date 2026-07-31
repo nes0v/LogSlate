@@ -45,7 +45,7 @@ export function Dropdown<T extends string>({
         type="button"
         aria-label={ariaLabel}
         onClick={() => setOpen(o => !o)}
-        className="inline-flex items-center justify-center px-2 py-1 text-xs font-mono rounded-(--radius) bg-(--color-panel) text-(--color-text) hover:bg-(--color-panel-2) transition-colors"
+        className="inline-flex items-center justify-center px-2 py-1 text-xs font-mono rounded-(--radius) bg-(--color-panel) text-(--color-text) hover:bg-(--color-panel-2)"
       >
         {selectedLabel}
       </button>
@@ -60,7 +60,7 @@ export function Dropdown<T extends string>({
                 setOpen(false)
               }}
               className={cn(
-                'block w-full text-left px-3 py-1.5 text-sm whitespace-nowrap cursor-pointer transition-colors',
+                'block w-full text-left px-3 py-1.5 text-sm whitespace-nowrap cursor-pointer',
                 opt.value === value
                   ? 'bg-(--color-panel-2) text-(--color-text)'
                   : 'text-(--color-text-dim) hover:bg-(--color-panel-2) hover:text-(--color-text)',

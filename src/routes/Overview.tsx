@@ -572,8 +572,8 @@ export function OverviewRoute() {
             saveJsonToStorage(TRADES_SECTION_OPEN_STORAGE_KEY, open)
           }}
         >
-          <summary className="text-sm font-medium cursor-pointer text-(--color-text) hover:text-(--color-accent) list-none flex items-center gap-1 transition-colors">
-            <ChevronRight className="size-4 transition-transform group-open:rotate-90" />
+          <summary className="text-sm font-medium cursor-pointer text-(--color-text) hover:text-(--color-accent) list-none flex items-center gap-1">
+            <ChevronRight className="size-4 group-open:rotate-90" />
             Trades{' '}
             <span className="text-(--color-text-dim) font-normal">({filtered.length})</span>
           </summary>
@@ -631,7 +631,7 @@ export function OverviewRoute() {
                 <button
                   type="button"
                   onClick={setFilterToVisible}
-                  className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono rounded-(--radius) bg-(--color-panel) text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2) transition-colors"
+                  className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono rounded-(--radius) bg-(--color-panel) text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)"
                 >
                   Set date to range
                 </button>

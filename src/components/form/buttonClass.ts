@@ -11,14 +11,14 @@ export const BTN_ACCENT =
 
 /** Outlined neutral action (Cancel, Clear filters, secondary). */
 export const BTN_OUTLINED =
-  `${BTN_BASE} border border-(--color-border) text-(--color-text-dim) hover:text-(--color-text) disabled:opacity-50 transition-colors`
+  `${BTN_BASE} border border-(--color-border) text-(--color-text-dim) hover:text-(--color-text) disabled:opacity-50`
 
 /** Ghost — no border, hover lifts the bg. Used for Cancel in modals etc. */
 export const BTN_GHOST =
-  `${BTN_BASE} text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2) transition-colors`
+  `${BTN_BASE} text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)`
 
 /** Bordered neutral action in an editor toolbar (Models/Symbols sidebars).
  *  Compose with a hover-color variant via cn(); BTN_DELETE is the destructive one. */
 export const BTN_ACTION =
-  `${BTN_BASE} border border-(--color-border) text-(--color-text-dim) transition-colors`
+  `${BTN_BASE} border border-(--color-border) text-(--color-text-dim)`
 export const BTN_DELETE = `${BTN_ACTION} hover:text-(--color-loss)`

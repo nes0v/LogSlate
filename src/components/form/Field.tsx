@@ -33,12 +33,11 @@ export function Field({ label, hint, error, children, className }: FieldProps) {
 export const inputClass =
   'bg-(--color-bg) rounded-(--radius) px-2.5 py-1.5 text-sm font-sans ' +
   'text-(--color-text) placeholder:text-(--color-text-faint) ' +
-  'transition-colors ' +
   'focus:outline-none focus:ring-2 focus:ring-(--color-accent-soft)'
 
 // Compact variant for dense settings panels (less padding, same look).
 // Includes `w-full` since it's designed to fill grid cells.
 export const inputClassCompact =
   'w-full rounded-(--radius) bg-(--color-bg) px-2 py-1.5 text-sm ' +
-  'text-(--color-text) placeholder:text-(--color-text-faint) transition-colors ' +
+  'text-(--color-text) placeholder:text-(--color-text-faint) ' +
   'outline-none focus:ring-2 focus:ring-(--color-accent-soft)'

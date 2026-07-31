@@ -48,7 +48,7 @@ export function FilterDropdown<T extends string>({
         // Trigger styling matches the trade-page Select: same recessed bg,
         // same height, same padding, same chevron — so the filter bar reads
         // as the same form-control vocabulary as the trade form.
-        className="w-full min-w-[6rem] h-8 flex items-center justify-between gap-2 pl-2.5 pr-2 text-sm rounded-(--radius) bg-(--color-bg) text-(--color-text) cursor-pointer transition-colors focus:outline-none focus:ring-2 focus:ring-(--color-accent-soft)"
+        className="w-full min-w-[6rem] h-8 flex items-center justify-between gap-2 pl-2.5 pr-2 text-sm rounded-(--radius) bg-(--color-bg) text-(--color-text) cursor-pointer focus:outline-none focus:ring-2 focus:ring-(--color-accent-soft)"
       >
         <span
           className={cn(
@@ -69,7 +69,7 @@ export function FilterDropdown<T extends string>({
               setOpen(false)
             }}
             className={cn(
-              'block w-full text-left px-2.5 py-1.5 text-sm whitespace-nowrap cursor-pointer transition-colors',
+              'block w-full text-left px-2.5 py-1.5 text-sm whitespace-nowrap cursor-pointer',
               value === null
                 ? 'bg-(--color-panel-2) text-(--color-text)'
                 : 'text-(--color-text-dim) hover:bg-(--color-panel-2) hover:text-(--color-text)',
@@ -86,7 +86,7 @@ export function FilterDropdown<T extends string>({
                 setOpen(false)
               }}
               className={cn(
-                'block w-full text-left px-2.5 py-1.5 text-sm whitespace-nowrap cursor-pointer transition-colors',
+                'block w-full text-left px-2.5 py-1.5 text-sm whitespace-nowrap cursor-pointer',
                 opt.value === value
                   ? 'bg-(--color-panel-2) text-(--color-text)'
                   : 'text-(--color-text-dim) hover:bg-(--color-panel-2) hover:text-(--color-text)',

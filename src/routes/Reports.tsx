@@ -370,7 +370,7 @@ export function ReportsRoute() {
                   onClick={() => setTab(t.value)}
                   aria-current={active ? 'page' : undefined}
                   className={cn(
-                    'block w-full text-left p-3 rounded-sm text-sm transition-colors duration-300 ease-out',
+                    'block w-full text-left p-3 rounded-sm text-sm',
                     active
                       ? 'bg-(--color-panel-3) text-(--color-text)'
                       : 'bg-(--color-panel-2) text-(--color-text-dim) hover:bg-(--color-panel-3) hover:text-(--color-text)',
@@ -810,7 +810,7 @@ function CompareReport({
               aria-selected={active}
               onClick={() => onAxisChange(opt.value)}
               className={cn(
-                'px-2.5 py-1.5 rounded-t-(--radius) transition-colors whitespace-nowrap',
+                'px-2.5 py-1.5 rounded-t-(--radius) whitespace-nowrap',
                 active
                   ? 'text-(--color-text) bg-(--color-panel)'
                   : 'text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel)/60',

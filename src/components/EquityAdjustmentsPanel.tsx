@@ -125,7 +125,7 @@ export function EquityAdjustmentsPanel({ adjustments }: EquityAdjustmentsPanelPr
               {list.map(a => (
                 <tr
                   key={a.id}
-                  className="transition-colors duration-300 ease-out border-t border-(--color-panel) first:border-t-0 hover:bg-(--color-panel-3)/60"
+                  className="border-t border-(--color-panel) first:border-t-0 hover:bg-(--color-panel-3)/60"
                 >
                   <td className="px-3 py-2 text-xs font-mono tabular-nums text-(--color-text-dim) whitespace-nowrap">
                     {formatDisplayDate(a.date)}

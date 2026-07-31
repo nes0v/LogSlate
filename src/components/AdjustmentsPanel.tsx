@@ -36,7 +36,7 @@ export function AdjustmentsPanel({ adjustments }: AdjustmentsPanelProps) {
                   aria-selected={active}
                   onClick={() => setTab(opt.value)}
                   className={cn(
-                    'px-2.5 py-1.5 rounded-t-(--radius) transition-colors whitespace-nowrap',
+                    'px-2.5 py-1.5 rounded-t-(--radius) whitespace-nowrap',
                     active
                       ? 'text-(--color-text) bg-(--color-panel)'
                       : 'text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel)/60',

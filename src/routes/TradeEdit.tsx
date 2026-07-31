@@ -100,7 +100,7 @@ export function TradeEditRoute() {
             type="button"
             onClick={handleDelete}
             disabled={!record}
-            className={`${BTN_BASE} border border-(--color-border) text-(--color-text-dim) hover:text-(--color-loss) disabled:opacity-50 transition-colors`}
+            className={`${BTN_BASE} border border-(--color-border) text-(--color-text-dim) hover:text-(--color-loss) disabled:opacity-50 `}
           >
             <Trash2 className="size-4" /> Delete
           </button>

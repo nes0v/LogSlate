@@ -22,7 +22,7 @@ export function RatingFilter({ value, onChange, className }: RatingFilterProps) 
         type="button"
         onClick={() => onChange(null)}
         className={cn(
-          'inline-flex items-center rounded-[6px] px-2.5 py-1 text-sm cursor-pointer transition-colors whitespace-nowrap',
+          'inline-flex items-center rounded-[6px] px-2.5 py-1 text-sm cursor-pointer whitespace-nowrap',
           isAll
             ? 'bg-(--color-panel) text-(--color-text)'
             : 'text-(--color-text-dim) hover:text-(--color-text)',

@@ -40,7 +40,7 @@ export function StarRating({
             onClick={() => onChange(allowClear && n === value ? 0 : n)}
             onMouseEnter={() => setHover(n)}
             aria-label={`${n} star${n === 1 ? '' : 's'}`}
-            className="cursor-pointer p-0.5 text-(--color-text-faint) hover:text-(--color-accent) transition-colors"
+            className="cursor-pointer p-0.5 text-(--color-text-faint) hover:text-(--color-accent)"
           >
             <Star
               strokeWidth={0}
@@ -50,7 +50,6 @@ export function StarRating({
                 fill: filled ? '#FFD700' : emptyColor,
                 color: filled ? '#FFD700' : emptyColor,
               }}
-              className="transition-colors"
             />
           </button>
         )

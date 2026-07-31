@@ -722,7 +722,7 @@ function KpiTile({ label, value, caption, tone, tooltip }: KpiTileProps) {
   return (
     <div
       className={cn(
-        'flex flex-col bg-(--color-panel-2) rounded-(--radius) p-3 transition-colors',
+        'flex flex-col bg-(--color-panel-2) rounded-(--radius) p-3',
         tooltip && 'cursor-help',
       )}
       title={tooltip}

@@ -144,7 +144,7 @@ export function ModelsRoute() {
                   type="button"
                   {...rowProps(p.id, i)}
                   className={cn(
-                    'block w-full text-left p-3 rounded-sm text-sm select-none transition-colors duration-300 ease-out',
+                    'block w-full text-left p-3 rounded-sm text-sm select-none',
                     selected?.id === p.id
                       ? 'bg-(--color-panel-3) text-(--color-text)'
                       : 'bg-(--color-panel-2) text-(--color-text-dim) hover:bg-(--color-panel-3) hover:text-(--color-text)',
@@ -292,7 +292,7 @@ function ModelEditorImpl({ model, onSave, onDelete }: ModelEditorProps) {
           type="button"
           onClick={handleSave}
           className={cn(
-            `${BTN_BASE} border transition-colors`,
+            `${BTN_BASE} border`,
             isDirty
               ? 'bg-(--color-accent) border-(--color-accent) text-(--color-accent-fg) hover:opacity-90'
               : 'border-(--color-border) text-(--color-text-dim) hover:text-(--color-text)',
@@ -348,7 +348,7 @@ function ModelEditorImpl({ model, onSave, onDelete }: ModelEditorProps) {
                     : undefined
                 }
                 className={cn(
-                  'inline-flex items-center gap-1.5 rounded-[6px] cursor-pointer transition-colors whitespace-nowrap px-2.5 py-1 text-sm',
+                  'inline-flex items-center gap-1.5 rounded-[6px] cursor-pointer whitespace-nowrap px-2.5 py-1 text-sm',
                   !active && 'text-(--color-text-dim) hover:text-(--color-text)',
                 )}
               >

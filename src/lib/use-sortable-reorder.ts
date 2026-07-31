@@ -195,13 +195,6 @@ export function useSortableReorder<T extends { id: string }>({
       },
       style: {
         transform: `translateY(${translateY}px)`,
-        // Animate only while a drag is active. On drop every row's natural
-        // index AND translateY reset in one frame — a transition would catch
-        // that and re-animate from the displaced position.
-        transition:
-          drag && !isDragged
-            ? 'transform 150ms var(--ease), background-color 300ms var(--ease), color 300ms var(--ease)'
-            : 'background-color 300ms var(--ease), color 300ms var(--ease)',
         zIndex: isDragged ? 10 : undefined,
         position: 'relative' as const,
         cursor: isActiveDrag ? 'grabbing' : undefined,

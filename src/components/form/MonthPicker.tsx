@@ -77,7 +77,7 @@ export function MonthPicker({
 
   const triggerClass = cn(
     'w-full h-8 flex items-center justify-between gap-2 text-sm rounded-(--radius)',
-    'bg-(--color-bg) text-(--color-text) cursor-pointer transition-colors',
+    'bg-(--color-bg) text-(--color-text) cursor-pointer',
     'focus:outline-none focus:ring-2 focus:ring-(--color-accent-soft)',
     compact ? 'pl-2 pr-2' : 'pl-2.5 pr-2',
   )
@@ -138,7 +138,7 @@ export function MonthPicker({
                   key={label}
                   onClick={() => pick(i)}
                   className={cn(
-                    'h-9 rounded text-xs flex items-center justify-center transition-colors cursor-pointer',
+                    'h-9 rounded text-xs flex items-center justify-center cursor-pointer',
                     isSelected
                       ? 'bg-(--color-accent) text-(--color-accent-fg) font-medium'
                       : 'text-(--color-text) hover:bg-(--color-panel-2)',

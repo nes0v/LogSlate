@@ -60,7 +60,7 @@ export function Pills<T extends string | number | null>({
             onClick={() => onChange(opt.value)}
             aria-pressed={active}
             className={cn(
-              'inline-flex items-center gap-1.5 rounded-[6px] cursor-pointer transition-colors whitespace-nowrap',
+              'inline-flex items-center gap-1.5 rounded-[6px] cursor-pointer whitespace-nowrap',
               size === 'sm' ? 'px-2.5 py-1 text-xs' : 'px-2.5 py-1 text-sm',
               active
                 ? `${activeBgClass} text-(--color-text)`

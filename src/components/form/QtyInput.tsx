@@ -20,7 +20,7 @@ export function QtyInput({ value, onChange, min = 1, max, className }: QtyInputP
     <div
       className={cn(
         'h-8 flex items-stretch bg-(--color-bg) rounded-(--radius) overflow-hidden',
-        'focus-within:ring-2 focus-within:ring-(--color-accent-soft) transition-colors',
+        'focus-within:ring-2 focus-within:ring-(--color-accent-soft)',
         className,
       )}
     >
@@ -40,7 +40,7 @@ export function QtyInput({ value, onChange, min = 1, max, className }: QtyInputP
           tabIndex={-1}
           onClick={inc}
           aria-label="Increment"
-          className="flex-1 flex items-center justify-center text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2) transition-colors"
+          className="flex-1 flex items-center justify-center text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)"
         >
           <ChevronUp className="size-3" />
         </button>
@@ -49,7 +49,7 @@ export function QtyInput({ value, onChange, min = 1, max, className }: QtyInputP
           tabIndex={-1}
           onClick={dec}
           aria-label="Decrement"
-          className="flex-1 flex items-center justify-center text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2) transition-colors"
+          className="flex-1 flex items-center justify-center text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)"
         >
           <ChevronDown className="size-3" />
         </button>

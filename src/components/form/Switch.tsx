@@ -31,7 +31,7 @@ export function Switch({
       title={title}
       onClick={() => onChange(!checked)}
       className={cn(
-        'group flex items-center gap-2 text-sm transition-colors',
+        'group flex items-center gap-2 text-sm',
         disabled
           ? 'cursor-not-allowed text-(--color-text-faint)'
           : 'text-(--color-text-dim) hover:text-(--color-text)',
@@ -41,13 +41,13 @@ export function Switch({
       <span
         aria-hidden
         className={cn(
-          'relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors',
+          'relative inline-flex h-4 w-7 shrink-0 items-center rounded-full',
           checked ? 'bg-(--color-accent)' : 'bg-(--color-border-strong)',
         )}
       >
         <span
           className={cn(
-            'inline-block size-3 rounded-full bg-(--color-accent-fg) shadow-(--shadow-xs) transition-transform',
+            'inline-block size-3 rounded-full bg-(--color-accent-fg) shadow-(--shadow-xs)',
             checked ? 'translate-x-3.5' : 'translate-x-0.5',
           )}
         />

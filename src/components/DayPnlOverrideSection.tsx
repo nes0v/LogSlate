@@ -100,8 +100,8 @@ export function DayPnlOverrideSection({
       open={open}
       onToggle={e => setOpen((e.currentTarget as HTMLDetailsElement).open)}
     >
-      <summary className="text-sm font-medium cursor-pointer text-(--color-text) hover:text-(--color-accent) list-none flex items-center gap-1 transition-colors">
-        <ChevronRight className="size-4 transition-transform group-open:rotate-90" />
+      <summary className="text-sm font-medium cursor-pointer text-(--color-text) hover:text-(--color-accent) list-none flex items-center gap-1">
+        <ChevronRight className="size-4 group-open:rotate-90" />
         PNL override
       </summary>
       <div

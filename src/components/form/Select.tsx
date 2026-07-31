@@ -43,7 +43,7 @@ export function Select({
         onClick={() => setOpen(o => !o)}
         className={cn(
           'w-full h-8 flex items-center justify-between gap-2 pl-2.5 pr-2 text-sm rounded-(--radius)',
-          'bg-(--color-bg) text-(--color-text) cursor-pointer transition-colors',
+          'bg-(--color-bg) text-(--color-text) cursor-pointer',
           'focus:outline-none focus:ring-2 focus:ring-(--color-accent-soft)',
         )}
       >
@@ -63,7 +63,7 @@ export function Select({
                 setOpen(false)
               }}
               className={cn(
-                'block w-full text-left px-2.5 py-1.5 text-sm whitespace-nowrap cursor-pointer transition-colors',
+                'block w-full text-left px-2.5 py-1.5 text-sm whitespace-nowrap cursor-pointer',
                 opt.value === value
                   ? 'bg-(--color-panel-2) text-(--color-text)'
                   : 'text-(--color-text-dim) hover:bg-(--color-panel-2) hover:text-(--color-text)',

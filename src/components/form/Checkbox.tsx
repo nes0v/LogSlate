@@ -26,7 +26,7 @@ export function Checkbox({ className, size = 'md', ...props }: Props) {
         aria-hidden
         className={cn(
           box,
-          'border bg-(--color-bg) border-(--color-border-strong) transition-colors',
+          'border bg-(--color-bg) border-(--color-border-strong)',
           'peer-hover:border-(--color-text)',
           'peer-checked:bg-(--color-accent) peer-checked:border-(--color-accent)',
           // Higher-specificity override so a checked-AND-hovered box
@@ -42,7 +42,7 @@ export function Checkbox({ className, size = 'md', ...props }: Props) {
         className={cn(
           'absolute pointer-events-none text-(--color-accent-fg)',
           icon,
-          'opacity-0 transition-opacity peer-checked:opacity-100',
+          'opacity-0 peer-checked:opacity-100',
         )}
       />
     </span>

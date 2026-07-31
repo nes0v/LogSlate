@@ -52,7 +52,7 @@ export function Layout() {
                   to={l.to}
                   className={({ isActive }) =>
                     cn(
-                      'transition-colors whitespace-nowrap',
+                      'whitespace-nowrap',
                       isActive
                         ? 'text-(--color-text)'
                         : 'text-(--color-text-dim) hover:text-(--color-text)',

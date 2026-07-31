@@ -18,7 +18,7 @@ interface TradeExpandedDetailsProps {
 }
 
 const ACTION_BTN_BASE =
-  `${BTN_BASE} border border-(--color-border) text-(--color-text-dim) transition-colors cursor-pointer`
+  `${BTN_BASE} border border-(--color-border) text-(--color-text-dim) cursor-pointer`
 const NEUTRAL_BTN_CLASS = `${ACTION_BTN_BASE} hover:text-(--color-text)`
 const DELETE_BTN_CLASS = `${ACTION_BTN_BASE} hover:text-(--color-loss)`
 

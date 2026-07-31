@@ -60,7 +60,7 @@ export function AccountSwitcher({ accounts }: AccountSwitcherProps) {
         onClick={() => setOpen(o => !o)}
         className={cn(
           'h-8 flex items-center justify-between gap-2 pl-2.5 pr-2 text-sm rounded-(--radius)',
-          'bg-(--color-bg) text-(--color-text) cursor-pointer transition-colors',
+          'bg-(--color-bg) text-(--color-text) cursor-pointer',
           'focus:outline-none focus:ring-2 focus:ring-(--color-accent-soft)',
         )}
       >
@@ -81,7 +81,7 @@ export function AccountSwitcher({ accounts }: AccountSwitcherProps) {
                 setOpen(false)
               }}
               className={cn(
-                'w-full flex items-center gap-2 px-2.5 py-1.5 text-sm text-left whitespace-nowrap cursor-pointer transition-colors',
+                'w-full flex items-center gap-2 px-2.5 py-1.5 text-sm text-left whitespace-nowrap cursor-pointer',
                 a.id === activeId
                   ? 'bg-(--color-panel-2) text-(--color-text)'
                   : 'text-(--color-text-dim) hover:bg-(--color-panel-2) hover:text-(--color-text)',

@@ -535,7 +535,7 @@ function ActionButtons({ isSubmitting, isDirty, onCancel }: ActionButtonsProps) 
         type="submit"
         disabled={isSubmitting}
         className={cn(
-          `${BTN_BASE} border transition-colors disabled:opacity-50`,
+          `${BTN_BASE} border disabled:opacity-50`,
           isDirty
             ? 'bg-(--color-accent) border-(--color-accent) text-(--color-accent-fg) hover:opacity-90'
             : 'border-(--color-border) text-(--color-text-dim) hover:text-(--color-text)',
@@ -748,7 +748,7 @@ function TagInput({
     <div className="relative">
       <div
         className={cn(
-          'min-h-8 flex flex-wrap items-center gap-1 bg-(--color-bg) rounded-(--radius) py-1 pr-2.5 focus-within:ring-2 focus-within:ring-(--color-accent-soft) transition-colors',
+          'min-h-8 flex flex-wrap items-center gap-1 bg-(--color-bg) rounded-(--radius) py-1 pr-2.5 focus-within:ring-2 focus-within:ring-(--color-accent-soft)',
           value.length > 0 ? 'pl-1' : 'pl-2.5',
         )}
       >
@@ -829,7 +829,7 @@ function TagInput({
               }}
               onMouseEnter={() => setActiveIdx(i)}
               className={cn(
-                'block w-full text-left px-2.5 py-1.5 text-sm whitespace-nowrap cursor-pointer transition-colors',
+                'block w-full text-left px-2.5 py-1.5 text-sm whitespace-nowrap cursor-pointer',
                 i === activeIdx
                   ? 'bg-(--color-panel-2) text-(--color-text)'
                   : 'text-(--color-text-dim) hover:bg-(--color-panel-2) hover:text-(--color-text)',

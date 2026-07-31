@@ -225,7 +225,7 @@ export function CalendarRoute() {
               <button
                 type="button"
                 onClick={toggle}
-                className="text-lg font-semibold rounded-(--radius) cursor-pointer hover:text-(--color-accent) transition-colors"
+                className="text-lg font-semibold rounded-(--radius) cursor-pointer hover:text-(--color-accent)"
               >
                 {format(month, 'MMMM yyyy')}
               </button>
@@ -363,7 +363,7 @@ function DayCell({ date, inMonth, cell, isToday, hasScreenshot, hasNote }: DayCe
     <Link
       to={`/day/${dateKey}`}
       className={cn(
-        'rounded-(--radius) border transition-colors p-2 flex flex-col gap-1',
+        'rounded-(--radius) border p-2 flex flex-col gap-1',
         CELL_HEIGHT_CLASS,
         palette.surface,
       )}
@@ -568,7 +568,7 @@ function WeekCard({
     <Link
       to={`/overview?from=${from}&to=${to}`}
       className={cn(
-        'rounded-[22px] bg-(--color-panel) p-3.5 flex flex-col justify-center gap-0.5 transition-colors hover:brightness-125',
+        'rounded-[22px] bg-(--color-panel) p-3.5 flex flex-col justify-center gap-0.5 hover:brightness-125',
         CELL_HEIGHT_CLASS,
       )}
     >

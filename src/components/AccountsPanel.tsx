@@ -99,7 +99,7 @@ export function AccountsPanel({ accounts }: AccountsPanelProps) {
                   return (
                     <tr
                       key={a.id}
-                      className="transition-colors duration-300 ease-out border-t border-(--color-panel) first:border-t-0 hover:bg-(--color-panel-3)/60"
+                      className="border-t border-(--color-panel) first:border-t-0 hover:bg-(--color-panel-3)/60"
                     >
                       <td className="px-3 py-2">
                         <span className="truncate">{a.name}</span>

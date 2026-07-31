@@ -20,12 +20,6 @@
   --font-mono:
     "Segoe UI Variable", "Segoe UI", -apple-system, BlinkMacSystemFont,
     system-ui, Roboto, "Helvetica Neue", Arial, sans-serif;
-
-  /* Project-wide defaults for Tailwind's `transition-*` utilities — keeps
-   * every `transition-colors` button on the same curve/duration. Matches
-   * the global `transition` rule on interactive elements below. */
-  --default-transition-duration: 220ms;
-  --default-transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 :root {
@@ -144,12 +138,6 @@
    * `rounded-full`, tiny heatmap cells = `rounded-sm`) opt out by
    * ignoring this token. Change one number to retune the whole UI. */
   --radius: 8px;
-
-  /* Motion — kept short and consistent. Use `var(--ease)` for non-trivial
-   * transitions so they all share the same curve. */
-  --duration-fast: 220ms;
-  --duration-base: 220ms;
-  --ease: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 html {
@@ -217,19 +205,6 @@ h1, h2, h3, h4 {
 /* Interactive defaults */
 button:not(:disabled), [role="button"]:not([aria-disabled="true"]) {
   cursor: pointer;
-}
-
-/* Default color/opacity/filter transitions on interactive elements so
- * hover/active state changes are smooth without each component having to
- * remember `transition-colors`. Components can override with their own
- * `transition-*` utilities when finer control is needed. */
-button, [role="button"], a, label, summary, input, textarea, select {
-  transition:
-    background-color var(--duration-fast) var(--ease),
-    border-color var(--duration-fast) var(--ease),
-    color var(--duration-fast) var(--ease),
-    opacity var(--duration-fast) var(--ease),
-    filter var(--duration-fast) var(--ease);
 }
 
 input, textarea, select, button {

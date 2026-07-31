@@ -130,7 +130,7 @@ function TradeTableRow({
       aria-expanded={expanded}
       title={trade.idea}
       className={cn(
-        'cursor-pointer transition-colors duration-300 ease-out border-t border-(--color-bg) [&>td]:align-middle [&>td]:pt-[7px] [&>td]:pb-[9px] focus:outline-none focus-visible:bg-(--color-panel-2)/40',
+        'cursor-pointer border-t border-(--color-bg) [&>td]:align-middle [&>td]:pt-[7px] [&>td]:pb-[9px] focus:outline-none focus-visible:bg-(--color-panel-2)/40',
         expanded ? 'bg-(--color-panel-2)/60' : 'hover:bg-(--color-panel-2)/60',
       )}
     >

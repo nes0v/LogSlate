@@ -280,7 +280,7 @@ function CurrencyPill({
       type="button"
       onClick={onClick}
       className={cn(
-        'px-2 py-1 rounded-(--radius) border transition-colors',
+        'px-2 py-1 rounded-(--radius) border',
         active
           ? 'border-(--color-border) bg-(--color-panel-2) text-(--color-text)'
           : 'border-transparent text-(--color-text-dim) hover:text-(--color-text)',
