@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { X } from 'lucide-react'
@@ -168,6 +168,11 @@ export function ReportsRoute() {
   // (otherwise "No trades yet" flashes for one frame on navigation).
   const allTrades = useAccountQuery(accountId, () => listAllTrades(accountId))
   const allAdjustments = useAccountQuery(accountId, () => listAdjustments(accountId))
+  // Resolved at the route level and handed to the filter bar, which used to
+  // open its own subscription for this (and for `allTrades`). Same query count,
+  // but account-tagged, so an account switch can't leave the Model dropdown
+  // showing the previous account's names for a frame.
+  const models = useAccountQuery(accountId, () => listModels(accountId))
   // Day-level overrides + the default filter window (shared with Overview).
   // `rangeReady` is last-trade-date + overrides only — it does NOT wait on the
   // full trades payload, so the `loaded` gate below checks `allTrades` itself
@@ -176,6 +181,10 @@ export function ReportsRoute() {
     useDefaultRangeFilters(accountId, urlFilters)
   const loaded =
     allTrades !== undefined && allAdjustments !== undefined && rangeReady
+  // Same split as Overview: the filter bar paints as soon as the default window
+  // resolves, the report body follows a beat later, so building the tab's
+  // charts and tables never holds the date pickers on "Any".
+  const contentReady = useDeferredValue(loaded)
 
   // "Show scratch trades" intent (default on); off drops scratches from every
   // stat via applyFilters. Store-backed so it persists across page navigation.
@@ -185,7 +194,14 @@ export function ReportsRoute() {
     [allTrades, filters, includeScratches],
   )
   // Hide the scratch toggle when the view has no scratch trades to hide.
-  const hasScratchesInWindow = useHasScratchesInWindow(accountId, allTrades, filters, loaded)
+  const hasScratchesInWindow = useHasScratchesInWindow({
+    accountId,
+    allTrades,
+    filters,
+    ready: loaded,
+    filtered,
+    includeScratches,
+  })
   // Drop symbol/model filters carried over from another account (their
   // per-account ids match nothing here) so the page doesn't render empty.
   useValidAccountFilters(allTrades, filters.symbol_id, filters.model, patch => update(patch))
@@ -338,11 +354,19 @@ export function ReportsRoute() {
         </div>
       </div>
 
-      {/* Always present (no layout jump). Date values stay "Any" until
-          `loaded`, so the bar never flashes a today-based default. */}
-      <StatsFilterBar filters={filters} update={update} includeScratches={includeScratches} />
+      {/* Always present (no layout jump). Date values are seeded from the
+          cached activity anchor so they're real on the first frame, falling
+          back to "Any" only on a first-ever visit — never to a today-based
+          guess. Same as Overview. */}
+      <StatsFilterBar
+        filters={filters}
+        update={update}
+        trades={allTrades}
+        models={models}
+        includeScratches={includeScratches}
+      />
 
-      {!loaded ? null : filtered.length === 0 ? (
+      {!loaded || !contentReady ? null : filtered.length === 0 ? (
         <EmptyState>
           {allTrades.length === 0
             ? 'No trades yet.'

@@ -6,8 +6,10 @@ import { NotificationBanner } from '@/components/NotificationBanner'
 import { PendingUploadBanner } from '@/components/PendingUploadBanner'
 import { SyncStatusIndicator } from '@/components/SyncStatusIndicator'
 import { listAccounts } from '@/db/queries'
+import { useActiveAccountId } from '@/lib/active-account'
+import { useLastActivityCache } from '@/lib/use-last-activity-cache'
 import { useNewsSync } from '@/lib/use-news-sync'
-import { useCurrentEquity } from '@/lib/use-current-equity'
+import { useAccountRollup } from '@/lib/use-account-rollup'
 import { formatUsd } from '@/lib/money'
 import { cn } from '@/lib/utils'
 
@@ -22,7 +24,11 @@ const links = [
 
 export function Layout() {
   useNewsSync()
-  const equity = useCurrentEquity()
+  const accountId = useActiveAccountId()
+  const { equity, lastActivityDate } = useAccountRollup()
+  // Keeps the Stats/Reports default-window anchor in step with the data from
+  // wherever it changes — the Day page, a Drive sync pull, a backup import.
+  useLastActivityCache(accountId, lastActivityDate)
   // Lifted from AccountSwitcher so the entire equity + switcher cluster
   // can render in one go once both are ready, instead of either piece
   // jumping in independently.

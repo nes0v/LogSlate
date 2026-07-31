@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   addDays,
@@ -23,6 +23,7 @@ import {
   EMPTY_FILTERS,
   FILTER_PARAM_KEYS,
   filtersFromParams,
+  NON_DATE_FILTER_KEYS,
   paramsFromFilters,
   SCRATCHES_PARAM,
   type TradeFilters,
@@ -157,13 +158,10 @@ export function OverviewRoute() {
 
   const accountId = useActiveAccountId()
   // Day-level overrides + the default one-month filter window (shared with
-  // Reports). `rangeReady` is last-trade-date + overrides only — it reads just
-  // the last-trade-date index key (not every trade record) and excludes
-  // models, so the filter bar fills its default without waiting on the full
-  // trades load or the models query (either of which would surface as a
-  // visible "Any"→date jump). Subscribed BEFORE `listAllTrades` below so Dexie
-  // runs this tiny keys-only read first and it resolves ahead of the larger
-  // toArray() — otherwise the filled dates paint no earlier than the old code.
+  // Reports). The window itself is seeded synchronously from the cached
+  // activity anchor, so the pickers show real dates on the first frame rather
+  // than waiting on any query here; `rangeReady` still gates the CONTENT below
+  // via `loaded`, and only ever refines a seeded window to the resolved one.
   const { overridesByDate, feesOverridesByDate, rangeReady, defaultWindow, filters } =
     useDefaultRangeFilters(accountId, urlFilters)
   // No default value — `allTrades` is `undefined` while Dexie resolves so
@@ -190,11 +188,28 @@ export function OverviewRoute() {
     allAdjustments !== undefined &&
     rangeReady &&
     models !== undefined
+  // The filter bar is cheap; everything below it is not. Without this they
+  // share a commit, so the date pickers can't repaint until the whole page —
+  // trade table included — has rendered, and the "Any" placeholder lingers for
+  // as long as that takes (~45ms with the Trades section collapsed, ~515ms with
+  // it expanded on a wide window). Deferring the content gate lets React paint
+  // the bar with the real default window first, then build the heavy tree in a
+  // follow-up pass. Every content branch below checks `loaded && contentReady`:
+  // `loaded` is what narrows `allTrades` for TS, `contentReady` is what holds
+  // the render back a beat.
+  const contentReady = useDeferredValue(loaded)
 
   const filtered = useMemo(() => applyFilters(allTrades ?? [], filters, includeScratches), [allTrades, filters, includeScratches])
   // Hide the scratch toggle when the current view has no scratch trades to
   // hide (mirrors the override toggle's hasOverridesInWindow).
-  const hasScratchesInWindow = useHasScratchesInWindow(accountId, allTrades, filters, loaded)
+  const hasScratchesInWindow = useHasScratchesInWindow({
+    accountId,
+    allTrades,
+    filters,
+    ready: loaded,
+    filtered,
+    includeScratches,
+  })
   // Drop symbol/model filters carried over from another account (their
   // per-account ids match nothing here) so the page doesn't render empty.
   useValidAccountFilters(allTrades, filters.symbol_id, filters.model, patch => update(patch))
@@ -293,9 +308,24 @@ export function OverviewRoute() {
   // filter only sets the initial viewport (`chartVisibleFrom/To` below),
   // so the chart contains every trade ever recorded for this account
   // and the user can pan/zoom outside the filter window to see the rest.
+  //
+  // Held stable across date-only changes: `from`/`to` are nulled out here
+  // anyway, so a filter-date edit, a chart drill-down, or the load-time flip
+  // when the default window resolves must not invalidate this and the
+  // whole-history bucket/candle chain hanging off it. Keyed off
+  // NON_DATE_FILTER_KEYS (derived from EMPTY_FILTERS) rather than a hand-listed
+  // dependency array, so adding a filter can't silently leave the chart stale.
+  // NUL-joined because setup tags are free text — a printable separator would
+  // let two different filter sets collapse onto the same key.
+  const chartFilterKey = NON_DATE_FILTER_KEYS.map(k => filters[k] ?? '').join('\u0000')
+  const chartFilters = useMemo<TradeFilters>(
+    () => ({ ...filters, from: null, to: null }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [chartFilterKey],
+  )
   const chartFiltered = useMemo(
-    () => applyFilters(allTrades ?? [], { ...filters, from: null, to: null }, includeScratches),
-    [allTrades, filters, includeScratches],
+    () => applyFilters(allTrades ?? [], chartFilters, includeScratches),
+    [allTrades, chartFilters, includeScratches],
   )
 
   // Bucket-aligned range that spans the earliest..latest dates across
@@ -560,12 +590,20 @@ export function OverviewRoute() {
         </div>
       </div>
 
-      {/* Always present (no layout jump on load). Its date values stay blank
-          ("Any") until `loaded`, so it never flashes a today-based default —
-          everything data-dependent below waits for the full `loaded` gate. */}
-      <StatsFilterBar filters={filters} update={update} includeScratches={includeScratches} />
+      {/* Always present (no layout jump on load). Its date values are seeded
+          from the cached activity anchor so they're real on the first frame;
+          they fall back to "Any" only on a first-ever visit, never to a
+          today-based guess. Everything data-dependent below still waits for
+          the full `loaded` gate. */}
+      <StatsFilterBar
+        filters={filters}
+        update={update}
+        trades={allTrades}
+        models={models}
+        includeScratches={includeScratches}
+      />
 
-      {loaded && filtered.length > 0 && (
+      {loaded && contentReady && filtered.length > 0 && (
         <details
           className="space-y-2 group"
           open={tradesSectionOpen}
@@ -580,17 +618,24 @@ export function OverviewRoute() {
             Trades{' '}
             <span className="text-(--color-text-dim) font-normal">({filtered.length})</span>
           </summary>
-          <TradeTable
-            trades={tradesDesc}
-            expandedIds={tableExpandedIds}
-            onToggle={toggleTableRow}
-            modelById={modelById}
-            showDate
-          />
+          {/* Only rendered while the section is open. `<details>` hides its
+              children visually but React still builds them, so a collapsed
+              section was rendering every row (and, before the per-row fix,
+              every expanded panel) into the DOM — the single biggest
+              contributor to this page's first-render cost. */}
+          {tradesSectionOpen && (
+            <TradeTable
+              trades={tradesDesc}
+              expandedIds={tableExpandedIds}
+              onToggle={toggleTableRow}
+              modelById={modelById}
+              showDate
+            />
+          )}
         </details>
       )}
 
-      {loaded && filtered.length > 0 && (
+      {loaded && contentReady && filtered.length > 0 && (
         <>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             <HeroNetPnl stats={stats} />
@@ -608,7 +653,7 @@ export function OverviewRoute() {
         </>
       )}
 
-      {loaded && filtered.length > 0 ? (
+      {loaded && contentReady && filtered.length > 0 ? (
         chartReady ? (
         <TradingViewChart
           points={tfCandles}
@@ -654,7 +699,10 @@ export function OverviewRoute() {
             className="rounded-(--radius) bg-(--color-panel)"
           />
         )
-      ) : loaded ? (
+      ) : loaded && contentReady ? (
+        // Also gated on `contentReady`: on the deferred frame `loaded` is
+        // already true while the content branches above are still held back,
+        // so without this the empty state would flash in the gap.
         <div className="text-sm text-(--color-text-dim) text-center py-12 border border-dashed border-(--color-border) rounded-(--radius)">
           {allTrades.length === 0
             ? 'No trades yet.'

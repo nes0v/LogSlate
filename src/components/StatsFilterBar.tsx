@@ -1,8 +1,14 @@
 import { useMemo } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { listAllTrades, listModels, listSymbols } from '@/db/queries'
+import { listSymbols } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
-import { DEFAULT_MODEL_NAME, EMOTIONS, type Emotion } from '@/db/types'
+import {
+  DEFAULT_MODEL_NAME,
+  EMOTIONS,
+  type Emotion,
+  type Model,
+  type TradeRecord,
+} from '@/db/types'
 import {
   HOLD_OPTS,
   OUTCOME_OPTS,
@@ -31,16 +37,27 @@ import { Field } from '@/components/form/Field'
 export function StatsFilterBar({
   filters,
   update,
+  trades,
+  models,
   includeScratches = true,
 }: {
   filters: TradeFilters
   update: (next: Partial<TradeFilters>) => void
+  /** Every trade for the account — only used to collect the distinct
+   *  `setup_tags` for the Tags dropdown. Passed in rather than re-queried:
+   *  both call sites already hold this list, and a second `listAllTrades`
+   *  meant a full extra materialization of the trades table competing with
+   *  the queries the default date window is waiting on. */
+  trades: TradeRecord[] | undefined
+  /** Account models, likewise already loaded by the parent route. Passing
+   *  them down also means they're account-tagged (via the route's
+   *  `useAccountQuery`), which the bar's own query couldn't be. */
+  models: Model[] | undefined
   /** When false, scratches are hidden globally, so the Outcome filter drops
    *  its "scratch" option (there'd be nothing to select). */
   includeScratches?: boolean
 }) {
   const accountId = useActiveAccountId()
-  const models = useLiveQuery(() => listModels(accountId), [accountId], [])
   // Warm the cache from inside the querier so it's written with the account the
   // query actually resolved for (an account switch can otherwise leave `symbols`
   // holding the previous account's list for a frame). The cached list is the
@@ -57,7 +74,6 @@ export function StatsFilterBar({
     [accountId],
     symbolSeed,
   )
-  const trades = useLiveQuery(() => listAllTrades(accountId), [accountId], [])
 
   // Per-account symbol options, in the user's sidebar order, "All" first.
   // Drafts are hidden (they can't have trades logged against them).

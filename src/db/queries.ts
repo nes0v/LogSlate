@@ -15,6 +15,7 @@ import type {
 } from '@/db/types'
 import { getActiveAccountId } from '@/lib/active-account'
 import { clearSymbolFilterCache } from '@/lib/symbol-filter-cache'
+import { clearLastActivityDate } from '@/lib/last-activity-cache'
 
 function now(): string {
   return new Date().toISOString()
@@ -357,6 +358,7 @@ export async function deleteAccount(id: string): Promise<void> {
     // localStorage unavailable — keys will linger but are harmless.
   }
   clearSymbolFilterCache(id)
+  clearLastActivityDate(id)
 }
 
 // Counts the data an account owns — used by the UI confirm dialog before a
@@ -504,18 +506,30 @@ export async function getDayPnlOverride(
   return day?.pnl_override ?? null
 }
 
-/** All net-PNL overrides for an account as a `date → value` map. Overrides
- *  are rare (one per tilt/revenge day) so loading the small days table and
- *  filtering in memory is cheaper than a dedicated index. */
+/** Both day-level override maps from ONE scan of the days table. The net and
+ *  fees maps used to be two exported queries run side by side, which meant the
+ *  same `where('account_id')` scan — and a full structured clone of every day
+ *  row, notes included — twice, both on the critical path of the default
+ *  date-range window. Overrides are rare (one per tilt/revenge day) so
+ *  filtering in memory still beats a dedicated index. */
+export async function listDayOverrides(
+  accountId: string,
+): Promise<{ pnl: Map<string, number>; fees: Map<string, number> }> {
+  const rows = await db.days.where('account_id').equals(accountId).toArray()
+  const pnl = new Map<string, number>()
+  const fees = new Map<string, number>()
+  for (const d of rows) {
+    if (typeof d.pnl_override === 'number') pnl.set(d.date, d.pnl_override)
+    if (typeof d.fees_override === 'number') fees.set(d.date, d.fees_override)
+  }
+  return { pnl, fees }
+}
+
+/** All net-PNL overrides for an account as a `date → value` map. */
 export async function listDayPnlOverrides(
   accountId: string,
 ): Promise<Map<string, number>> {
-  const rows = await db.days.where('account_id').equals(accountId).toArray()
-  const m = new Map<string, number>()
-  for (const d of rows) {
-    if (typeof d.pnl_override === 'number') m.set(d.date, d.pnl_override)
-  }
-  return m
+  return (await listDayOverrides(accountId)).pnl
 }
 
 /** Upserts the per-day net-PNL override. Passing `null` clears it; if the
@@ -582,21 +596,6 @@ export async function getDayFeesOverride(
 ): Promise<number | null> {
   const day = await getDay(accountId, date)
   return day?.fees_override ?? null
-}
-
-/** All fees overrides for an account as a `date → value` map. Like
- *  `listDayPnlOverrides` — small days table, filtered in memory. Only days
- *  that also carry a `pnl_override` ever hold a `fees_override`, so this is
- *  effectively a sparse companion to the net-override map. */
-export async function listDayFeesOverrides(
-  accountId: string,
-): Promise<Map<string, number>> {
-  const rows = await db.days.where('account_id').equals(accountId).toArray()
-  const m = new Map<string, number>()
-  for (const d of rows) {
-    if (typeof d.fees_override === 'number') m.set(d.date, d.fees_override)
-  }
-  return m
 }
 
 /** Sets the informational fees figure for an override day. No-op unless the

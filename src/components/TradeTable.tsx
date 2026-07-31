@@ -1,4 +1,4 @@
-import { Fragment, memo } from 'react'
+import { Fragment, memo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { formatDisplayDate } from '@/lib/tz'
 import { ArrowDown, ArrowRight, ArrowUp, ArrowUpDown } from 'lucide-react'
@@ -41,6 +41,24 @@ export const TradeTable = memo(function TradeTable({
   showDate = false,
 }: TradeTableProps) {
   const cols = showDate ? 13 : 12
+  // Ids whose expanded panel has been mounted. Rendering a full
+  // `TradeExpandedDetails` for every row is what made a collapsed Trades
+  // section on Overview build ~67k DOM nodes for content nobody can see, so
+  // the panel is mounted on the render a row FIRST expands — the same commit
+  // that flips the wrapper to `1fr`, so the height transition still has
+  // something to reveal. Grow-only: dropping an id on collapse would animate
+  // an empty box shut.
+  const [mountedIds, setMountedIds] = useState<Set<string>>(() => new Set(expandedIds))
+  let mounted = mountedIds
+  for (const id of expandedIds) {
+    if (!mounted.has(id)) {
+      if (mounted === mountedIds) mounted = new Set(mountedIds)
+      mounted.add(id)
+    }
+  }
+  // Render-phase update: `mounted` is already used below, this only persists it.
+  if (mounted !== mountedIds) setMountedIds(mounted)
+
   return (
     <div className="bg-(--color-panel) rounded-(--radius) overflow-hidden">
       <table className="w-full text-sm border-collapse">
@@ -70,9 +88,11 @@ export const TradeTable = memo(function TradeTable({
                       )}
                     >
                       <div className="overflow-hidden">
-                        <div className="p-3">
-                          <TradeExpandedDetails trade={t} model={model} />
-                        </div>
+                        {mounted.has(t.id) && (
+                          <div className="p-3">
+                            <TradeExpandedDetails trade={t} model={model} />
+                          </div>
+                        )}
                       </div>
                     </div>
                   </td>

@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { TradeForm } from '@/components/TradeForm'
 import { createTrade, getDayPnlOverride } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
-import { formatDisplayDate, nyToday } from '@/lib/tz'
+import { formatDisplayDate, isDateKey, nyToday } from '@/lib/tz'
 import { errorMessage } from '@/lib/utils'
 import type { TradeDraft } from '@/db/types'
 
@@ -14,10 +14,12 @@ export function TradeNewRoute() {
   const accountId = useActiveAccountId()
   const cameFrom = (location.state as { from?: string } | null)?.from ?? null
   // `||` alone would let a malformed but non-empty param (e.g. ?date=foo)
-  // reach the date formatter below and render "Invalid Date". Require a
-  // real YYYY-MM-DD, else fall back to today.
+  // reach the date formatter below and render "Invalid Date". Require a real
+  // date, else fall back to today. `isDateKey` rather than a shape regex:
+  // `?date=2026-13-45` matches the shape but parses to an Invalid Date, which
+  // threw out of `formatDisplayDate` instead of falling back here.
   const rawDate = params.get('date')
-  const date = rawDate && /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : nyToday()
+  const date = isDateKey(rawDate) ? rawDate : nyToday()
 
   // Mutual exclusion: a day with a net-PNL override is logged as that one
   // figure INSTEAD of trades. The Day page already hides its New-trade button

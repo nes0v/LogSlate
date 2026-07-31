@@ -21,7 +21,7 @@ import {
   listModels,
   getDayPnlOverride,
   getDayFeesOverride,
-  listDayFeesOverrides,
+  listDayOverrides,
   removeDayScreenshot,
   reorderModels,
   setDayNote,
@@ -173,7 +173,7 @@ describe('day fees override', () => {
     await setDayPnlOverride(MAIN_ACCOUNT_ID, '2026-04-15', 295)
     await setDayFeesOverride(MAIN_ACCOUNT_ID, '2026-04-15', 80)
     expect(await getDayFeesOverride(MAIN_ACCOUNT_ID, '2026-04-15')).toBe(80)
-    expect(await listDayFeesOverrides(MAIN_ACCOUNT_ID)).toEqual(
+    expect((await listDayOverrides(MAIN_ACCOUNT_ID)).fees).toEqual(
       new Map([['2026-04-15', 80]]),
     )
 

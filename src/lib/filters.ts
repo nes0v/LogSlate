@@ -15,7 +15,7 @@ import {
   TRADE_OUTCOMES,
   type TradeOutcome,
 } from '@/lib/trade-math'
-import { dateKeyToDate } from '@/lib/tz'
+import { dateKeyToDate, isDateKey } from '@/lib/tz'
 
 export const WEEKDAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const
 export type Weekday = (typeof WEEKDAYS)[number]
@@ -115,6 +115,15 @@ export const EMPTY_FILTERS: TradeFilters = {
   tag: null,
 }
 
+/** Every filter field except the date bounds, derived from `EMPTY_FILTERS` so a
+ *  newly-added filter is picked up automatically rather than needing to be
+ *  remembered here. Used to tell a date-only filter change from a real one —
+ *  Overview's chart spans all of history and must not rebuild when only
+ *  `from`/`to` move. */
+export const NON_DATE_FILTER_KEYS = (
+  Object.keys(EMPTY_FILTERS) as Array<keyof TradeFilters>
+).filter(k => k !== 'from' && k !== 'to')
+
 /** True when a filter references a per-trade field that override days don't
  *  have (symbol, session, rating, …) — so day-level overrides can't be
  *  classified against it and must be excluded. `from`/`to` and `weekday` are
@@ -206,8 +215,13 @@ export function filtersFromParams(p: URLSearchParams): TradeFilters {
   const rawModel = p.get('model')
   const rawSymbol = p.get('symbol')
   return {
-    from: p.get('from'),
-    to: p.get('to'),
+    // Validated like every other param here: an unparseable bound used to be
+    // passed straight through to date-fns, where `?from=2026-13-45` threw
+    // `RangeError: Invalid time value` mid-render and took the page down.
+    // Dropping it to null just means "no lower bound", matching how an
+    // unrecognised `session=` or `rating=` is handled.
+    from: isDateKey(p.get('from')) ? p.get('from') : null,
+    to: isDateKey(p.get('to')) ? p.get('to') : null,
     // Symbol id is a free-form string (UUID) like `model`; the UI validates it
     // against the account's symbols, a stale id just matches no trades.
     symbol_id: rawSymbol && rawSymbol.length > 0 ? rawSymbol : null,
@@ -241,8 +255,10 @@ export function coerceFilters(raw: unknown): TradeFilters {
   const oneOf = <K extends string>(v: unknown, allowed: readonly K[]): K | null =>
     typeof v === 'string' && (allowed as readonly string[]).includes(v) ? (v as K) : null
   return {
-    from: str(o.from),
-    to: str(o.to),
+    // Same guard as `filtersFromParams`: this slot is localStorage, so it's
+    // user-editable and outlives app versions.
+    from: isDateKey(o.from) ? o.from : null,
+    to: isDateKey(o.to) ? o.to : null,
     symbol_id: str(o.symbol_id),
     session: oneOf<Session>(o.session, SESSIONS),
     rating: oneOf<Rating>(o.rating, RATINGS),

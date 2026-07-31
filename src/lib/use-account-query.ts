@@ -29,12 +29,13 @@ import { useLiveQuery } from 'dexie-react-hooks'
  * one already gated on `!== undefined`. Two kinds of call site deliberately
  * DON'T use it:
  *
- *  - Lookup maps with an `[]` default and no gate (`StatsFilterBar`'s models,
- *    the name/order maps inside Reports). Reporting `undefined` there doesn't
- *    prevent a wrong render, it just swaps "the other account's names" for "no
- *    names" — neither is right, and the empty case is the more confusing of
- *    the two. `StatsFilterBar`'s symbols already solve it properly, by seeding
- *    from a per-account cache.
+ *  - Lookup maps with an `[]` default and no gate (the name/order maps inside
+ *    Reports' Compare tab). Reporting `undefined` there doesn't prevent a wrong
+ *    render, it just swaps "the other account's names" for "no names" — neither
+ *    is right, and the empty case is the more confusing of the two.
+ *    `StatsFilterBar`'s symbols solve it properly instead, by seeding from a
+ *    per-account cache; its models and trades now come down as props from the
+ *    route, which resolves them through this hook.
  *  - `Day`, which needs the opposite behaviour: it keeps a module cache so
  *    navigating to a preloaded neighbouring day renders instantly, and tags
  *    each result with `forDate`/`forAccount` so a mismatch falls back to that

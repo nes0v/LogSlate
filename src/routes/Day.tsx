@@ -11,6 +11,8 @@ import { useActiveAccountId } from '@/lib/active-account'
 import { firstExecutionMs } from '@/lib/trade-math'
 import { aggregate } from '@/lib/trade-stats'
 import { useArrowNavigation } from '@/lib/use-arrow-navigation'
+import { dateKeyToDate, isDateKey } from '@/lib/tz'
+import { NotFoundRoute } from '@/routes/NotFound'
 import { DayNewsSection } from '@/components/DayNewsSection'
 import { DayNoteSection } from '@/components/DayNoteSection'
 import { DayPnlOverrideSection } from '@/components/DayPnlOverrideSection'
@@ -109,18 +111,23 @@ async function preloadDay(accountId: string, date: string): Promise<void> {
 // when navigating between a weekday and a weekend date on the same route.
 export function DayRoute() {
   const { date = '' } = useParams()
-  const parsed = /^\d{4}-\d{2}-\d{2}$/.test(date) ? parseISO(date) : null
-  if (parsed && isWeekend(parsed)) {
+  // `isDateKey`, not a shape regex: `/day/2026-13-45` matches the shape but
+  // parses to an Invalid Date, which threw `RangeError: Invalid time value`
+  // out of `format` below and took the page down — while `/day/garbage` fell
+  // through to a day page titled "garbage". Neither is a real date, so both
+  // are Not found.
+  if (!isDateKey(date)) return <NotFoundRoute />
+  if (isWeekend(dateKeyToDate(date))) {
     return <Navigate to={`/month/${date.slice(0, 7)}`} replace />
   }
   return <DayView />
 }
 
 function DayView() {
+  // `date` is guaranteed a real weekday key by `DayRoute` above.
   const { date = '' } = useParams()
   const navigate = useNavigate()
-  const parsed = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? parseISO(date) : null
-  const pretty = parsed ? format(parsed, 'EEEE, dd MMM yyyy') : date
+  const pretty = format(dateKeyToDate(date), 'EEEE, dd MMM yyyy')
 
   const accountId = useActiveAccountId()
   // All four day-scoped queries live here so the page can reveal as a

@@ -73,6 +73,24 @@ function toDateKey(d: Date): string {
   return `${y}-${m}-${day}`
 }
 
+/**
+ * True when `value` is a real `YYYY-MM-DD` calendar date.
+ *
+ * A shape check alone is not enough, and neither is a validity check:
+ * `2026-13-45` parses to an Invalid Date (which then throws `RangeError:
+ * Invalid time value` the moment date-fns formats it), while `2026-02-30`
+ * silently ROLLS OVER to `2026-03-01`. Only the round-trip catches both.
+ *
+ * Use this on any date key arriving from outside the app — localStorage,
+ * a hand-typed URL param, an imported backup — before it reaches
+ * `dateKeyToDate` and the date-fns pipeline behind it.
+ */
+export function isDateKey(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+  const d = dateKeyToDate(value)
+  return !Number.isNaN(d.getTime()) && toDateKey(d) === value
+}
+
 /** Nearest weekday on or before `dateKey` (YYYY-MM-DD): Sat/Sun roll back to
  *  Friday, a weekday is returned unchanged. Used for date inputs that must
  *  land on a trading day (cash flow / progress / the default range's `to`),
