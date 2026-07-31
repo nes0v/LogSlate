@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { useLiveQuery } from 'dexie-react-hooks'
 import {
   addDays,
   endOfMonth,
@@ -43,10 +42,10 @@ import {
 } from '@/lib/shared-filters'
 import { useDefaultRangeFilters } from '@/lib/use-default-range-filters'
 import { useValidAccountFilters } from '@/lib/use-valid-account-filters'
+import { useAccountQuery } from '@/lib/use-account-query'
 import { firstExecutionMs } from '@/lib/trade-math'
 import { adjustmentsByDate, aggregate, computeCandles, foldOverridesIntoStats, signedAdjustment, type AggregateStats } from '@/lib/trade-stats'
-import { netPnlByDate, sumNetPnl } from '@/lib/day-pnl'
-import { useStartingEquity } from '@/lib/use-starting-equity'
+import { equityBefore, netPnlByDate } from '@/lib/day-pnl'
 import { useChartAdjustmentPrefs } from '@/lib/chart-adjustment-prefs'
 import {
   bucketByTimeframe,
@@ -171,19 +170,12 @@ export function OverviewRoute() {
   // we can suppress the empty-state placeholder + downstream sections
   // until the real data arrives. Without this, "No trades yet" shows for
   // a single frame and then snaps to the actual content.
-  const allTrades = useLiveQuery(() => listAllTrades(accountId), [accountId])
-  const allAdjustments = useLiveQuery(
-    () => listAdjustments(accountId),
-    [accountId],
-    [],
-  )
+  const allTrades = useAccountQuery(accountId, () => listAllTrades(accountId))
+  const allAdjustments = useAccountQuery(accountId, () => listAdjustments(accountId))
   // Models are resolved once at the route level so trade rows render
   // with the right name on first paint (instead of flashing "gambling"
   // before the lookup map populates).
-  const models = useLiveQuery(
-    () => listModels(accountId),
-    [accountId],
-  )
+  const models = useAccountQuery(accountId, () => listModels(accountId))
   const modelById = useMemo(() => {
     const m = new Map<string, Model>()
     for (const p of models ?? []) m.set(p.id, p)
@@ -193,7 +185,11 @@ export function OverviewRoute() {
   // wait on the full trades payload, so the page-content gate must check
   // `allTrades !== undefined` itself (and models, so trade rows never flash an
   // unresolved name). That check also lets TS narrow `allTrades` below.
-  const loaded = allTrades !== undefined && rangeReady && models !== undefined
+  const loaded =
+    allTrades !== undefined &&
+    allAdjustments !== undefined &&
+    rangeReady &&
+    models !== undefined
 
   const filtered = useMemo(() => applyFilters(allTrades ?? [], filters, includeScratches), [allTrades, filters, includeScratches])
   // Hide the scratch toggle when the current view has no scratch trades to
@@ -263,28 +259,25 @@ export function OverviewRoute() {
     }
   }, [chartReady])
 
+  // Account-wide day → net map, built once and shared by every equity baseline
+  // on the page. Uses the raw (not toggled) overrides on purpose: a baseline is
+  // real account equity entering a window. The "Show override days" toggle only
+  // hides override days *within* the view, it never rewrites past equity.
+  const netByDate = useMemo(
+    () => netPnlByDate(allTrades ?? [], overridesByDate),
+    [allTrades, overridesByDate],
+  )
+
   // Inputs the composite-score card needs. Computed locally from the
   // already-loaded `allTrades` + `allAdjustments` so the card doesn't
   // need its own Dexie subscriptions — that's what was causing the
   // post-mount jump (queries resolve async; card renders null first,
   // then snaps in with real data). Now everything is ready when the
   // page-level `loaded` gate opens.
-  const compositeStartingEquity = useMemo(() => {
-    if (!rangeStart) return 0
-    let eq = 0
-    for (const a of allAdjustments ?? []) {
-      if (a.date < rangeStart) eq += signedAdjustment(a)
-    }
-    // Day-net before the range, with override days replacing their trades.
-    // Uses the raw (not toggled) overrides on purpose: the baseline is real
-    // account equity entering the window. The "Show override days" toggle only
-    // hides override days *within* the view, it doesn't rewrite past equity.
-    eq += sumNetPnl(
-      netPnlByDate(allTrades ?? [], overridesByDate),
-      d => d < rangeStart,
-    )
-    return eq
-  }, [allTrades, allAdjustments, overridesByDate, rangeStart])
+  const compositeStartingEquity = useMemo(
+    () => (rangeStart ? equityBefore(rangeStart, netByDate, allAdjustments ?? []) : 0),
+    [netByDate, allAdjustments, rangeStart],
+  )
   const compositeAdjByDate = useMemo(() => {
     const m = new Map<string, number>()
     if (!rangeStart || !rangeEnd) return m
@@ -332,8 +325,18 @@ export function OverviewRoute() {
     [allAdjustments],
   )
 
-  const chartStartingEquity = useStartingEquity(
-    tfChartRange ? format(tfChartRange.start, 'yyyy-MM-dd') : null,
+  // Same derivation as the composite baseline, off the same map — deliberately
+  // not a date-keyed Dexie query, which would serve the previous start date's
+  // value for one render and shift the whole equity curve for a frame. In
+  // practice this start date is the account's earliest activity (so the value
+  // is 0), but it stops being so as soon as a symbol/model filter excludes the
+  // earliest trades.
+  const chartStartingEquity = useMemo(
+    () =>
+      tfChartRange
+        ? equityBefore(format(tfChartRange.start, 'yyyy-MM-dd'), netByDate, allAdjustments ?? [])
+        : 0,
+    [tfChartRange, netByDate, allAdjustments],
   )
 
   const tfBuckets = useMemo(() => {

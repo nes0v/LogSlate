@@ -1,8 +1,8 @@
 import { useMemo } from 'react'
-import { useLiveQuery } from 'dexie-react-hooks'
 import { getLastTradeDate, listDayFeesOverrides, listDayPnlOverrides } from '@/db/queries'
 import { defaultRange } from '@/lib/shared-filters'
 import { useDefaultRangeMonths } from '@/lib/default-range-preference'
+import { useAccountQuery } from '@/lib/use-account-query'
 import type { TradeFilters } from '@/lib/filters'
 import { nyToday } from '@/lib/tz'
 
@@ -50,19 +50,10 @@ export function useDefaultRangeFilters(
   urlFilters: TradeFilters,
 ): DefaultRangeFilters {
   const defaultMonths = useDefaultRangeMonths()
-  const lastTradeDateQuery = useLiveQuery(
-    () => getLastTradeDate(accountId),
-    [accountId],
-  )
-  const overridesQuery = useLiveQuery(
-    () => listDayPnlOverrides(accountId),
-    [accountId],
-  )
+  const lastTradeDateQuery = useAccountQuery(accountId, () => getLastTradeDate(accountId))
+  const overridesQuery = useAccountQuery(accountId, () => listDayPnlOverrides(accountId))
   const overridesByDate = overridesQuery ?? EMPTY_OVERRIDES
-  const feesOverridesQuery = useLiveQuery(
-    () => listDayFeesOverrides(accountId),
-    [accountId],
-  )
+  const feesOverridesQuery = useAccountQuery(accountId, () => listDayFeesOverrides(accountId))
   const feesOverridesByDate = feesOverridesQuery ?? EMPTY_OVERRIDES
   const rangeReady =
     lastTradeDateQuery !== undefined &&

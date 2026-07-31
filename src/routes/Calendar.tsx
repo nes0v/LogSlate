@@ -1,6 +1,5 @@
 import { useMemo } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { useLiveQuery } from 'dexie-react-hooks'
 import {
   addDays,
   addMonths,
@@ -11,14 +10,15 @@ import {
 } from 'date-fns'
 import { monthDayGrid } from '@/lib/calendar-grid'
 import { Image as ImageIcon, StickyNote, type LucideIcon } from 'lucide-react'
-import { dateKeyToDate, nyDateKey } from '@/lib/tz'
+import { nyDateKey } from '@/lib/tz'
 import { db } from '@/db/schema'
 import { useActiveAccountId } from '@/lib/active-account'
 import { classifyTrade, computeNetPnl } from '@/lib/trade-math'
 import { classifyDayPnl } from '@/lib/advanced-stats'
-import { netPnlByDate } from '@/lib/day-pnl'
+import { equityBefore } from '@/lib/day-pnl'
 import { signedAdjustment } from '@/lib/trade-stats'
-import { useStartingEquity } from '@/lib/use-starting-equity'
+import { listAdjustments, listAllTrades } from '@/db/queries'
+import { useAccountQuery } from '@/lib/use-account-query'
 import { formatUsd } from '@/lib/money'
 import { parseYearMonth } from '@/lib/buckets'
 import { ForexFactoryNews } from '@/components/ForexFactoryNews'
@@ -41,56 +41,100 @@ export function CalendarRoute() {
   const navigate = useNavigate()
 
   // Memoize date derivations so `useMemo` deps compare by stable reference.
-  const { month, gridStart, gridEnd, days } = useMemo(() => {
+  const { month, gridStart, days } = useMemo(() => {
     const month = parseYearMonth(ym)
-    const { start: gridStart, end: gridEnd, days } = monthDayGrid(month)
-    return { month, gridStart, gridEnd, days }
+    const { start: gridStart, days } = monthDayGrid(month)
+    return { month, gridStart, days }
   }, [ym])
 
+  // Start of the visible grid — the cutoff for the equity baseline below.
   const rangeStart = format(gridStart, DATE_KEY)
-  const rangeEnd = format(gridEnd, DATE_KEY)
   const accountId = useActiveAccountId()
 
+  // Account-wide, deliberately NOT scoped to the visible month: a query keyed
+  // on the grid's date range hands back the previous month's rows for one
+  // render (see `useAccountQuery`), which painted the new month part-coloured
+  // for a frame. Switching months now changes no query dep at all, and
+  // everything below indexes by date key so no slicing is needed.
+  //
   // No defaults — `loaded` gates the day grid so colored cells don't flash
   // a gray "no trades" state before Dexie resolves.
-  const trades = useLiveQuery(
-    () =>
-      db.trades
-        .where('[account_id+date]')
-        .between([accountId, rangeStart], [accountId, rangeEnd], true, true)
-        .toArray(),
-    [rangeStart, rangeEnd, accountId],
+  const trades = useAccountQuery(accountId, () => listAllTrades(accountId))
+  const dayRows = useAccountQuery(accountId, () =>
+    db.days.where('account_id').equals(accountId).toArray(),
   )
-  const dayRows = useLiveQuery(
-    () =>
-      db.days
-        .where('[account_id+date]')
-        .between([accountId, rangeStart], [accountId, rangeEnd], true, true)
-        .toArray(),
-    [rangeStart, rangeEnd, accountId],
-  )
-  // Adjustments inside the grid range — needed so per-day equity walks
-  // pick up mid-month deposits / withdrawals when applying the ±0.4%
-  // scratch band.
-  const rangeAdjustments = useLiveQuery(
-    () =>
-      db.adjustments
-        .where('[account_id+date]')
-        .between([accountId, rangeStart], [accountId, rangeEnd], true, true)
-        .toArray(),
-    [rangeStart, rangeEnd, accountId],
-    [],
-  )
+  // Needed so per-day equity walks pick up mid-month deposits / withdrawals
+  // when applying the ±0.4% scratch band.
+  const adjustments = useAccountQuery(accountId, () => listAdjustments(accountId))
+
+  // Everything per-trade happens HERE, keyed only on the data. The month is
+  // deliberately not a dep: paging through months must never re-walk the
+  // account, which is what made these queries account-wide affordable.
+  //
+  // Wins/losses are tracked apart from `count` so a day holding only scratches
+  // renders in the dim/scratch tone instead of being miscoloured by fee or
+  // slippage residue in the PNL sum. `wins` also feeds the win-rate badge.
+  const { byDate, netByDate, byMonth } = useMemo(() => {
+    const byDate = new Map<string, DayAggregate>()
+    for (const t of trades ?? []) {
+      const cur =
+        byDate.get(t.date) ?? { pnl: 0, count: 0, wins: 0, losses: 0 }
+      cur.pnl += computeNetPnl(t) ?? 0
+      cur.count += 1
+      const outcome = classifyTrade(t)
+      if (outcome === 'win') cur.wins += 1
+      else if (outcome === 'loss') cur.losses += 1
+      byDate.set(t.date, cur)
+    }
+    // A day-level override REPLACES that day's trade PNL. Mark the day so it
+    // colours by its PNL even with no decided trades (a tilt day reads red,
+    // not as a dim scratch).
+    for (const d of dayRows ?? []) {
+      if (typeof d.pnl_override !== 'number') continue
+      const cur =
+        byDate.get(d.date) ?? { pnl: 0, count: 0, wins: 0, losses: 0 }
+      cur.pnl = d.pnl_override
+      cur.isOverride = true
+      byDate.set(d.date, cur)
+    }
+    // Day → net and month → net rollups, so the header total is a lookup and
+    // the equity baseline never re-derives per-trade PNL.
+    const netByDate = new Map<string, number>()
+    const byMonth = new Map<string, number>()
+    for (const [date, cell] of byDate) {
+      netByDate.set(date, cell.pnl)
+      const ymKey = date.slice(0, 7) // date keys are `yyyy-MM-dd`
+      byMonth.set(ymKey, (byMonth.get(ymKey) ?? 0) + cell.pnl)
+    }
+    return { byDate, netByDate, byMonth }
+  }, [trades, dayRows])
+
+  const adjByDate = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const a of adjustments ?? []) {
+      m.set(a.date, (m.get(a.date) ?? 0) + signedAdjustment(a))
+    }
+    return m
+  }, [adjustments])
+
   // Real account equity at the moment the grid starts. Walking forward
   // day-by-day from this baseline gives each cell its own start-of-day
-  // equity for the scratch check.
-  const gridStartEquity = useStartingEquity(rangeStart)
+  // equity for the scratch check. Derived from the rows already in hand — a
+  // query keyed on the cutoff date would reintroduce the stale first frame.
+  const gridStartEquity = useMemo(() => {
+    if (!trades || !dayRows || !adjustments) return undefined
+    return equityBefore(rangeStart, netByDate, adjustments)
+  }, [trades, dayRows, adjustments, netByDate, rangeStart])
+
   // Gate the month grid on equity too — otherwise the first paint
   // classifies near-threshold days with `band = $8` (equity defaults
   // to 0 while loading) and re-renders to the real ±0.4%/$8 band a
   // moment later, briefly flashing the wrong cell tone.
   const loaded =
-    trades !== undefined && dayRows !== undefined && gridStartEquity !== undefined
+    trades !== undefined &&
+    dayRows !== undefined &&
+    adjustments !== undefined &&
+    gridStartEquity !== undefined
 
   const screenshotDays = useMemo(() => {
     const s = new Set<string>()
@@ -111,63 +155,24 @@ export function CalendarRoute() {
     return s
   }, [dayRows])
 
-  // Per-day map. Wins/losses are tracked separately from `count` so a
-  // day that only contains scratches renders in the dim/scratch tone
-  // instead of being miscoloured by fee/slippage residue in the PNL
-  // sum. `wins` also feeds the per-day win-rate badge. `startEquity` is
-  // the account equity right before that day's trades — used by the
-  // ±0.4% scratch band so small-net days dim instead of going green/red.
+  // The only month-scoped pass: walk the ~42 visible days in date order,
+  // threading running equity through each so cells carry their own
+  // start-of-day baseline for the ±0.4% scratch band. Copies each aggregate
+  // instead of writing `startEquity` onto it — `byDate` is shared across
+  // months, and mutating it would leak one month's baseline into the next.
   const perDay = useMemo(() => {
     const m = new Map<string, PerDayCell>()
-    for (const t of trades ?? []) {
-      const pnl = computeNetPnl(t) ?? 0
-      const cur =
-        m.get(t.date) ?? { pnl: 0, count: 0, wins: 0, losses: 0, startEquity: 0 }
-      cur.pnl += pnl
-      cur.count += 1
-      const outcome = classifyTrade(t)
-      if (outcome === 'win') cur.wins += 1
-      else if (outcome === 'loss') cur.losses += 1
-      m.set(t.date, cur)
-    }
-    // A day-level override replaces that day's trade PNL. Mark the cell so it
-    // colours by its PNL even with no decided trades (a tilt day reads red,
-    // not as a dim scratch).
-    for (const d of dayRows ?? []) {
-      if (typeof d.pnl_override !== 'number') continue
-      const cur =
-        m.get(d.date) ?? { pnl: 0, count: 0, wins: 0, losses: 0, startEquity: 0 }
-      cur.pnl = d.pnl_override
-      cur.isOverride = true
-      m.set(d.date, cur)
-    }
-    const adjByDate = new Map<string, number>()
-    for (const a of rangeAdjustments) {
-      adjByDate.set(a.date, (adjByDate.get(a.date) ?? 0) + signedAdjustment(a))
-    }
-    // Walk the grid in date order, threading running equity through each
-    // day so cells carry their own start-of-day baseline.
     let runningEquity = gridStartEquity ?? 0
     for (const d of days) {
       const key = format(d, DATE_KEY)
-      const cell = m.get(key)
-      if (cell) cell.startEquity = runningEquity
-      runningEquity += (cell?.pnl ?? 0) + (adjByDate.get(key) ?? 0)
+      const agg = byDate.get(key)
+      if (agg) m.set(key, { ...agg, startEquity: runningEquity })
+      runningEquity += (agg?.pnl ?? 0) + (adjByDate.get(key) ?? 0)
     }
     return m
-  }, [trades, dayRows, rangeAdjustments, gridStartEquity, days])
+  }, [byDate, adjByDate, gridStartEquity, days])
 
-  const monthNet = useMemo(() => {
-    const overrides = new Map<string, number>()
-    for (const d of dayRows ?? []) {
-      if (typeof d.pnl_override === 'number') overrides.set(d.date, d.pnl_override)
-    }
-    let total = 0
-    for (const [date, net] of netPnlByDate(trades ?? [], overrides)) {
-      if (isSameMonth(dateKeyToDate(date), month)) total += net
-    }
-    return total
-  }, [trades, dayRows, month])
+  const monthNet = byMonth.get(format(month, 'yyyy-MM')) ?? 0
 
   // Carry the weekend flag alongside the label so weekend styling
   // doesn't depend on the label *string* (which is locale-formatted by
@@ -187,7 +192,7 @@ export function CalendarRoute() {
   // that week — matching the card's drill-down link (from=Mon … to=Fri).
   // The card label ("Week of …") names the week, not the month, so this is
   // a whole-week figure, not the month's contribution to that week. (The
-  // header's monthNet is separately month-scoped via isSameMonth.)
+  // header's monthNet is separately month-scoped, off the byMonth rollup.)
   //
   // Skip weeks whose only in-month days are Sat/Sun (futures don't trade
   // weekends, so a row of pure padding plus a lone weekend reads as empty
@@ -313,18 +318,23 @@ export function CalendarRoute() {
   )
 }
 
-// Per-day aggregate stored in the `perDay` map. `count` is total trades
-// on the day; `wins` / `losses` exclude scratches (so the win-rate badge
-// doesn't dilute on fee/slippage residue); `pnl` is the net PNL sum.
-interface PerDayCell {
+// One day's trade rollup, independent of which month is on screen. `count` is
+// total trades on the day; `wins` / `losses` exclude scratches (so the win-rate
+// badge doesn't dilute on fee/slippage residue); `pnl` is the net PNL sum.
+interface DayAggregate {
   pnl: number
   count: number
   wins: number
   losses: number
-  startEquity: number
   // Set when the day's PNL comes from a manual `Day.pnl_override` rather than
   // its trades — used so the tone classifies by PNL even with no decided trades.
   isOverride?: boolean
+}
+
+// A `DayAggregate` placed in the visible grid, carrying the account equity as
+// it stood entering that day. Only days on screen get one.
+interface PerDayCell extends DayAggregate {
+  startEquity: number
 }
 
 // Shared sizing for both day cells and week summary cards so the row

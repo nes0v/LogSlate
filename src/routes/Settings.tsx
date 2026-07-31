@@ -5,6 +5,7 @@ import { AlertTriangle, CheckCircle2, CloudDownload, CloudUpload, LogIn, LogOut,
 import { clearAutoSyncState, requestManualSync, useAutoSyncState } from '@/lib/auto-sync'
 import { listAccounts, listAdjustments } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
+import { useAccountQuery } from '@/lib/use-account-query'
 import { isConfigured, revalidateDriveToken, signIn, signOut, useDriveState } from '@/lib/drive'
 import { lastSyncAt } from '@/lib/sync'
 import { exportBackup, importBackup } from '@/lib/backup'
@@ -40,7 +41,7 @@ export function SettingsRoute() {
   // they need is available.
   const accountId = useActiveAccountId()
   const accounts = useLiveQuery(() => listAccounts(), [])
-  const adjustments = useLiveQuery(() => listAdjustments(accountId), [accountId])
+  const adjustments = useAccountQuery(accountId, () => listAdjustments(accountId))
   const loaded = accounts !== undefined && adjustments !== undefined
 
   async function handleSync() {

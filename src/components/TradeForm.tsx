@@ -3,12 +3,12 @@ import { Link } from 'react-router-dom'
 import { Controller, useFieldArray, useForm, useWatch, type Control } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import type { z } from 'zod'
-import { useLiveQuery } from 'dexie-react-hooks'
 import { ArrowLeft, Plus, Save, Trash2, X } from 'lucide-react'
 import { detectSession, emptyForm, formToDraft, tradeFormSchema, type TradeFormValues } from '@/lib/form-schema'
 import { SESSION_BADGE, SESSION_BADGE_CLASS } from '@/lib/session-badge'
 import { listAllTrades, listModels, listSymbols } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
+import { useAccountQuery } from '@/lib/use-account-query'
 import {
   EMOTIONS,
   type Emotion,
@@ -69,7 +69,7 @@ export function TradeForm({
   original,
 }: TradeFormProps) {
   const accountId = useActiveAccountId()
-  const symbols = useLiveQuery(() => listSymbols(accountId), [accountId])
+  const symbols = useAccountQuery(accountId, () => listSymbols(accountId))
   const symbolsById = useMemo(() => {
     const m = new Map<string, TradingSymbol>()
     for (const s of symbols ?? []) m.set(s.id, s)
@@ -86,32 +86,25 @@ export function TradeForm({
   // checklist (which only renders when an existing trade has a `model_id`
   // matching a live model) doesn't pop in late and shove the tags row
   // downward.
-  const models = useLiveQuery(
-    async () => {
-      const rows = await listModels(accountId)
-      return rows.filter(m => !m.draft)
-    },
-    [accountId],
-  )
+  const models = useAccountQuery(accountId, async () => {
+    const rows = await listModels(accountId)
+    return rows.filter(m => !m.draft)
+  })
   // Distinct tags across every trade on this account, used by the Tags
   // input for autocomplete. Sorted by usage count (most-used first) so
   // the user's top recurring tags surface before rare one-offs.
-  const tagSuggestions = useLiveQuery(
-    async () => {
-      const trades = await listAllTrades(accountId)
-      const counts = new Map<string, number>()
-      for (const t of trades) {
-        for (const tag of t.setup_tags ?? []) {
-          counts.set(tag, (counts.get(tag) ?? 0) + 1)
-        }
+  const tagSuggestions = useAccountQuery(accountId, async () => {
+    const trades = await listAllTrades(accountId)
+    const counts = new Map<string, number>()
+    for (const t of trades) {
+      for (const tag of t.setup_tags ?? []) {
+        counts.set(tag, (counts.get(tag) ?? 0) + 1)
       }
-      return [...counts.entries()]
-        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-        .map(([tag]) => tag)
-    },
-    [accountId],
-    [] as string[],
-  )
+    }
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([tag]) => tag)
+  })
   const {
     register,
     control,
@@ -490,7 +483,7 @@ export function TradeForm({
                 <TagInput
                   value={field.value ?? []}
                   onChange={field.onChange}
-                  suggestions={tagSuggestions}
+                  suggestions={tagSuggestions ?? []}
                   tone="neutral"
                 />
               )}

@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useLiveQuery } from 'dexie-react-hooks'
 import { addDays, format, getDay, isWeekend } from 'date-fns'
 import { ChevronLeft, ChevronRight, Plus, X } from 'lucide-react'
 import { db } from '@/db/schema'
@@ -16,6 +15,7 @@ import { DatePicker } from '@/components/form/DatePicker'
 import { RuleCheck } from '@/components/form/RuleCheck'
 import { useConfirm } from '@/components/ConfirmDialog'
 import { BTN_ACCENT } from '@/components/form/buttonClass'
+import { useAccountQuery } from '@/lib/use-account-query'
 import { dateKeyToDate, nyToday, previousWeekdayKey } from '@/lib/tz'
 import { cn } from '@/lib/utils'
 
@@ -38,21 +38,16 @@ export function ProgressRoute() {
   // No default values on the primary queries — `loaded` gates the
   // rendering of the score band + heat strip + checklist so we don't
   // flash zero adherence + "No active rules" before Dexie resolves.
-  const rules = useLiveQuery(
-    () =>
-      db.progress_rules
-        .where('account_id')
-        .equals(accountId)
-        .sortBy('sort'),
-    [accountId],
+  const rules = useAccountQuery(accountId, () =>
+    db.progress_rules.where('account_id').equals(accountId).sortBy('sort'),
   )
-  const checksToday = useLiveQuery(
-    () =>
-      db.progress_checks
-        .where('[account_id+date]')
-        .equals([accountId, date])
-        .toArray(),
-    [accountId, date],
+  // Account-wide, deliberately NOT scoped to the selected date: a query keyed
+  // on `date` hands back the previous day's rows for one render (see
+  // `useAccountQuery`), which painted the previous day's ticks before clearing
+  // them. Stepping days now changes no query dep; the date slicing happens in
+  // the memos below.
+  const allChecks = useAccountQuery(accountId, () =>
+    db.progress_checks.where('account_id').equals(accountId).toArray(),
   )
   // Wide-enough calendar window to cover the last 30 *weekdays* with
   // headroom — 30 weekdays = 6 weeks ≈ 42 calendar days, 50 gives slack
@@ -61,50 +56,42 @@ export function ProgressRoute() {
     () => format(addDays(dateKeyToDate(date), -49), 'yyyy-MM-dd'),
     [date],
   )
+  const checksToday = useMemo(
+    () => (allChecks ?? []).filter(c => c.date === date),
+    [allChecks, date],
+  )
   // Checks across the wider window — the heatmap walks back over 30
-  // weekdays so the query has to reach further than 30 calendar days.
-  const recent = useLiveQuery(
-    () =>
-      db.progress_checks
-        .where('[account_id+date]')
-        .between([accountId, heatWindowStart], [accountId, date], true, true)
-        .toArray(),
-    [accountId, date, heatWindowStart],
+  // weekdays so this has to reach further than 30 calendar days.
+  const recent = useMemo(
+    () => (allChecks ?? []).filter(c => c.date >= heatWindowStart && c.date <= date),
+    [allChecks, heatWindowStart, date],
   )
-  // Set of dates in the heat window that the user actually traded — at least
-  // one trade OR a day-level PNL override (a tilt day logged as one net figure
-  // instead of individual trades still counts as a traded day). Used by the
-  // streak walk to skip non-trading days — weekdays where the user didn't
-  // trade (sick day, holiday, etc.) shouldn't break a streak, since there was
-  // no routine to follow.
-  const tradedDays = useLiveQuery(
-    async () => {
-      const trades = await db.trades
-        .where('[account_id+date]')
-        .between([accountId, heatWindowStart], [accountId, date], true, true)
-        .toArray()
-      const set = new Set(trades.map(t => t.date))
-      // Override days count as traded days. Use the same [account_id+date]
-      // range as the trades query above rather than scanning the whole table.
-      const dayRows = await db.days
-        .where('[account_id+date]')
-        .between([accountId, heatWindowStart], [accountId, date], true, true)
-        .toArray()
-      for (const d of dayRows) {
-        if (typeof d.pnl_override === 'number') set.add(d.date)
-      }
-      return set
-    },
-    [accountId, date, heatWindowStart],
-  )
-  // Gate every score tile / heat cell until all four queries resolve —
+  // Every date the user actually traded — at least one trade OR a day-level
+  // PNL override (a tilt day logged as one net figure instead of individual
+  // trades still counts as a traded day). Used by the streak walk to skip
+  // non-trading days — weekdays where the user didn't trade (sick day,
+  // holiday, etc.) shouldn't break a streak, since there was no routine to
+  // follow. Reads INDEX KEYS rather than trade records: only the date matters,
+  // so there's no reason to deserialize every trade in the account.
+  const tradedDays = useAccountQuery(accountId, async () => {
+    const set = new Set<string>()
+    const keys = await db.trades
+      .where('[account_id+date]')
+      .between([accountId, ''], [accountId, '￿'], true, true)
+      .keys()
+    // Compound `[account_id+date]` keys come back as [account, date] pairs.
+    for (const k of keys) set.add((k as unknown as [string, string])[1])
+    const dayRows = await db.days.where('account_id').equals(accountId).toArray()
+    for (const d of dayRows) {
+      if (typeof d.pnl_override === 'number') set.add(d.date)
+    }
+    return set
+  })
+  // Gate every score tile / heat cell until all three queries resolve —
   // otherwise the streak briefly reads 0d before tradedDays loads and
-  // the heat cells flicker empty before recent arrives.
+  // the heat cells flicker empty before the checks arrive.
   const loaded =
-    rules !== undefined &&
-    checksToday !== undefined &&
-    recent !== undefined &&
-    tradedDays !== undefined
+    rules !== undefined && allChecks !== undefined && tradedDays !== undefined
 
   // Rules active on the currently-viewed date — drives the checklist
   // and today's-adherence tile.

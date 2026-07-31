@@ -25,7 +25,24 @@ export function TradeNewRoute() {
   // bounce back to the day (where the override lives) rather than opening a
   // form whose submit `createTrade` would reject. `undefined` while the query
   // is in flight; only redirect once we know an override exists.
-  const override = useLiveQuery(() => getDayPnlOverride(accountId, date), [accountId, date])
+  //
+  // Tagged with the account+date it was read for, because this drives a
+  // REDIRECT: dexie-react-hooks keeps serving the previous key's value for one
+  // render after either changes, and a stale non-null override would bounce the
+  // user out of a form for a day that has no override at all. Same guard the
+  // Day route uses.
+  const overrideResult = useLiveQuery(
+    async () => ({
+      forAccount: accountId,
+      forDate: date,
+      value: await getDayPnlOverride(accountId, date),
+    }),
+    [accountId, date],
+  )
+  const override =
+    overrideResult?.forAccount === accountId && overrideResult?.forDate === date
+      ? overrideResult.value
+      : undefined
   if (override != null) {
     return <Navigate to={`/day/${date}`} replace />
   }

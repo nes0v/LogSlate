@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { execution, symbolSnapshot, tradeRecord } from '@/test/fixtures'
-import { netPnlByDate, sumNetPnl } from '@/lib/day-pnl'
+import { adjustmentRecord, execution, symbolSnapshot, tradeRecord } from '@/test/fixtures'
+import { equityBefore, netPnlByDate, sumNetPnl } from '@/lib/day-pnl'
 import { dailyEquitySeries } from '@/lib/advanced-stats'
 import { computeCandles } from '@/lib/trade-stats'
 import type { Bucket } from '@/lib/buckets'
@@ -91,5 +91,69 @@ describe('computeCandles with overrides', () => {
     const [c] = computeCandles([week], new Map(), 0, overrides)
     expect(c.close).toBeCloseTo(195.5 - 500, 5)
     expect(c.low).toBeCloseTo(195.5 - 500, 5)
+  })
+})
+
+// `equityBefore` is the single source of the "account equity entering a window"
+// baseline — the calendar's per-day scratch band and Overview's and Reports'
+// composite/chart baselines all run through it. Expected values are worked out
+// by hand rather than compared against a second implementation, so a shared
+// mistake can't hide.
+describe('equityBefore', () => {
+  // A winning trade is +195.5 net (see above); a losing one mirrors it.
+  function losingTrade(date: string) {
+    return tradeRecord({
+      date,
+      symbol_spec: symbolSnapshot(),
+      executions: [
+        execution({ kind: 'buy', price: 20010, contracts: 1 }),
+        execution({ kind: 'sell', price: 20000, contracts: 1 }),
+      ],
+      stop_loss: 100,
+      profit_target: 200,
+    })
+  }
+
+  //   04-01  +195.5 trade          04-05  −204.5 trade
+  //   04-03  +1000 deposit         04-08  −400 withdrawal
+  //   04-05  −850 override (REPLACES that day's −204.5 trade)
+  //   04-07  −125 override on a day with no trades at all
+  const overrides = new Map([
+    ['2026-04-05', -850],
+    ['2026-04-07', -125],
+  ])
+  const netByDate = () =>
+    netPnlByDate([winningTrade('2026-04-01'), losingTrade('2026-04-05')], overrides)
+  const adjustments = [
+    adjustmentRecord({ date: '2026-04-03', kind: 'deposit', amount: 1000 }),
+    adjustmentRecord({ date: '2026-04-08', kind: 'withdraw', amount: 400 }),
+  ]
+
+  // Cutoffs land before, exactly on, and after each trade, override and
+  // adjustment — "exactly on" is what pins the strictly-before boundary.
+  it.each([
+    ['2026-04-01', 0], // on the first trade's date
+    ['2026-04-02', 195.5],
+    ['2026-04-03', 195.5], // on the deposit's date
+    ['2026-04-04', 1195.5],
+    ['2026-04-05', 1195.5], // on the override's date
+    ['2026-04-06', 345.5], // + the −850 override, NOT the −204.5 trade
+    ['2026-04-07', 345.5], // on the override-only day
+    ['2026-04-08', 220.5], // + the −125 override-only day
+    ['2026-04-09', -179.5], // + the −400 withdrawal
+  ])('%s → %d', (cutoff, expected) => {
+    expect(equityBefore(cutoff, netByDate(), adjustments)).toBeCloseTo(expected, 5)
+  })
+
+  it('is unaffected by dates at or after the cutoff', () => {
+    const withFuture = netPnlByDate(
+      [winningTrade('2026-04-01'), winningTrade('2026-09-01')],
+      overrides,
+    )
+    expect(equityBefore('2026-04-02', withFuture, adjustments)).toBeCloseTo(195.5, 5)
+  })
+
+  it('is 0 for an account with no activity', () => {
+    expect(equityBefore('2026-04-02', new Map(), [])).toBe(0)
   })
 })

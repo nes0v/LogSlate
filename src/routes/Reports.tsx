@@ -32,8 +32,9 @@ import {
 } from '@/lib/shared-filters'
 import { useDefaultRangeFilters } from '@/lib/use-default-range-filters'
 import { useValidAccountFilters } from '@/lib/use-valid-account-filters'
+import { useAccountQuery } from '@/lib/use-account-query'
 import { aggregate, foldOverridesIntoStats, signedAdjustment, type AggregateStats } from '@/lib/trade-stats'
-import { netPnlByDate, sumNetPnl } from '@/lib/day-pnl'
+import { equityBefore, netPnlByDate } from '@/lib/day-pnl'
 import {
   classifyTrade,
   computePlannedRr,
@@ -165,19 +166,16 @@ export function ReportsRoute() {
   // No default value — `allTrades` stays undefined while Dexie resolves so
   // we can suppress the empty-state placeholder until the real data lands
   // (otherwise "No trades yet" flashes for one frame on navigation).
-  const allTrades = useLiveQuery(() => listAllTrades(accountId), [accountId])
-  const allAdjustments = useLiveQuery(
-    () => listAdjustments(accountId),
-    [accountId],
-    [],
-  )
+  const allTrades = useAccountQuery(accountId, () => listAllTrades(accountId))
+  const allAdjustments = useAccountQuery(accountId, () => listAdjustments(accountId))
   // Day-level overrides + the default filter window (shared with Overview).
   // `rangeReady` is last-trade-date + overrides only — it does NOT wait on the
   // full trades payload, so the `loaded` gate below checks `allTrades` itself
   // (which also lets TS narrow it in branches).
   const { overridesByDate, feesOverridesByDate, rangeReady, defaultWindow, filters } =
     useDefaultRangeFilters(accountId, urlFilters)
-  const loaded = allTrades !== undefined && rangeReady
+  const loaded =
+    allTrades !== undefined && allAdjustments !== undefined && rangeReady
 
   // "Show scratch trades" intent (default on); off drops scratches from every
   // stat via applyFilters. Store-backed so it persists across page navigation.
@@ -227,22 +225,17 @@ export function ReportsRoute() {
   // own Dexie subscriptions — those resolved async after the page-level
   // `loaded` gate and caused a post-mount layout jump. Same fix the
   // Overview page got for `CompositeScoreSection`.
-  const advStartingEquity = useMemo(() => {
-    if (!rangeStart) return 0
-    let eq = 0
-    for (const a of allAdjustments ?? []) {
-      if (a.date < rangeStart) eq += signedAdjustment(a)
-    }
-    // Day-net before the range, with override days replacing their trades.
-    // Raw (not toggled) overrides on purpose: this is real account equity
-    // entering the window. The "Show override days" toggle only hides override
-    // days *within* the view, it doesn't rewrite past equity.
-    eq += sumNetPnl(
-      netPnlByDate(allTrades ?? [], overridesByDate),
-      d => d < rangeStart,
-    )
-    return eq
-  }, [allTrades, allAdjustments, overridesByDate, rangeStart])
+  // Raw (not toggled) overrides on purpose: this is real account equity
+  // entering the window. The "Show override days" toggle only hides override
+  // days *within* the view, it doesn't rewrite past equity.
+  const netByDate = useMemo(
+    () => netPnlByDate(allTrades ?? [], overridesByDate),
+    [allTrades, overridesByDate],
+  )
+  const advStartingEquity = useMemo(
+    () => (rangeStart ? equityBefore(rangeStart, netByDate, allAdjustments ?? []) : 0),
+    [netByDate, allAdjustments, rangeStart],
+  )
   const advAdjByDate = useMemo(() => {
     const m = new Map<string, number>()
     if (!rangeStart || !rangeEnd) return m

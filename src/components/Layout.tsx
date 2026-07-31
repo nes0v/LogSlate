@@ -7,7 +7,7 @@ import { PendingUploadBanner } from '@/components/PendingUploadBanner'
 import { SyncStatusIndicator } from '@/components/SyncStatusIndicator'
 import { listAccounts } from '@/db/queries'
 import { useNewsSync } from '@/lib/use-news-sync'
-import { useCurrentEquity } from '@/lib/use-starting-equity'
+import { useCurrentEquity } from '@/lib/use-current-equity'
 import { formatUsd } from '@/lib/money'
 import { cn } from '@/lib/utils'
 

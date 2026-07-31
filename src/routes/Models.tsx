@@ -1,11 +1,11 @@
 import { memo, useCallback, useMemo, useState, type ReactNode } from 'react'
-import { useLiveQuery } from 'dexie-react-hooks'
 import { Check, Pencil, Plus, Save, Trash2, X } from 'lucide-react'
 import { db } from '@/db/schema'
 import { countTradesUsingModel, listModels, reorderModels } from '@/db/queries'
 import type { Model, ModelRuleGroup, Session } from '@/db/types'
 import { SESSIONS } from '@/db/types'
 import { useActiveAccountId } from '@/lib/active-account'
+import { useAccountQuery } from '@/lib/use-account-query'
 import { useConfirm } from '@/components/ConfirmDialog'
 import { inputClass } from '@/components/form/Field'
 import { BTN_ACCENT, BTN_ACTION, BTN_BASE, BTN_DELETE } from '@/components/form/buttonClass'
@@ -49,7 +49,7 @@ export function ModelsRoute() {
   // No default value — `models` is undefined until Dexie resolves so we
   // can suppress the "No models yet" placeholder + empty editor pane on
   // the first paint frame (otherwise the page flickers on navigation).
-  const models = useLiveQuery(() => listModels(accountId), [accountId])
+  const models = useAccountQuery(accountId, () => listModels(accountId))
   const loaded = models !== undefined
   const [selectedId, setSelectedId] = useState<string | null>(null)
 

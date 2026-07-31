@@ -1,5 +1,4 @@
 import { memo, useCallback, useMemo, useState } from 'react'
-import { useLiveQuery } from 'dexie-react-hooks'
 import { Check, Info, Pencil, Plus, Save, Trash2 } from 'lucide-react'
 import {
   countTradesUsingSymbol,
@@ -11,6 +10,7 @@ import {
 } from '@/db/queries'
 import type { TradingSymbol, TradingSymbolDraft } from '@/db/types'
 import { useActiveAccountId } from '@/lib/active-account'
+import { useAccountQuery } from '@/lib/use-account-query'
 import { useConfirm } from '@/components/ConfirmDialog'
 import { Field, inputClass } from '@/components/form/Field'
 import { NumberInput } from '@/components/form/NumberInput'
@@ -33,7 +33,7 @@ export function SymbolsRoute() {
   const accountId = useActiveAccountId()
   const confirm = useConfirm()
   // Undefined until Dexie resolves so the empty-state placeholder doesn't flash.
-  const symbols = useLiveQuery(() => listSymbols(accountId), [accountId])
+  const symbols = useAccountQuery(accountId, () => listSymbols(accountId))
   const loaded = symbols !== undefined
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
