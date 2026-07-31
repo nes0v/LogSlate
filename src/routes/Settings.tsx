@@ -133,13 +133,18 @@ export function SettingsRoute() {
   const lastAt = lastSyncAt()
 
   return (
-    <div className="pt-1 space-y-8 max-w-2xl">
+    <div className="pt-1">
       <div className="flex items-center justify-between mb-8">
         <h1 className="h-8 flex items-center text-lg font-semibold">Settings</h1>
       </div>
 
       {!loaded ? null : (
-      <>
+      // Two columns from `lg` up: the settings stack on the left, cash flow on
+      // the right, which otherwise left the whole right half of the page empty.
+      // `items-start` so the columns size independently instead of the shorter
+      // one stretching to match.
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+      <div className="space-y-8 min-w-0">
       <section>
         <h2 className="text-sm font-medium mb-2">Google Drive sync</h2>
         <div className="rounded-(--radius) bg-(--color-panel) p-3 space-y-3">
@@ -325,12 +330,6 @@ export function SettingsRoute() {
         </div>
       </section>
 
-      <AccountsPanel accounts={accounts} />
-
-      <AdjustmentsPanel adjustments={adjustments} />
-
-      <DefaultRangeSection />
-
       <section>
         <h2 className="text-sm font-medium mb-2">Backup &amp; restore</h2>
         <div className="rounded-(--radius) bg-(--color-panel) p-3 space-y-3">
@@ -364,7 +363,16 @@ export function SettingsRoute() {
           </div>
         </div>
       </section>
-      </>
+
+      <AccountsPanel accounts={accounts} />
+
+      <DefaultRangeSection />
+      </div>
+
+      <div className="space-y-8 min-w-0">
+        <AdjustmentsPanel adjustments={adjustments} />
+      </div>
+      </div>
       )}
     </div>
   )

@@ -375,14 +375,14 @@ export function ProgressRoute() {
         </div>
         <div className="flex w-full gap-1">
           {heat.map((h, idx) => {
-            // panel-2 is the default cell bg; the heatmap mixes the win
-            // colour over it for days where rules were checked.
+            // panel-2 is the default cell bg; the heatmap mixes --color-heat
+            // over it for days where rules were checked.
             const tone =
               h.total === 0 || h.pct === 0
                 ? 'var(--color-panel-2)'
                 : h.pct >= 1
-                  ? `color-mix(in oklab, var(--color-win) 80%, var(--color-panel-2))`
-                  : `color-mix(in oklab, var(--color-win) ${10 + h.pct * 60}%, var(--color-panel-2))`
+                  ? `color-mix(in oklab, var(--color-heat) 80%, var(--color-panel-2))`
+                  : `color-mix(in oklab, var(--color-heat) ${10 + h.pct * 60}%, var(--color-panel-2))`
             // Small left margin before each Monday so weeks read as
             // distinct chunks. Skip on the first cell — no preceding
             // day to separate from.

@@ -71,6 +71,10 @@
   /* Override candles on the equity chart — match the calendar day-cell palette. */
   --color-win-override:  var(--color-cal-win-bg);
   --color-loss-override: var(--color-cal-loss-bg);
+  /* Progress adherence heatmap. Deliberately its own green, not --color-win:
+   * the strip measures routine-following, not PNL, so it shouldn't move if the
+   * win/loss palette changes. */
+  --color-heat: #00994d;
   /* Cautionary tone — used on actions that gate something off (e.g. the
    *  Models "Mark as draft" button) without being destructive. */
   --color-warn: #f59e0b;
