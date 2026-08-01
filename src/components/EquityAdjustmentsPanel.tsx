@@ -78,7 +78,7 @@ export function EquityAdjustmentsPanel({ adjustments }: EquityAdjustmentsPanelPr
 
       <form
         onSubmit={handleSubmit}
-        className="bg-(--color-panel-2) rounded-(--radius) p-3 grid grid-cols-[auto_auto_1fr_auto] gap-3 items-end"
+        className="bg-(--color-panel-2) rounded-(--radius) p-3 flex flex-wrap gap-3 items-end"
       >
         <div className="text-xs text-(--color-text-dim) space-y-2">
           <div>Date</div>
@@ -102,7 +102,9 @@ export function EquityAdjustmentsPanel({ adjustments }: EquityAdjustmentsPanelPr
             activeBgClass="bg-(--color-panel-2)"
           />
         </div>
-        <label className="text-xs text-(--color-text-dim) space-y-2">
+        {/* Grows into the leftover space on a wide row, but has a floor so it
+            wraps to its own line instead of being crushed on a phone. */}
+        <label className="text-xs text-(--color-text-dim) space-y-2 flex-1 min-w-[7rem]">
           <div>Amount (USD)</div>
           <NumberInput
             value={amount}
@@ -114,7 +116,7 @@ export function EquityAdjustmentsPanel({ adjustments }: EquityAdjustmentsPanelPr
         <button type="submit" className={BTN_ACCENT}>
           Add
         </button>
-        {error && <div className="col-span-4 text-xs text-(--color-loss)">{error}</div>}
+        {error && <div className="w-full text-xs text-(--color-loss)">{error}</div>}
       </form>
 
       {list.length > 0 && (

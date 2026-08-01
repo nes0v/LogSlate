@@ -44,7 +44,10 @@ export function Layout() {
               (the row's `items-center`) leaves their baselines ~1px apart and
               the brand reads as sitting low. Baseline-aligning fixes that; the
               right-side controls stay centered in the outer row. */}
-          <div className="flex items-baseline gap-4">
+          {/* min-w-0 so this group can shrink below its content width on a
+              phone — without it the nav's `overflow-x-auto` never engages and
+              the whole header pushes the page wider than the viewport. */}
+          <div className="flex items-baseline gap-4 min-w-0">
             <Link
               to="/"
               className="font-semibold tracking-tight text-(--color-text) hover:opacity-90"
