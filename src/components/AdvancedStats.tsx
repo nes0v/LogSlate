@@ -28,6 +28,11 @@ import {
 
 function buildDayRange(rangeStart: string | null, rangeEnd: string | null): string[] {
   if (!rangeStart || !rangeEnd) return []
+  // An inverted range means no range. `eachDayOfInterval` walks start > end
+  // BACKWARDS rather than rejecting it, which would hand `dailyEquitySeries`
+  // a reversed series and quietly invert drawdown, Sortino and the ulcer
+  // index. Date keys are YYYY-MM-DD, so a string compare is enough.
+  if (rangeEnd < rangeStart) return []
   // Weekdays only — futures don't trade Sat/Sun, so including weekend
   // days in the equity series inflates the "underwater duration" by
   // ~2 days per week (Fri-recovery rolls over Sat+Sun) and dilutes the

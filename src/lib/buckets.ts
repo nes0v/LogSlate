@@ -173,6 +173,12 @@ export function bucketByTimeframe(
   rangeStart: Date,
   rangeEnd: Date,
 ): Bucket[] {
+  // An inverted range means no range. date-fns' `each*OfInterval` doesn't
+  // reject start > end — it walks the interval BACKWARDS and returns the
+  // buckets newest-first, which `computeCandles` then folds into an equity
+  // curve running right-to-left. Reachable from a hand-edited URL, since
+  // `filtersFromParams` validates each bound's shape but never their order.
+  if (rangeEnd < rangeStart) return []
   switch (tf) {
     case 'D': return bucketByDay(trades, rangeStart, rangeEnd)
     case 'W': return bucketByWeek(trades, rangeStart, rangeEnd)
