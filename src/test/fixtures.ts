@@ -15,8 +15,7 @@ function nextId(): string {
   return `test-id-${idSeq}`
 }
 
-// Default frozen economics = NQ mini (point $20, fee $2.25/side, scratch 4pts),
-// matching the pre-symbols hard-coded defaults so existing assertions hold.
+// Default frozen economics = NQ mini (point $20, fee $2.25/side, scratch 4pts).
 export function symbolSnapshot(overrides: Partial<SymbolSnapshot> = {}): SymbolSnapshot {
   return {
     name: 'NQ',
@@ -63,7 +62,7 @@ export function tradeDraft(overrides: Partial<TradeDraft> = {}): TradeDraft {
     symbol_id: 'sym-nq',
     symbol_spec: symbolSnapshot(),
     session: 'am',
-    idea: 'test trade',
+    notes: 'test trade',
     executions: [
       execution({ kind: 'buy', price: 20000, time: '2026-04-15T14:30:00.000Z', contracts: 1 }),
       execution({ kind: 'sell', price: 20010, time: '2026-04-15T14:45:00.000Z', contracts: 1 }),

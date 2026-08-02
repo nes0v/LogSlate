@@ -134,15 +134,17 @@ export function TradeForm({
   }, [symbols, symbolOpts, isNewTrade, getValues, setValue])
 
   const executions = useFieldArray({ control, name: 'executions' })
-  // Scope the top-level subscription to a single field. The Idea/Notes
+  // Scope the top-level subscription to a single field. The free-text
   // textareas re-render on every keystroke; subscribing to the whole form
   // (`useWatch({ control })`) would re-render the entire shell each time.
   // LiveStatsSection has its own scoped subscription for stats.
   const modelIdValue = useWatch({ control, name: 'model_id' })
-  const ideaRef = useAutosizeTextarea()
   const notesRef = useAutosizeTextarea()
-  const ideaReg = register('idea')
   const notesReg = register('notes')
+  const ruleTensionRef = useAutosizeTextarea()
+  const ruleTensionReg = register('rule_tension')
+  const wouldChangeRef = useAutosizeTextarea()
+  const wouldChangeReg = register('would_change')
   const activeModel = useMemo(
     () => (models ?? []).find(m => m.id === modelIdValue) ?? null,
     [models, modelIdValue],
@@ -213,12 +215,12 @@ export function TradeForm({
               />
             </Field>
           </div>
-          <Field label="Idea" error={errors.idea?.message}>
+          <Field label="Notes">
             <textarea
               className={cn(inputClass, 'text-(--color-text-dim) min-h-[95px] resize-none overflow-hidden')}
               placeholder="Trade thesis, setup, context…"
-              {...ideaReg}
-              ref={mergeRefs(ideaReg.ref, ideaRef)}
+              {...notesReg}
+              ref={mergeRefs(notesReg.ref, notesRef)}
             />
           </Field>
 
@@ -490,12 +492,21 @@ export function TradeForm({
             />
           </Field>
 
-          <Field label="Notes">
+          <Field label="Rule tension">
             <textarea
               className={cn(inputClass, 'text-(--color-text-dim) min-h-[95px] resize-none overflow-hidden')}
-              placeholder="What did I learn? What would I do differently?"
-              {...notesReg}
-              ref={mergeRefs(notesReg.ref, notesRef)}
+              placeholder="Did I consider breaking a rule? Which one, and when?"
+              {...ruleTensionReg}
+              ref={mergeRefs(ruleTensionReg.ref, ruleTensionRef)}
+            />
+          </Field>
+
+          <Field label="Would change">
+            <textarea
+              className={cn(inputClass, 'text-(--color-text-dim) min-h-[95px] resize-none overflow-hidden')}
+              placeholder="Taking this same trade again, what would I change?"
+              {...wouldChangeReg}
+              ref={mergeRefs(wouldChangeReg.ref, wouldChangeRef)}
             />
           </Field>
             </section>
@@ -558,8 +569,8 @@ function resolveSymbolSpec(
   return sym ? symbolSnapshotOf(sym) : undefined
 }
 
-// Subscribes only to the four fields it needs; idea/notes/tag keystrokes
-// don't recompute the stats.
+// Subscribes only to the four fields it needs; keystrokes in the free-text
+// fields (notes, rule tension, would change) and tags don't recompute stats.
 function LiveStatsSection({
   control,
   symbolsById,

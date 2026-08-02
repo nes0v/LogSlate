@@ -662,3 +662,73 @@ export async function setDayNote(
   })
 }
 
+/** The three reflection continuations for a day, `''` when unanswered — the
+ *  same absent-reads-as-empty contract `getDayNote` uses, so the UI never has
+ *  to distinguish "no row" from "row with no reflection". */
+export interface DayReflection {
+  hardest_moment: string
+  wanted_to: string
+  instead_did: string
+}
+
+export async function getDayReflection(
+  accountId: string,
+  date: string,
+): Promise<DayReflection> {
+  const day = await getDay(accountId, date)
+  return {
+    hardest_moment: day?.hardest_moment ?? '',
+    wanted_to: day?.wanted_to ?? '',
+    instead_did: day?.instead_did ?? '',
+  }
+}
+
+/** Maps cleared fields to `undefined` so they're dropped from the row rather
+ *  than stored as empty strings — `dayHasContent` tests truthiness, and a
+ *  persisted `''` would read as content and keep dead rows alive forever. */
+function blankToUndefined(patch: Partial<DayReflection>): Partial<DayReflection> {
+  const out: Partial<DayReflection> = {}
+  for (const [k, v] of Object.entries(patch) as Array<[keyof DayReflection, string]>) {
+    const trimmed = v.trim()
+    out[k] = trimmed === '' ? undefined : trimmed
+  }
+  return out
+}
+
+/** Upserts one or more reflection fields. Takes a patch rather than the whole
+ *  set because the UI persists per-line on blur — writing all three would
+ *  clobber a line the user is still editing. Same empty-row rules as
+ *  `setDayNote`: blank clears the field, and a row left holding nothing at
+ *  all is deleted rather than lingering as a placeholder. */
+export async function setDayReflection(
+  accountId: string,
+  date: string,
+  patch: Partial<DayReflection>,
+): Promise<void> {
+  const id = dayId(accountId, date)
+  const ts = now()
+  const fields = blankToUndefined(patch)
+  await db.transaction('rw', db.days, async () => {
+    const existing = await db.days.get(id)
+    if (!existing) {
+      // Nothing to store and no row to update — don't create an empty one.
+      if (Object.values(fields).every(v => v === undefined)) return
+      await db.days.put({
+        id,
+        account_id: accountId,
+        date,
+        screenshots: [],
+        ...fields,
+        created_at: ts,
+        updated_at: ts,
+      })
+      return
+    }
+    const next: Day = { ...existing, ...fields, updated_at: ts }
+    if (!dayHasContent(next)) {
+      await db.days.delete(id)
+      return
+    }
+    await db.days.put(next)
+  })
+}

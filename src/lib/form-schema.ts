@@ -109,7 +109,6 @@ export const tradeFormSchema = z
     // submit via the superRefine below. `symbol_id` references a per-account
     // TradingSymbol; its economics are frozen into the draft at save time.
     symbol_id: z.string().nullable(),
-    idea: z.string(),
     executions: z.array(executionSchema).min(2, 'at least one buy and one sell'),
     stop_loss: requiredPositive('stop loss must be > 0'),
     drawdown: z.number().min(0, 'must be ≥ 0').nullable(),
@@ -119,6 +118,8 @@ export const tradeFormSchema = z
     // downstream code treats them as optional / nullable.
     profit_target: requiredPositive('profit target must be > 0'),
     notes: z.string(),
+    rule_tension: z.string(),
+    would_change: z.string(),
     setup_tags: z.array(z.string()),
     emotion: z.enum(EMOTIONS).nullable(),
     model_id: z.string().nullable(),
@@ -207,7 +208,6 @@ export function formToDraft(v: TradeFormValues, symbol_spec: SymbolSnapshot): Tr
     symbol_id: v.symbol_id as string,
     symbol_spec,
     session,
-    idea: v.idea,
     executions,
     stop_loss: v.stop_loss as number,
     drawdown: v.drawdown,
@@ -216,6 +216,8 @@ export function formToDraft(v: TradeFormValues, symbol_spec: SymbolSnapshot): Tr
     emotion: v.emotion as NonNullable<typeof v.emotion>,
     profit_target: v.profit_target as number,
     notes: v.notes,
+    rule_tension: v.rule_tension,
+    would_change: v.would_change,
     setup_tags: v.setup_tags,
     model_id: v.model_id,
     model_rules_followed: v.model_rules_followed,
@@ -237,7 +239,6 @@ export function recordToForm(r: TradeRecord): TradeFormValues {
   return {
     date: r.date,
     symbol_id: r.symbol_id,
-    idea: r.idea ?? '',
     executions,
     stop_loss: r.stop_loss,
     drawdown: r.drawdown,
@@ -245,6 +246,8 @@ export function recordToForm(r: TradeRecord): TradeFormValues {
     rating: r.rating,
     profit_target: r.profit_target,
     notes: r.notes ?? '',
+    rule_tension: r.rule_tension ?? '',
+    would_change: r.would_change ?? '',
     setup_tags: r.setup_tags ?? [],
     emotion: r.emotion,
     model_id: r.model_id ?? null,
@@ -256,7 +259,6 @@ export function emptyForm(date: string): TradeFormValues {
   return {
     date,
     symbol_id: null,
-    idea: '',
     executions: [
       { kind: 'buy', order_type: 'mkt', price: null, time: '', contracts: 1 },
       { kind: 'sell', order_type: 'mkt', price: null, time: '', contracts: 1 },
@@ -267,6 +269,8 @@ export function emptyForm(date: string): TradeFormValues {
     rating: 'poor',
     profit_target: null,
     notes: '',
+    rule_tension: '',
+    would_change: '',
     setup_tags: [],
     emotion: null,
     model_id: null,

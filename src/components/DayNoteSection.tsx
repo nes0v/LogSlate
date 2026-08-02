@@ -112,7 +112,7 @@ export function DayNoteSection({ accountId, date, stored }: DayNoteSectionProps)
         <Toolbar editor={editor} />
         <EditorContent
           editor={editor}
-          className="md-body md-paper min-h-[95px] rounded-(--radius) bg-(--color-paper) px-2.5 py-1.5 text-sm text-(--color-paper-text) focus-within:ring-2 focus-within:ring-(--color-accent-soft)"
+          className="md-body md-paper min-h-[95px] rounded-(--radius) bg-(--color-paper) px-2.5 pt-1.5 pb-2 text-sm text-(--color-paper-text) focus-within:ring-2 focus-within:ring-(--color-accent-soft)"
         />
         {error && <p className="text-xs text-(--color-loss)">{error}</p>}
       </div>

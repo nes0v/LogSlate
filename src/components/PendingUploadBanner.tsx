@@ -8,7 +8,7 @@ import { useDriveState } from '@/lib/drive'
 // captured offline land in `pending_uploads` as inline blobs and only
 // drain to Drive on the next sync. Without a ceiling, the queue can
 // silently grow until IndexedDB hits a quota error and the next upload
-// throws — by which point the user has no idea why. The banner fires
+// throws — by which point the user has no clue why. The banner fires
 // well before that point and routes them to Settings to reconnect.
 const MAX_QUEUED = 20
 const MAX_BYTES = 50 * 1024 * 1024 // 50 MB

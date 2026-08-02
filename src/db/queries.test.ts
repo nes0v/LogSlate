@@ -24,7 +24,9 @@ import {
   listDayOverrides,
   removeDayScreenshot,
   reorderModels,
+  getDayReflection,
   setDayNote,
+  setDayReflection,
   setDayFeesOverride,
   setDayPnlOverride,
   slugifyAccountName,
@@ -64,17 +66,17 @@ describe('trade queries', () => {
   })
 
   it('getTrade round-trips through storage', async () => {
-    const t = await createTrade(tradeDraft({ idea: 'read me back' }))
+    const t = await createTrade(tradeDraft({ notes: 'read me back' }))
     const fetched = await getTrade(t.id)
-    expect(fetched?.idea).toBe('read me back')
+    expect(fetched?.notes).toBe('read me back')
   })
 
   it('updateTrade bumps updated_at', async () => {
     const t = await createTrade(tradeDraft())
     await new Promise(r => setTimeout(r, 2))
-    await updateTrade(t.id, { idea: 'updated' })
+    await updateTrade(t.id, { notes: 'updated' })
     const fetched = await getTrade(t.id)
-    expect(fetched?.idea).toBe('updated')
+    expect(fetched?.notes).toBe('updated')
     expect(fetched!.updated_at >= t.updated_at).toBe(true)
   })
 
@@ -123,6 +125,14 @@ describe('day-override / trade mutual exclusion', () => {
     await setDayPnlOverride(MAIN_ACCOUNT_ID, '2026-04-15', -1000)
     await expect(createTrade(tradeDraft({ date: '2026-04-15' }))).rejects.toThrow(/override/i)
     expect(await listAllTrades(MAIN_ACCOUNT_ID)).toHaveLength(0)
+  })
+
+  it('updateTrade refuses to move a trade onto a day that has an override', async () => {
+    // The create path is guarded above; the edit path can reach the same
+    // contradictory state by changing an existing trade's date.
+    const t = await createTrade(tradeDraft({ date: '2026-04-15' }))
+    await setDayPnlOverride(MAIN_ACCOUNT_ID, '2026-04-16', -100)
+    await expect(updateTrade(t.id, { date: '2026-04-16' })).rejects.toThrow(/override/i)
   })
 
   it('createTrade allows trades on a different day than the override', async () => {
@@ -638,6 +648,115 @@ describe('day queries', () => {
       await setDayNote(ACCT, DATE, 'real')
       await setDayNote(ACCT, DATE, '   \n\t ')
       expect(await getDay(ACCT, DATE)).toBeUndefined()
+    })
+  })
+
+  describe('setDayReflection', () => {
+    it('creates the row when one does not exist', async () => {
+      await setDayReflection(ACCT, DATE, { hardest_moment: 'the 10:32 rip' })
+      expect(await getDayReflection(ACCT, DATE)).toEqual({
+        hardest_moment: 'the 10:32 rip',
+        wanted_to: '',
+        instead_did: '',
+      })
+    })
+
+    it('does not create a row when every field is blank', async () => {
+      await setDayReflection(ACCT, DATE, { hardest_moment: '  ', wanted_to: '' })
+      expect(await getDay(ACCT, DATE)).toBeUndefined()
+    })
+
+    it('patches one field without clobbering the others', async () => {
+      // The UI persists per line on blur, so a single-key patch must leave the
+      // other two lines exactly as they were.
+      await setDayReflection(ACCT, DATE, { hardest_moment: 'a', wanted_to: 'b' })
+      await setDayReflection(ACCT, DATE, { instead_did: 'c' })
+      expect(await getDayReflection(ACCT, DATE)).toEqual({
+        hardest_moment: 'a',
+        wanted_to: 'b',
+        instead_did: 'c',
+      })
+    })
+
+    it('trims stored values', async () => {
+      await setDayReflection(ACCT, DATE, { wanted_to: '  chase it  ' })
+      expect((await getDayReflection(ACCT, DATE)).wanted_to).toBe('chase it')
+    })
+
+    it('clears a field while preserving the row when another survives', async () => {
+      await setDayReflection(ACCT, DATE, { hardest_moment: 'a', wanted_to: 'b' })
+      await setDayReflection(ACCT, DATE, { hardest_moment: '' })
+      const day = await getDay(ACCT, DATE)
+      expect(day?.hardest_moment).toBeUndefined()
+      expect(day?.wanted_to).toBe('b')
+    })
+
+    it('deletes the row once the last reflection field is cleared', async () => {
+      await setDayReflection(ACCT, DATE, { instead_did: 'sat out' })
+      await setDayReflection(ACCT, DATE, { instead_did: '' })
+      expect(await getDay(ACCT, DATE)).toBeUndefined()
+    })
+
+    // The regression that would silently destroy journal entries: a day whose
+    // ONLY content is the reflection must survive every empty-row collector.
+    it('keeps a reflection-only row when a screenshot is removed', async () => {
+      await setDayReflection(ACCT, DATE, { hardest_moment: 'the 10:32 rip' })
+      await addDayScreenshot(ACCT, DATE, 'drive:a')
+      await removeDayScreenshot(ACCT, DATE, 'drive:a')
+      const day = await getDay(ACCT, DATE)
+      expect(day?.hardest_moment).toBe('the 10:32 rip')
+    })
+
+    it('keeps a reflection-only row when the note is cleared', async () => {
+      await setDayReflection(ACCT, DATE, { wanted_to: 'chase it' })
+      await setDayNote(ACCT, DATE, 'a thought')
+      await setDayNote(ACCT, DATE, '')
+      expect((await getDayReflection(ACCT, DATE)).wanted_to).toBe('chase it')
+    })
+
+    it('reads as empty strings for a day with no row at all', async () => {
+      expect(await getDayReflection(ACCT, DATE)).toEqual({
+        hardest_moment: '',
+        wanted_to: '',
+        instead_did: '',
+      })
+    })
+
+    it('concurrent per-field writes do not clobber each other', async () => {
+      // Tabbing quickly through the three lines fires three blurs in flight at
+      // once. Each patch re-reads the row inside its own transaction, so they
+      // must compose rather than the last one winning with two stale fields.
+      await Promise.all([
+        setDayReflection(ACCT, DATE, { hardest_moment: 'A' }),
+        setDayReflection(ACCT, DATE, { wanted_to: 'B' }),
+        setDayReflection(ACCT, DATE, { instead_did: 'C' }),
+      ])
+      expect(await getDayReflection(ACCT, DATE)).toEqual({
+        hardest_moment: 'A',
+        wanted_to: 'B',
+        instead_did: 'C',
+      })
+    })
+
+    it('leaves a PNL override intact when the reflection is cleared', async () => {
+      await setDayPnlOverride(ACCT, DATE, -250)
+      await setDayReflection(ACCT, DATE, { hardest_moment: 'tilted' })
+      await setDayReflection(ACCT, DATE, { hardest_moment: '' })
+      expect(await getDayPnlOverride(ACCT, DATE)).toBe(-250)
+    })
+
+    it('bumps updated_at so the sync layer sees the change', async () => {
+      await setDayReflection(ACCT, DATE, { hardest_moment: 'A' })
+      const first = (await getDay(ACCT, DATE))!.updated_at
+      await new Promise(r => setTimeout(r, 3))
+      await setDayReflection(ACCT, DATE, { hardest_moment: 'B' })
+      expect((await getDay(ACCT, DATE))!.updated_at > first).toBe(true)
+    })
+
+    it('preserves interior whitespace and newlines, trimming only the ends', async () => {
+      // The answers are textareas, so Enter is a real newline the user meant.
+      await setDayReflection(ACCT, DATE, { instead_did: '  one\ntwo  b  \n ' })
+      expect((await getDayReflection(ACCT, DATE)).instead_did).toBe('one\ntwo  b')
     })
   })
 })

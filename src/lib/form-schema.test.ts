@@ -216,12 +216,11 @@ describe('recordToForm ↔ formToDraft round-trip', () => {
   })
 
   it('defaults missing optional text fields to empty strings on the form', () => {
-    // `idea` and `notes` are optional on the record (TradeRecord.idea?:
-    // string, TradeRecord.notes?: string). The form's textarea always
-    // needs a string buffer, so the read path must paper over `undefined`.
-    const record = tradeRecord({ idea: undefined, notes: undefined })
+    // `notes` is optional on the record (TradeRecord.notes?: string). The
+    // form's textarea always needs a string buffer, so the read path must
+    // paper over `undefined`.
+    const record = tradeRecord({ notes: undefined })
     const form = recordToForm(record)
-    expect(form.idea).toBe('')
     expect(form.notes).toBe('')
   })
 })

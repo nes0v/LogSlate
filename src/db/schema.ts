@@ -73,9 +73,8 @@ class LogslateDB extends Dexie {
     this.version(12)
 
     // v13: user-defined per-account symbols. Adds the `symbols` store and the
-    // `[account_id+symbol_id]` trades index. The one-time upgrade that turned
-    // each legacy (symbol, contract_type) pair into a TradingSymbol row +
-    // frozen `symbol_spec` has run and been stripped per MIGRATION-PATTERN.
+    // `[account_id+symbol_id]` trades index. Its one-time upgrade has run and
+    // been stripped per MIGRATION-PATTERN.
     this.version(13).stores({
       trades:
         '&id, [account_id+date], [account_id+model_id], [account_id+symbol_id], account_id, updated_at',
@@ -86,6 +85,10 @@ class LogslateDB extends Dexie {
     // one-time upgrade that rewrote the stored values has run and been stripped
     // per MIGRATION-PATTERN.
     this.version(18)
+
+    // v19: a removed free-text trade field was deleted from every stored row.
+    // The one-time upgrade has run and been stripped per MIGRATION-PATTERN.
+    this.version(19)
   }
 }
 
@@ -129,11 +132,26 @@ export async function cleanEmptyHiddenRules(): Promise<void> {
 // True when a day row carries something worth keeping. Used by every
 // empty-row garbage collector so a day that holds ONLY a PNL override
 // (no note, no screenshots) is never dropped.
-export function dayHasContent(day: Pick<Day, 'screenshots' | 'note' | 'pnl_override'>): boolean {
+export function dayHasContent(
+  day: Pick<
+    Day,
+    | 'screenshots'
+    | 'note'
+    | 'pnl_override'
+    | 'hardest_moment'
+    | 'wanted_to'
+    | 'instead_did'
+  >,
+): boolean {
   return (
     day.screenshots.length > 0 ||
     !!day.note ||
-    typeof day.pnl_override === 'number'
+    typeof day.pnl_override === 'number' ||
+    // A day whose only content is the reflection must survive — without these
+    // the empty-row collector would delete the journal entry behind the user.
+    !!day.hardest_moment ||
+    !!day.wanted_to ||
+    !!day.instead_did
   )
 }
 

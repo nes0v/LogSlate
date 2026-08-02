@@ -272,6 +272,57 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   border-radius: 4px;
 }
 
+/* Sentence-stem lines (day reflection). A stem sits inline and the answer —
+ * a real `<textarea>` — continues straight off it on the same baseline, so
+ * the row reads as one sentence rather than a labelled field. Why a text
+ * control rather than a contenteditable is in `DayReflectionSection`. */
+.stem-row {
+  display: flex;
+  align-items: baseline;
+  /* The space between stem and answer. Withdrawn below while the line is
+   * unfinished and unfocused, so the trailing dots butt against the stem and
+   * read as part of its own sentence rather than a mark sitting a word away. */
+  gap: 0.25em;
+}
+.stem-row:has(.stem-input:placeholder-shown:not(:focus)) {
+  gap: 0;
+}
+.stem-label {
+  /* Not bold — the stem is set apart by colour alone: brighter than the
+   * answer it introduces, which carries `--color-text-dim` from the row. */
+  color: var(--color-text);
+  user-select: none;
+  -webkit-user-select: none;
+  white-space: pre;
+}
+.stem-input {
+  flex: 1;
+  min-width: 0;
+  /* Strip the control chrome so it reads as running text, not a field. */
+  background: transparent;
+  border: 0;
+  outline: none;
+  padding: 0;
+  margin: 0;
+  color: inherit;
+  font: inherit;
+  resize: none;
+  /* Height is driven by `useAutosizeTextarea`; hiding overflow keeps a
+   * scrollbar from flashing between a keystroke and the resize. */
+  overflow: hidden;
+}
+/* Unfinished sentences trail off in the stem's own ink, not a hint grey. */
+.stem-input::placeholder {
+  color: var(--color-text);
+  opacity: 1;
+}
+/* Click into an unfinished line and the dots give way to the caret. Chrome
+ * keeps a placeholder visible while focused until the first character, which
+ * would leave the caret sitting on top of the dots. */
+.stem-input:focus::placeholder {
+  color: transparent;
+}
+
 /* Paper variant — a light journal field on the dark UI. The wrapper sets
  * the surface + ink; these rules retint the descendants that would
  * otherwise pull dark-theme tokens (placeholder, rule, inline code). */

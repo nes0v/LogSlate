@@ -1,7 +1,13 @@
 import { db } from '@/db/schema'
 import { createSymbol, createTrade } from '@/db/queries'
-import { SYMBOL_PRESETS, symbolSnapshotOf } from '@/lib/symbols'
+import { symbolSnapshotOf } from '@/lib/symbols'
 import { clearNotifications, pushError, pushInfo } from '@/lib/notifications'
+
+// CME economics for the two micro contracts this sample trades. Hard-coded
+// here because they exist only to give the dev seed something to reference —
+// real symbols are user-defined per account on the Symbols page.
+const MNQ = { name: 'MNQ', point_value: 2, tick_size: 0.25, fee_per_side: 0.62, scratch_handles: 4 }
+const MES = { name: 'MES', point_value: 5, tick_size: 0.25, fee_per_side: 0.62, scratch_handles: 1.6 }
 
 // Small deterministic sample spanning a couple of days — used for dev.
 // Call `seedSampleTrades()` from the browser devtools to populate.
@@ -9,9 +15,8 @@ export async function seedSampleTrades(): Promise<number> {
   const existing = await db.trades.count()
   if (existing > 0) return 0
 
-  // Sample uses micro contracts, so seed MNQ + MES symbols to reference.
-  const mnq = await createSymbol({ ...SYMBOL_PRESETS.NQ.micro, description: '', draft: false })
-  const mes = await createSymbol({ ...SYMBOL_PRESETS.ES.micro, description: '', draft: false })
+  const mnq = await createSymbol({ ...MNQ, description: '', draft: false })
+  const mes = await createSymbol({ ...MES, description: '', draft: false })
 
   const drafts: Array<Parameters<typeof createTrade>[0]> = [
     {
@@ -19,7 +24,7 @@ export async function seedSampleTrades(): Promise<number> {
       symbol_id: mnq.id,
       symbol_spec: symbolSnapshotOf(mnq),
       session: 'am',
-      idea: 'Opening range break — held vwap reclaim, target prior day high.',
+      notes: 'Opening range break — held vwap reclaim, target prior day high.',
       executions: [
         { kind: 'buy', order_type: 'lmt', price: 21050, time: '2026-04-14T13:35:00Z', contracts: 2 },
         { kind: 'buy', order_type: 'lmt', price: 21045, time: '2026-04-14T13:37:00Z', contracts: 1 },
@@ -38,7 +43,7 @@ export async function seedSampleTrades(): Promise<number> {
       symbol_id: mnq.id,
       symbol_spec: symbolSnapshotOf(mnq),
       session: 'pm',
-      idea: 'Fade the pop at resistance — got stopped.',
+      notes: 'Fade the pop at resistance — got stopped.',
       executions: [
         { kind: 'sell', order_type: 'lmt', price: 21105, time: '2026-04-14T19:30:00Z', contracts: 1 },
         { kind: 'buy', order_type: 'lmt', price: 21120, time: '2026-04-14T19:45:00Z', contracts: 1 },
@@ -55,7 +60,7 @@ export async function seedSampleTrades(): Promise<number> {
       symbol_id: mes.id,
       symbol_spec: symbolSnapshotOf(mes),
       session: 'am',
-      idea: 'Support bounce, scaled in.',
+      notes: 'Support bounce, scaled in.',
       executions: [
         { kind: 'buy', order_type: 'lmt', price: 5820, time: '2026-04-15T13:40:00Z', contracts: 1 },
         { kind: 'buy', order_type: 'lmt', price: 5818, time: '2026-04-15T13:45:00Z', contracts: 1 },

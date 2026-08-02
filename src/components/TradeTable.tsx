@@ -148,7 +148,7 @@ function TradeTableRow({
       role="button"
       tabIndex={0}
       aria-expanded={expanded}
-      title={trade.idea}
+      title={trade.notes}
       className={cn(
         'cursor-pointer border-t border-(--color-bg) [&>td]:align-middle [&>td]:pt-[7px] [&>td]:pb-[9px] focus:outline-none focus-visible:bg-(--color-panel-2)/40',
         expanded ? 'bg-(--color-panel-2)/60' : 'hover:bg-(--color-panel-2)/60',

@@ -5,7 +5,7 @@ import { format, isWeekend, parseISO } from 'date-fns'
 import { Plus } from 'lucide-react'
 import { db, dayHasContent } from '@/db/schema'
 import type { Model, NewsEvent, TradeRecord } from '@/db/types'
-import { getDayFeesOverride, getDayNote, getDayPnlOverride, listDayScreenshotsFor, listModels } from '@/db/queries'
+import { getDayFeesOverride, getDayNote, getDayPnlOverride, getDayReflection, listDayScreenshotsFor, listModels, type DayReflection } from '@/db/queries'
 import { parseScreenshotRef, resolveScreenshotUrl } from '@/lib/drive-images'
 import { useActiveAccountId } from '@/lib/active-account'
 import { firstExecutionMs } from '@/lib/trade-math'
@@ -15,6 +15,7 @@ import { dateKeyToDate, isDateKey } from '@/lib/tz'
 import { NotFoundRoute } from '@/routes/NotFound'
 import { DayNewsSection } from '@/components/DayNewsSection'
 import { DayNoteSection } from '@/components/DayNoteSection'
+import { DayReflectionSection } from '@/components/DayReflectionSection'
 import { DayPnlOverrideSection } from '@/components/DayPnlOverrideSection'
 import { DayScreenshotSection } from '@/components/DayScreenshotSection'
 import { PageHeader } from '@/components/PageHeader'
@@ -36,6 +37,7 @@ interface CachedDay {
   trades?: TradeRecord[]
   news?: NewsEvent[]
   note?: string
+  reflection?: DayReflection
   screenshots?: string[]
   pnlOverride?: number | null
   feesOverride?: number | null
@@ -76,14 +78,16 @@ async function preloadDay(accountId: string, date: string): Promise<void> {
   if (!accountId || !date) return
   const key = dayCacheKey(accountId, date)
   if (dayDataCache.has(key)) return
-  const [tradeRows, newsRows, note, screenshots, pnlOverride, feesOverride] = await Promise.all([
-    db.trades.where('[account_id+date]').equals([accountId, date]).toArray(),
-    db.news.where('date').equals(date).toArray(),
-    getDayNote(accountId, date),
-    listDayScreenshotsFor(accountId, date),
-    getDayPnlOverride(accountId, date),
-    getDayFeesOverride(accountId, date),
-  ])
+  const [tradeRows, newsRows, note, reflection, screenshots, pnlOverride, feesOverride] =
+    await Promise.all([
+      db.trades.where('[account_id+date]').equals([accountId, date]).toArray(),
+      db.news.where('date').equals(date).toArray(),
+      getDayNote(accountId, date),
+      getDayReflection(accountId, date),
+      listDayScreenshotsFor(accountId, date),
+      getDayPnlOverride(accountId, date),
+      getDayFeesOverride(accountId, date),
+    ])
   const trades = tradeRows.sort((a, b) => {
     const ka = firstExecutionMs(a) ?? Date.parse(a.created_at)
     const kb = firstExecutionMs(b) ?? Date.parse(b.created_at)
@@ -93,7 +97,15 @@ async function preloadDay(accountId: string, date: string): Promise<void> {
     return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
   })
   newsRows.sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at))
-  writeDayCache(key, { trades, news: newsRows, note, screenshots, pnlOverride, feesOverride })
+  writeDayCache(key, {
+    trades,
+    news: newsRows,
+    note,
+    reflection,
+    screenshots,
+    pnlOverride,
+    feesOverride,
+  })
   // Warm the screenshot URL cache so thumbs paint as an image on the
   // first frame after navigation instead of flashing the "loading…"
   // placeholder while resolveScreenshotUrl awaits the IndexedDB blob.
@@ -168,6 +180,14 @@ function DayView() {
     },
     [accountId, date],
   )
+  const reflectionResult = useLiveQuery(
+    async () => {
+      const value = await getDayReflection(accountId, date)
+      patchDayCache(accountId, date, { reflection: value })
+      return { forDate: date, forAccount: accountId, value }
+    },
+    [accountId, date],
+  )
   const screenshotsResult = useLiveQuery(
     async () => {
       const rows = await listDayScreenshotsFor(accountId, date)
@@ -206,6 +226,7 @@ function DayView() {
   const trades = fresh(tradesResult) ? tradesResult!.rows : cached?.trades
   const news = fresh(newsResult) ? newsResult!.rows : cached?.news
   const note = fresh(noteResult) ? noteResult!.value : cached?.note
+  const reflection = fresh(reflectionResult) ? reflectionResult!.value : cached?.reflection
   const screenshots = fresh(screenshotsResult) ? screenshotsResult!.rows : cached?.screenshots
   const pnlOverride = fresh(pnlOverrideResult)
     ? pnlOverrideResult!.value
@@ -258,6 +279,7 @@ function DayView() {
     trades !== undefined &&
     news !== undefined &&
     note !== undefined &&
+    reflection !== undefined &&
     screenshots !== undefined &&
     pnlOverride !== undefined &&
     feesOverride !== undefined &&
@@ -380,6 +402,16 @@ function DayView() {
           />
 
           <DayNewsSection events={news} />
+
+          {/* Keyed on account AND date: the editable lines are uncontrolled
+              (the DOM owns the text while focused), so a date or account
+              change must remount them rather than reuse the mounted nodes. */}
+          <DayReflectionSection
+            key={`reflection-${accountId}-${date}`}
+            accountId={accountId}
+            date={date}
+            stored={reflection}
+          />
 
           {/* Keyed on account AND date so the local `value` state can't flash
               the previous day's note for one frame after navigation while its

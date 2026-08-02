@@ -44,18 +44,17 @@ export function TradeExpandedDetails({ trade, model }: TradeExpandedDetailsProps
       {model && (
         <ModelChecklist groups={model.groups} followed={followed} />
       )}
-      {(trade.idea || trade.notes) && (
+      {(trade.notes || trade.rule_tension || trade.would_change) && (
         <div className="w-[310px] shrink-0 min-w-0 space-y-3">
-          {trade.idea && (
-            <p className="text-sm text-(--color-text) whitespace-pre-wrap break-words">
-              {trade.idea}
-            </p>
-          )}
           {trade.notes && (
             <p className="text-sm text-(--color-text-dim) whitespace-pre-wrap break-words">
               {trade.notes}
             </p>
           )}
+          {/* Labelled, unlike `notes`: these are answers to specific prompts,
+              and unlabelled prose blocks would be indistinguishable. */}
+          <TextBlock label="Rule tension" value={trade.rule_tension} />
+          <TextBlock label="Would change" value={trade.would_change} />
         </div>
       )}
       <div className="shrink-0 space-y-4">
@@ -104,6 +103,20 @@ export function TradeExpandedDetails({ trade, model }: TradeExpandedDetailsProps
           <Trash2 className="size-4" /> Delete
         </button>
       </div>
+    </div>
+  )
+}
+
+/** A labelled prose block in the notes column. Renders nothing when the field
+ *  is unset — these prompts are optional, and most trades won't answer both. */
+function TextBlock({ label, value }: { label: string; value?: string }) {
+  if (!value) return null
+  return (
+    <div className="space-y-0.5">
+      <div className="text-xs text-(--color-text-faint)">{label}</div>
+      <p className="text-sm text-(--color-text-dim) whitespace-pre-wrap break-words">
+        {value}
+      </p>
     </div>
   )
 }

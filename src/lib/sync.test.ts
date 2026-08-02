@@ -52,10 +52,10 @@ describe('mergeById — trades', () => {
   })
 
   it('prefers the newer updated_at when both sides have the same id', () => {
-    const local = [tradeRecord({ id: 'a', idea: 'local', updated_at: '2026-04-15T12:00:00Z' })]
-    const remote = [tradeRecord({ id: 'a', idea: 'remote', updated_at: '2026-04-15T14:00:00Z' })]
+    const local = [tradeRecord({ id: 'a', notes: 'local', updated_at: '2026-04-15T12:00:00Z' })]
+    const remote = [tradeRecord({ id: 'a', notes: 'remote', updated_at: '2026-04-15T14:00:00Z' })]
     const merged = mergeById(local, remote, new Set())
-    expect(merged[0].idea).toBe('remote')
+    expect(merged[0].notes).toBe('remote')
   })
 
   it('drops a local-only record that was in last-synced (remote deleted it)', () => {
@@ -207,7 +207,7 @@ describe('syncNow', () => {
   }
 
   it('uploads a fresh file when no remote exists', async () => {
-    await db.trades.add(tradeRecord({ id: 't1', idea: 'first' }))
+    await db.trades.add(tradeRecord({ id: 't1', notes: 'first' }))
     findFile.mockResolvedValue(null)
     uploadFile.mockResolvedValue(uploaded())
 
@@ -228,7 +228,7 @@ describe('syncNow', () => {
 
   it('downloads, merges, and uploads when remote exists with diverged data', async () => {
     await db.trades.add(
-      tradeRecord({ id: 't1', idea: 'local-only', updated_at: '2026-04-15T10:00:00Z' }),
+      tradeRecord({ id: 't1', notes: 'local-only', updated_at: '2026-04-15T10:00:00Z' }),
     )
     findFile.mockResolvedValue({
       id: 'fid',
@@ -239,7 +239,7 @@ describe('syncNow', () => {
       version: 6,
       exported_at: '2026-04-15T11:00:00Z',
       trades: [
-        tradeRecord({ id: 't2', idea: 'remote-only', updated_at: '2026-04-15T11:00:00Z' }),
+        tradeRecord({ id: 't2', notes: 'remote-only', updated_at: '2026-04-15T11:00:00Z' }),
       ],
     }
     downloadFile.mockResolvedValue(JSON.stringify(remoteFile))
@@ -256,7 +256,7 @@ describe('syncNow', () => {
   })
 
   it('skips push when remote already matches the merged set', async () => {
-    const trade = tradeRecord({ id: 't1', idea: 'in-sync', updated_at: '2026-04-15T10:00:00Z' })
+    const trade = tradeRecord({ id: 't1', notes: 'in-sync', updated_at: '2026-04-15T10:00:00Z' })
     await db.trades.add(trade)
     findFile.mockResolvedValue({
       id: 'fid',
@@ -280,7 +280,7 @@ describe('syncNow', () => {
   })
 
   it('throws DriveFileCorruptError when remote JSON is unparseable and confirmation is missing', async () => {
-    await db.trades.add(tradeRecord({ id: 't1', idea: 'survives' }))
+    await db.trades.add(tradeRecord({ id: 't1', notes: 'survives' }))
     findFile.mockResolvedValue({
       id: 'fid',
       name: 'logslate.json',
@@ -318,7 +318,7 @@ describe('syncNow', () => {
   })
 
   it('overwriteCorruptRemote: replaces unparseable remote with local data', async () => {
-    await db.trades.add(tradeRecord({ id: 't1', idea: 'survives' }))
+    await db.trades.add(tradeRecord({ id: 't1', notes: 'survives' }))
     findFile.mockResolvedValue({
       id: 'fid',
       name: 'logslate.json',
@@ -364,7 +364,7 @@ describe('syncNow', () => {
     // Seed lastSyncedIds so the merge interprets the local-only record as
     // "deleted remotely" instead of "new locally".
     localStorage.setItem('logslate:sync:trade_ids', JSON.stringify(['ghost']))
-    await db.trades.add(tradeRecord({ id: 'ghost', idea: 'should be tombstoned' }))
+    await db.trades.add(tradeRecord({ id: 'ghost', notes: 'should be tombstoned' }))
     findFile.mockResolvedValue({
       id: 'fid',
       name: 'logslate.json',
@@ -383,7 +383,7 @@ describe('syncNow', () => {
 
   it('aborts the push when Drive modifiedTime advances between pull and push', async () => {
     // Local has a new row that needs pushing.
-    await db.trades.add(tradeRecord({ id: 't1', idea: 'queued for push' }))
+    await db.trades.add(tradeRecord({ id: 't1', notes: 'queued for push' }))
     // findFile is called twice during a sync that pushes:
     //   1. initial pull metadata
     //   2. stale-write recheck right before upload
@@ -418,7 +418,7 @@ describe('syncNow', () => {
     // must NOT come back — and it won't, because lastSyncedIds was
     // saved before the upload attempt, so the merge sees r1 as
     // "in lastSynced + in remote + not in local" → tombstone.
-    await db.trades.add(tradeRecord({ id: 'l1', idea: 'local-only' }))
+    await db.trades.add(tradeRecord({ id: 'l1', notes: 'local-only' }))
     findFile.mockResolvedValue({
       id: 'fid',
       name: 'logslate.json',
@@ -428,7 +428,7 @@ describe('syncNow', () => {
       JSON.stringify({
         version: 6,
         exported_at: '2026-04-15T11:00:00Z',
-        trades: [tradeRecord({ id: 'r1', idea: 'remote-only' })],
+        trades: [tradeRecord({ id: 'r1', notes: 'remote-only' })],
       }),
     )
     uploadFile.mockRejectedValueOnce(new Error('network down'))
@@ -466,7 +466,7 @@ describe('syncNow', () => {
     // conservative pre-push save, l1 is NOT added to lastSyncedIds
     // until the push actually succeeds, so it cannot be silently
     // tombstoned by a future merge.
-    await db.trades.add(tradeRecord({ id: 'l1', idea: 'first ever' }))
+    await db.trades.add(tradeRecord({ id: 'l1', notes: 'first ever' }))
     findFile.mockResolvedValue(null)
     uploadFile.mockRejectedValueOnce(new Error('network down'))
 

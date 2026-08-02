@@ -33,14 +33,14 @@ async function buildBackupFileFromDb(): Promise<File> {
 
 describe('importBackup', () => {
   it('replaces local trades + adjustments and reports counts', async () => {
-    await createTrade(tradeDraft({ idea: 'seed trade' }))
+    await createTrade(tradeDraft({ notes: 'seed trade' }))
     await createAdjustment(adjustmentDraft({ amount: 100 }))
     const file = await buildBackupFileFromDb()
 
     // Overwrite with a different db state
     await db.trades.clear()
     await db.adjustments.clear()
-    await createTrade(tradeDraft({ idea: 'pre-import' }))
+    await createTrade(tradeDraft({ notes: 'pre-import' }))
 
     const result = await importBackup(file)
     expect(result.trades).toBe(1)
@@ -48,7 +48,7 @@ describe('importBackup', () => {
 
     const trades = await listAllTrades(MAIN_ACCOUNT_ID)
     expect(trades).toHaveLength(1)
-    expect(trades[0].idea).toBe('seed trade') // pre-import trade was wiped
+    expect(trades[0].notes).toBe('seed trade') // pre-import trade was wiped
 
     const adjustments = await listAdjustments(MAIN_ACCOUNT_ID)
     expect(adjustments).toHaveLength(1)
@@ -69,16 +69,16 @@ describe('importBackup', () => {
   })
 
   it('rejects non-JSON content before touching the DB', async () => {
-    await createTrade(tradeDraft({ idea: 'must survive' }))
+    await createTrade(tradeDraft({ notes: 'must survive' }))
     const file = new File(['not json {{{'], 'bad.json', { type: 'application/json' })
     await expect(importBackup(file)).rejects.toThrow(/not valid JSON/)
     const trades = await listAllTrades(MAIN_ACCOUNT_ID)
     expect(trades).toHaveLength(1)
-    expect(trades[0].idea).toBe('must survive')
+    expect(trades[0].notes).toBe('must survive')
   })
 
   it('rejects when a known table is not an array', async () => {
-    await createTrade(tradeDraft({ idea: 'must survive' }))
+    await createTrade(tradeDraft({ notes: 'must survive' }))
     const payload = {
       version: 6,
       exported_at: new Date().toISOString(),
@@ -92,11 +92,11 @@ describe('importBackup', () => {
   })
 
   it('rejects rows without a string id', async () => {
-    await createTrade(tradeDraft({ idea: 'must survive' }))
+    await createTrade(tradeDraft({ notes: 'must survive' }))
     const payload = {
       version: 6,
       exported_at: new Date().toISOString(),
-      trades: [{ id: 42, idea: 'wrong-type id' }],
+      trades: [{ id: 42, notes: 'wrong-type id' }],
     }
     const file = new File([JSON.stringify(payload)], 'bad.json', { type: 'application/json' })
     await expect(importBackup(file)).rejects.toThrow(/missing a string id/)
@@ -107,7 +107,7 @@ describe('importBackup', () => {
 
 describe('exportBackup', () => {
   it('writes a JSON blob containing every table and triggers a download', async () => {
-    await createTrade(tradeDraft({ idea: 'export me' }))
+    await createTrade(tradeDraft({ notes: 'export me' }))
     await createAdjustment(adjustmentDraft({ amount: 250 }))
 
     // Capture the Blob handed to URL.createObjectURL so we can inspect the
@@ -131,7 +131,7 @@ describe('exportBackup', () => {
     expect(parsed.exported_at).toMatch(/^\d{4}-/)
     expect(Array.isArray(parsed.trades)).toBe(true)
     expect(parsed.trades).toHaveLength(1)
-    expect(parsed.trades[0].idea).toBe('export me')
+    expect(parsed.trades[0].notes).toBe('export me')
     expect(parsed.adjustments).toHaveLength(1)
     expect(parsed.adjustments[0].amount).toBe(250)
     // Empty tables still appear so the import side has a stable shape.

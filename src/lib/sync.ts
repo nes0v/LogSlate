@@ -299,7 +299,7 @@ export async function syncNow(options: SyncOptions = {}): Promise<SyncResult> {
     // could in theory have written to Drive. If so, blindly pushing
     // would silently clobber their changes. Refetch the metadata; if
     // `modifiedTime` advanced past what we pulled, abort. Unreachable
-    // under the project's single-device-at-a-time invariant (CLAUDE.md),
+    // under this app's single-device-at-a-time invariant,
     // kept as defense-in-depth.
     if (meta) {
       const fresh = await findAppDataFile(FILE_NAME)

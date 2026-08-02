@@ -1,20 +1,12 @@
 // Runtime-authoritative enum values. Types are derived from these so adding
 // a new session/etc. is a one-line change.
 //
-// SYMBOLS / CONTRACT_TYPES are LEGACY: symbols are now user-defined per-account
-// rows (`TradingSymbol`) and a trade freezes its economics in `symbol_spec`.
-// These two survive only as the v13 migration seed + the Symbols-page presets
-// (see `src/lib/symbols.ts`); no live TradeRecord references them.
-export const SYMBOLS = ['NQ', 'ES', 'YM'] as const
-export const CONTRACT_TYPES = ['micro', 'mini'] as const
 export const SESSIONS = ['pre', 'am', 'lunch', 'pm', 'aft'] as const
 export const RATINGS = ['good', 'excellent', 'poor'] as const
 export const EXECUTION_KINDS = ['buy', 'sell'] as const
 export const ORDER_TYPES = ['mkt', 'lmt'] as const
 export const SIDES = ['long', 'short'] as const
 
-export type SymbolKey = (typeof SYMBOLS)[number]
-export type ContractType = (typeof CONTRACT_TYPES)[number]
 export type Session = (typeof SESSIONS)[number]
 export type Rating = (typeof RATINGS)[number]
 export type ExecutionKind = (typeof EXECUTION_KINDS)[number]
@@ -106,7 +98,6 @@ export interface TradeRecord {
   symbol_id: string // → TradingSymbol.id (grouping, filtering, in-use count, live name)
   symbol_spec: SymbolSnapshot // frozen economics used by the math layer
   session: Session
-  idea?: string
   executions: Execution[] // stored sorted by time ascending
   stop_loss: number // USD (positive number representing risk amount)
   drawdown: number | null // USD, MAE — max adverse excursion (optional)
@@ -115,7 +106,14 @@ export interface TradeRecord {
   emotion: Emotion
   profit_target: number // USD planned profit target
   // Optional journaling / model fields.
-  notes?: string // post-trade notes (markdown)
+  notes?: string // general free-text notes on the trade
+  // The two reflection prompts, answered in prose. Their own fields rather
+  // than a template inside `notes` so they stay individually addressable —
+  // rendered as separate blocks, and countable/searchable on their own.
+  // Deliberately optional: forcing an answer would fill clean trades with
+  // "n/a", destroying the very signal an empty `rule_tension` carries.
+  rule_tension?: string // "did I consider breaking a rule? which, when?"
+  would_change?: string // "what would I change taking this trade again?"
   setup_tags?: string[] // ["breakout", "trend-cont", ...]
   model_id?: string | null
   model_rules_followed?: string[] // rule strings that were honoured
@@ -186,6 +184,18 @@ export interface Day {
   date: string // YYYY-MM-DD
   screenshots: string[]
   note?: string
+  // The day's reflection: ONE incident, written as three completions of fixed
+  // sentence stems ("Today the hardest moment was …" / "I wanted to …" /
+  // "Instead I …"). The stems are UI chrome, never stored — only the user's
+  // continuations live here.
+  //
+  // Three fields rather than one joined string even though they read as a
+  // single narrative: joining is free at render time, splitting is not. A
+  // "hardest moments this month" list stays a field read instead of a parse,
+  // and there's no delimiter to invent (or to have the user's own text break).
+  hardest_moment?: string
+  wanted_to?: string
+  instead_did?: string
   // Manual net-PNL override for the whole day (signed USD). When set, this
   // value REPLACES the sum of the day's trade PNLs in every money/equity
   // statistic — it's how a chaotic "tilt"/revenge day gets recorded as a
