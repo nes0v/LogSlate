@@ -14,6 +14,7 @@ import {
   deleteAdjustment,
   deleteTrade,
   getAccount,
+  getAccountResetContext,
   getDay,
   getDayNote,
   getTrade,
@@ -28,6 +29,7 @@ import {
   listDayOverrides,
   removeDayScreenshot,
   reorderModels,
+  resetAccountBalance,
   getDayReflection,
   setDayNote,
   setDayReflection,
@@ -38,6 +40,7 @@ import {
   updateTrade,
 } from './queries'
 import { MAIN_ACCOUNT_ID } from './types'
+import { accountEquity } from '@/lib/day-pnl'
 import { readSymbolFilterCache } from '@/lib/symbol-filter-cache'
 import { adjustmentDraft, tradeDraft } from '@/test/fixtures'
 
@@ -459,6 +462,58 @@ describe('account queries', () => {
         cloneAccount({ name: 'Eval 2', starting_balance: 0 }, 'nope'),
       ).rejects.toThrow(/no longer exists/)
       expect(await db.accounts.count()).toBe(1)
+    })
+  })
+
+  describe('resetAccountBalance', () => {
+    const equityOf = async (id: string) => {
+      const c = await getAccountResetContext(id)
+      return accountEquity(c.netByDate, c.adjustments, c.startingBalance)
+    }
+
+    it('rewrites the opening balance outright when nothing is logged yet', async () => {
+      // No curve to stay continuous with, so a ledger row would be inventing an
+      // event. This is also the only route back from a fat-fingered balance.
+      const a = await createAccount({ name: 'Typo', starting_balance: 5_000 })
+      await resetAccountBalance(a.id, 50_000, '2026-08-27')
+      expect((await getAccount(a.id))?.starting_balance).toBe(50_000)
+      expect(await db.adjustments.where('account_id').equals(a.id).count()).toBe(0)
+    })
+
+    it('records a reset row once there is history, leaving the opening balance alone', async () => {
+      await createTrade(tradeDraft())
+      await resetAccountBalance(MAIN_ACCOUNT_ID, 50_000, '2026-08-27')
+      const rows = await listAdjustments(MAIN_ACCOUNT_ID)
+      expect(rows).toHaveLength(1)
+      expect(rows[0].kind).toBe('reset')
+      // Stored as the TARGET, not the step.
+      expect(rows[0].amount).toBe(50_000)
+      expect((await getAccount(MAIN_ACCOUNT_ID))?.starting_balance).toBe(0)
+    })
+
+    it('lands equity exactly on the target', async () => {
+      const a = await createAccount({ name: 'Eval', starting_balance: 50_000 })
+      await createAdjustment({ date: '2026-08-03', kind: 'withdraw', amount: 2_000, note: '' }, a.id)
+      expect(await equityOf(a.id)).toBeCloseTo(48_000, 5)
+      await resetAccountBalance(a.id, 50_000, '2026-08-27')
+      expect(await equityOf(a.id)).toBeCloseTo(50_000, 5)
+    })
+
+    it('treats a day override as history, so the target still lands', async () => {
+      // An override-only account has no trades and no adjustments, but its
+      // equity is NOT its opening balance — rewriting the field would leave the
+      // override stacked on top and miss the target by exactly its value.
+      const a = await createAccount({ name: 'Override', starting_balance: 50_000 })
+      await setDayPnlOverride(a.id, '2026-08-03', -500)
+      expect(await equityOf(a.id)).toBeCloseTo(49_500, 5)
+      await resetAccountBalance(a.id, 50_000, '2026-08-27')
+      expect(await equityOf(a.id)).toBeCloseTo(50_000, 5)
+    })
+
+    it('rejects a negative balance', async () => {
+      await expect(resetAccountBalance(MAIN_ACCOUNT_ID, -1, '2026-08-27')).rejects.toThrow(
+        /zero or a positive number/,
+      )
     })
   })
 

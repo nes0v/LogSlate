@@ -16,6 +16,7 @@ import { useActiveAccountId } from '@/lib/active-account'
 import { classifyTrade, computeNetPnl } from '@/lib/trade-math'
 import { classifyDayPnl } from '@/lib/advanced-stats'
 import { equityBefore } from '@/lib/day-pnl'
+import { resolveResets } from '@/lib/adjustment-resets'
 import { useStartingBalance } from '@/lib/use-starting-balance'
 import { signedAdjustment } from '@/lib/trade-stats'
 import { listAdjustments, listAllTrades } from '@/db/queries'
@@ -114,13 +115,23 @@ export function CalendarRoute() {
     return { byDate, netByDate, byMonth }
   }, [trades, dayRows])
 
+  // Resolved once here so the per-day walk and the grid baseline below both
+  // see reset rows as real steps rather than as their target balance.
+  const resolvedAdjustments = useMemo(
+    () =>
+      startingBalance === undefined
+        ? []
+        : resolveResets(adjustments ?? [], netByDate, startingBalance),
+    [adjustments, netByDate, startingBalance],
+  )
+
   const adjByDate = useMemo(() => {
     const m = new Map<string, number>()
-    for (const a of adjustments ?? []) {
+    for (const a of resolvedAdjustments) {
       m.set(a.date, (m.get(a.date) ?? 0) + signedAdjustment(a))
     }
     return m
-  }, [adjustments])
+  }, [resolvedAdjustments])
 
   // Real account equity at the moment the grid starts. Walking forward
   // day-by-day from this baseline gives each cell its own start-of-day
@@ -128,8 +139,8 @@ export function CalendarRoute() {
   // query keyed on the cutoff date would reintroduce the stale first frame.
   const gridStartEquity = useMemo(() => {
     if (!trades || !dayRows || !adjustments || startingBalance === undefined) return undefined
-    return equityBefore(rangeStart, netByDate, adjustments, startingBalance)
-  }, [trades, dayRows, adjustments, startingBalance, netByDate, rangeStart])
+    return equityBefore(rangeStart, netByDate, resolvedAdjustments, startingBalance)
+  }, [trades, dayRows, adjustments, resolvedAdjustments, startingBalance, netByDate, rangeStart])
 
   // Gate the month grid on equity too — otherwise the first paint
   // classifies near-threshold days with `band = $8` (equity defaults

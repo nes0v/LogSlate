@@ -129,20 +129,48 @@ export interface TradeRecord {
 
 export type TradeDraft = Omit<TradeRecord, 'id' | 'account_id' | 'created_at' | 'updated_at'>
 
-export type AdjustmentKind = 'deposit' | 'withdraw' | 'fee'
+// Single source for the kind vocabulary — consumers map over this rather than
+// re-listing members inline, so adding one can't leave a binary
+// `kind === 'deposit' ? win : loss` silently mis-colouring the new member.
+export const ADJUSTMENT_KINDS = ['deposit', 'withdraw', 'fee', 'reset'] as const
+export type AdjustmentKind = (typeof ADJUSTMENT_KINDS)[number]
+
+/** Per-kind text colour token. Resets are neither a gain nor a loss — the
+ *  capital came from outside — so they read in the accent tone rather than
+ *  borrowing win/loss. */
+export const ADJUSTMENT_KIND_COLOR: Record<AdjustmentKind, string> = {
+  deposit: 'var(--color-win)',
+  withdraw: 'var(--color-loss)',
+  fee: 'var(--color-loss)',
+  reset: 'var(--color-accent)',
+}
 
 export interface EquityAdjustment {
   id: string
   account_id: string
   date: string // YYYY-MM-DD (local)
   kind: AdjustmentKind
-  amount: number // positive USD; the kind determines sign at the math layer
+  /** Positive USD. For deposit/withdraw/fee the kind determines the sign at
+   *  the math layer. A `reset` row is different: this is the TARGET balance
+   *  the account is being set to, not a cash movement, so it carries no sign
+   *  of its own — `resolveResets` derives the step from account history. */
+  amount: number
   note: string
+  /** Reset rows only, and only after `resolveResets` has run: the signed
+   *  cash-equivalent step that lands equity on `amount`. Derived in memory,
+   *  NEVER persisted — a stored reset row holds only its target, so the step
+   *  re-derives correctly when earlier history changes. */
+  delta?: number
   created_at: string // ISO
   updated_at: string // ISO
 }
 
-export type AdjustmentDraft = Omit<EquityAdjustment, 'id' | 'account_id' | 'created_at' | 'updated_at'>
+// `delta` is excluded: it's derived in memory by `resolveResets` and must
+// never reach storage, so the draft type simply can't carry it.
+export type AdjustmentDraft = Omit<
+  EquityAdjustment,
+  'id' | 'account_id' | 'created_at' | 'updated_at' | 'delta'
+>
 
 // Day screenshots are uploaded to Drive. When the user picks an image while
 // offline (or before any manual sync), the blob is stashed in this table;

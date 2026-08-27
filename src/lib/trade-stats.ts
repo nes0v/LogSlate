@@ -21,6 +21,14 @@ export function signedAdjustment(a: EquityAdjustment): number {
     case 'withdraw':
     case 'fee':
       return -a.amount
+    case 'reset':
+      // `amount` on a reset is a target balance, not a movement, so it is
+      // deliberately NOT read here — adding it would inject the whole balance
+      // into equity. The step lives in `delta`, which `resolveResets` fills
+      // in. An unresolved reset therefore contributes 0 rather than a wrong
+      // number: the curve looks like the reset hasn't happened yet, which is
+      // recoverable, where a 50k jump is not.
+      return a.delta ?? 0
   }
 }
 
@@ -356,7 +364,12 @@ export function computeCandles(
   return out
 }
 
-/** Groups signed adjustments by their date string (bucket key for day buckets). */
+/** Groups signed adjustments by their date string (bucket key for day buckets).
+ *
+ *  Callers must pass a list that `resolveResets` has already been through.
+ *  This can't do it itself — resolving needs the account's trade history and
+ *  opening balance, neither of which a date-grouping helper should know about
+ *  — and a raw `reset` row sums as 0, silently flattening the step. */
 export function adjustmentsByDate(adjustments: EquityAdjustment[]): Map<string, number> {
   const m = new Map<string, number>()
   for (const a of adjustments) {

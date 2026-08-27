@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   CandlestickSeries,
   ColorType,
@@ -26,6 +26,7 @@ import { bucketKeyToTs, dateToBucketKey, type Timeframe } from '@/lib/buckets'
 import { dateKeyToDate } from '@/lib/tz'
 import { themeColor } from '@/lib/theme-colors'
 import { formatUsd } from '@/lib/money'
+import { ADJUSTMENT_KIND_COLOR } from '@/db/types'
 import { cn } from '@/lib/utils'
 
 // Fixed bar width (pixels) so switching timeframes keeps candle size
@@ -524,6 +525,10 @@ interface TradingViewChartProps {
   title?: string
   /** Deposit (+) / withdrawal (−) markers rendered on the candle timeline. */
   adjustments?: Array<{ x: string; amount: number }>
+  /** Account-reset markers. Separate from `adjustments` because `amount` here
+   *  is the TARGET balance the account was set to, not a movement — it must
+   *  never be summed with a cash flow sharing the bucket. */
+  resets?: Array<{ x: string; amount: number }>
   /** Bucket timeframe of `points`. Controls the time-axis tick labels. */
   timeframe?: Timeframe
   /** Optional element rendered to the right of the chart title. */
@@ -567,6 +572,7 @@ export function TradingViewChart({
   onPointClick,
   title = 'Equity and fees',
   adjustments,
+  resets,
   timeframe = 'D',
   headerRight,
   viewportFrom,
@@ -636,11 +642,39 @@ export function TradingViewChart({
     viewRef.current = view
   }, [view])
   const [hoveredPoint, setHoveredPoint] = useState<CandlePoint | null>(null)
-  const [adjLabels, setAdjLabels] = useState<Array<{ x: number; amount: number }>>([])
+  const [adjLabels, setAdjLabels] = useState<
+    Array<{ x: number; amount: number; isReset: boolean }>
+  >([])
   // Width of the right price-scale column — adjustment labels are clipped
   // at (chartWidth - priceScaleWidth) so their text can't overlap price
   // labels.
   const [priceScaleWidth, setPriceScaleWidth] = useState(0)
+
+  // Label text and placement, derived once per label set rather than inside the
+  // JSX. A bucket can hold both a cash flow and a reset, which resolve to the
+  // same x — stacking by how many labels already sit on that column is what
+  // stops them overprinting.
+  const positionedAdjLabels = useMemo(() => {
+    const perColumn = new Map<number, number>()
+    return adjLabels.map((line, i) => {
+      const left = Math.round(line.x)
+      const row = perColumn.get(left) ?? 0
+      perColumn.set(left, row + 1)
+      return {
+        key: `${line.x}-${i}`,
+        left,
+        top: 4 + row * 15,
+        amount: line.amount,
+        isReset: line.isReset,
+        // A reset's amount is the balance the account was set TO, so it takes
+        // an arrow rather than a +/− sign: nothing moved by that much, the
+        // account was placed there.
+        label: line.isReset
+          ? `→$${Math.round(line.amount).toLocaleString()}`
+          : `${line.amount >= 0 ? '+' : '−'}$${Math.round(Math.abs(line.amount)).toLocaleString()}`,
+      }
+    })
+  }, [adjLabels])
   const onClickRef = useRef(onPointClick)
   useEffect(() => {
     onClickRef.current = onPointClick
@@ -1366,8 +1400,14 @@ export function TradingViewChart({
   useEffect(() => {
     const chart = chartRef.current
     if (!chart) return
-    const list = adjustments ?? []
-    // Feed the primitive so the canvas lines redraw.
+    // Both kinds draw a line and a label; only the label text and colour
+    // differ, so they share one pass from here down.
+    const list = [
+      ...(adjustments ?? []).map(a => ({ ...a, isReset: false })),
+      ...(resets ?? []).map(a => ({ ...a, isReset: true })),
+    ]
+    // Feed the primitive so the canvas lines redraw. Line colour stays uniform
+    // across kinds — the label carries the distinction.
     adjLinesPrimRef.current?.setAdjustments(
       list.flatMap(a => {
         const ts = bucketKeyToTs(a.x)
@@ -1376,13 +1416,13 @@ export function TradingViewChart({
     )
     const recompute = () => {
       const ts = chart.timeScale()
-      const next: Array<{ x: number; amount: number }> = []
+      const next: Array<{ x: number; amount: number; isReset: boolean }> = []
       for (const a of list) {
         const t = bucketKeyToTs(a.x)
         if (t === 0) continue
         const x = ts.timeToCoordinate(t as UTCTimestamp)
         if (x === null) continue
-        next.push({ x, amount: a.amount })
+        next.push({ x, amount: a.amount, isReset: a.isReset })
       }
       setAdjLabels(prev => {
         // Skip the re-render when nothing visible changed — the chart fires
@@ -1391,7 +1431,13 @@ export function TradingViewChart({
         // the labels have settled.
         if (prev.length !== next.length) return next
         for (let i = 0; i < next.length; i++) {
-          if (prev[i].x !== next[i].x || prev[i].amount !== next[i].amount) return next
+          if (
+            prev[i].x !== next[i].x ||
+            prev[i].amount !== next[i].amount ||
+            prev[i].isReset !== next[i].isReset
+          ) {
+            return next
+          }
         }
         return prev
       })
@@ -1409,7 +1455,7 @@ export function TradingViewChart({
     // recreates the chart + series (and with it, a fresh empty
     // AdjustmentLinesPrimitive) — without rerunning this effect the new
     // primitive never receives its data and the dashed lines vanish.
-  }, [adjustments, points, view])
+  }, [adjustments, resets, points, view])
 
   return (
     <section className="space-y-2">
@@ -1443,28 +1489,34 @@ export function TradingViewChart({
             zIndex: 2,
           }}
         >
-          {adjLabels.map((line, i) => {
-            const label = `${line.amount >= 0 ? '+' : '−'}$${Math.round(Math.abs(line.amount)).toLocaleString()}`
-            return (
-              <div
-                key={`${line.x}-${i}`}
-                className={cn(
-                  'absolute',
-                  line.amount >= 0 ? 'text-(--color-win)' : 'text-(--color-loss)',
-                )}
-                style={{
-                  left: Math.round(line.x),
-                  top: 4,
-                  transform: 'translateX(-50%)',
-                  fontSize: 12,
-                  fontFamily: 'var(--font-mono)',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {label}
-              </div>
-            )
-          })}
+          {positionedAdjLabels.map(l => (
+            <div
+              key={l.key}
+              // A reset takes its colour from the shared kind map, so it matches
+              // the adjustments list by construction. A cash-flow marker can't:
+              // it's a per-bucket SUM, which may mix a deposit and a withdrawal,
+              // so only its sign is meaningful.
+              className={cn(
+                'absolute',
+                l.isReset
+                  ? undefined
+                  : l.amount >= 0
+                    ? 'text-(--color-win)'
+                    : 'text-(--color-loss)',
+              )}
+              style={{
+                color: l.isReset ? ADJUSTMENT_KIND_COLOR.reset : undefined,
+                left: l.left,
+                top: l.top,
+                transform: 'translateX(-50%)',
+                fontSize: 12,
+                fontFamily: 'var(--font-mono)',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {l.label}
+            </div>
+          ))}
         </div>
       </div>
     </section>

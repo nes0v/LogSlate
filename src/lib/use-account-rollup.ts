@@ -3,8 +3,7 @@ import { listAdjustments, listAllTrades, listDayPnlOverrides } from '@/db/querie
 import { useActiveAccountId } from '@/lib/active-account'
 import { useAccountQuery } from '@/lib/use-account-query'
 import { useStartingBalance } from '@/lib/use-starting-balance'
-import { signedAdjustment } from '@/lib/trade-stats'
-import { netPnlByDate, sumNetPnl } from '@/lib/day-pnl'
+import { accountEquity, netPnlByDate } from '@/lib/day-pnl'
 
 export interface AccountRollup {
   /** The account's opening capital plus all signed adjustments plus cumulative
@@ -58,9 +57,7 @@ export function useAccountRollup(): AccountRollup {
     // Keyed by every date that has a trade AND every override date, so its
     // newest key is exactly the activity anchor.
     const byDate = netPnlByDate(trades, overrides)
-    let equity = startingBalance
-    for (const a of adjustments) equity += signedAdjustment(a)
-    equity += sumNetPnl(byDate)
+    const equity = accountEquity(byDate, adjustments, startingBalance)
     let lastActivityDate: string | null = null
     for (const d of byDate.keys()) {
       if (lastActivityDate === null || d > lastActivityDate) lastActivityDate = d

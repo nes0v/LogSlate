@@ -15,7 +15,7 @@ import {
 import { bucketNavTarget, drillDownRange, timeframeFromParams } from '@/lib/stats-nav'
 import { ChevronRight, X } from 'lucide-react'
 import { dateKeyToDate } from '@/lib/tz'
-import type { Model } from '@/db/types'
+import type { EquityAdjustment, Model } from '@/db/types'
 import { listAdjustments, listAllTrades, listModels } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
 import {
@@ -47,6 +47,7 @@ import { useAccountQuery } from '@/lib/use-account-query'
 import { firstExecutionMs } from '@/lib/trade-math'
 import { adjustmentsByDate, aggregate, computeCandles, foldOverridesIntoStats, signedAdjustment, type AggregateStats } from '@/lib/trade-stats'
 import { equityBefore, netPnlByDate } from '@/lib/day-pnl'
+import { byCreatedThenId, resolveResets } from '@/lib/adjustment-resets'
 import { useStartingBalance } from '@/lib/use-starting-balance'
 import { useChartAdjustmentPrefs } from '@/lib/chart-adjustment-prefs'
 import {
@@ -288,6 +289,16 @@ export function OverviewRoute() {
     () => netPnlByDate(allTrades ?? [], overridesByDate),
     [allTrades, overridesByDate],
   )
+  // Every adjustment consumer on this page reads THIS list, not the raw one:
+  // a reset row stores its target balance, and only `resolveResets` turns that
+  // into the step the equity math can add.
+  const resolvedAdjustments = useMemo(
+    () =>
+      startingBalance === undefined
+        ? []
+        : resolveResets(allAdjustments ?? [], netByDate, startingBalance),
+    [allAdjustments, netByDate, startingBalance],
+  )
 
   // Inputs the composite-score card needs. Computed locally from the
   // already-loaded `allTrades` + `allAdjustments` so the card doesn't
@@ -298,20 +309,20 @@ export function OverviewRoute() {
   const compositeStartingEquity = useMemo(
     () =>
       rangeStart
-        ? equityBefore(rangeStart, netByDate, allAdjustments ?? [], startingBalance ?? 0)
+        ? equityBefore(rangeStart, netByDate, resolvedAdjustments, startingBalance ?? 0)
         : 0,
-    [netByDate, allAdjustments, rangeStart, startingBalance],
+    [netByDate, resolvedAdjustments, rangeStart, startingBalance],
   )
   const compositeAdjByDate = useMemo(() => {
     const m = new Map<string, number>()
     if (!rangeStart || !rangeEnd) return m
-    for (const a of allAdjustments ?? []) {
+    for (const a of resolvedAdjustments) {
       if (a.date >= rangeStart && a.date <= rangeEnd) {
         m.set(a.date, (m.get(a.date) ?? 0) + signedAdjustment(a))
       }
     }
     return m
-  }, [allAdjustments, rangeStart, rangeEnd])
+  }, [resolvedAdjustments, rangeStart, rangeEnd])
 
   // Chart trades = `allTrades` with non-date filters applied. The date
   // filter only sets the initial viewport (`chartVisibleFrom/To` below),
@@ -360,8 +371,8 @@ export function OverviewRoute() {
   }, [chartFiltered, allAdjustments, effectiveOverrides, timeframe])
 
   const chartAdjByDate = useMemo(
-    () => adjustmentsByDate(allAdjustments ?? []),
-    [allAdjustments],
+    () => adjustmentsByDate(resolvedAdjustments),
+    [resolvedAdjustments],
   )
 
   // Same derivation as the composite baseline, off the same map — deliberately
@@ -376,11 +387,11 @@ export function OverviewRoute() {
         ? equityBefore(
             format(tfChartRange.start, 'yyyy-MM-dd'),
             netByDate,
-            allAdjustments ?? [],
+            resolvedAdjustments,
             startingBalance ?? 0,
           )
         : 0,
-    [tfChartRange, netByDate, allAdjustments, startingBalance],
+    [tfChartRange, netByDate, resolvedAdjustments, startingBalance],
   )
 
   const tfBuckets = useMemo(() => {
@@ -407,10 +418,18 @@ export function OverviewRoute() {
   // Marker visibility is user-controlled per kind (Settings → Adjustments).
   // Hidden kinds still pull the equity curve down (via tfAdjByBucket →
   // computeCandles); the toggles only suppress the drawn labels.
+  // Resets are deliberately NOT in this sum. Cash flows are additive — a
+  // bucket holding two deposits is one combined marker — but a reset carries a
+  // target balance, and adding $50,000 to a $1,000 deposit would print $51,000,
+  // a number that never existed. They get their own series below.
   const tfMarkerAdjByBucket = useMemo(() => {
     const byDate = adjustmentsByDate(
-      (allAdjustments ?? []).filter(a =>
-        a.kind === 'fee' ? markerPrefs.fees : markerPrefs.deposits,
+      resolvedAdjustments.filter(a =>
+        a.kind === 'fee'
+          ? markerPrefs.fees
+          : a.kind === 'reset'
+            ? false
+            : markerPrefs.deposits,
       ),
     )
     const map = new Map<string, number>()
@@ -419,7 +438,7 @@ export function OverviewRoute() {
       map.set(k, (map.get(k) ?? 0) + amount)
     }
     return map
-  }, [allAdjustments, timeframe, markerPrefs])
+  }, [resolvedAdjustments, timeframe, markerPrefs])
 
   const tfAdjustmentMarkers = useMemo(() => {
     const keys = new Set(tfBuckets.map(b => b.key))
@@ -429,6 +448,29 @@ export function OverviewRoute() {
     }
     return out
   }, [tfMarkerAdjByBucket, tfBuckets])
+
+  // Reset markers carry the TARGET balance the account was set to, not the
+  // step it took to get there — the step is an artefact of where equity
+  // happened to be, where the target is the thing the user chose. Where a
+  // bucket holds several, the LAST one wins: that's where the account actually
+  // ended up. Shares the deposits toggle rather than owning a third one.
+  const tfResetMarkers = useMemo(() => {
+    if (!markerPrefs.deposits) return []
+    const keys = new Set(tfBuckets.map(b => b.key))
+    const byBucket = new Map<string, EquityAdjustment>()
+    for (const a of resolvedAdjustments) {
+      if (a.kind !== 'reset') continue
+      const k = dateToBucketKey(a.date, timeframe)
+      if (!keys.has(k)) continue
+      const prev = byBucket.get(k)
+      // Same winner the resolver picks, by the same rule — otherwise the label
+      // could name one target while the curve steps to another.
+      if (!prev || a.date > prev.date || (a.date === prev.date && byCreatedThenId(prev, a) < 0)) {
+        byBucket.set(k, a)
+      }
+    }
+    return [...byBucket].map(([x, a]) => ({ x, amount: a.amount }))
+  }, [resolvedAdjustments, timeframe, markerPrefs, tfBuckets])
 
   // Filter's bucket-aligned keys, used to compare against the chart's
   // emitted visible-range keys (so the "Set date filter" button only
@@ -672,6 +714,7 @@ export function OverviewRoute() {
         <TradingViewChart
           points={tfCandles}
           adjustments={tfAdjustmentMarkers}
+          resets={tfResetMarkers}
           timeframe={timeframe}
           viewportFrom={rangeStart ?? undefined}
           viewportTo={rangeEnd ?? undefined}

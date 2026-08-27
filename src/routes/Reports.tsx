@@ -35,6 +35,7 @@ import { useValidAccountFilters } from '@/lib/use-valid-account-filters'
 import { useAccountQuery } from '@/lib/use-account-query'
 import { aggregate, foldOverridesIntoStats, signedAdjustment, type AggregateStats } from '@/lib/trade-stats'
 import { equityBefore, netPnlByDate } from '@/lib/day-pnl'
+import { resolveResets } from '@/lib/adjustment-resets'
 import { useStartingBalance } from '@/lib/use-starting-balance'
 import {
   classifyTrade,
@@ -256,23 +257,33 @@ export function ReportsRoute() {
     () => netPnlByDate(allTrades ?? [], overridesByDate),
     [allTrades, overridesByDate],
   )
+  // Every adjustment consumer on this page reads THIS list, not the raw one:
+  // a reset row stores its target balance, and only `resolveResets` turns that
+  // into the step the equity math can add.
+  const resolvedAdjustments = useMemo(
+    () =>
+      startingBalance === undefined
+        ? []
+        : resolveResets(allAdjustments ?? [], netByDate, startingBalance),
+    [allAdjustments, netByDate, startingBalance],
+  )
   const advStartingEquity = useMemo(
     () =>
       rangeStart
-        ? equityBefore(rangeStart, netByDate, allAdjustments ?? [], startingBalance ?? 0)
+        ? equityBefore(rangeStart, netByDate, resolvedAdjustments, startingBalance ?? 0)
         : 0,
-    [netByDate, allAdjustments, rangeStart, startingBalance],
+    [netByDate, resolvedAdjustments, rangeStart, startingBalance],
   )
   const advAdjByDate = useMemo(() => {
     const m = new Map<string, number>()
     if (!rangeStart || !rangeEnd) return m
-    for (const a of allAdjustments ?? []) {
+    for (const a of resolvedAdjustments) {
       if (a.date >= rangeStart && a.date <= rangeEnd) {
         m.set(a.date, (m.get(a.date) ?? 0) + signedAdjustment(a))
       }
     }
     return m
-  }, [allAdjustments, rangeStart, rangeEnd])
+  }, [resolvedAdjustments, rangeStart, rangeEnd])
 
   // Day overrides inside the active window. Date-grouped breakdowns (Time)
   // fold these in only when the "Include override days" toggle is on. Scoped

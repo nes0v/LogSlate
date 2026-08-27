@@ -15,6 +15,7 @@ import type {
   TradingSymbolDraft,
 } from '@/db/types'
 import { getActiveAccountId } from '@/lib/active-account'
+import { netPnlByDate } from '@/lib/day-pnl'
 import { clearSymbolFilterCache, writeSymbolFilterCache } from '@/lib/symbol-filter-cache'
 import { clearLastActivityDate } from '@/lib/last-activity-cache'
 
@@ -433,6 +434,89 @@ export async function cloneAccount(
   // the same as none, so writing one is just a stray key.
   if (seededSymbols.length > 0) writeSymbolFilterCache(rec.id, seededSymbols)
   return rec
+}
+
+export interface AccountResetContext {
+  startingBalance: number
+  netByDate: Map<string, number>
+  adjustments: EquityAdjustment[]
+}
+
+/**
+ * Everything the reset dialog needs to price a reset, fetched once when it
+ * opens. It hands back the raw pieces rather than a single equity number
+ * because the dialog's date is editable: moving it re-measures the step
+ * against equity as it stood on THAT day, and re-querying per keystroke would
+ * both flicker and race.
+ */
+export async function getAccountResetContext(
+  accountId: string,
+): Promise<AccountResetContext> {
+  const [account, trades, adjustments, overrides] = await Promise.all([
+    db.accounts.get(accountId),
+    listAllTrades(accountId),
+    listAdjustments(accountId),
+    listDayPnlOverrides(accountId),
+  ])
+  return {
+    startingBalance: account?.starting_balance ?? 0,
+    netByDate: netPnlByDate(trades, overrides),
+    adjustments,
+  }
+}
+
+/**
+ * Puts an account back to `newBalance`.
+ *
+ * Two paths, and which one runs depends on whether there is any history to stay
+ * continuous with:
+ *
+ *  - Nothing logged yet (no trades, no adjustments) — rewrite
+ *    `starting_balance` and leave no trace. There is no curve to keep
+ *    continuous, so a ledger row would be inventing an event. This is also the
+ *    only way to correct a balance fat-fingered at creation, since the field is
+ *    otherwise fixed.
+ *  - Anything logged — insert a `reset` row dated today. Equity is a continuous
+ *    function of time and the account really did gain capital from outside, so
+ *    the step belongs on the curve where it happened. `starting_balance` is
+ *    left alone: it is where the account BEGAN, which a later reset doesn't
+ *    change.
+ *
+ * The row stores the target, not the step — see `resolveResets`.
+ */
+export async function resetAccountBalance(
+  accountId: string,
+  newBalance: number,
+  date: string,
+): Promise<void> {
+  if (!Number.isFinite(newBalance) || newBalance < 0) {
+    throw new Error('Balance must be zero or a positive number.')
+  }
+  // Day-level PNL overrides count as history too. Without them in this check,
+  // an account whose only activity is an override day takes the rewrite path —
+  // and since the override still applies on top, equity lands at
+  // `newBalance + override` instead of on the target the user asked for.
+  const [trades, adjustments, overrides] = await Promise.all([
+    db.trades.where('account_id').equals(accountId).count(),
+    db.adjustments.where('account_id').equals(accountId).count(),
+    listDayPnlOverrides(accountId),
+  ])
+  if (trades === 0 && adjustments === 0 && overrides.size === 0) {
+    await db.accounts.update(accountId, {
+      starting_balance: newBalance,
+      updated_at: now(),
+    })
+    return
+  }
+  // `createAdjustment` rejects a weekend date for the same reason every other
+  // money row does: the equity chart's daily timeframe omits weekend buckets,
+  // so a Saturday reset would vanish from the D curve while still counting in
+  // W/M/Q/Y. The dialog's picker disables weekends, so this only bites a
+  // hand-crafted call.
+  await createAdjustment(
+    { date, kind: 'reset', amount: newBalance, note: '' },
+    accountId,
+  )
 }
 
 // Cascading delete: the account's trades, adjustments, day screenshots and
