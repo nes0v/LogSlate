@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import { createAdjustment, deleteAdjustment } from '@/db/queries'
 import type { AdjustmentKind, EquityAdjustment } from '@/db/types'
+import { ADJUSTMENT_KIND_COLOR } from '@/db/types'
 import { useConfirm } from '@/components/ConfirmDialog'
 import { inputClassCompact as inputClass } from '@/components/form/Field'
 import { DatePicker } from '@/components/form/DatePicker'
@@ -54,6 +55,8 @@ export function EquityAdjustmentsPanel({ adjustments }: EquityAdjustmentsPanelPr
     if (await confirm({ title: 'Delete this adjustment?' })) await deleteAdjustment(id)
   }
 
+  // Resets are excluded from these totals on purpose: no money moved, so
+  // folding a reset in would overstate what was actually deposited.
   const totalDeposits = list
     .filter(a => a.kind === 'deposit')
     .reduce((s, a) => s + a.amount, 0)
@@ -61,6 +64,7 @@ export function EquityAdjustmentsPanel({ adjustments }: EquityAdjustmentsPanelPr
     .filter(a => a.kind === 'withdraw')
     .reduce((s, a) => s + a.amount, 0)
   const net = totalDeposits - totalWithdraws
+  const resetCount = list.filter(a => a.kind === 'reset').length
 
   return (
     <div className="space-y-3">
@@ -132,25 +136,17 @@ export function EquityAdjustmentsPanel({ adjustments }: EquityAdjustmentsPanelPr
                   <td className="px-3 py-2 text-xs font-mono tabular-nums text-(--color-text-dim) whitespace-nowrap">
                     {formatDisplayDate(a.date)}
                   </td>
-                  <td className="px-3 py-2">
-                    <span
-                      className={cn(
-                        'inline-block w-[4.5rem] text-center text-xs font-mono px-2 py-0.5 rounded-sm',
-                        a.kind === 'deposit'
-                          ? 'bg-(--color-win)/20 text-(--color-win)'
-                          : 'bg-(--color-loss)/20 text-(--color-loss)',
-                      )}
-                    >
-                      {a.kind}
-                    </span>
-                  </td>
+                  {/* The flexible cell between a nowrap date and a fixed-width
+                      action, so right-aligning here columns the amounts up
+                      against the delete button. Colour comes from the shared
+                      kind map, and the prefix carries the meaning now that the
+                      kind label is gone: + in, − out, → set to. A reset's
+                      amount is a target balance, so it takes no sign. */}
                   <td
-                    className={cn(
-                      'px-3 py-2 font-mono font-medium tabular-nums whitespace-nowrap',
-                      a.kind === 'deposit' ? 'text-(--color-win)' : 'text-(--color-loss)',
-                    )}
+                    className="px-3 py-2 font-mono font-medium tabular-nums whitespace-nowrap text-right"
+                    style={{ color: ADJUSTMENT_KIND_COLOR[a.kind] }}
                   >
-                    {a.kind === 'deposit' ? '+' : '-'}
+                    {a.kind === 'deposit' ? '+' : a.kind === 'reset' ? '→ ' : '−'}
                     {formatUsd(a.amount)}
                   </td>
                   <td className="px-3 py-2 w-10 text-right">
@@ -169,7 +165,8 @@ export function EquityAdjustmentsPanel({ adjustments }: EquityAdjustmentsPanelPr
           </table>
           </div>
           <div className="text-xs text-(--color-text-dim) font-mono">
-            {list.length} adjustment{list.length === 1 ? '' : 's'} · deposits{' '}
+            {list.length} adjustment{list.length === 1 ? '' : 's'}
+            {resetCount > 0 && ` (${resetCount} reset${resetCount === 1 ? '' : 's'})`} · deposits{' '}
             {formatUsd(totalDeposits)} · withdrawals {formatUsd(totalWithdraws)} · net{' '}
             <span
               className={cn(

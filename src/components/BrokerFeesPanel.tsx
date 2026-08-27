@@ -35,7 +35,6 @@ export function BrokerFeesPanel({ adjustments }: BrokerFeesPanelProps) {
 
   const [month, setMonth] = useState(() => nyMonthKey())
   const [amount, setAmount] = useState<number | null>(null)
-  const [note, setNote] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   async function handleSubmit(e: React.FormEvent) {
@@ -53,10 +52,9 @@ export function BrokerFeesPanel({ adjustments }: BrokerFeesPanelProps) {
       date: firstWeekdayOfMonth(month),
       kind: 'fee',
       amount,
-      note: note.trim(),
+      note: '',
     })
     setAmount(null)
-    setNote('')
   }
 
   async function handleDelete(id: string) {
@@ -81,7 +79,7 @@ export function BrokerFeesPanel({ adjustments }: BrokerFeesPanelProps) {
 
       <form
         onSubmit={handleSubmit}
-        className="bg-(--color-panel-2) rounded-(--radius) p-3 grid grid-cols-[auto_1fr_1fr_auto] gap-3 items-end"
+        className="bg-(--color-panel-2) rounded-(--radius) p-3 grid grid-cols-[auto_1fr_auto] gap-3 items-end"
       >
         <div className="text-xs text-(--color-text-dim) space-y-2">
           <div>Month</div>
@@ -101,19 +99,10 @@ export function BrokerFeesPanel({ adjustments }: BrokerFeesPanelProps) {
             className={inputClass}
           />
         </label>
-        <label className="text-xs text-(--color-text-dim) space-y-2">
-          <div>Note (optional)</div>
-          <input
-            type="text"
-            value={note}
-            onChange={e => setNote(e.target.value)}
-            className={inputClass}
-          />
-        </label>
         <button type="submit" className={BTN_ACCENT}>
           Add
         </button>
-        {error && <div className="col-span-4 text-xs text-(--color-loss)">{error}</div>}
+        {error && <div className="col-span-3 text-xs text-(--color-loss)">{error}</div>}
       </form>
 
       {list.length > 0 && (
@@ -129,14 +118,8 @@ export function BrokerFeesPanel({ adjustments }: BrokerFeesPanelProps) {
                     <td className="px-3 py-2 text-xs font-mono tabular-nums text-(--color-text-dim) whitespace-nowrap">
                       {formatDisplayDate(a.date)}
                     </td>
-                    <td className="px-3 py-2 font-mono font-medium tabular-nums text-(--color-loss) whitespace-nowrap">
+                    <td className="px-3 py-2 w-full font-mono font-medium tabular-nums text-(--color-loss) whitespace-nowrap text-right">
                       -{formatUsd(a.amount)}
-                    </td>
-                    <td
-                      className="px-3 py-2 text-xs text-(--color-text-dim) max-w-0 truncate"
-                      title={a.note}
-                    >
-                      {a.note}
                     </td>
                     <td className="px-3 py-2 w-10 text-right">
                       <button
