@@ -49,8 +49,14 @@ export function sumNetPnl(
  *
  * `startingBalance` is `Account.starting_balance` and is dateless on purpose:
  * it's where the account begins, so it belongs to every window regardless of
- * cutoff. Required rather than defaulted — a call site that silently fell back
- * to 0 would draw a funded account's curve from zero.
+ * cutoff.
+ *
+ * It has no default, which forces every caller to go and fetch it — but that is
+ * all the signature buys. Callers still bridge the `number | undefined` their
+ * query hands them with `?? 0`, so what actually keeps a funded account from
+ * being drawn from zero is the caller's render gate: every route calling this
+ * holds `startingBalance !== undefined` in its `loaded` flag. Drop it from the
+ * gate and the parameter being required will not save you.
  *
  * Reads off maps the caller already holds rather than querying by date. That's
  * deliberate: a Dexie query keyed on a cutoff date hands back the PREVIOUS

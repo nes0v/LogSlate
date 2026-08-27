@@ -338,7 +338,7 @@ export function SettingsRoute() {
             <br />
             Import will replace all local trades with the contents of a backup.
           </p>
-          <div className="rounded-(--radius) bg-(--color-panel-2) p-3 flex items-center gap-2">
+          <div className="rounded-(--radius) bg-(--color-panel-2) p-3 flex items-center justify-end gap-2">
             <button onClick={exportBackup} className={BTN_ACCENT}>
               <CloudDownload className="size-4" /> Export
             </button>
