@@ -142,7 +142,14 @@ describe('equityBefore', () => {
     ['2026-04-08', 220.5], // + the −125 override-only day
     ['2026-04-09', -179.5], // + the −400 withdrawal
   ])('%s → %d', (cutoff, expected) => {
-    expect(equityBefore(cutoff, netByDate(), adjustments)).toBeCloseTo(expected, 5)
+    expect(equityBefore(cutoff, netByDate(), adjustments, 0)).toBeCloseTo(expected, 5)
+  })
+
+  it('offsets every cutoff by the account opening balance', () => {
+    // Dateless: the opening capital is part of the baseline no matter how
+    // early or late the window starts.
+    expect(equityBefore('2026-04-01', netByDate(), adjustments, 50_000)).toBeCloseTo(50_000, 5)
+    expect(equityBefore('2026-04-09', netByDate(), adjustments, 50_000)).toBeCloseTo(49_820.5, 5)
   })
 
   it('is unaffected by dates at or after the cutoff', () => {
@@ -150,10 +157,11 @@ describe('equityBefore', () => {
       [winningTrade('2026-04-01'), winningTrade('2026-09-01')],
       overrides,
     )
-    expect(equityBefore('2026-04-02', withFuture, adjustments)).toBeCloseTo(195.5, 5)
+    expect(equityBefore('2026-04-02', withFuture, adjustments, 0)).toBeCloseTo(195.5, 5)
   })
 
-  it('is 0 for an account with no activity', () => {
-    expect(equityBefore('2026-04-02', new Map(), [])).toBe(0)
+  it('is the opening balance for an account with no activity', () => {
+    expect(equityBefore('2026-04-02', new Map(), [], 0)).toBe(0)
+    expect(equityBefore('2026-04-02', new Map(), [], 50_000)).toBe(50_000)
   })
 })

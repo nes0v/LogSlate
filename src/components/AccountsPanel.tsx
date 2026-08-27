@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Check, Trash2 } from 'lucide-react'
 import {
+  cloneAccount,
   countAccountData,
   createAccount,
   deleteAccount,
@@ -9,7 +10,10 @@ import type { Account } from '@/db/types'
 import { useActiveAccountId } from '@/lib/active-account'
 import { useConfirm } from '@/components/ConfirmDialog'
 import { inputClassCompact as inputClass } from '@/components/form/Field'
+import { NumberInput } from '@/components/form/NumberInput'
+import { Select } from '@/components/form/Select'
 import { BTN_ACCENT } from '@/components/form/buttonClass'
+import { formatUsd } from '@/lib/money'
 import { errorMessage } from '@/lib/utils'
 
 interface AccountsPanelProps {
@@ -20,13 +24,27 @@ export function AccountsPanel({ accounts }: AccountsPanelProps) {
   const activeId = useActiveAccountId()
   const confirm = useConfirm()
   const [newName, setNewName] = useState('')
+  const [newBalance, setNewBalance] = useState<number | null>(null)
+  const [copyFrom, setCopyFrom] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  // Deleting the account that's selected as the clone source leaves a stale id
+  // in state: the dropdown renders blank (its option is gone) while submit
+  // would still clone from it and fail. Reading through the live list keeps
+  // what's shown and what's used the same thing.
+  const copySource = accounts.some(a => a.id === copyFrom) ? copyFrom : null
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
     try {
-      await createAccount({ name: newName })
+      // Blank balance means an unfunded account that gets deposited into
+      // later — the pre-existing behaviour, so it stays the default.
+      const draft = { name: newName, starting_balance: newBalance ?? 0 }
+      if (copySource) await cloneAccount(draft, copySource)
+      else await createAccount(draft)
       setNewName('')
+      setNewBalance(null)
+      setCopyFrom(null)
       setError(null)
     } catch (err) {
       setError(errorMessage(err))
@@ -72,22 +90,49 @@ export function AccountsPanel({ accounts }: AccountsPanelProps) {
           Names are fixed at creation, they map to the Drive screenshot folder.
         </p>
 
+        {/* Wraps rather than sharing a fixed grid: two labelled fields plus the
+            button don't fit a phone row, and the sibling adjustments form
+            already solves it this way. */}
         <form
           onSubmit={handleCreate}
-          className="bg-(--color-panel-2) rounded-(--radius) p-3 grid grid-cols-[1fr_auto] gap-3 items-end"
+          className="bg-(--color-panel-2) rounded-(--radius) p-3 flex flex-wrap gap-3 items-end"
         >
-          <input
-            type="text"
-            value={newName}
-            onChange={e => setNewName(e.target.value)}
-            placeholder="Account..."
-            aria-label="New account name"
-            className={inputClass}
-          />
+          <label className="text-xs text-(--color-text-dim) space-y-2 flex-1 min-w-[8rem]">
+            <div>Name</div>
+            <input
+              type="text"
+              value={newName}
+              onChange={e => setNewName(e.target.value)}
+              placeholder="Account..."
+              aria-label="New account name"
+              className={inputClass}
+            />
+          </label>
+          <label className="text-xs text-(--color-text-dim) space-y-2 flex-1 min-w-[8rem]">
+            <div>Starting balance (USD)</div>
+            <NumberInput
+              value={newBalance}
+              onChange={setNewBalance}
+              placeholder="50000"
+              className={inputClass}
+            />
+          </label>
+          {/* Copies the source account's setup — models, symbols and progress
+              rules — and nothing else. Cloned rules arrive switched off so they
+              can be reworded before they start counting. */}
+          <label className="text-xs text-(--color-text-dim) space-y-2 flex-1 min-w-[8rem]">
+            <div>Copy setup from</div>
+            <Select
+              value={copySource}
+              onChange={setCopyFrom}
+              options={accounts.map(a => ({ value: a.id, label: a.name }))}
+              ariaLabel="Copy setup from account"
+            />
+          </label>
           <button type="submit" className={BTN_ACCENT}>
             Add
           </button>
-          {error && <div className="col-span-2 text-xs text-(--color-loss)">{error}</div>}
+          {error && <div className="w-full text-xs text-(--color-loss)">{error}</div>}
         </form>
 
         {list.length > 0 && (
@@ -103,6 +148,11 @@ export function AccountsPanel({ accounts }: AccountsPanelProps) {
                     >
                       <td className="px-3 py-2">
                         <span className="truncate">{a.name}</span>
+                      </td>
+                      {/* The balance is fixed at creation, so this row is the
+                          only place it's ever visible. */}
+                      <td className="px-3 py-2 text-right font-mono tabular-nums text-xs text-(--color-text-dim) whitespace-nowrap">
+                        {formatUsd(a.starting_balance)}
                       </td>
                       <td className="px-3 py-2 w-10 text-right">
                         {isActive ? (

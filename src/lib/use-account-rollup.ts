@@ -2,13 +2,15 @@ import { useMemo } from 'react'
 import { listAdjustments, listAllTrades, listDayPnlOverrides } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
 import { useAccountQuery } from '@/lib/use-account-query'
+import { useStartingBalance } from '@/lib/use-starting-balance'
 import { signedAdjustment } from '@/lib/trade-stats'
 import { netPnlByDate, sumNetPnl } from '@/lib/day-pnl'
 
 export interface AccountRollup {
-  /** All signed adjustments plus cumulative net PNL across every trade in the
-   *  active account. `undefined` until every underlying query has resolved —
-   *  the caller renders nothing (or a placeholder) rather than flashing $0. */
+  /** The account's opening capital plus all signed adjustments plus cumulative
+   *  net PNL across every trade in the active account. `undefined` until every
+   *  underlying query has resolved — the caller renders nothing (or a
+   *  placeholder) rather than flashing $0. */
   equity: number | undefined
   /** Most recent date carrying activity: the later of the newest trade date
    *  and the newest day-override date. `null` when the account has neither,
@@ -24,7 +26,9 @@ export interface AccountRollup {
  * Both values fall out of the same `netPnlByDate` map, so they share one set of
  * subscriptions. That matters because this is mounted in `Layout` and therefore
  * runs on every page: deriving the activity anchor here is free, where querying
- * for it separately meant a second scan of the days table app-wide.
+ * for it separately meant a second scan of the days table app-wide. The one
+ * extra subscription is the account row itself (`useStartingBalance`), a
+ * primary-key `get` rather than a table scan.
  *
  * Queries go through `useAccountQuery`, so an account switch reports
  * `undefined` instead of briefly handing back the previous account's rows. That
@@ -41,14 +45,20 @@ export function useAccountRollup(): AccountRollup {
   const adjustments = useAccountQuery(accountId, () => listAdjustments(accountId))
   const trades = useAccountQuery(accountId, () => listAllTrades(accountId))
   const overrides = useAccountQuery(accountId, () => listDayPnlOverrides(accountId))
+  const startingBalance = useStartingBalance()
   return useMemo(() => {
-    if (adjustments === undefined || trades === undefined || overrides === undefined) {
+    if (
+      adjustments === undefined ||
+      trades === undefined ||
+      overrides === undefined ||
+      startingBalance === undefined
+    ) {
       return { equity: undefined, lastActivityDate: undefined }
     }
     // Keyed by every date that has a trade AND every override date, so its
     // newest key is exactly the activity anchor.
     const byDate = netPnlByDate(trades, overrides)
-    let equity = 0
+    let equity = startingBalance
     for (const a of adjustments) equity += signedAdjustment(a)
     equity += sumNetPnl(byDate)
     let lastActivityDate: string | null = null
@@ -56,5 +66,5 @@ export function useAccountRollup(): AccountRollup {
       if (lastActivityDate === null || d > lastActivityDate) lastActivityDate = d
     }
     return { equity, lastActivityDate }
-  }, [adjustments, trades, overrides])
+  }, [adjustments, trades, overrides, startingBalance])
 }

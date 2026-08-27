@@ -35,6 +35,7 @@ import { useValidAccountFilters } from '@/lib/use-valid-account-filters'
 import { useAccountQuery } from '@/lib/use-account-query'
 import { aggregate, foldOverridesIntoStats, signedAdjustment, type AggregateStats } from '@/lib/trade-stats'
 import { equityBefore, netPnlByDate } from '@/lib/day-pnl'
+import { useStartingBalance } from '@/lib/use-starting-balance'
 import {
   classifyTrade,
   computePlannedRr,
@@ -168,6 +169,10 @@ export function ReportsRoute() {
   // (otherwise "No trades yet" flashes for one frame on navigation).
   const allTrades = useAccountQuery(accountId, () => listAllTrades(accountId))
   const allAdjustments = useAccountQuery(accountId, () => listAdjustments(accountId))
+  // The account's opening capital — the baseline `advStartingEquity` starts
+  // from, so it joins the `loaded` gate below rather than arriving a render late
+  // and shifting every drawdown percentage under the report.
+  const startingBalance = useStartingBalance()
   // Resolved at the route level and handed to the filter bar, which used to
   // open its own subscription for this (and for `allTrades`). Same query count,
   // but account-tagged, so an account switch can't leave the Model dropdown
@@ -180,7 +185,10 @@ export function ReportsRoute() {
   const { overridesByDate, feesOverridesByDate, rangeReady, defaultWindow, filters } =
     useDefaultRangeFilters(accountId, urlFilters)
   const loaded =
-    allTrades !== undefined && allAdjustments !== undefined && rangeReady
+    allTrades !== undefined &&
+    allAdjustments !== undefined &&
+    rangeReady &&
+    startingBalance !== undefined
   // Same split as Overview: the filter bar paints as soon as the default window
   // resolves, the report body follows a beat later, so building the tab's
   // charts and tables never holds the date pickers on "Any".
@@ -249,8 +257,11 @@ export function ReportsRoute() {
     [allTrades, overridesByDate],
   )
   const advStartingEquity = useMemo(
-    () => (rangeStart ? equityBefore(rangeStart, netByDate, allAdjustments ?? []) : 0),
-    [netByDate, allAdjustments, rangeStart],
+    () =>
+      rangeStart
+        ? equityBefore(rangeStart, netByDate, allAdjustments ?? [], startingBalance ?? 0)
+        : 0,
+    [netByDate, allAdjustments, rangeStart, startingBalance],
   )
   const advAdjByDate = useMemo(() => {
     const m = new Map<string, number>()

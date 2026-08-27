@@ -47,6 +47,7 @@ import { useAccountQuery } from '@/lib/use-account-query'
 import { firstExecutionMs } from '@/lib/trade-math'
 import { adjustmentsByDate, aggregate, computeCandles, foldOverridesIntoStats, signedAdjustment, type AggregateStats } from '@/lib/trade-stats'
 import { equityBefore, netPnlByDate } from '@/lib/day-pnl'
+import { useStartingBalance } from '@/lib/use-starting-balance'
 import { useChartAdjustmentPrefs } from '@/lib/chart-adjustment-prefs'
 import {
   bucketByTimeframe,
@@ -170,6 +171,10 @@ export function OverviewRoute() {
   // a single frame and then snaps to the actual content.
   const allTrades = useAccountQuery(accountId, () => listAllTrades(accountId))
   const allAdjustments = useAccountQuery(accountId, () => listAdjustments(accountId))
+  // The account's opening capital — every baseline below starts here rather
+  // than at 0, so it belongs in the `loaded` gate: arriving a render late would
+  // redraw the whole curve from zero to funded.
+  const startingBalance = useStartingBalance()
   // Models are resolved once at the route level so trade rows render
   // with the right name on first paint (instead of flashing "gambling"
   // before the lookup map populates).
@@ -187,7 +192,8 @@ export function OverviewRoute() {
     allTrades !== undefined &&
     allAdjustments !== undefined &&
     rangeReady &&
-    models !== undefined
+    models !== undefined &&
+    startingBalance !== undefined
   // The filter bar is cheap; everything below it is not. Without this they
   // share a commit, so the date pickers can't repaint until the whole page —
   // trade table included — has rendered, and the "Any" placeholder lingers for
@@ -290,8 +296,11 @@ export function OverviewRoute() {
   // then snaps in with real data). Now everything is ready when the
   // page-level `loaded` gate opens.
   const compositeStartingEquity = useMemo(
-    () => (rangeStart ? equityBefore(rangeStart, netByDate, allAdjustments ?? []) : 0),
-    [netByDate, allAdjustments, rangeStart],
+    () =>
+      rangeStart
+        ? equityBefore(rangeStart, netByDate, allAdjustments ?? [], startingBalance ?? 0)
+        : 0,
+    [netByDate, allAdjustments, rangeStart, startingBalance],
   )
   const compositeAdjByDate = useMemo(() => {
     const m = new Map<string, number>()
@@ -359,14 +368,19 @@ export function OverviewRoute() {
   // not a date-keyed Dexie query, which would serve the previous start date's
   // value for one render and shift the whole equity curve for a frame. In
   // practice this start date is the account's earliest activity (so the value
-  // is 0), but it stops being so as soon as a symbol/model filter excludes the
-  // earliest trades.
+  // is just its opening balance), but it stops being so as soon as a
+  // symbol/model filter excludes the earliest trades.
   const chartStartingEquity = useMemo(
     () =>
       tfChartRange
-        ? equityBefore(format(tfChartRange.start, 'yyyy-MM-dd'), netByDate, allAdjustments ?? [])
+        ? equityBefore(
+            format(tfChartRange.start, 'yyyy-MM-dd'),
+            netByDate,
+            allAdjustments ?? [],
+            startingBalance ?? 0,
+          )
         : 0,
-    [tfChartRange, netByDate, allAdjustments],
+    [tfChartRange, netByDate, allAdjustments, startingBalance],
   )
 
   const tfBuckets = useMemo(() => {

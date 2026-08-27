@@ -8,6 +8,7 @@ import type {
   EquityAdjustment,
   Model,
   PendingUpload,
+  ProgressRule,
   TradeDraft,
   TradeRecord,
   TradingSymbol,
@@ -297,22 +298,111 @@ export async function listAccounts(): Promise<Account[]> {
   })
 }
 
-export async function createAccount(draft: AccountDraft): Promise<Account> {
+export async function getAccount(id: string): Promise<Account | undefined> {
+  return db.accounts.get(id)
+}
+
+// Validates a draft and builds the row, without touching the DB. Split out so
+// the clone path can run the same checks and then insert inside its own
+// transaction — an account must never land without the setup it was cloned for.
+async function buildAccount(draft: AccountDraft): Promise<Account> {
   const ts = now()
   const name = draft.name.trim()
   if (!name) throw new Error('Account name is required.')
   const id = slugifyAccountName(name)
   if (!id) throw new Error('Account name must contain letters or numbers.')
+  const balance = draft.starting_balance
+  if (!Number.isFinite(balance) || balance < 0) {
+    throw new Error('Starting balance must be zero or a positive number.')
+  }
   const existing = await db.accounts.get(id)
   if (existing) throw new Error('An account with this name already exists.')
-  const rec: Account = {
+  return {
     id,
     name,
     is_main: false,
+    starting_balance: balance,
     created_at: ts,
     updated_at: ts,
   }
+}
+
+export async function createAccount(draft: AccountDraft): Promise<Account> {
+  const rec = await buildAccount(draft)
   await db.accounts.add(rec)
+  return rec
+}
+
+/**
+ * Creates an account pre-loaded with another account's SETUP — its models,
+ * symbols and progress rules. History (trades, adjustments, day notes,
+ * progress checks) is never copied: the point is a fresh account that's
+ * immediately usable, e.g. the next eval on the same playbook.
+ *
+ * Every copied row gets a fresh id. `models`, `symbols` and `progress_rules`
+ * are single tables keyed on `&id`, so reusing the source ids would be a
+ * primary-key collision rather than a copy.
+ *
+ * One transaction across all four tables, so a failure part-way can't leave a
+ * new account sitting there with half the setup it was cloned for.
+ */
+export async function cloneAccount(
+  draft: AccountDraft,
+  sourceAccountId: string,
+): Promise<Account> {
+  const rec = await buildAccount(draft)
+  if (!(await db.accounts.get(sourceAccountId))) {
+    throw new Error('The account to copy from no longer exists.')
+  }
+  const [models, symbols, rules] = await Promise.all([
+    listModels(sourceAccountId),
+    listSymbols(sourceAccountId),
+    db.progress_rules.where('account_id').equals(sourceAccountId).toArray(),
+  ])
+  const ts = rec.created_at
+  const stamp = { account_id: rec.id, created_at: ts, updated_at: ts }
+
+  const clonedModels: Model[] = models.map(m => ({
+    ...m,
+    ...stamp,
+    id: newId(),
+    // Group ids are embedded in the row rather than keyed in a table, so a
+    // duplicate wouldn't break anything — but they're used as React keys and
+    // re-minting them is free.
+    groups: m.groups.map(g => ({ ...g, id: newId() })),
+  }))
+  const clonedSymbols: TradingSymbol[] = symbols.map(s => ({
+    ...s,
+    ...stamp,
+    id: newId(),
+  }))
+  // `periods` is the SOURCE account's activity history — copying it would give
+  // the new account rules that claim to have been live for months, counting
+  // days before it existed against its adherence denominator. Cloned rules
+  // arrive switched off (no periods, exactly like a hand-added rule) so they
+  // can be reworded before being turned on; toggling one opens its first
+  // period from that day. Hidden rules are skipped: a soft-deleted rule exists
+  // only to keep old checks honest, and a fresh account has none.
+  const clonedRules: ProgressRule[] = rules
+    .filter(r => r.hidden !== true)
+    .map(r => {
+      const copy: ProgressRule = { ...r, ...stamp, id: newId(), periods: [] }
+      // Drop the soft-delete flag outright rather than carrying `false` — the
+      // rest of the app treats "absent" and "not hidden" as the same state.
+      delete copy.hidden
+      return copy
+    })
+
+  await db.transaction(
+    'rw',
+    [db.accounts, db.models, db.symbols, db.progress_rules],
+    async () => {
+      await db.accounts.add(rec)
+      if (clonedModels.length > 0) await db.models.bulkAdd(clonedModels)
+      if (clonedSymbols.length > 0) await db.symbols.bulkAdd(clonedSymbols)
+      if (clonedRules.length > 0) await db.progress_rules.bulkAdd(clonedRules)
+    },
+  )
   return rec
 }
 

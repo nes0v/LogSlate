@@ -41,10 +41,16 @@ export function sumNetPnl(
 }
 
 /**
- * Account equity immediately before `dateKey`: every signed cash flow plus
- * cumulative net PNL from all activity strictly earlier than that date. The
- * single source for every "equity entering this window" baseline — the
- * calendar's per-day scratch band, Overview's composite and chart baselines.
+ * Account equity immediately before `dateKey`: the account's opening capital
+ * plus every signed cash flow and cumulative net PNL from all activity strictly
+ * earlier than that date. The single source for every "equity entering this
+ * window" baseline — the calendar's per-day scratch band, Overview's composite
+ * and chart baselines.
+ *
+ * `startingBalance` is `Account.starting_balance` and is dateless on purpose:
+ * it's where the account begins, so it belongs to every window regardless of
+ * cutoff. Required rather than defaulted — a call site that silently fell back
+ * to 0 would draw a funded account's curve from zero.
  *
  * Reads off maps the caller already holds rather than querying by date. That's
  * deliberate: a Dexie query keyed on a cutoff date hands back the PREVIOUS
@@ -61,8 +67,9 @@ export function equityBefore(
   dateKey: string,
   netByDate: Map<string, number>,
   adjustments: EquityAdjustment[],
+  startingBalance: number,
 ): number {
-  let eq = 0
+  let eq = startingBalance
   for (const a of adjustments) {
     if (a.date < dateKey) eq += signedAdjustment(a)
   }

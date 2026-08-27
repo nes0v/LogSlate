@@ -37,6 +37,7 @@ function accountRecord(overrides: Partial<Account> = {}): Account {
     id: 'alpha',
     name: 'Alpha',
     is_main: false,
+    starting_balance: 0,
     created_at: now,
     updated_at: now,
     ...overrides,

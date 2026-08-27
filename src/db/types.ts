@@ -65,6 +65,12 @@ export interface Account {
   id: string
   name: string
   is_main: boolean
+  /** Capital the account opens with, before any trade or cash flow. Fixed at
+   *  creation. Deliberately NOT an adjustment row: a prop-firm eval starts at
+   *  its size without money moving, so counting it as a deposit would inflate
+   *  the deposit totals and draw a cash-flow marker for a transfer that never
+   *  happened. Every equity baseline starts here instead of at 0. */
+  starting_balance: number
   created_at: string
   updated_at: string
 }
@@ -72,7 +78,7 @@ export interface Account {
 // The Main account uses a fixed id so it stays identical across devices on sync.
 export const MAIN_ACCOUNT_ID = 'main'
 
-export type AccountDraft = Pick<Account, 'name'>
+export type AccountDraft = Pick<Account, 'name' | 'starting_balance'>
 
 export const EMOTIONS = [
   'calm',

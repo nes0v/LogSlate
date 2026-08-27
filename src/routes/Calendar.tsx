@@ -16,6 +16,7 @@ import { useActiveAccountId } from '@/lib/active-account'
 import { classifyTrade, computeNetPnl } from '@/lib/trade-math'
 import { classifyDayPnl } from '@/lib/advanced-stats'
 import { equityBefore } from '@/lib/day-pnl'
+import { useStartingBalance } from '@/lib/use-starting-balance'
 import { signedAdjustment } from '@/lib/trade-stats'
 import { listAdjustments, listAllTrades } from '@/db/queries'
 import { useAccountQuery } from '@/lib/use-account-query'
@@ -66,6 +67,10 @@ export function CalendarRoute() {
   // Needed so per-day equity walks pick up mid-month deposits / withdrawals
   // when applying the ±0.4% scratch band.
   const adjustments = useAccountQuery(accountId, () => listAdjustments(accountId))
+  // The account's opening capital, which the grid's equity walk starts from —
+  // on a funded account it's what makes the ±0.4% band a real number instead of
+  // the $8 floor.
+  const startingBalance = useStartingBalance()
 
   // Everything per-trade happens HERE, keyed only on the data. The month is
   // deliberately not a dep: paging through months must never re-walk the
@@ -122,9 +127,9 @@ export function CalendarRoute() {
   // equity for the scratch check. Derived from the rows already in hand — a
   // query keyed on the cutoff date would reintroduce the stale first frame.
   const gridStartEquity = useMemo(() => {
-    if (!trades || !dayRows || !adjustments) return undefined
-    return equityBefore(rangeStart, netByDate, adjustments)
-  }, [trades, dayRows, adjustments, netByDate, rangeStart])
+    if (!trades || !dayRows || !adjustments || startingBalance === undefined) return undefined
+    return equityBefore(rangeStart, netByDate, adjustments, startingBalance)
+  }, [trades, dayRows, adjustments, startingBalance, netByDate, rangeStart])
 
   // Gate the month grid on equity too — otherwise the first paint
   // classifies near-threshold days with `band = $8` (equity defaults

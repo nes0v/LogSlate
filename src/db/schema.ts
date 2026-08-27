@@ -89,6 +89,14 @@ class LogslateDB extends Dexie {
     // v19: a removed free-text trade field was deleted from every stored row.
     // The one-time upgrade has run and been stripped per MIGRATION-PATTERN.
     this.version(19)
+
+    // v20: accounts gain `starting_balance` (unindexed). Until now the only way
+    // to fund an account was a seed `deposit`, which is a lie for a prop-firm
+    // eval — nothing was transferred. The one-time upgrade folded each
+    // account's single seed deposit into its opening balance and dropped the
+    // row, leaving the adjustments ledger holding only real cash movements. It
+    // has run and been stripped per MIGRATION-PATTERN.
+    this.version(20)
   }
 }
 
@@ -105,6 +113,7 @@ export async function ensureMainAccount(): Promise<void> {
     id: MAIN_ACCOUNT_ID,
     name: 'main',
     is_main: true,
+    starting_balance: 0,
     created_at: ts,
     updated_at: ts,
   })

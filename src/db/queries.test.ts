@@ -3,14 +3,17 @@ import { db, ensureMainAccount } from './schema'
 import {
   addDayScreenshot,
   addPendingDayScreenshot,
+  cloneAccount,
   countAccountData,
   countTradesUsingModel,
   createAccount,
+  createSymbol,
   createAdjustment,
   createTrade,
   deleteAccount,
   deleteAdjustment,
   deleteTrade,
+  getAccount,
   getDay,
   getDayNote,
   getTrade,
@@ -19,6 +22,7 @@ import {
   listAllTrades,
   listDayScreenshotsFor,
   listModels,
+  listSymbols,
   getDayPnlOverride,
   getDayFeesOverride,
   listDayOverrides,
@@ -43,6 +47,7 @@ beforeEach(async () => {
   await db.days.clear()
   await db.pending_uploads.clear()
   await db.models.clear()
+  await db.symbols.clear()
   await db.progress_rules.clear()
   await db.progress_checks.clear()
   await ensureMainAccount()
@@ -268,29 +273,160 @@ describe('slugifyAccountName', () => {
 
 describe('account queries', () => {
   it('createAccount derives id from the name slug and is not main', async () => {
-    const a = await createAccount({ name: 'Funded Challenge' })
+    const a = await createAccount({ name: 'Funded Challenge', starting_balance: 0 })
     expect(a.id).toBe('funded-challenge')
     expect(a.is_main).toBe(false)
     expect(a.created_at).toBe(a.updated_at)
   })
 
   it('createAccount rejects an empty or punctuation-only name', async () => {
-    await expect(createAccount({ name: '   ' })).rejects.toThrow(/required/)
-    await expect(createAccount({ name: '!!!' })).rejects.toThrow(/letters or numbers/)
+    await expect(createAccount({ name: '   ', starting_balance: 0 })).rejects.toThrow(/required/)
+    await expect(createAccount({ name: '!!!', starting_balance: 0 })).rejects.toThrow(/letters or numbers/)
+  })
+
+  it('createAccount stores the opening balance', async () => {
+    const a = await createAccount({ name: 'Eval', starting_balance: 50_000 })
+    expect(a.starting_balance).toBe(50_000)
+    expect((await getAccount('eval'))?.starting_balance).toBe(50_000)
+  })
+
+  it('createAccount rejects a negative or non-finite opening balance', async () => {
+    await expect(createAccount({ name: 'Neg', starting_balance: -1 })).rejects.toThrow(
+      /zero or a positive number/,
+    )
+    await expect(createAccount({ name: 'Nan', starting_balance: NaN })).rejects.toThrow(
+      /zero or a positive number/,
+    )
   })
 
   it('createAccount rejects a slug that already exists', async () => {
-    await createAccount({ name: 'Alpha' })
-    await expect(createAccount({ name: 'alpha' })).rejects.toThrow(/already exists/)
+    await createAccount({ name: 'Alpha', starting_balance: 0 })
+    await expect(createAccount({ name: 'alpha', starting_balance: 0 })).rejects.toThrow(/already exists/)
   })
 
   it('createAccount rejects reusing the Main slug', async () => {
-    await expect(createAccount({ name: 'Main' })).rejects.toThrow(/already exists/)
+    await expect(createAccount({ name: 'Main', starting_balance: 0 })).rejects.toThrow(/already exists/)
+  })
+
+  describe('cloneAccount', () => {
+    // A source account carrying one of everything the clone touches, plus a
+    // hidden rule and a trade that must NOT come along.
+    async function seedSource() {
+      const ts = '2026-01-02T00:00:00.000Z'
+      await db.models.put({
+        id: 'src-model',
+        account_id: MAIN_ACCOUNT_ID,
+        name: 'Breakout',
+        description: 'the playbook',
+        sessions: ['am'],
+        groups: [{ id: 'grp-1', name: 'Entry', rules: ['wait for the retest'] }],
+        draft: false,
+        sort: 3,
+        created_at: ts,
+        updated_at: ts,
+      })
+      await createSymbol(
+        {
+          name: 'NQ',
+          description: '',
+          point_value: 20,
+          tick_size: 0.25,
+          fee_per_side: 1.24,
+          scratch_handles: 2,
+          draft: false,
+          sort: 1,
+        },
+        MAIN_ACCOUNT_ID,
+      )
+      await db.progress_rules.bulkPut([
+        {
+          id: 'src-rule',
+          account_id: MAIN_ACCOUNT_ID,
+          text: 'no trades before 9:45',
+          periods: [{ from: '2026-01-02', until: null }],
+          sort: 2,
+          created_at: ts,
+          updated_at: ts,
+        },
+        {
+          id: 'src-hidden',
+          account_id: MAIN_ACCOUNT_ID,
+          text: 'retired rule',
+          periods: [{ from: '2025-01-02', until: '2025-06-01' }],
+          hidden: true,
+          sort: 1,
+          created_at: ts,
+          updated_at: ts,
+        },
+      ])
+      await createTrade(tradeDraft())
+    }
+
+    it('copies models, symbols and rules under fresh ids', async () => {
+      await seedSource()
+      const clone = await cloneAccount(
+        { name: 'Eval 2', starting_balance: 50_000 },
+        MAIN_ACCOUNT_ID,
+      )
+
+      const models = await listModels(clone.id)
+      expect(models).toHaveLength(1)
+      expect(models[0].id).not.toBe('src-model')
+      expect(models[0].name).toBe('Breakout')
+      expect(models[0].sort).toBe(3)
+      expect(models[0].groups[0].rules).toEqual(['wait for the retest'])
+      expect(models[0].groups[0].id).not.toBe('grp-1')
+
+      const symbols = await listSymbols(clone.id)
+      expect(symbols.map(s => s.name)).toEqual(['NQ'])
+      expect(symbols[0].point_value).toBe(20)
+
+      // Source keeps its own copies — a clone is never a move.
+      expect(await listModels(MAIN_ACCOUNT_ID)).toHaveLength(1)
+      expect(await listSymbols(MAIN_ACCOUNT_ID)).toHaveLength(1)
+    })
+
+    it('cloned rules arrive switched off, skipping hidden ones', async () => {
+      await seedSource()
+      const clone = await cloneAccount({ name: 'Eval 2', starting_balance: 0 }, MAIN_ACCOUNT_ID)
+      const rules = await db.progress_rules.where('account_id').equals(clone.id).toArray()
+      expect(rules).toHaveLength(1)
+      expect(rules[0].text).toBe('no trades before 9:45')
+      // No periods, so the rule counts toward nothing until the user enables it.
+      expect(rules[0].periods).toEqual([])
+      expect(rules[0].sort).toBe(2)
+    })
+
+    it('copies no history', async () => {
+      await seedSource()
+      const clone = await cloneAccount({ name: 'Eval 2', starting_balance: 0 }, MAIN_ACCOUNT_ID)
+      const counts = await countAccountData(clone.id)
+      expect(counts.trades).toBe(0)
+      expect(counts.adjustments).toBe(0)
+      expect(counts.days).toBe(0)
+      expect(counts.progressChecks).toBe(0)
+    })
+
+    it('leaves nothing behind when the name is rejected', async () => {
+      await seedSource()
+      await expect(
+        cloneAccount({ name: 'main', starting_balance: 0 }, MAIN_ACCOUNT_ID),
+      ).rejects.toThrow(/already exists/)
+      expect(await db.accounts.count()).toBe(1)
+      expect(await db.models.count()).toBe(1)
+    })
+
+    it('rejects an unknown source account', async () => {
+      await expect(
+        cloneAccount({ name: 'Eval 2', starting_balance: 0 }, 'nope'),
+      ).rejects.toThrow(/no longer exists/)
+      expect(await db.accounts.count()).toBe(1)
+    })
   })
 
   it('listAccounts puts main first then alphabetical', async () => {
-    await createAccount({ name: 'Zulu' })
-    await createAccount({ name: 'Alpha' })
+    await createAccount({ name: 'Zulu', starting_balance: 0 })
+    await createAccount({ name: 'Alpha', starting_balance: 0 })
     const all = await listAccounts()
     expect(all.map(a => a.name)).toEqual(['main', 'Alpha', 'Zulu'])
   })
@@ -301,14 +437,14 @@ describe('account queries', () => {
   })
 
   it('deleteAccount allows removing Main when other accounts exist', async () => {
-    await createAccount({ name: 'Alpha' })
+    await createAccount({ name: 'Alpha', starting_balance: 0 })
     await deleteAccount(MAIN_ACCOUNT_ID)
     const remaining = await listAccounts()
     expect(remaining.map(a => a.name)).toEqual(['Alpha'])
   })
 
   it('deleteAccount cascades to trades and adjustments', async () => {
-    const a = await createAccount({ name: 'Alpha' })
+    const a = await createAccount({ name: 'Alpha', starting_balance: 0 })
     await createTrade(tradeDraft(), a.id)
     await createTrade(tradeDraft(), a.id)
     await createTrade(tradeDraft(), MAIN_ACCOUNT_ID)
@@ -323,7 +459,7 @@ describe('account queries', () => {
   })
 
   it('deleteAccount cascades to days and pending_uploads', async () => {
-    const a = await createAccount({ name: 'Alpha' })
+    const a = await createAccount({ name: 'Alpha', starting_balance: 0 })
     const now = new Date().toISOString()
     await db.days.put({
       id: `${a.id}:2026-04-20`,
@@ -367,7 +503,7 @@ describe('account queries', () => {
   })
 
   it('deleteAccount cascades to models, progress_rules, and progress_checks', async () => {
-    const a = await createAccount({ name: 'Alpha' })
+    const a = await createAccount({ name: 'Alpha', starting_balance: 0 })
     const now = new Date().toISOString()
     await db.models.put({
       id: 'm-alpha',
@@ -439,7 +575,7 @@ describe('account queries', () => {
   })
 
   it('deleteAccount clears the account-scoped localStorage keys', async () => {
-    const a = await createAccount({ name: 'Alpha' })
+    const a = await createAccount({ name: 'Alpha', starting_balance: 0 })
     localStorage.setItem(`logslate:equity_view_default:${a.id}`, 'candles')
     localStorage.setItem(`logslate:drive:screenshots_folder:${a.id}`, 'folder123')
     localStorage.setItem(`logslate:drive:month_folders:${a.id}`, '{"2026-04":"m1"}')
@@ -455,7 +591,7 @@ describe('account queries', () => {
   })
 
   it('countAccountData reports counts for every table the cascade touches', async () => {
-    const a = await createAccount({ name: 'Alpha' })
+    const a = await createAccount({ name: 'Alpha', starting_balance: 0 })
     await createTrade(tradeDraft(), a.id)
     await createTrade(tradeDraft(), a.id)
     await createAdjustment(adjustmentDraft(), a.id)
@@ -783,7 +919,7 @@ describe('ensureMainAccount', () => {
 
   it('does not resurrect Main when another account exists (deleted-Main case)', async () => {
     // Simulate the user having deleted Main after creating another account.
-    await createAccount({ name: 'Alpha' })
+    await createAccount({ name: 'Alpha', starting_balance: 0 })
     await db.accounts.delete(MAIN_ACCOUNT_ID)
     await ensureMainAccount()
     const all = await listAccounts()
@@ -889,7 +1025,7 @@ describe('model queries', () => {
   })
 
   it('countTradesUsingModel scopes by account', async () => {
-    await createAccount({ name: 'Alt' })
+    await createAccount({ name: 'Alt', starting_balance: 0 })
     const altId = (await listAccounts()).find(a => a.name === 'Alt')!.id
     await createTrade(tradeDraft({ model_id: 'shared' }))
     await createTrade(tradeDraft({ model_id: 'shared' }), altId)
