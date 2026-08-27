@@ -38,6 +38,7 @@ import {
   updateTrade,
 } from './queries'
 import { MAIN_ACCOUNT_ID } from './types'
+import { readSymbolFilterCache } from '@/lib/symbol-filter-cache'
 import { adjustmentDraft, tradeDraft } from '@/test/fixtures'
 
 beforeEach(async () => {
@@ -50,6 +51,10 @@ beforeEach(async () => {
   await db.symbols.clear()
   await db.progress_rules.clear()
   await db.progress_checks.clear()
+  // Account ids are name slugs, so tests reusing a name reuse its id — and the
+  // per-account localStorage caches (symbol filter, Drive folders) are keyed on
+  // exactly that. Without this, one test's cache is visible to the next.
+  localStorage.clear()
   await ensureMainAccount()
 })
 afterEach(async () => {
@@ -301,11 +306,21 @@ describe('account queries', () => {
 
   it('createAccount rejects a slug that already exists', async () => {
     await createAccount({ name: 'Alpha', starting_balance: 0 })
-    await expect(createAccount({ name: 'alpha', starting_balance: 0 })).rejects.toThrow(/already exists/)
+    // The message names the account that was actually hit — the collision is
+    // on the slug, so the two names need not look alike.
+    await expect(createAccount({ name: 'alpha', starting_balance: 0 })).rejects.toThrow(
+      /collides with the existing account "Alpha"/,
+    )
+    // Space and hyphen both collapse to the same separator, so these two
+    // visibly different names land on the identical slug.
+    await createAccount({ name: 'Eval 1', starting_balance: 0 })
+    await expect(createAccount({ name: 'Eval-1', starting_balance: 0 })).rejects.toThrow(
+      /collides with the existing account "Eval 1"/,
+    )
   })
 
   it('createAccount rejects reusing the Main slug', async () => {
-    await expect(createAccount({ name: 'Main', starting_balance: 0 })).rejects.toThrow(/already exists/)
+    await expect(createAccount({ name: 'Main', starting_balance: 0 })).rejects.toThrow(/collides/)
   })
 
   describe('cloneAccount', () => {
@@ -397,6 +412,29 @@ describe('account queries', () => {
       expect(rules[0].sort).toBe(2)
     })
 
+    it('seeds the symbol filter cache so the clone paints its pills immediately', async () => {
+      await seedSource()
+      const clone = await cloneAccount({ name: 'Eval 2', starting_balance: 0 }, MAIN_ACCOUNT_ID)
+      const cached = readSymbolFilterCache(clone.id)
+      expect(cached?.map(s => s.name)).toEqual(['NQ'])
+      // Same rows that landed in the table, not the source's.
+      expect(cached?.[0].account_id).toBe(clone.id)
+    })
+
+    it('writes no cache entry when the source has no symbols', async () => {
+      await db.symbols.clear()
+      const clone = await cloneAccount({ name: 'Bare', starting_balance: 0 }, MAIN_ACCOUNT_ID)
+      // An empty cache reads the same as none, so writing one is a stray key.
+      expect(readSymbolFilterCache(clone.id)).toBeUndefined()
+    })
+
+    it('takes the balance from the draft, not from the source account', async () => {
+      await db.accounts.update(MAIN_ACCOUNT_ID, { starting_balance: 25_000 })
+      const clone = await cloneAccount({ name: 'Eval 2', starting_balance: 50_000 }, MAIN_ACCOUNT_ID)
+      expect(clone.starting_balance).toBe(50_000)
+      expect((await getAccount(MAIN_ACCOUNT_ID))?.starting_balance).toBe(25_000)
+    })
+
     it('copies no history', async () => {
       await seedSource()
       const clone = await cloneAccount({ name: 'Eval 2', starting_balance: 0 }, MAIN_ACCOUNT_ID)
@@ -411,7 +449,7 @@ describe('account queries', () => {
       await seedSource()
       await expect(
         cloneAccount({ name: 'main', starting_balance: 0 }, MAIN_ACCOUNT_ID),
-      ).rejects.toThrow(/already exists/)
+      ).rejects.toThrow(/collides/)
       expect(await db.accounts.count()).toBe(1)
       expect(await db.models.count()).toBe(1)
     })

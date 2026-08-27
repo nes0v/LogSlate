@@ -1,4 +1,5 @@
 import type { TradingSymbol } from '@/db/types'
+import { removeStorageKeysWithPrefix } from '@/lib/storage'
 
 // Per-account snapshot of the symbol list, backed by localStorage so the
 // Stats/Reports filter bar can render the Symbol pills on the very first frame
@@ -34,4 +35,12 @@ export function clearSymbolFilterCache(accountId: string): void {
   } catch {
     // Nothing to clean up if storage is unavailable.
   }
+}
+
+/** Drop every account's cached symbol list. For a backup restore, which swaps
+ *  the whole database out from under these snapshots — they describe symbols
+ *  that may no longer exist, and a per-account clear can't reach accounts the
+ *  restore removed. */
+export function clearAllSymbolFilterCaches(): void {
+  removeStorageKeysWithPrefix(SYMBOL_CACHE_PREFIX)
 }

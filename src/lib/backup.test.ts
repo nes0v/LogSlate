@@ -3,6 +3,8 @@ import { db, ensureMainAccount } from '@/db/schema'
 import { createAdjustment, createTrade, listAllTrades, listAdjustments } from '@/db/queries'
 import { MAIN_ACCOUNT_ID } from '@/db/types'
 import { exportBackup, importBackup } from './backup'
+import { readSymbolFilterCache } from '@/lib/symbol-filter-cache'
+import { readLastActivityDate } from '@/lib/last-activity-cache'
 import { adjustmentDraft, tradeDraft } from '@/test/fixtures'
 
 beforeEach(async () => {
@@ -110,6 +112,22 @@ describe('importBackup', () => {
     const result = await importBackup(file)
     expect(result.trades).toBe(0)
     expect(result.adjustments).toBe(0)
+  })
+
+  it('drops caches derived from the database it just replaced', async () => {
+    // Both are first-paint seeds read synchronously before any query resolves,
+    // so a stale one paints the PREVIOUS database's symbols and date window.
+    localStorage.setItem(
+      `logslate:symbol_filter_cache:${MAIN_ACCOUNT_ID}`,
+      JSON.stringify([{ id: 'gone', name: 'GONE' }]),
+    )
+    localStorage.setItem(`logslate:last_activity_date:${MAIN_ACCOUNT_ID}`, '2020-01-02')
+    const payload = { version: 3, trades: [], exported_at: new Date().toISOString() }
+    await importBackup(
+      new File([JSON.stringify(payload)], 'b.json', { type: 'application/json' }),
+    )
+    expect(readSymbolFilterCache(MAIN_ACCOUNT_ID)).toBeUndefined()
+    expect(readLastActivityDate(MAIN_ACCOUNT_ID)).toBeNull()
   })
 
   it('rejects malformed input', async () => {

@@ -116,6 +116,21 @@ describe('mergeById — accounts', () => {
     expect(merged[0].name).toBe('Beta')
   })
 
+  it('carries starting_balance across, newer side winning', () => {
+    // The v20 migration relied on exactly this: it rewrote every account row
+    // with a bumped updated_at so the funded local copy beats the pre-migration
+    // one still sitting in Drive.
+    const local = [
+      accountRecord({ id: 'eval', starting_balance: 50_000, updated_at: '2026-08-27T10:00:00Z' }),
+    ]
+    const remote = [
+      accountRecord({ id: 'eval', starting_balance: 0, updated_at: '2026-08-01T10:00:00Z' }),
+    ]
+    expect(mergeById(local, remote, new Set(['eval']))[0].starting_balance).toBe(50_000)
+    // ...and the same merge the other way round, so it isn't just local bias.
+    expect(mergeById(remote, local, new Set(['eval']))[0].starting_balance).toBe(50_000)
+  })
+
   it('drops a local-only account that was in last-synced (deleted remotely)', () => {
     const local = [accountRecord({ id: 'funded' })]
     const merged = mergeById(local, [], new Set(['funded']))

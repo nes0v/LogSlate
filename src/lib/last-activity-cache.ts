@@ -1,4 +1,9 @@
-import { loadJsonFromStorage, removeFromStorage, saveJsonToStorage } from '@/lib/storage'
+import {
+  loadJsonFromStorage,
+  removeFromStorage,
+  removeStorageKeysWithPrefix,
+  saveJsonToStorage,
+} from '@/lib/storage'
 import { isDateKey } from '@/lib/tz'
 
 // Per-account snapshot of the most recent activity date (the later of the last
@@ -48,4 +53,10 @@ export function writeLastActivityDate(accountId: string, date: string): void {
  *  blob doesn't outlive the data it mirrors. */
 export function clearLastActivityDate(accountId: string): void {
   removeFromStorage(keyFor(accountId))
+}
+
+/** Drop every account's cached activity anchor — see
+ *  `clearAllSymbolFilterCaches` for why a restore needs the sweeping version. */
+export function clearAllLastActivityDates(): void {
+  removeStorageKeysWithPrefix(PREFIX)
 }

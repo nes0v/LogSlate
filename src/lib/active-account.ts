@@ -3,8 +3,14 @@
 // external store so every component that reads the active id re-renders
 // atomically when it changes.
 //
-// Falls back to MAIN_ACCOUNT_ID whenever a remembered id points at an account
-// that no longer exists (e.g. it was deleted on another synced device).
+// Falls back to MAIN_ACCOUNT_ID only when nothing is remembered. It does NOT
+// verify the remembered id still resolves to a real account — that would mean
+// reading the accounts table, which this store deliberately doesn't know
+// about. Nothing can currently strand it: the panel refuses to delete the
+// active account, and this is a single-device app. If that ever changes, the
+// repair belongs where the account list loads, not here. Worth knowing because
+// a stranded id degrades quietly rather than loudly — `useStartingBalance`
+// resolves a missing account to a 0 opening balance.
 
 import { useSyncExternalStore } from 'react'
 import { MAIN_ACCOUNT_ID } from '@/db/types'

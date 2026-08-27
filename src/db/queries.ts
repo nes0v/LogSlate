@@ -15,7 +15,7 @@ import type {
   TradingSymbolDraft,
 } from '@/db/types'
 import { getActiveAccountId } from '@/lib/active-account'
-import { clearSymbolFilterCache } from '@/lib/symbol-filter-cache'
+import { clearSymbolFilterCache, writeSymbolFilterCache } from '@/lib/symbol-filter-cache'
 import { clearLastActivityDate } from '@/lib/last-activity-cache'
 
 function now(): string {
@@ -328,9 +328,14 @@ function newAccountRow(draft: AccountDraft): Account {
 // `db.accounts.add` would reject a duplicate id on its own, but as a raw Dexie
 // ConstraintError. Checking first — inside the caller's transaction, so the
 // answer can't go stale before the insert — is what makes the message readable.
+//
+// It names the existing account because what collides is the SLUG, not the
+// name: "Eval 1", "Eval-1" and "eval 1" all resolve to `eval-1`, so a bare
+// "already exists" reads as a lie when the two names plainly differ.
 async function assertSlugFree(id: string): Promise<void> {
-  if (await db.accounts.get(id)) {
-    throw new Error('An account with this name already exists.')
+  const existing = await db.accounts.get(id)
+  if (existing) {
+    throw new Error(`That name collides with the existing account "${existing.name}".`)
   }
 }
 
@@ -363,7 +368,7 @@ export async function cloneAccount(
   sourceAccountId: string,
 ): Promise<Account> {
   const rec = newAccountRow(draft)
-  await db.transaction(
+  const seededSymbols = await db.transaction(
     'rw',
     [db.accounts, db.models, db.symbols, db.progress_rules],
     async () => {
@@ -415,8 +420,18 @@ export async function cloneAccount(
       if (clonedModels.length > 0) await db.models.bulkAdd(clonedModels)
       if (clonedSymbols.length > 0) await db.symbols.bulkAdd(clonedSymbols)
       if (clonedRules.length > 0) await db.progress_rules.bulkAdd(clonedRules)
+      return clonedSymbols
     },
   )
+  // Seed the filter bar's first-paint cache from symbols we already hold — the
+  // mirror of `deleteAccount` clearing it. Without this the Symbol pills on a
+  // freshly cloned account flash "All" alone on the first reload, even though
+  // the symbols were copied a moment ago. Outside the transaction on purpose:
+  // a localStorage write must not be able to fail the DB work, and if the
+  // transaction threw we never get here to cache an account that doesn't
+  // exist. Nothing to seed for a source with no symbols — an empty cache reads
+  // the same as none, so writing one is just a stray key.
+  if (seededSymbols.length > 0) writeSymbolFilterCache(rec.id, seededSymbols)
   return rec
 }
 

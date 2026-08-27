@@ -5,6 +5,8 @@
 import type { EntityTable } from 'dexie'
 import { db, ensureMainAccount } from '@/db/schema'
 import { clearSyncState } from '@/lib/sync'
+import { clearAllSymbolFilterCaches } from '@/lib/symbol-filter-cache'
+import { clearAllLastActivityDates } from '@/lib/last-activity-cache'
 import type {
   Account,
   Day,
@@ -143,6 +145,15 @@ export async function importBackup(
   )
   // Ensure the main account exists even if the backup had no accounts array.
   await ensureMainAccount()
+
+  // Same reasoning as the sync ledger below: these localStorage snapshots are
+  // DERIVED from tables that were just swapped out, so they now describe data
+  // that may not exist. Both are first-paint seeds, so a stale one shows the
+  // previous database's symbols or date window for a frame before correcting.
+  // Per-account preferences (chart type, marker toggles) are deliberately left
+  // alone — those are choices the user made, not snapshots of the data.
+  clearAllSymbolFilterCaches()
+  clearAllLastActivityDates()
 
   // The local DB was just wholesale-replaced, so the old sync ledger
   // (`lastSyncedIds` + Drive account fingerprint) no longer describes

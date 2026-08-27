@@ -149,9 +149,14 @@ export function AccountsPanel({ accounts }: AccountsPanelProps) {
                       <td className="px-3 py-2">
                         <span className="truncate">{a.name}</span>
                       </td>
-                      {/* The balance is fixed at creation, so this row is the
-                          only place it's ever visible. */}
-                      <td className="px-3 py-2 text-right font-mono tabular-nums text-xs text-(--color-text-dim) whitespace-nowrap">
+                      {/* The opening balance, which is fixed at creation, so
+                          this row is the only place it's ever visible. Titled
+                          because a bare number here reads as "current balance",
+                          and after a reset the two are no longer the same. */}
+                      <td
+                        className="px-3 py-2 text-right font-mono tabular-nums text-xs text-(--color-text-dim) whitespace-nowrap"
+                        title="Starting balance"
+                      >
                         {formatUsd(a.starting_balance)}
                       </td>
                       <td className="px-3 py-2 w-10 text-right">

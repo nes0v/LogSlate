@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   loadJsonFromStorage,
   pruneLegacyStorageKeys,
+  removeStorageKeysWithPrefix,
   removeFromStorage,
   saveJsonToStorage,
 } from './storage'
@@ -97,5 +98,32 @@ describe('pruneLegacyStorageKeys', () => {
 
   it('is a no-op when the legacy keys are absent', () => {
     expect(() => pruneLegacyStorageKeys()).not.toThrow()
+  })
+})
+
+describe('removeStorageKeysWithPrefix', () => {
+  beforeEach(() => localStorage.clear())
+  afterEach(() => localStorage.clear())
+
+  it('removes every matching key and leaves the rest', () => {
+    // Several matches on purpose: deleting while walking the live key index
+    // shifts later entries down, so a naive loop drops every other one.
+    localStorage.setItem('logslate:cache:a', '1')
+    localStorage.setItem('logslate:cache:b', '2')
+    localStorage.setItem('logslate:cache:c', '3')
+    localStorage.setItem('logslate:cache:d', '4')
+    localStorage.setItem('logslate:keepme', 'x')
+    removeStorageKeysWithPrefix('logslate:cache')
+    expect(localStorage.getItem('logslate:cache:a')).toBeNull()
+    expect(localStorage.getItem('logslate:cache:b')).toBeNull()
+    expect(localStorage.getItem('logslate:cache:c')).toBeNull()
+    expect(localStorage.getItem('logslate:cache:d')).toBeNull()
+    expect(localStorage.getItem('logslate:keepme')).toBe('x')
+  })
+
+  it('is a no-op when nothing matches', () => {
+    localStorage.setItem('other', 'v')
+    removeStorageKeysWithPrefix('logslate:cache')
+    expect(localStorage.getItem('other')).toBe('v')
   })
 })

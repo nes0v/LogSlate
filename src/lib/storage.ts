@@ -39,6 +39,26 @@ export function removeFromStorage(key: string): void {
   }
 }
 
+/**
+ * Removes every key starting with `prefix`.
+ *
+ * Collects the doomed keys before deleting any: `localStorage.key(i)` reads a
+ * live index, so removing mid-loop shifts everything after it down and skips
+ * entries.
+ */
+export function removeStorageKeysWithPrefix(prefix: string): void {
+  try {
+    const doomed: string[] = []
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i)
+      if (key !== null && key.startsWith(prefix)) doomed.push(key)
+    }
+    for (const key of doomed) localStorage.removeItem(key)
+  } catch {
+    // localStorage unavailable — no-op.
+  }
+}
+
 // localStorage keys retired by past features. Pruned once at boot so they
 // don't linger in users' browsers after the code that wrote them is gone.
 const LEGACY_STORAGE_KEYS = [
