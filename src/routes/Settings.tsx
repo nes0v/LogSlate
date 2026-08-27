@@ -198,7 +198,7 @@ export function SettingsRoute() {
                     disabled={drive.status === 'signing-in'}
                     className={BTN_ACCENT}
                   >
-                    <LogIn className="size-4" /> Connect Google Drive
+                    <LogIn className="size-4" /> Connect Drive
                   </button>
                 )}
               </div>
