@@ -302,10 +302,10 @@ export async function getAccount(id: string): Promise<Account | undefined> {
   return db.accounts.get(id)
 }
 
-// Validates a draft and builds the row, without touching the DB. Split out so
-// the clone path can run the same checks and then insert inside its own
-// transaction — an account must never land without the setup it was cloned for.
-async function buildAccount(draft: AccountDraft): Promise<Account> {
+// Shapes a draft into a row. Pure — the slug-collision check is deliberately
+// NOT here: it's a read that has to happen inside whichever transaction does
+// the insert, or it's just a guess that went stale before the write.
+function newAccountRow(draft: AccountDraft): Account {
   const ts = now()
   const name = draft.name.trim()
   if (!name) throw new Error('Account name is required.')
@@ -315,8 +315,6 @@ async function buildAccount(draft: AccountDraft): Promise<Account> {
   if (!Number.isFinite(balance) || balance < 0) {
     throw new Error('Starting balance must be zero or a positive number.')
   }
-  const existing = await db.accounts.get(id)
-  if (existing) throw new Error('An account with this name already exists.')
   return {
     id,
     name,
@@ -327,9 +325,21 @@ async function buildAccount(draft: AccountDraft): Promise<Account> {
   }
 }
 
+// `db.accounts.add` would reject a duplicate id on its own, but as a raw Dexie
+// ConstraintError. Checking first — inside the caller's transaction, so the
+// answer can't go stale before the insert — is what makes the message readable.
+async function assertSlugFree(id: string): Promise<void> {
+  if (await db.accounts.get(id)) {
+    throw new Error('An account with this name already exists.')
+  }
+}
+
 export async function createAccount(draft: AccountDraft): Promise<Account> {
-  const rec = await buildAccount(draft)
-  await db.accounts.add(rec)
+  const rec = newAccountRow(draft)
+  await db.transaction('rw', db.accounts, async () => {
+    await assertSlugFree(rec.id)
+    await db.accounts.add(rec)
+  })
   return rec
 }
 
@@ -343,60 +353,64 @@ export async function createAccount(draft: AccountDraft): Promise<Account> {
  * are single tables keyed on `&id`, so reusing the source ids would be a
  * primary-key collision rather than a copy.
  *
- * One transaction across all four tables, so a failure part-way can't leave a
- * new account sitting there with half the setup it was cloned for.
+ * Reads and writes share ONE transaction across all four tables: a failure
+ * part-way can't leave a new account sitting there with half the setup it was
+ * cloned for, and the source is read as a single consistent snapshot rather
+ * than four independently-timed queries.
  */
 export async function cloneAccount(
   draft: AccountDraft,
   sourceAccountId: string,
 ): Promise<Account> {
-  const rec = await buildAccount(draft)
-  if (!(await db.accounts.get(sourceAccountId))) {
-    throw new Error('The account to copy from no longer exists.')
-  }
-  const [models, symbols, rules] = await Promise.all([
-    listModels(sourceAccountId),
-    listSymbols(sourceAccountId),
-    db.progress_rules.where('account_id').equals(sourceAccountId).toArray(),
-  ])
-  const ts = rec.created_at
-  const stamp = { account_id: rec.id, created_at: ts, updated_at: ts }
-
-  const clonedModels: Model[] = models.map(m => ({
-    ...m,
-    ...stamp,
-    id: newId(),
-    // Group ids are embedded in the row rather than keyed in a table, so a
-    // duplicate wouldn't break anything — but they're used as React keys and
-    // re-minting them is free.
-    groups: m.groups.map(g => ({ ...g, id: newId() })),
-  }))
-  const clonedSymbols: TradingSymbol[] = symbols.map(s => ({
-    ...s,
-    ...stamp,
-    id: newId(),
-  }))
-  // `periods` is the SOURCE account's activity history — copying it would give
-  // the new account rules that claim to have been live for months, counting
-  // days before it existed against its adherence denominator. Cloned rules
-  // arrive switched off (no periods, exactly like a hand-added rule) so they
-  // can be reworded before being turned on; toggling one opens its first
-  // period from that day. Hidden rules are skipped: a soft-deleted rule exists
-  // only to keep old checks honest, and a fresh account has none.
-  const clonedRules: ProgressRule[] = rules
-    .filter(r => r.hidden !== true)
-    .map(r => {
-      const copy: ProgressRule = { ...r, ...stamp, id: newId(), periods: [] }
-      // Drop the soft-delete flag outright rather than carrying `false` — the
-      // rest of the app treats "absent" and "not hidden" as the same state.
-      delete copy.hidden
-      return copy
-    })
-
+  const rec = newAccountRow(draft)
   await db.transaction(
     'rw',
     [db.accounts, db.models, db.symbols, db.progress_rules],
     async () => {
+      await assertSlugFree(rec.id)
+      if (!(await db.accounts.get(sourceAccountId))) {
+        throw new Error('The account to copy from no longer exists.')
+      }
+      const [models, symbols, rules] = await Promise.all([
+        listModels(sourceAccountId),
+        listSymbols(sourceAccountId),
+        db.progress_rules.where('account_id').equals(sourceAccountId).toArray(),
+      ])
+      const ts = rec.created_at
+      const stamp = { account_id: rec.id, created_at: ts, updated_at: ts }
+
+      const clonedModels: Model[] = models.map(m => ({
+        ...m,
+        ...stamp,
+        id: newId(),
+        // Group ids are embedded in the row rather than keyed in a table, so a
+        // duplicate wouldn't break anything — but they're used as React keys
+        // and re-minting them is free.
+        groups: m.groups.map(g => ({ ...g, id: newId() })),
+      }))
+      const clonedSymbols: TradingSymbol[] = symbols.map(s => ({
+        ...s,
+        ...stamp,
+        id: newId(),
+      }))
+      // `periods` is the SOURCE account's activity history — copying it would
+      // give the new account rules that claim to have been live for months,
+      // counting days before it existed against its adherence denominator.
+      // Cloned rules arrive switched off (no periods, exactly like a
+      // hand-added rule) so they can be reworded before being turned on;
+      // toggling one opens its first period from that day. Hidden rules are
+      // skipped: a soft-deleted rule exists only to keep old checks honest,
+      // and a fresh account has none.
+      const clonedRules: ProgressRule[] = rules
+        .filter(r => r.hidden !== true)
+        .map(r => {
+          const copy: ProgressRule = { ...r, ...stamp, id: newId(), periods: [] }
+          // Drop the soft-delete flag outright rather than carrying `false` —
+          // the rest of the app treats "absent" and "not hidden" alike.
+          delete copy.hidden
+          return copy
+        })
+
       await db.accounts.add(rec)
       if (clonedModels.length > 0) await db.models.bulkAdd(clonedModels)
       if (clonedSymbols.length > 0) await db.symbols.bulkAdd(clonedSymbols)
