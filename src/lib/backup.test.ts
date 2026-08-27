@@ -55,6 +55,55 @@ describe('importBackup', () => {
     expect(adjustments[0].amount).toBe(100)
   })
 
+  it('opens accounts at 0 when the backup predates starting_balance', async () => {
+    // Pre-v20 files carry account rows with no balance field at all. They must
+    // restore at 0 — what their equity curve showed when the backup was taken —
+    // rather than landing as `undefined` and rendering NaN downstream.
+    const payload = {
+      version: 3,
+      trades: [],
+      accounts: [
+        {
+          id: MAIN_ACCOUNT_ID,
+          name: 'main',
+          is_main: true,
+          created_at: '2026-01-01T00:00:00.000Z',
+          updated_at: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+      exported_at: new Date().toISOString(),
+    }
+    const file = new File([JSON.stringify(payload)], 'legacy.json', {
+      type: 'application/json',
+    })
+    await importBackup(file)
+    const acc = await db.accounts.get(MAIN_ACCOUNT_ID)
+    expect(acc?.starting_balance).toBe(0)
+  })
+
+  it('round-trips a funded account through export and import', async () => {
+    await db.accounts.put({
+      id: MAIN_ACCOUNT_ID,
+      name: 'main',
+      is_main: true,
+      starting_balance: 50_000,
+      created_at: '2026-01-01T00:00:00.000Z',
+      updated_at: '2026-01-01T00:00:00.000Z',
+    })
+    const payload = {
+      version: 3,
+      trades: [],
+      accounts: await db.accounts.toArray(),
+      exported_at: new Date().toISOString(),
+    }
+    const file = new File([JSON.stringify(payload)], 'backup.json', {
+      type: 'application/json',
+    })
+    await db.accounts.clear()
+    await importBackup(file)
+    expect((await db.accounts.get(MAIN_ACCOUNT_ID))?.starting_balance).toBe(50_000)
+  })
+
   it('handles backups without an adjustments field (v2 files)', async () => {
     const payload = { version: 2, trades: [], exported_at: new Date().toISOString() }
     const file = new File([JSON.stringify(payload)], 'legacy.json', { type: 'application/json' })
