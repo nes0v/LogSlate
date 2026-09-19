@@ -91,6 +91,36 @@ export function isDateKey(value: unknown): value is string {
   return !Number.isNaN(d.getTime()) && toDateKey(d) === value
 }
 
+/** Sunday that opens the calendar week containing `dateKey` (YYYY-MM-DD).
+ *  Sunday-anchored because that is how the ForexFactory feed cuts its weeks:
+ *  it rolls onto the next Sun-Sat block every Sunday. */
+export function weekStartKey(dateKey: string): string {
+  const d = dateKeyToDate(dateKey)
+  d.setDate(d.getDate() - d.getDay()) // 0 = Sun
+  return toDateKey(d)
+}
+
+/** Sunday that closes the Mon-Sun week containing `dateKey`.
+ *
+ *  Deliberately a different week from `weekStartKey`/`weekEndKey`, which cut
+ *  Sun-Sat the way the ForexFactory feed does. This one is the week as the
+ *  user reads it, Monday through Sunday, and the two differ by exactly one
+ *  day everywhere except on a Sunday — where this returns that same day and
+ *  the feed week is only just beginning. */
+export function isoWeekEndKey(dateKey: string): string {
+  const d = dateKeyToDate(dateKey)
+  const dow = d.getDay() // 0 = Sun
+  d.setDate(d.getDate() + (dow === 0 ? 0 : 7 - dow))
+  return toDateKey(d)
+}
+
+/** Saturday that closes the week opened by `weekStartKey`. */
+export function weekEndKey(weekStart: string): string {
+  const d = dateKeyToDate(weekStart)
+  d.setDate(d.getDate() + 6)
+  return toDateKey(d)
+}
+
 /** Nearest weekday on or before `dateKey` (YYYY-MM-DD): Sat/Sun roll back to
  *  Friday, a weekday is returned unchanged. Used for date inputs that must
  *  land on a trading day (cash flow / progress / the default range's `to`),

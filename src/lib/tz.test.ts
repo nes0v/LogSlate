@@ -6,6 +6,9 @@ import {
   nyTimeHHmm,
   nyToday,
   previousWeekdayKey,
+  isoWeekEndKey,
+  weekEndKey,
+  weekStartKey,
 } from './tz'
 
 describe('nyDateKey', () => {
@@ -59,6 +62,43 @@ describe('nyTimeHHmm', () => {
   })
 })
 
+describe('isoWeekEndKey', () => {
+  it('closes the week on Sunday', () => {
+    // Mon 2026-05-11 through Sun 2026-05-17 all close on the 17th.
+    expect(isoWeekEndKey('2026-05-11')).toBe('2026-05-17')
+    expect(isoWeekEndKey('2026-05-16')).toBe('2026-05-17')
+    expect(isoWeekEndKey('2026-05-17')).toBe('2026-05-17')
+  })
+
+  it('sits one day past the feed week, except on Sunday', () => {
+    // Sat: feed week ends that day, the Mon-Sun week runs one more.
+    expect(weekEndKey(weekStartKey('2026-05-16'))).toBe('2026-05-16')
+    expect(isoWeekEndKey('2026-05-16')).toBe('2026-05-17')
+    // Sun: the feed week is only just opening, so it reaches far further.
+    expect(weekEndKey(weekStartKey('2026-05-17'))).toBe('2026-05-23')
+    expect(isoWeekEndKey('2026-05-17')).toBe('2026-05-17')
+  })
+})
+
+describe('weekStartKey / weekEndKey', () => {
+  it('anchors a week on Sunday and closes it on Saturday', () => {
+    // 2026-05-12 is a Tuesday; its feed week runs Sun 10th - Sat 16th.
+    expect(weekStartKey('2026-05-12')).toBe('2026-05-10')
+    expect(weekEndKey('2026-05-10')).toBe('2026-05-16')
+  })
+
+  it('leaves a Sunday where it is and rolls a Saturday back', () => {
+    expect(weekStartKey('2026-05-10')).toBe('2026-05-10')
+    expect(weekStartKey('2026-05-16')).toBe('2026-05-10')
+  })
+
+  it('crosses a month boundary', () => {
+    // Tue 2026-06-02 belongs to the week that opened Sun 2026-05-31.
+    expect(weekStartKey('2026-06-02')).toBe('2026-05-31')
+    expect(weekEndKey('2026-05-31')).toBe('2026-06-06')
+  })
+})
+
 describe('previousWeekdayKey', () => {
   it('returns a weekday unchanged', () => {
     expect(previousWeekdayKey('2026-06-17')).toBe('2026-06-17') // Wed
@@ -86,5 +126,38 @@ describe('nextWeekdayKey', () => {
   })
   it('crosses the month boundary', () => {
     expect(nextWeekdayKey('2026-02-28')).toBe('2026-03-02') // Sat → Mon
+  })
+})
+
+describe('week helpers across awkward boundaries', () => {
+  it('crosses a year boundary', () => {
+    // Thu 2026-12-31 sits in the feed week opening Sun 2026-12-27.
+    expect(weekStartKey('2026-12-31')).toBe('2026-12-27')
+    expect(weekEndKey('2026-12-27')).toBe('2027-01-02')
+    expect(isoWeekEndKey('2026-12-31')).toBe('2027-01-03')
+    // And the first days of the new year look back into the old one.
+    expect(weekStartKey('2027-01-01')).toBe('2026-12-27')
+  })
+
+  it('crosses the spring-forward DST change', () => {
+    // US DST begins Sun 2026-03-08. Date arithmetic here is calendar-day
+    // arithmetic, so the short day must not shift a week boundary.
+    expect(weekStartKey('2026-03-08')).toBe('2026-03-08')
+    expect(weekStartKey('2026-03-11')).toBe('2026-03-08')
+    expect(weekEndKey('2026-03-08')).toBe('2026-03-14')
+    expect(isoWeekEndKey('2026-03-09')).toBe('2026-03-15')
+  })
+
+  it('crosses the fall-back DST change', () => {
+    // US DST ends Sun 2026-11-01 — the 25-hour day.
+    expect(weekStartKey('2026-11-01')).toBe('2026-11-01')
+    expect(weekStartKey('2026-11-04')).toBe('2026-11-01')
+    expect(weekEndKey('2026-11-01')).toBe('2026-11-07')
+    expect(isoWeekEndKey('2026-10-30')).toBe('2026-11-01')
+  })
+
+  it('handles a leap day', () => {
+    expect(weekStartKey('2028-02-29')).toBe('2028-02-27')
+    expect(weekEndKey('2028-02-27')).toBe('2028-03-04')
   })
 })
