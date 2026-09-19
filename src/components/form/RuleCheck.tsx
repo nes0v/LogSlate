@@ -10,17 +10,30 @@ interface RuleCheckProps {
    *  so the user can tell this is a historical rule they can no longer
    *  see in the today checklist. */
   archived?: boolean
+  /** Not yet tickable — the Progress checklist uses this for a day that
+   *  hasn't happened, where a tick would record adherence in advance. */
+  disabled?: boolean
   className?: string
 }
 
 // Rule-followed checkbox: a green check when ok, a red X when not.
 // Used in two places where the visual must stay in sync — the daily
 // Progress checklist and the per-trade ModelRuleChecklist.
-export function RuleCheck({ checked, onChange, label, archived, className }: RuleCheckProps) {
+export function RuleCheck({
+  checked,
+  onChange,
+  label,
+  archived,
+  disabled,
+  className,
+}: RuleCheckProps) {
   return (
     <label
       className={cn(
-        'flex items-start gap-1.5 px-1 py-1 rounded-sm cursor-pointer hover:bg-(--color-panel-3)',
+        'flex items-start gap-1.5 px-1 py-1 rounded-sm',
+        disabled
+          ? 'cursor-not-allowed opacity-50'
+          : 'cursor-pointer hover:bg-(--color-panel-3)',
         className,
       )}
     >
@@ -29,7 +42,11 @@ export function RuleCheck({ checked, onChange, label, archived, className }: Rul
           type="checkbox"
           checked={checked}
           onChange={e => onChange(e.target.checked)}
-          className="peer absolute inset-0 size-full opacity-0 cursor-pointer"
+          disabled={disabled}
+          className={cn(
+            'peer absolute inset-0 size-full opacity-0',
+            disabled ? 'cursor-not-allowed' : 'cursor-pointer',
+          )}
         />
         {checked ? (
           <Check

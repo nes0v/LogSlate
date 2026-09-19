@@ -41,6 +41,11 @@ interface DatePickerProps {
    *  today is a weekend). Used for cash-flow dates, which must land on a
    *  trading day so they aren't dropped from the daily equity candles. */
   disableWeekends?: boolean
+  /** Latest selectable date (YYYY-MM-DD, inclusive). Days past it are greyed
+   *  and unclickable, and the month chevron stops at its month so there's no
+   *  walking into a range nothing can be picked from. Progress uses it to cap
+   *  the calendar at the next trading day. Omit for no upper bound. */
+  max?: string
   ariaLabel?: string
 }
 
@@ -52,6 +57,7 @@ export function DatePicker({
   clearable = false,
   compact = false,
   disableWeekends = false,
+  max,
   ariaLabel,
 }: DatePickerProps) {
   const [open, setOpen] = useState(false)
@@ -82,8 +88,19 @@ export function DatePicker({
     : WEEKDAY_INITIALS
   const gridCols = disableWeekends ? 'grid-cols-5' : 'grid-cols-7'
 
+  // Date keys are zero-padded, so a plain string compare is a date compare.
+  function beyondMax(key: string): boolean {
+    return max !== undefined && key > max
+  }
+  // True once the displayed month is the max's month or later — there is
+  // nothing selectable past it. `viewMonth` is already a month start.
+  const maxMonth = max !== undefined ? startOfMonth(dateKeyToDate(max)) : null
+  const atMaxMonth = maxMonth !== null && viewMonth >= maxMonth
+
   function pick(d: Date) {
-    onChange(format(d, DATE_KEY))
+    const key = format(d, DATE_KEY)
+    if (beyondMax(key)) return
+    onChange(key)
     setOpen(false)
   }
 
@@ -134,7 +151,8 @@ export function DatePicker({
             <button
               type="button"
               onClick={() => setViewMonth(m => addMonths(m, 1))}
-              className="p-1 rounded text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)"
+              disabled={atMaxMonth}
+              className="p-1 rounded text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2) disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-(--color-text-dim)"
               aria-label="Next month"
             >
               <ChevronRight className="size-4" />
@@ -158,18 +176,23 @@ export function DatePicker({
                 ? isSameDay(d, selectedDate)
                 : false
               const isToday = key === todayKey
+              const blocked = beyondMax(key)
               return (
                 <button
                   type="button"
                   key={key}
                   onClick={() => pick(d)}
+                  disabled={blocked}
                   className={cn(
-                    'h-7 rounded text-xs flex items-center justify-center cursor-pointer',
+                    'h-7 rounded text-xs flex items-center justify-center',
+                    blocked
+                      ? 'text-(--color-text-faint) opacity-30 cursor-not-allowed'
+                      : 'cursor-pointer',
                     isSelected
                       ? 'bg-(--color-accent) text-(--color-accent-fg) font-medium'
                       : inMonth
-                        ? 'text-(--color-text) hover:bg-(--color-panel-2)'
-                        : 'text-(--color-text-faint) hover:bg-(--color-panel-2)',
+                        ? !blocked && 'text-(--color-text) hover:bg-(--color-panel-2)'
+                        : !blocked && 'text-(--color-text-faint) hover:bg-(--color-panel-2)',
                     !isSelected && isToday && 'ring-1 ring-(--color-accent-soft)',
                   )}
                 >
