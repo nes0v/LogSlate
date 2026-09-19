@@ -1,10 +1,6 @@
 import type { NewsEvent } from '@/db/types'
+import { ImpactDot } from '@/components/ImpactDot'
 import { nyTimeHHmm } from '@/lib/tz'
-
-const IMPACT_FILL: Record<NewsEvent['impact'], string> = {
-  High: '#ef4444',
-  Medium: '#f59e0b',
-}
 
 interface DayNewsSectionProps {
   /** Pre-fetched news events for this day, sorted by `scheduled_at`. */
@@ -44,14 +40,7 @@ function NewsRow({ event }: { event: NewsEvent }) {
         {event.country}
       </td>
       <td className="pl-0 pr-3 w-px">
-        <svg
-          viewBox="0 0 10 10"
-          className="size-3 block"
-          aria-label={`${event.impact} impact`}
-          role="img"
-        >
-          <circle cx="5" cy="5" r="4.5" fill={IMPACT_FILL[event.impact]} />
-        </svg>
+        <ImpactDot impact={event.impact} className="block" />
       </td>
       <td className="pl-0 pr-3 text-xs truncate">{event.title}</td>
     </tr>
