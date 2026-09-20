@@ -30,17 +30,17 @@ export function newsDayMode(dayKey: string, todayKey: string): NewsDayMode {
 }
 
 /**
- * Last day forward navigation will reach.
+ * Last day forward navigation will reach: the Sunday closing the Mon-Sun
+ * week that the feed's last published day falls in.
  *
- * Whichever of two weeks reaches further. Normally that is the Sunday
- * closing the Mon-Sun week, one day past the feed's Sat cut — the Sunday a
- * reader expects to be able to reach, even though nothing is published for
- * it yet. On a Sunday it is the feed week instead: it has just rolled onto a
- * whole new Sun-Sat block, and stopping at "today" would lock the user out
- * of a week that is already published.
+ * The feed cuts its week at Saturday; the user reads weeks Mon-Sun, so the
+ * Sunday after that cut is still part of the week they are looking at and
+ * has to be reachable, even though nothing is published for it yet. Taking
+ * it from the feed's own end rather than from today is what keeps that true
+ * on a Sunday, when the feed has just rolled onto a fresh Sun-Sat block:
+ * measured from today, the stop landed on that block's Saturday and the week
+ * ended a day early, once a week, on the day the user was reading it.
  */
 export function lastReachableDay(todayKey: string): string {
-  const feedEnd = weekEndKey(weekStartKey(todayKey))
-  const isoEnd = isoWeekEndKey(todayKey)
-  return isoEnd > feedEnd ? isoEnd : feedEnd
+  return isoWeekEndKey(weekEndKey(weekStartKey(todayKey)))
 }

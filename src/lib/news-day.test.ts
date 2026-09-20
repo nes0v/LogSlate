@@ -41,9 +41,11 @@ describe('lastReachableDay', () => {
     expect(lastReachableDay('2026-09-14')).toBe(NEXT_SUN) // Monday
   })
 
-  it('reaches the end of the new feed week when asked on a Sunday', () => {
-    // Stopping at "today" here would hide six days the feed has published.
-    expect(lastReachableDay(NEXT_SUN)).toBe('2026-09-26')
+  it('reaches past the new feed week to its Sunday, asked on a Sunday', () => {
+    // The feed has just rolled onto Sun 20 - Sat 26. Stopping at "today"
+    // would hide six published days; stopping at the feed's Saturday ends
+    // the week a day early for a reader who reads weeks Mon-Sun.
+    expect(lastReachableDay(NEXT_SUN)).toBe('2026-09-27')
   })
 
   it('always includes today', () => {
