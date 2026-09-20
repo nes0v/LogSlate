@@ -8,15 +8,19 @@ import {
 } from 'date-fns'
 import { ChevronLeft, ChevronRight, Plus, X } from 'lucide-react'
 import { db } from '@/db/schema'
-import type { ProgressCheck, ProgressRule } from '@/db/types'
+import type { ProgressRule } from '@/db/types'
 import {
-  closePeriod,
   lastPeriodEnd,
-  openPeriod,
   openPeriodStart,
   ruleActiveOn,
   ruleHasOpenPeriod,
 } from '@/lib/progress-periods'
+import {
+  averageAdherence,
+  buildHeat,
+  currentStreak,
+  heatDays,
+} from '@/lib/progress-heat'
 import { useActiveAccountId } from '@/lib/active-account'
 import { Checkbox } from '@/components/form/Checkbox'
 import { DatePicker } from '@/components/form/DatePicker'
@@ -24,7 +28,15 @@ import { RuleCheck } from '@/components/form/RuleCheck'
 import { useConfirm } from '@/components/ConfirmDialog'
 import { BTN_ACCENT } from '@/components/form/buttonClass'
 import { useAccountQuery } from '@/lib/use-account-query'
-import { dateKeyToDate, nyToday } from '@/lib/tz'
+import {
+  createProgressRule,
+  deleteProgressRule,
+  restoreProgressRule,
+  setProgressRuleActive,
+  toggleProgressCheck,
+} from '@/db/queries'
+import { dateKeyToDate } from '@/lib/tz'
+import { useNyToday } from '@/lib/use-ny-today'
 import {
   canEditRulesOn,
   canNavigateTo,
@@ -34,14 +46,6 @@ import {
   nextSessionFor,
 } from '@/lib/progress-day'
 import { cn } from '@/lib/utils'
-
-function newId(): string {
-  return crypto.randomUUID()
-}
-
-function checkId(accountId: string, date: string, ruleId: string): string {
-  return `${accountId}:${date}:${ruleId}`
-}
 
 // "Mon" reads naturally a day or two either side of the day on screen. Much
 // further out and a bare weekday name is ambiguous — which Monday? — so fall
@@ -56,7 +60,9 @@ function relativeDayLabel(key: string, relativeTo: string): string {
 export function ProgressRoute() {
   const accountId = useActiveAccountId()
   const confirm = useConfirm()
-  const today = nyToday()
+  // Ticks over NY midnight rather than freezing at first render — see
+  // `use-ny-today.ts`. Everything below is measured against this day.
+  const today = useNyToday()
   // Every day-rule the page runs on, decided once and up front so nothing
   // below can read one before it exists. What each means — and why landing on
   // Friday is NOT the same as Friday still being open — is in progress-day.ts,
@@ -65,6 +71,17 @@ export function ProgressRoute() {
   const nextSessionKey = nextSessionFor(today)
   const marketOpen = marketOpenOn(today)
   const [date, setDate] = useState(tradingToday)
+  // When the day rolls underneath an open page, follow it — but only for
+  // someone who hadn't navigated anywhere. A user reviewing a past day keeps
+  // the day they chose; the one sitting on "today" gets the new today, rather
+  // than yesterday's checklist still labelled as the current session.
+  const landingRef = useRef(tradingToday)
+  useEffect(() => {
+    const previous = landingRef.current
+    if (previous === tradingToday) return
+    landingRef.current = tradingToday
+    setDate(d => (d === previous ? tradingToday : d))
+  }, [tradingToday])
   // A future day's checklist previews what that session will ask of you. It
   // is not something to fill in ahead of time, or to score.
   const isFuture = isFutureDay(date, today)
@@ -83,13 +100,10 @@ export function ProgressRoute() {
   const allChecks = useAccountQuery(accountId, () =>
     db.progress_checks.where('account_id').equals(accountId).toArray(),
   )
-  // Wide-enough calendar window to cover the last 30 *weekdays* with
-  // headroom — 30 weekdays = 6 weeks ≈ 42 calendar days, 50 gives slack
-  // for the edge cases where `date` lands on a Sunday.
-  const heatWindowStart = useMemo(
-    () => format(addDays(dateKeyToDate(date), -49), 'yyyy-MM-dd'),
-    [date],
-  )
+  // The oldest day the strip can show, taken from the strip's own walk
+  // rather than guessed at in calendar days — a guess drifts silently out of
+  // step the moment the strip's length changes.
+  const heatWindowStart = useMemo(() => heatDays(date)[0], [date])
   const checksToday = useMemo(
     () => (allChecks ?? []).filter(c => c.date === date),
     [allChecks, date],
@@ -151,73 +165,32 @@ export function ProgressRoute() {
   // the next session's page planning it.
   const adherenceToday = isFuture ? null : adherenceRatio
 
-  // Per-day adherence over the last 30 *trading days* (weekdays).
-  // Walking back this way keeps the strip a uniform 30 cells while
-  // dropping weekends the market never opens for. Each cell's
-  // denominator is the rule set that was active on that specific day,
-  // so adding or retiring rules today doesn't disturb historical scores.
-  const heat = useMemo(() => {
-    const days: string[] = []
-    let cursor = dateKeyToDate(date)
-    while (days.length < 30) {
-      if (!isWeekend(cursor)) {
-        days.unshift(format(cursor, 'yyyy-MM-dd'))
-      }
-      cursor = addDays(cursor, -1)
-    }
-    const byDay = new Map<string, ProgressCheck[]>()
-    for (const c of recent ?? []) {
-      if (!byDay.has(c.date)) byDay.set(c.date, [])
-      byDay.get(c.date)!.push(c)
-    }
-    const ruleList = rules ?? []
-    return days.map(d => {
-      const list = byDay.get(d) ?? []
-      const activeIds = new Set(
-        ruleList.filter(r => ruleActiveOn(r, d)).map(r => r.id),
-      )
-      const total = activeIds.size
-      const checked = list.filter(c => c.checked && activeIds.has(c.rule_id)).length
-      const pct = total > 0 ? checked / total : 0
-      return { date: d, pct, checked, total }
-    })
-  }, [recent, date, rules])
-
-  // Current streak — consecutive trailing trading days at 100%.
-  // Weekends and weekdays without any trades are skipped (the market
-  // was closed or the user wasn't trading, so there's no routine to
-  // judge), neither extending nor breaking the streak. A traded day
-  // with no active rules or pct < 100% does break it.
-  const streak = useMemo(() => {
-    let s = 0
-    const traded = tradedDays ?? new Set<string>()
-    for (let i = heat.length - 1; i >= 0; i--) {
-      const cell = heat[i]
-      if (isWeekend(dateKeyToDate(cell.date))) continue
-      if (!traded.has(cell.date)) continue
-      if (cell.total > 0 && cell.pct >= 1) s++
-      else break
-    }
-    return s
-  }, [heat, tradedDays])
+  // Per-day adherence over the last 30 trading days, the streak and the
+  // 30-day average — which days count, and which are simply not the app's
+  // business, is decided in `progress-heat.ts` where it can be tested.
+  const heat = useMemo(
+    () => buildHeat({ date, today, rules: rules ?? [], checks: recent ?? [] }),
+    [date, today, rules, recent],
+  )
+  // Over ALL of the history, not just the strip — see `progress-heat.ts`.
+  const streak = useMemo(
+    () =>
+      currentStreak({
+        date,
+        today,
+        rules: rules ?? [],
+        checks: allChecks ?? [],
+        tradedDays: tradedDays ?? new Set<string>(),
+      }),
+    [date, today, rules, allChecks, tradedDays],
+  )
+  const average = useMemo(
+    () => averageAdherence(heat, tradedDays ?? new Set<string>()),
+    [heat, tradedDays],
+  )
 
   async function addRule() {
-    const ts = new Date().toISOString()
-    const sort = (rules ?? []).reduce((m, r) => Math.max(m, r.sort), 0) + 1
-    // New rules start with no active periods — the user fills the text
-    // in place and toggles the rule on, which opens its first period
-    // from the day on screen. Until then the rule contributes nothing to
-    // any day's denominator.
-    const r: ProgressRule = {
-      id: newId(),
-      account_id: accountId,
-      text: '',
-      periods: [],
-      sort,
-      created_at: ts,
-      updated_at: ts,
-    }
-    await db.progress_rules.put(r)
+    await createProgressRule(accountId)
   }
 
   async function updateRule(id: string, patch: Partial<ProgressRule>) {
@@ -233,19 +206,11 @@ export function ProgressRoute() {
   // checklist beside the panel. Editing is gated to today + the next
   // session (`canEditRules`), so `date` here is never an arbitrary date.
   async function setRuleActive(rule: ProgressRule, next: boolean) {
-    const periods = next ? openPeriod(rule, date) : closePeriod(rule, date)
-    await updateRule(rule.id, { periods })
+    await setProgressRuleActive(rule.id, date, next)
   }
 
   async function restoreRule(rule: ProgressRule) {
-    // Bring an archived rule back into the checklist for the day on
-    // screen. Clears `hidden` and opens a fresh period from that day —
-    // past periods stay exactly as they were, so historical adherence is
-    // unchanged and the rule simply resumes from there forward.
-    await updateRule(rule.id, {
-      hidden: false,
-      periods: openPeriod(rule, date),
-    })
+    await restoreProgressRule(rule.id, date)
   }
 
   async function deleteRule(id: string) {
@@ -259,38 +224,7 @@ export function ProgressRoute() {
       }))
     )
       return
-    // Re-fetch the rule INSIDE the transaction before reading periods —
-    // the live-query snapshot can be stale (the user may have toggled
-    // active or edited text between the page rendering and clicking
-    // X). All reads + writes share one rw transaction so the rule
-    // either vanishes cleanly or stays intact; a write landing in the
-    // middle can't leave orphan check rows. `rule_id` isn't indexed
-    // (schema v3 pruned the index), so we filter-scan with an early-
-    // exit `.until()` on first hit.
-    await db.transaction('rw', db.progress_rules, db.progress_checks, async () => {
-      const fresh = await db.progress_rules.get(id)
-      if (!fresh) return
-      let hasAnyChecks = false
-      await db.progress_checks
-        .filter(c => c.rule_id === id)
-        .until(() => hasAnyChecks)
-        .each(() => {
-          hasAnyChecks = true
-        })
-      if (!hasAnyChecks) {
-        await db.progress_rules.delete(id)
-        return
-      }
-      // Soft delete via `hidden` + close any open period at yesterday.
-      // The rule disappears from the rule manager and from the checklist
-      // for the day on screen (period closes), but its prior periods still
-      // anchor the rule into past days so historical adherence is unchanged.
-      await db.progress_rules.update(id, {
-        hidden: true,
-        periods: closePeriod(fresh, date),
-        updated_at: new Date().toISOString(),
-      })
-    })
+    await deleteProgressRule(id, date)
   }
 
   async function toggleCheck(rule: ProgressRule) {
@@ -305,27 +239,7 @@ export function ProgressRoute() {
     // in front of the user a day early — ticking it would bank adherence
     // for a session they haven't traded.
     if (isFutureDay(date, today)) return
-    const id = checkId(accountId, date, rule.id)
-    const current = checkMap.get(rule.id) ?? false
-    if (current) {
-      // Unchecking: delete the row outright. Read paths treat a missing
-      // row identically to `checked: false`, so storing the false row is
-      // pure write amplification — the table fills up with rows that
-      // contribute nothing semantically and inflate the sync report.
-      await db.progress_checks.delete(id)
-      return
-    }
-    const ts = new Date().toISOString()
-    const next: ProgressCheck = {
-      id,
-      account_id: accountId,
-      date,
-      rule_id: rule.id,
-      checked: true,
-      created_at: ts,
-      updated_at: ts,
-    }
-    await db.progress_checks.put(next)
+    await toggleProgressCheck(accountId, date, rule.id)
   }
 
   function shiftDate(delta: number) {
@@ -367,7 +281,11 @@ export function ProgressRoute() {
               onClick={() => setDate(tradingToday)}
               className={cn(BTN_ACCENT, 'mr-1')}
             >
-              Today
+              {/* The landing day is only "today" while the market is open.
+                  Over a weekend it is Friday, and calling that today
+                  contradicts the adherence tile beside it, which already
+                  drops "Today's" on any day that isn't the calendar day. */}
+              {marketOpen ? 'Today' : format(dateKeyToDate(tradingToday), 'EEEE')}
             </button>
           )}
           <button
@@ -414,7 +332,12 @@ export function ProgressRoute() {
           }
           caption={
             rulesActiveOnDate.length === 0
-              ? 'Add some rules to get started'
+              ? // Only an invitation on a day the rules can actually be
+                // edited. On a past day it would point at a panel that is
+                // locked, for a day adding a rule now could never score.
+                canEditRules
+                ? 'Add some rules to get started'
+                : 'No rules on this day'
               : isFuture
                 ? `${rulesActiveOnDate.length} rule${rulesActiveOnDate.length === 1 ? '' : 's'} planned`
                 : `${rulesActiveOnDate.filter(r => checkMap.get(r.id)).length} / ${rulesActiveOnDate.length} rules`
@@ -427,23 +350,7 @@ export function ProgressRoute() {
         />
         <ScoreTile
           label="30-day average"
-          value={(() => {
-            // Same exclusion as the streak — average over traded
-            // weekdays only. Weekends and untraded weekdays would
-            // otherwise drag the score down to 0% on days where no
-            // routine was ever expected.
-            const traded = tradedDays ?? new Set<string>()
-            const scored = heat.filter(
-              d =>
-                d.total > 0 &&
-                !isWeekend(dateKeyToDate(d.date)) &&
-                traded.has(d.date),
-            )
-            if (scored.length === 0) return '—'
-            return `${Math.round(
-              (scored.reduce((s, d) => s + d.pct, 0) / scored.length) * 100,
-            )}%`
-          })()}
+          value={average === null ? '—' : `${Math.round(average * 100)}%`}
           caption="traded weekdays only"
         />
       </section>
@@ -472,7 +379,13 @@ export function ProgressRoute() {
                 key={h.date}
                 type="button"
                 onClick={() => setDate(h.date)}
-                title={`${h.date} · ${h.checked}/${h.total}`}
+                title={
+                  h.future
+                    ? h.total === 0
+                      ? `${h.date} · nothing planned`
+                      : `${h.date} · ${h.total} rule${h.total === 1 ? '' : 's'} planned`
+                    : `${h.date} · ${h.checked}/${h.total}`
+                }
                 className={cn(
                   'flex-1 min-w-0 aspect-square rounded-sm text-xs font-mono hover:opacity-80',
                   idx > 0 && isMonday && 'ms-3',
@@ -512,7 +425,10 @@ export function ProgressRoute() {
                   key={r.id}
                   checked={checkMap.get(r.id) ?? false}
                   onChange={() => toggleCheck(r)}
-                  label={r.text}
+                  // A rule switched on before it was named would otherwise be
+                  // a checkbox with nothing beside it. Same wording the
+                  // archived drawer uses.
+                  label={r.text || '(unnamed)'}
                   archived={r.hidden === true}
                   disabled={isFuture}
                 />
@@ -788,10 +704,27 @@ function RuleRow({
         value={text}
         onChange={e => setText(e.target.value)}
         placeholder="Rule…"
+        // A rule long enough to outrun the field is readable on hover as
+        // well as by scrolling it — it is a whole sentence in the checklist
+        // beside this, and a third of one here.
+        title={text || undefined}
         disabled={disabled}
         onBlur={() => {
           const v = text.trim()
           if (v !== rule.text) onUpdate(rule.id, { text: v })
+        }}
+        // Enter is how a one-line field is finished, and it was doing
+        // nothing: the text sat in local state, on screen and unsaved, until
+        // something else happened to take the focus away. Escape abandons
+        // the edit the same way.
+        onKeyDown={e => {
+          if (e.key === 'Enter') e.currentTarget.blur()
+          else if (e.key === 'Escape') {
+            setText(rule.text)
+            // Blur AFTER the state is restored, so the blur handler above
+            // compares the original text and writes nothing.
+            requestAnimationFrame(() => inputRef.current?.blur())
+          }
         }}
         className={cn(
           'flex-1 bg-transparent border-0 outline-none text-sm leading-tight p-0 placeholder:text-(--color-text-faint)',
