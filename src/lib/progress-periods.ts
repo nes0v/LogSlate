@@ -51,9 +51,25 @@ export function lastPeriodEnd(rule: ProgressRule): string | null {
 // No-op (returns a defensive copy) if a period is already open — toggling
 // on twice shouldn't fork the history. Always returns a fresh array so
 // callers can't accidentally mutate the underlying rule.periods.
+//
+// When no trading day elapsed with the rule switched off, the last period is
+// re-opened rather than a new one appended. Retiring a rule from the next
+// session's page and then keeping it from today's is the way in: it closes
+// at today and re-opens at today, and storing that as two periods meeting on
+// one day describes a rule that never stopped as though it had.
 export function openPeriod(rule: ProgressRule, today: string): ProgressRulePeriod[] {
   if (ruleHasOpenPeriod(rule)) return rule.periods.slice()
-  return [...rule.periods, { from: nextWeekdayKey(today), until: null }]
+  const from = nextWeekdayKey(today)
+  const previous = previousWeekdayKey(
+    format(addDays(dateKeyToDate(from), -1), 'yyyy-MM-dd'),
+  )
+  const latest = lastPeriodEnd(rule)
+  if (latest !== null && latest >= previous) {
+    return rule.periods.map(p =>
+      p.until === latest ? { from: p.from, until: null } : p,
+    )
+  }
+  return [...rule.periods, { from, until: null }]
 }
 
 // Close the currently-open period at the last trading day before today,

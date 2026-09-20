@@ -18,6 +18,7 @@ import { getActiveAccountId } from '@/lib/active-account'
 import { netPnlByDate } from '@/lib/day-pnl'
 import { clearSymbolFilterCache, writeSymbolFilterCache } from '@/lib/symbol-filter-cache'
 import { clearLastActivityDate } from '@/lib/last-activity-cache'
+import { closePeriod, openPeriod, ruleActiveOn } from '@/lib/progress-periods'
 
 function now(): string {
   return new Date().toISOString()
@@ -933,5 +934,182 @@ export async function setDayReflection(
       return
     }
     await db.days.put(next)
+  })
+}
+
+// --- Progress rules -------------------------------------------------------
+
+// A tick only means anything on a day the rule was actually in force: the
+// checklist shows the rules active on the day, and the heat strip counts a
+// day's ticks against that same set. A row on any other day is invisible
+// everywhere — residue, and the same write amplification as the `checked:
+// false` rows that used to fill this table.
+//
+// They appear whenever a period shrinks underneath a tick already made.
+// Ticking a rule and then retiring it the same day is the ordinary way in:
+// `closePeriod` ends the period yesterday (or drops it outright, if the rule
+// never saw a trading day), and today's tick is left behind attached to
+// nothing. Left there it also lies to `deleteProgressRule`, which reads
+// "this rule has check rows" as "the past depends on this rule".
+async function pruneOrphanChecks(rule: ProgressRule): Promise<void> {
+  const orphans = await db.progress_checks
+    .where('account_id')
+    .equals(rule.account_id)
+    .filter(c => c.rule_id === rule.id && !ruleActiveOn(rule, c.date))
+    .primaryKeys()
+  if (orphans.length > 0) await db.progress_checks.bulkDelete(orphans)
+}
+
+/**
+ * Add an empty rule to the end of the list.
+ *
+ * The sort value is read inside the transaction: two quick taps on "Add rule"
+ * both computed it from the same on-screen snapshot and landed on the same
+ * number.
+ */
+export async function createProgressRule(accountId: string): Promise<ProgressRule> {
+  return db.transaction('rw', db.progress_rules, async () => {
+    const existing = await db.progress_rules.where('account_id').equals(accountId).toArray()
+    const ts = now()
+    // No periods: the user fills the text in place and switches the rule on,
+    // which opens its first period. Until then it counts toward no day.
+    const rule: ProgressRule = {
+      id: newId(),
+      account_id: accountId,
+      text: '',
+      periods: [],
+      sort: existing.reduce((m, r) => Math.max(m, r.sort), 0) + 1,
+      created_at: ts,
+      updated_at: ts,
+    }
+    await db.progress_rules.put(rule)
+    return rule
+  })
+}
+
+/**
+ * Bring an archived rule back, running again from `date`.
+ *
+ * Past periods are left exactly as they were, so the days it already scored
+ * keep it and their adherence doesn't move — the rule simply resumes.
+ */
+export async function restoreProgressRule(ruleId: string, date: string): Promise<void> {
+  await db.transaction('rw', db.progress_rules, async () => {
+    const rule = await db.progress_rules.get(ruleId)
+    if (!rule) return
+    await db.progress_rules.put({
+      ...rule,
+      hidden: false,
+      periods: openPeriod(rule, date),
+      updated_at: now(),
+    })
+  })
+}
+
+/**
+ * Switch a rule on or off as of `date` — the day being VIEWED, which is how
+ * planning the next session works (see `canEditRulesOn`).
+ *
+ * Re-reads the rule inside the transaction rather than trusting the caller's
+ * live-query snapshot, which can be a render behind the user's last click.
+ */
+export async function setProgressRuleActive(
+  ruleId: string,
+  date: string,
+  active: boolean,
+): Promise<void> {
+  await db.transaction('rw', db.progress_rules, db.progress_checks, async () => {
+    const rule = await db.progress_rules.get(ruleId)
+    if (!rule) return
+    const next: ProgressRule = {
+      ...rule,
+      periods: active ? openPeriod(rule, date) : closePeriod(rule, date),
+      updated_at: now(),
+    }
+    await db.progress_rules.put(next)
+    await pruneOrphanChecks(next)
+  })
+}
+
+/**
+ * Flip a rule's tick for a day, deciding from what is stored rather than from
+ * what was on screen. A double tap used to read "unticked" twice — the live
+ * query hadn't come back between the two — and wrote the tick twice, leaving
+ * it on when the user had just turned it off.
+ *
+ * Unticking deletes the row outright: every read path treats a missing row as
+ * unticked, so storing `checked: false` is pure write amplification.
+ */
+export async function toggleProgressCheck(
+  accountId: string,
+  date: string,
+  ruleId: string,
+): Promise<boolean> {
+  const id = `${accountId}:${date}:${ruleId}`
+  return db.transaction('rw', db.progress_checks, async () => {
+    const existing = await db.progress_checks.get(id)
+    if (existing?.checked) {
+      await db.progress_checks.delete(id)
+      return false
+    }
+    const ts = now()
+    await db.progress_checks.put({
+      id,
+      account_id: accountId,
+      date,
+      rule_id: ruleId,
+      checked: true,
+      created_at: existing?.created_at ?? ts,
+      updated_at: ts,
+    })
+    return true
+  })
+}
+
+export type ProgressRuleDeletion = 'deleted' | 'archived' | 'missing'
+
+/**
+ * Remove a rule from `date` on.
+ *
+ * A rule no past day depends on is deleted outright. One that scored days
+ * behind us is hidden instead, keeping its periods and its ticks so those
+ * days' adherence doesn't drift — which is only worth doing for rows that
+ * still sit inside a period, hence the prune first. Without it, a rule that
+ * was switched on and off within a single afternoon left one stranded tick
+ * behind and then lived forever in the archived drawer.
+ *
+ * All of it in one transaction: a write landing midway can't leave check rows
+ * orphaned from a rule that is already gone.
+ */
+export async function deleteProgressRule(
+  ruleId: string,
+  date: string,
+): Promise<ProgressRuleDeletion> {
+  return db.transaction('rw', db.progress_rules, db.progress_checks, async () => {
+    const rule = await db.progress_rules.get(ruleId)
+    if (!rule) return 'missing'
+    const next: ProgressRule = {
+      ...rule,
+      periods: closePeriod(rule, date),
+      updated_at: now(),
+    }
+    await pruneOrphanChecks(next)
+    // `rule_id` isn't indexed (schema v3 pruned the index), so this is a
+    // filter-scan, narrowed to the account and stopped on the first hit.
+    let anyLeft = false
+    await db.progress_checks
+      .where('account_id')
+      .equals(rule.account_id)
+      .filter(c => c.rule_id === ruleId)
+      .until(() => anyLeft)
+      .each(() => {
+        anyLeft = true
+      })
+    if (!anyLeft) {
+      await db.progress_rules.delete(ruleId)
+      return 'deleted'
+    }
+    await db.progress_rules.put({ ...next, hidden: true })
+    return 'archived'
   })
 }

@@ -237,3 +237,45 @@ describe('weekend anchoring', () => {
     }
   })
 })
+
+describe('openPeriod re-opening rather than splitting', () => {
+  it('re-opens the last period when no trading day elapsed in between', () => {
+    // Retired from Monday's page (closes at Friday), then kept from
+    // Friday's page — one uninterrupted run, not two periods meeting on
+    // the same day.
+    const r = rule({ periods: [{ from: '2026-09-01', until: '2026-09-18' }] })
+    expect(openPeriod(r, '2026-09-18')).toEqual([
+      { from: '2026-09-01', until: null },
+    ])
+  })
+
+  it('re-opens across a weekend, where no trading day elapsed either', () => {
+    const r = rule({ periods: [{ from: '2026-09-01', until: '2026-09-18' }] })
+    expect(openPeriod(r, '2026-09-21')).toEqual([
+      { from: '2026-09-01', until: null },
+    ])
+  })
+
+  it('appends when a trading day passed with the rule switched off', () => {
+    // Off on Thursday the 17th, back on Friday the 18th: that Thursday is a
+    // real gap and has to stay one.
+    const r = rule({ periods: [{ from: '2026-09-01', until: '2026-09-16' }] })
+    expect(openPeriod(r, '2026-09-18')).toEqual([
+      { from: '2026-09-01', until: '2026-09-16' },
+      { from: '2026-09-18', until: null },
+    ])
+  })
+
+  it('re-opens only the latest period, leaving older ones alone', () => {
+    const r = rule({
+      periods: [
+        { from: '2026-06-01', until: '2026-06-30' },
+        { from: '2026-09-01', until: '2026-09-18' },
+      ],
+    })
+    expect(openPeriod(r, '2026-09-18')).toEqual([
+      { from: '2026-06-01', until: '2026-06-30' },
+      { from: '2026-09-01', until: null },
+    ])
+  })
+})
