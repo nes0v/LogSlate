@@ -16,7 +16,7 @@ interface DayReflectionSectionProps {
 const STEMS: Array<{ field: keyof DayReflection; stem: string }> = [
   { field: 'hardest_moment', stem: 'Today the hardest moment was' },
   { field: 'wanted_to', stem: 'I wanted to' },
-  { field: 'instead_did', stem: 'Instead I' },
+  { field: 'instead_did', stem: 'And I' },
 ]
 
 /**

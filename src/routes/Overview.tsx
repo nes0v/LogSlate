@@ -16,7 +16,7 @@ import { bucketNavTarget, drillDownRange, timeframeFromParams } from '@/lib/stat
 import { ChevronRight, X } from 'lucide-react'
 import { dateKeyToDate } from '@/lib/tz'
 import type { EquityAdjustment, Model } from '@/db/types'
-import { listAdjustments, listAllTrades, listModels } from '@/db/queries'
+import { listAdjustments, listAllTrades, listModels, listSymbols } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
 import {
   applyFilters,
@@ -180,6 +180,7 @@ export function OverviewRoute() {
   // with the right name on first paint (instead of flashing "gambling"
   // before the lookup map populates).
   const models = useAccountQuery(accountId, () => listModels(accountId))
+  const symbols = useAccountQuery(accountId, () => listSymbols(accountId))
   const modelById = useMemo(() => {
     const m = new Map<string, Model>()
     for (const p of models ?? []) m.set(p.id, p)
@@ -219,7 +220,7 @@ export function OverviewRoute() {
   })
   // Drop symbol/model filters carried over from another account (their
   // per-account ids match nothing here) so the page doesn't render empty.
-  useValidAccountFilters(allTrades, filters.symbol_id, filters.model, patch => update(patch))
+  useValidAccountFilters(allTrades, symbols, models, filters.symbol_id, filters.model, patch => update(patch))
   // Aggregate once at the route level and pass down. Previously each
   // memo'd child (HeroNetPnl, CompositeScoreSection) computed
   // `aggregate(filtered)` independently — same data, multiple

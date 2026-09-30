@@ -450,15 +450,12 @@ export function ProgressRoute() {
           lockedReason={
             marketOpen ? 'Switch to today to edit' : 'Closed for the weekend'
           }
-          // Only the weekend needs the jump: there's no Today button then,
-          // because Friday already IS the landing day. On a weekday a locked
-          // panel means you're off on some other date, and the header's Today
-          // button is the way back.
-          onPlanNext={
-            !canEditRules && !marketOpen
-              ? () => setDate(nextSessionKey)
-              : undefined
-          }
+          // Offered from the landing day only — today, or Friday over a
+          // weekend. Rules switched on today count against a session already
+          // underway, so an evening review belongs on the next session. On
+          // any other past date a locked panel means you're off reviewing
+          // history, and the header's Today button is the way back.
+          onPlanNext={isLandingDay ? () => setDate(nextSessionKey) : undefined}
           planNextLabel={`Plan ${nextSessionLabel} →`}
         />
       </section>
@@ -514,8 +511,8 @@ function RuleManager({
   date: string
   disabled: boolean
   lockedReason: string
-  /** Jump to the next trading day, where editing IS allowed. Without it a
-   *  locked weekend panel is a dead end: there's no Today button to fall
+  /** Jump to the next trading day to plan it. On a weekend it's also the
+   *  only way out of the locked panel: there's no Today button to fall
    *  back on, because Friday already IS the landing day. */
   onPlanNext?: () => void
   planNextLabel: string
@@ -525,18 +522,19 @@ function RuleManager({
     <div className="bg-(--color-panel) rounded-(--radius) p-3 space-y-2">
       <div className="flex items-center justify-between mb-2">
         <div className="text-sm font-medium">Rules</div>
-        {disabled &&
-          (onPlanNext ? (
-            <button
-              type="button"
-              onClick={onPlanNext}
-              className="text-xs text-(--color-text-dim) hover:text-(--color-text)"
-            >
-              {planNextLabel}
-            </button>
-          ) : (
+        {onPlanNext ? (
+          <button
+            type="button"
+            onClick={onPlanNext}
+            className="text-xs text-(--color-text-dim) hover:text-(--color-text)"
+          >
+            {planNextLabel}
+          </button>
+        ) : (
+          disabled && (
             <div className="text-xs text-(--color-text-faint)">{lockedReason}</div>
-          ))}
+          )
+        )}
       </div>
       {/* Dimmed but still hoverable: every control inside carries its own
           `disabled`, so the panel is inert without `pointer-events-none` —

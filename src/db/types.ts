@@ -220,7 +220,7 @@ export interface Day {
   note?: string
   // The day's reflection: ONE incident, written as three completions of fixed
   // sentence stems ("Today the hardest moment was …" / "I wanted to …" /
-  // "Instead I …"). The stems are UI chrome, never stored — only the user's
+  // "And I …"). The stems are UI chrome, never stored — only the user's
   // continuations live here.
   //
   // Three fields rather than one joined string even though they read as a

@@ -179,6 +179,7 @@ export function ReportsRoute() {
   // but account-tagged, so an account switch can't leave the Model dropdown
   // showing the previous account's names for a frame.
   const models = useAccountQuery(accountId, () => listModels(accountId))
+  const symbols = useAccountQuery(accountId, () => listSymbols(accountId))
   // Day-level overrides + the default filter window (shared with Overview).
   // `rangeReady` is last-trade-date + overrides only — it does NOT wait on the
   // full trades payload, so the `loaded` gate below checks `allTrades` itself
@@ -213,7 +214,7 @@ export function ReportsRoute() {
   })
   // Drop symbol/model filters carried over from another account (their
   // per-account ids match nothing here) so the page doesn't render empty.
-  useValidAccountFilters(allTrades, filters.symbol_id, filters.model, patch => update(patch))
+  useValidAccountFilters(allTrades, symbols, models, filters.symbol_id, filters.model, patch => update(patch))
   const baseStats = useMemo(() => aggregate(filtered), [filtered])
   const { rangeStart, rangeEnd } = useWindowRange(filtered, filters)
   // Global "Show override days" toggle. Beyond attribute filters, the
