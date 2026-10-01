@@ -310,8 +310,8 @@ export function CalendarRoute() {
                     // the user's local day as today, which is wrong
                     // for a non-NY-resident trader.
                     isToday={key === nyDateKey()}
-                    hasScreenshot={inMonth && screenshotDays.has(key)}
-                    hasNote={inMonth && noteDays.has(key)}
+                    hasScreenshot={screenshotDays.has(key)}
+                    hasNote={noteDays.has(key)}
                   />
                 )
               }),
@@ -537,17 +537,16 @@ const CELL_PALETTE: Record<CellVariant, CellPalette> = {
     icon: 'text-(--color-cal-empty-icon)',
   },
   // Out-of-month padding cells — transparent surface with a hairline
-  // border. Icons / metadata never render here (hasScreenshot/hasNote
-  // both gate on inMonth), so those slots are inert.
+  // border. PNL/meta/icons inherit the faint text colour from the surface.
   pad: {
     surface:
       'bg-transparent border-(--color-cal-pad-border) hover:bg-(--color-panel)/40 text-(--color-text-faint)',
     date: 'text-(--color-text-dim)',
     dateToday: 'text-(--color-text-dim)',
     pnl: '',
-    meta: '',
-    winRate: '',
-    icon: '',
+    meta: 'opacity-60',
+    winRate: 'opacity-60',
+    icon: 'opacity-30',
   },
 }
 
