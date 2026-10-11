@@ -39,6 +39,8 @@ interface Options<T extends { id: string }> {
   onReorder: (orderedIds: string[]) => Promise<void> | void
   /** A pointerdown→up that never crossed the drag threshold — i.e. a click. */
   onSelect: (id: string) => void
+  /** Gap between rows, for a list not spaced with `SORTABLE_ROW_GAP_CLASS`. */
+  rowGapPx?: number
 }
 
 export interface SortableReorder<T> {
@@ -48,7 +50,10 @@ export interface SortableReorder<T> {
   isActiveDrag: boolean
   /** Id of the row currently under the pointer, or null. */
   draggingId: string | null
-  /** Spread onto each row button; supplies the drag handler + live transform. */
+  /** Spread onto each row button; supplies the drag handler + live transform.
+   *  A row dragged by a handle takes `style` and marks itself
+   *  `data-sortable-row`, and the handle takes `onPointerDown` — the row, not
+   *  the handle, is what gets measured. */
   rowProps: (id: string, index: number) => {
     onPointerDown: (e: PointerEvent<HTMLElement>) => void
     style: CSSProperties
@@ -59,6 +64,7 @@ export function useSortableReorder<T extends { id: string }>({
   items,
   onReorder,
   onSelect,
+  rowGapPx = SORTABLE_ROW_GAP_PX,
 }: Options<T>): SortableReorder<T> {
   // Locally-applied order for the window between a drag commit and the live
   // query refreshing, so translateY=0 doesn't snap back through the old order.
@@ -183,13 +189,14 @@ export function useSortableReorder<T extends { id: string }>({
     return {
       onPointerDown: (e: PointerEvent<HTMLElement>) => {
         if (e.button !== 0) return
-        const rect = e.currentTarget.getBoundingClientRect()
+        const row = e.currentTarget.closest('[data-sortable-row]') ?? e.currentTarget
+        const rect = row.getBoundingClientRect()
         setDrag({
           id,
           fromIdx: index,
           startY: e.clientY,
           currentY: e.clientY,
-          itemHeight: rect.height + SORTABLE_ROW_GAP_PX,
+          itemHeight: rect.height + rowGapPx,
           active: false,
         })
       },

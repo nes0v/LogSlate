@@ -3,6 +3,7 @@ import { db } from './schema'
 import {
   createProgressRule,
   deleteProgressRule,
+  reorderProgressRules,
   restoreProgressRule,
   setProgressRuleActive,
   setProgressRuleText,
@@ -309,5 +310,60 @@ describe('setProgressRuleText', () => {
 
   it('reports a rule that is already gone', async () => {
     expect(await setProgressRuleText('nope', '2026-09-16', 'x')).toBe('missing')
+  })
+})
+
+describe('reorderProgressRules', () => {
+  const order = async () =>
+    (await db.progress_rules.toArray()).sort((a, b) => a.sort - b.sort).map(r => r.id)
+
+  it('saves the dragged order', async () => {
+    await db.progress_rules.bulkPut([
+      { ...rule('a', []), sort: 1 },
+      { ...rule('b', []), sort: 2 },
+      { ...rule('c', []), sort: 3 },
+    ])
+    await reorderProgressRules('main', ['c', 'a', 'b'])
+    expect(await order()).toEqual(['c', 'a', 'b'])
+  })
+
+  it('leaves archived rules in their slots', async () => {
+    await db.progress_rules.bulkPut([
+      { ...rule('a', []), sort: 1 },
+      { ...rule('old', []), sort: 2, hidden: true },
+      { ...rule('b', []), sort: 3 },
+    ])
+    await reorderProgressRules('main', ['b', 'a'])
+    expect(await order()).toEqual(['b', 'old', 'a'])
+  })
+
+  it('skips a rule deleted mid-drag and keeps one added mid-drag', async () => {
+    await db.progress_rules.bulkPut([
+      { ...rule('a', []), sort: 1 },
+      { ...rule('b', []), sort: 2 },
+      { ...rule('new', []), sort: 3 },
+    ])
+    await reorderProgressRules('main', ['gone', 'b', 'a'])
+    expect(await order()).toEqual(['b', 'a', 'new'])
+  })
+
+  it('rewrites only the rules whose place changed', async () => {
+    await db.progress_rules.bulkPut([
+      { ...rule('a', []), sort: 1 },
+      { ...rule('b', []), sort: 2 },
+      { ...rule('c', []), sort: 3 },
+    ])
+    await reorderProgressRules('main', ['b', 'a', 'c'])
+    expect((await db.progress_rules.get('c'))!.updated_at).toBe(TS)
+    expect((await db.progress_rules.get('a'))!.updated_at).not.toBe(TS)
+  })
+
+  it('touches only this account', async () => {
+    await db.progress_rules.bulkPut([
+      { ...rule('a', []), sort: 1 },
+      { ...rule('x', []), account_id: 'other', sort: 7 },
+    ])
+    await reorderProgressRules('main', ['a'])
+    expect((await db.progress_rules.get('x'))!.sort).toBe(7)
   })
 })

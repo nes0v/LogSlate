@@ -1119,6 +1119,39 @@ async function retireRule(
   return 'archived'
 }
 
+/**
+ * Save the rule list's order after a drag. `orderedIds` is the visible
+ * (unarchived) rules, top to bottom.
+ *
+ * Archived rules stay in the slots they already had: past days still list
+ * them in their checklist, interleaved by `sort`, so renumbering only the
+ * visible rules would shuffle those days' checklists around the archived
+ * ones. Read inside the transaction, for the same reason `createProgressRule`
+ * is.
+ */
+export async function reorderProgressRules(
+  accountId: string,
+  orderedIds: string[],
+): Promise<void> {
+  await db.transaction('rw', db.progress_rules, async () => {
+    const all = await db.progress_rules.where('account_id').equals(accountId).sortBy('sort')
+    const moved = new Set(orderedIds)
+    const queue = orderedIds.filter(id => all.some(r => r.id === id))
+    const order = all.map(r => (moved.has(r.id) ? queue.shift() : r.id))
+    const sortOf = new Map(all.map(r => [r.id, r.sort]))
+    const ts = now()
+    for (let i = 0; i < order.length; i++) {
+      const id = order[i]
+      // A rule deleted between the drag and this write leaves its slot empty.
+      if (id === undefined) continue
+      // Untouched rows keep their `updated_at`, so a sync doesn't re-send
+      // every rule for a one-row move.
+      if (sortOf.get(id) === i + 1) continue
+      await db.progress_rules.update(id, { sort: i + 1, updated_at: ts })
+    }
+  })
+}
+
 export type ProgressRuleTextChange = 'renamed' | 'replaced' | 'missing'
 
 /**

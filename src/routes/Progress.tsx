@@ -6,7 +6,7 @@ import {
   getDay,
   isWeekend,
 } from 'date-fns'
-import { ChevronLeft, ChevronRight, Plus, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, GripVertical, Plus, X } from 'lucide-react'
 import { db } from '@/db/schema'
 import type { ProgressRule } from '@/db/types'
 import {
@@ -29,9 +29,11 @@ import { RuleCheck } from '@/components/form/RuleCheck'
 import { useConfirm } from '@/components/ConfirmDialog'
 import { BTN_ACCENT } from '@/components/form/buttonClass'
 import { useAccountQuery } from '@/lib/use-account-query'
+import { useSortableReorder } from '@/lib/use-sortable-reorder'
 import {
   createProgressRule,
   deleteProgressRule,
+  reorderProgressRules,
   restoreProgressRule,
   setProgressRuleActive,
   setProgressRuleText,
@@ -456,6 +458,7 @@ export function ProgressRoute() {
           archived={(rules ?? []).filter(r => r.hidden === true)}
           onAdd={addRule}
           onRename={renameRule}
+          onReorder={ids => reorderProgressRules(accountId, ids)}
           onSetActive={setRuleActive}
           onDelete={deleteRule}
           onRestore={restoreRule}
@@ -504,6 +507,7 @@ function RuleManager({
   archived,
   onAdd,
   onRename,
+  onReorder,
   onSetActive,
   onDelete,
   onRestore,
@@ -517,6 +521,7 @@ function RuleManager({
   archived: ProgressRule[]
   onAdd: () => void
   onRename: (rule: ProgressRule, text: string) => Promise<boolean>
+  onReorder: (orderedIds: string[]) => Promise<void>
   onSetActive: (rule: ProgressRule, next: boolean) => void
   onDelete: (id: string) => void
   onRestore: (rule: ProgressRule) => void
@@ -532,6 +537,16 @@ function RuleManager({
   planNextLabel: string
 }) {
   const [showArchived, setShowArchived] = useState(false)
+  // Order is display only — it scores nothing — so a drag rewrites it for
+  // every day, past ones included. It still sits behind the same lock as the
+  // rest of the panel.
+  const { visible, isActiveDrag, draggingId, rowProps } = useSortableReorder({
+    items: rules,
+    onReorder,
+    onSelect: () => {},
+    // `space-y-1` below.
+    rowGapPx: 4,
+  })
   return (
     <div className="bg-(--color-panel) rounded-(--radius) p-3 space-y-2">
       <div className="flex items-center justify-between mb-2">
@@ -556,10 +571,12 @@ function RuleManager({
           tooltip, exactly when the panel is locked and the tooltip is the
           only thing left explaining the row. */}
       <div className={cn('space-y-1', disabled && 'opacity-50')}>
-        {rules.map(r => (
+        {visible.map((r, i) => (
           <RuleRow
             key={r.id}
             rule={r}
+            sortable={rowProps(r.id, i)}
+            lifted={isActiveDrag && draggingId === r.id}
             onRename={onRename}
             onSetActive={onSetActive}
             onDelete={onDelete}
@@ -627,6 +644,8 @@ function RuleManager({
 
 function RuleRow({
   rule,
+  sortable,
+  lifted,
   onRename,
   onSetActive,
   onDelete,
@@ -634,6 +653,9 @@ function RuleRow({
   disabled,
 }: {
   rule: ProgressRule
+  sortable: ReturnType<ReturnType<typeof useSortableReorder>['rowProps']>
+  /** Being dragged: drawn over the rows it passes. */
+  lifted: boolean
   onRename: (rule: ProgressRule, text: string) => Promise<boolean>
   onSetActive: (rule: ProgressRule, next: boolean) => void
   onDelete: (id: string) => void
@@ -698,7 +720,31 @@ function RuleRow({
         : `tick to start it ${viewedLabel}`
   const tooltip = disabled ? state : `${state} — ${action}`
   return (
-    <div className="flex items-start gap-2 px-1 py-1 rounded-sm">
+    <div
+      data-sortable-row
+      // The hook's `touch-action: none` belongs on the handle alone: across
+      // the whole row it would stop a finger scrolling the page.
+      style={{ ...sortable.style, touchAction: undefined }}
+      className={cn(
+        'flex items-start gap-2 px-1 py-1 rounded-sm',
+        lifted && 'bg-(--color-panel-2)',
+      )}
+    >
+      <span
+        onPointerDown={disabled ? undefined : sortable.onPointerDown}
+        // Grabbing a row must not take the focus from a rule being edited:
+        // that blur saves it, and a rule with history would put its "save as
+        // a new rule?" confirm up in the middle of the drag.
+        onMouseDown={e => e.preventDefault()}
+        style={{ touchAction: 'none' }}
+        className={cn(
+          'size-4 inline-flex items-center justify-center shrink-0 mt-px -mr-1 text-(--color-text-faint)',
+          disabled ? 'cursor-not-allowed' : 'cursor-grab hover:text-(--color-text-dim)',
+        )}
+        title={disabled ? undefined : 'Drag to reorder'}
+      >
+        <GripVertical className="size-3.5" />
+      </span>
       <span
         className="size-4 inline-flex items-center justify-center shrink-0 mt-px"
         title={tooltip}
