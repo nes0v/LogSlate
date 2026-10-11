@@ -5,6 +5,7 @@ import {
   deleteProgressRule,
   restoreProgressRule,
   setProgressRuleActive,
+  setProgressRuleText,
   toggleProgressCheck,
 } from './queries'
 import type { ProgressCheck, ProgressRule, ProgressRulePeriod } from './types'
@@ -111,6 +112,16 @@ describe('deleteProgressRule', () => {
     expect(await checkDates('r')).toEqual(['2026-09-15'])
   })
 
+  it('archives a rule that counted on past days even with no ticks at all', async () => {
+    // Deleting it would drop it from those days' totals and raise their
+    // scores after the fact.
+    await db.progress_rules.put(rule('r', [{ from: '2026-09-14', until: null }]))
+    expect(await deleteProgressRule('r', '2026-09-16')).toBe('archived')
+    expect((await db.progress_rules.get('r'))!.periods).toEqual([
+      { from: '2026-09-14', until: '2026-09-15' },
+    ])
+  })
+
   it('deletes rather than archives when the only tick is one it strands', async () => {
     // The rule that was switched on and off inside a single session: its
     // period is dropped, so the tick it collected anchors nothing. Archiving
@@ -209,5 +220,94 @@ describe('restoreProgressRule', () => {
     expect((await db.progress_rules.get('r'))!.periods).toEqual([
       { from: '2026-09-01', until: null },
     ])
+  })
+})
+
+describe('setProgressRuleText', () => {
+  const visible = async () =>
+    (await db.progress_rules.toArray()).filter(r => !r.hidden)
+
+  it('renames a rule no past day has scored', async () => {
+    await db.progress_rules.put(rule('r', [{ from: '2026-09-16', until: null }]))
+    await db.progress_checks.put(check('2026-09-16', 'r'))
+    expect(await setProgressRuleText('r', '2026-09-16', 'new')).toBe('renamed')
+    expect((await db.progress_rules.get('r'))!.text).toBe('new')
+    expect(await checkDates('r')).toEqual(['2026-09-16'])
+  })
+
+  it('renames a rule only planned for the next session', async () => {
+    await db.progress_rules.put(rule('r', [{ from: '2026-09-21', until: null }]))
+    // Saturday's page for Monday.
+    expect(await setProgressRuleText('r', '2026-09-21', 'new')).toBe('renamed')
+  })
+
+  it('replaces a rule with history, leaving the past on the old words', async () => {
+    await db.progress_rules.put({
+      ...rule('r', [{ from: '2026-09-01', until: null }]),
+      sort: 3,
+    })
+    await db.progress_checks.put(check('2026-09-15', 'r'))
+    expect(await setProgressRuleText('r', '2026-09-16', 'new')).toBe('replaced')
+
+    const old = (await db.progress_rules.get('r'))!
+    expect(old).toMatchObject({ text: 'r', hidden: true })
+    expect(old.periods).toEqual([{ from: '2026-09-01', until: '2026-09-15' }])
+    expect(await checkDates('r')).toEqual(['2026-09-15'])
+
+    const [fresh] = await visible()
+    expect(fresh).toMatchObject({ text: 'new', sort: 3 })
+    expect(fresh.id).not.toBe('r')
+    expect(fresh.periods).toEqual([{ from: '2026-09-16', until: null }])
+  })
+
+  it('planning Monday over the weekend ends the old words on Friday', async () => {
+    await db.progress_rules.put(rule('r', [{ from: '2026-09-01', until: null }]))
+    await db.progress_checks.put(check('2026-09-18', 'r'))
+    await setProgressRuleText('r', '2026-09-21', 'new')
+    expect((await db.progress_rules.get('r'))!.periods).toEqual([
+      { from: '2026-09-01', until: '2026-09-18' },
+    ])
+    expect((await visible())[0].periods).toEqual([{ from: '2026-09-21', until: null }])
+  })
+
+  it('keeps a later planned start on the replacement', async () => {
+    // Ran earlier, switched back on from Thursday's page while viewing it.
+    await db.progress_rules.put(
+      rule('r', [
+        { from: '2026-09-01', until: '2026-09-10' },
+        { from: '2026-09-17', until: null },
+      ]),
+    )
+    await db.progress_checks.put(check('2026-09-10', 'r'))
+    await setProgressRuleText('r', '2026-09-16', 'new')
+    expect((await visible())[0].periods).toEqual([{ from: '2026-09-17', until: null }])
+  })
+
+  it('keeps the old rule for past days it counted on but was never ticked', async () => {
+    await db.progress_rules.put(rule('r', [{ from: '2026-09-14', until: null }]))
+    await setProgressRuleText('r', '2026-09-16', 'new')
+    expect((await db.progress_rules.get('r'))!).toMatchObject({
+      hidden: true,
+      periods: [{ from: '2026-09-14', until: '2026-09-15' }],
+    })
+  })
+
+  it('replaces a retired rule with a retired one', async () => {
+    await db.progress_rules.put(rule('r', [{ from: '2026-09-01', until: '2026-09-10' }]))
+    await db.progress_checks.put(check('2026-09-10', 'r'))
+    await setProgressRuleText('r', '2026-09-16', 'new')
+    expect((await visible())[0].periods).toEqual([])
+    expect((await db.progress_rules.get('r'))!.hidden).toBe(true)
+  })
+
+  it('drops the tick the old rule strands on the day of the change', async () => {
+    await db.progress_rules.put(rule('r', [{ from: '2026-09-01', until: null }]))
+    await db.progress_checks.bulkPut([check('2026-09-15', 'r'), check('2026-09-16', 'r')])
+    await setProgressRuleText('r', '2026-09-16', 'new')
+    expect(await checkDates('r')).toEqual(['2026-09-15'])
+  })
+
+  it('reports a rule that is already gone', async () => {
+    expect(await setProgressRuleText('nope', '2026-09-16', 'x')).toBe('missing')
   })
 })

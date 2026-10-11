@@ -13,6 +13,7 @@ import {
   lastPeriodEnd,
   openPeriodStart,
   ruleActiveOn,
+  ruleHasHistoryBefore,
   ruleHasOpenPeriod,
 } from '@/lib/progress-periods'
 import {
@@ -33,6 +34,7 @@ import {
   deleteProgressRule,
   restoreProgressRule,
   setProgressRuleActive,
+  setProgressRuleText,
   toggleProgressCheck,
 } from '@/db/queries'
 import { dateKeyToDate } from '@/lib/tz'
@@ -193,11 +195,23 @@ export function ProgressRoute() {
     await createProgressRule(accountId)
   }
 
-  async function updateRule(id: string, patch: Partial<ProgressRule>) {
-    await db.progress_rules.update(id, {
-      ...patch,
-      updated_at: new Date().toISOString(),
-    })
+  // Resolves false when the user backs out, so the row can put the old words
+  // back. Only a rule with history asks: rewording it makes a new rule (see
+  // `setProgressRuleText`), and that should never happen by surprise.
+  async function renameRule(rule: ProgressRule, text: string): Promise<boolean> {
+    if (
+      ruleHasHistoryBefore(rule, date) &&
+      !(await confirm({
+        title: 'Save as a new rule?',
+        description:
+          'This rule already has history. The new wording becomes a new rule in its place, starting from this day on. Past days keep the old rule and its ticks.',
+        confirmLabel: 'Save as new',
+        destructive: false,
+      }))
+    )
+      return false
+    await setProgressRuleText(rule.id, date, text)
+    return true
   }
 
   // Rule edits apply to the day being VIEWED, not the calendar day. That's
@@ -441,7 +455,7 @@ export function ProgressRoute() {
           rules={(rules ?? []).filter(r => !r.hidden)}
           archived={(rules ?? []).filter(r => r.hidden === true)}
           onAdd={addRule}
-          onUpdate={updateRule}
+          onRename={renameRule}
           onSetActive={setRuleActive}
           onDelete={deleteRule}
           onRestore={restoreRule}
@@ -489,7 +503,7 @@ function RuleManager({
   rules,
   archived,
   onAdd,
-  onUpdate,
+  onRename,
   onSetActive,
   onDelete,
   onRestore,
@@ -502,7 +516,7 @@ function RuleManager({
   rules: ProgressRule[]
   archived: ProgressRule[]
   onAdd: () => void
-  onUpdate: (id: string, patch: Partial<ProgressRule>) => void
+  onRename: (rule: ProgressRule, text: string) => Promise<boolean>
   onSetActive: (rule: ProgressRule, next: boolean) => void
   onDelete: (id: string) => void
   onRestore: (rule: ProgressRule) => void
@@ -546,7 +560,7 @@ function RuleManager({
           <RuleRow
             key={r.id}
             rule={r}
-            onUpdate={onUpdate}
+            onRename={onRename}
             onSetActive={onSetActive}
             onDelete={onDelete}
             date={date}
@@ -613,14 +627,14 @@ function RuleManager({
 
 function RuleRow({
   rule,
-  onUpdate,
+  onRename,
   onSetActive,
   onDelete,
   date,
   disabled,
 }: {
   rule: ProgressRule
-  onUpdate: (id: string, patch: Partial<ProgressRule>) => void
+  onRename: (rule: ProgressRule, text: string) => Promise<boolean>
   onSetActive: (rule: ProgressRule, next: boolean) => void
   onDelete: (id: string) => void
   date: string
@@ -707,17 +721,28 @@ function RuleRow({
         // beside this, and a third of one here.
         title={text || undefined}
         disabled={disabled}
-        onBlur={() => {
+        onBlur={async () => {
           const v = text.trim()
-          if (v !== rule.text) onUpdate(rule.id, { text: v })
+          if (v === rule.text) return
+          // Blanking a rule that has history would replace it with an unnamed
+          // one, which is never what clearing the field meant.
+          if (v === '' && ruleHasHistoryBefore(rule, date)) {
+            setText(rule.text)
+            return
+          }
+          if (!(await onRename(rule, v))) setText(rule.text)
         }}
         // Enter is how a one-line field is finished, and it was doing
         // nothing: the text sat in local state, on screen and unsaved, until
         // something else happened to take the focus away. Escape abandons
         // the edit the same way.
         onKeyDown={e => {
-          if (e.key === 'Enter') e.currentTarget.blur()
-          else if (e.key === 'Escape') {
+          if (e.key === 'Enter') {
+            // Blur once this keypress is done: saving a rule with history
+            // opens a confirm, whose window-level Enter handler is in place
+            // before this same keydown reaches the window — and accepted it.
+            requestAnimationFrame(() => inputRef.current?.blur())
+          } else if (e.key === 'Escape') {
             setText(rule.text)
             // Blur AFTER the state is restored, so the blur handler above
             // compares the original text and writes nothing.

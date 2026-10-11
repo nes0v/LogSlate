@@ -40,6 +40,25 @@ export function lastPeriodEnd(rule: ProgressRule): string | null {
   return latest
 }
 
+// The last trading day strictly before `today` — Friday from a Monday or a
+// weekend. Everything up to it is behind us as far as `today` is concerned.
+function tradingDayBefore(today: string): string {
+  return previousWeekdayKey(
+    format(addDays(dateKeyToDate(today), -1), 'yyyy-MM-dd'),
+  )
+}
+
+// True once the rule has been in force on a trading day before `today` — some
+// past day scored it under its current words. From then on those words are
+// part of the record: rewording the rule would change what the past says was
+// asked of you, so a new wording becomes a new rule instead (see
+// `setProgressRuleText`). Before that, nothing depends on the text and it can
+// change freely — a typo just written, or a rule being planned for Monday.
+export function ruleHasHistoryBefore(rule: ProgressRule, today: string): boolean {
+  const cutoff = tradingDayBefore(today)
+  return rule.periods.some(p => p.from <= cutoff)
+}
+
 // Open a fresh period starting on the next trading day — today when
 // that's a weekday, Monday when `today` is a Sat/Sun. Both callers pass
 // the raw calendar day; normalising here means no call site can write a
@@ -80,9 +99,7 @@ export function openPeriod(rule: ProgressRule, today: string): ProgressRulePerio
 // Friday — the week that just ended still counts it, exactly as it was
 // journalled.
 export function closePeriod(rule: ProgressRule, today: string): ProgressRulePeriod[] {
-  const until = previousWeekdayKey(
-    format(addDays(dateKeyToDate(today), -1), 'yyyy-MM-dd'),
-  )
+  const until = tradingDayBefore(today)
   return rule.periods
     .map(p => {
       if (p.until !== null) return p

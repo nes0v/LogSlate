@@ -8,6 +8,7 @@ import {
   openPeriod,
   openPeriodStart,
   ruleActiveOn,
+  ruleHasHistoryBefore,
   ruleHasOpenPeriod,
 } from './progress-periods'
 
@@ -277,5 +278,37 @@ describe('openPeriod re-opening rather than splitting', () => {
       { from: '2026-06-01', until: '2026-06-30' },
       { from: '2026-09-01', until: null },
     ])
+  })
+})
+
+// 2026-05-11 Mon … 2026-05-15 Fri; 2026-05-18 the next Monday.
+describe('ruleHasHistoryBefore', () => {
+  it('is false for a rule never switched on', () => {
+    expect(ruleHasHistoryBefore(rule(), '2026-05-13')).toBe(false)
+  })
+
+  it('is false for a rule that starts on the day itself', () => {
+    const r = rule({ periods: [{ from: '2026-05-13', until: null }] })
+    expect(ruleHasHistoryBefore(r, '2026-05-13')).toBe(false)
+  })
+
+  it('is true once the rule ran on the previous trading day', () => {
+    const r = rule({ periods: [{ from: '2026-05-12', until: null }] })
+    expect(ruleHasHistoryBefore(r, '2026-05-13')).toBe(true)
+  })
+
+  it('counts Friday from the following Monday', () => {
+    const r = rule({ periods: [{ from: '2026-05-15', until: null }] })
+    expect(ruleHasHistoryBefore(r, '2026-05-18')).toBe(true)
+  })
+
+  it('is false for a rule planned for Monday, viewed from Monday', () => {
+    const r = rule({ periods: [{ from: '2026-05-18', until: null }] })
+    expect(ruleHasHistoryBefore(r, '2026-05-18')).toBe(false)
+  })
+
+  it('counts a closed period from the past', () => {
+    const r = rule({ periods: [{ from: '2026-05-04', until: '2026-05-06' }] })
+    expect(ruleHasHistoryBefore(r, '2026-05-13')).toBe(true)
   })
 })

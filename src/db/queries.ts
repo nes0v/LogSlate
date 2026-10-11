@@ -18,7 +18,14 @@ import { getActiveAccountId } from '@/lib/active-account'
 import { netPnlByDate } from '@/lib/day-pnl'
 import { clearSymbolFilterCache, writeSymbolFilterCache } from '@/lib/symbol-filter-cache'
 import { clearLastActivityDate } from '@/lib/last-activity-cache'
-import { closePeriod, openPeriod, ruleActiveOn } from '@/lib/progress-periods'
+import {
+  closePeriod,
+  openPeriod,
+  openPeriodStart,
+  ruleActiveOn,
+  ruleHasHistoryBefore,
+} from '@/lib/progress-periods'
+import { nextWeekdayKey } from '@/lib/tz'
 
 function now(): string {
   return new Date().toISOString()
@@ -949,8 +956,7 @@ export async function setDayReflection(
 // Ticking a rule and then retiring it the same day is the ordinary way in:
 // `closePeriod` ends the period yesterday (or drops it outright, if the rule
 // never saw a trading day), and today's tick is left behind attached to
-// nothing. Left there it also lies to `deleteProgressRule`, which reads
-// "this rule has check rows" as "the past depends on this rule".
+// nothing.
 async function pruneOrphanChecks(rule: ProgressRule): Promise<void> {
   const orphans = await db.progress_checks
     .where('account_id')
@@ -1071,12 +1077,11 @@ export type ProgressRuleDeletion = 'deleted' | 'archived' | 'missing'
 /**
  * Remove a rule from `date` on.
  *
- * A rule no past day depends on is deleted outright. One that scored days
- * behind us is hidden instead, keeping its periods and its ticks so those
- * days' adherence doesn't drift — which is only worth doing for rows that
- * still sit inside a period, hence the prune first. Without it, a rule that
- * was switched on and off within a single afternoon left one stranded tick
- * behind and then lived forever in the archived drawer.
+ A rule no past day depends on is deleted outright. One that was in force on
+ * any day behind us is hidden instead, keeping its periods and its ticks so
+ * those days' adherence doesn't drift. Ticked or not makes no difference: an
+ * unticked day still counted the rule in its total, and deciding by ticks
+ * used to delete such a rule and raise those days' scores after the fact.
  *
  * All of it in one transaction: a write landing midway can't leave check rows
  * orphaned from a rule that is already gone.
@@ -1088,28 +1093,75 @@ export async function deleteProgressRule(
   return db.transaction('rw', db.progress_rules, db.progress_checks, async () => {
     const rule = await db.progress_rules.get(ruleId)
     if (!rule) return 'missing'
-    const next: ProgressRule = {
-      ...rule,
-      periods: closePeriod(rule, date),
-      updated_at: now(),
+    return retireRule(rule, date)
+  })
+}
+
+// The body of `deleteProgressRule`, shared with `setProgressRuleText`. Must run
+// inside a transaction over both progress tables.
+async function retireRule(
+  rule: ProgressRule,
+  date: string,
+): Promise<'deleted' | 'archived'> {
+  const next: ProgressRule = {
+    ...rule,
+    periods: closePeriod(rule, date),
+    updated_at: now(),
+  }
+  // With no period left, no day ever counted the rule — switched on and off
+  // within one session, say — and the prune clears every tick it collected.
+  await pruneOrphanChecks(next)
+  if (next.periods.length === 0) {
+    await db.progress_rules.delete(rule.id)
+    return 'deleted'
+  }
+  await db.progress_rules.put({ ...next, hidden: true })
+  return 'archived'
+}
+
+export type ProgressRuleTextChange = 'renamed' | 'replaced' | 'missing'
+
+/**
+ * Change a rule's words as of `date`, the day being viewed.
+ *
+ * A rule no past day has scored is simply renamed. One with history is
+ * replaced: a past day's tick means "I did what these words said", and
+ * rewording the rule underneath it would make the record say something else
+ * — swapping the texts of two rules to reorder them turned "20 min prep" into
+ * "3 trades max" on every day already journalled. So the old rule retires
+ * from `date` exactly as deleting it would, and a new rule with the new words
+ * takes its place in the list, starting `date` if the old one was running.
+ */
+export async function setProgressRuleText(
+  ruleId: string,
+  date: string,
+  text: string,
+): Promise<ProgressRuleTextChange> {
+  return db.transaction('rw', db.progress_rules, db.progress_checks, async () => {
+    const rule = await db.progress_rules.get(ruleId)
+    if (!rule) return 'missing'
+    if (!ruleHasHistoryBefore(rule, date)) {
+      await db.progress_rules.put({ ...rule, text, updated_at: now() })
+      return 'renamed'
     }
-    await pruneOrphanChecks(next)
-    // `rule_id` isn't indexed (schema v3 pruned the index), so this is a
-    // filter-scan, narrowed to the account and stopped on the first hit.
-    let anyLeft = false
-    await db.progress_checks
-      .where('account_id')
-      .equals(rule.account_id)
-      .filter(c => c.rule_id === ruleId)
-      .until(() => anyLeft)
-      .each(() => {
-        anyLeft = true
-      })
-    if (!anyLeft) {
-      await db.progress_rules.delete(ruleId)
-      return 'deleted'
-    }
-    await db.progress_rules.put({ ...next, hidden: true })
-    return 'archived'
+    // A rule already switched on for a later session keeps that start: the
+    // replacement inherits the plan, not just the words.
+    const openFrom = openPeriodStart(rule)
+    const startFrom = nextWeekdayKey(date)
+    const ts = now()
+    await retireRule(rule, date)
+    await db.progress_rules.put({
+      id: newId(),
+      account_id: rule.account_id,
+      text,
+      periods:
+        openFrom === null
+          ? []
+          : [{ from: openFrom > startFrom ? openFrom : startFrom, until: null }],
+      sort: rule.sort,
+      created_at: ts,
+      updated_at: ts,
+    })
+    return 'replaced'
   })
 }
