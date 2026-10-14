@@ -66,7 +66,7 @@ export function AccountSwitcher({ accounts }: AccountSwitcherProps) {
       >
         <span className="flex items-center gap-1.5 min-w-0">
           <User className="size-4 shrink-0 text-(--color-text-dim)" />
-          <span className="max-w-40 truncate">{activeName}</span>
+          <span className="max-w-56 truncate">{activeName}</span>
         </span>
         <ChevronDown className="size-4 shrink-0 text-(--color-text-dim)" />
       </button>
