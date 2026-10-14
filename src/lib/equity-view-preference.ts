@@ -8,7 +8,7 @@ import type { EquityView } from '@/components/EquityChartToggle'
 import { getActiveAccountId, useActiveAccountId } from '@/lib/active-account'
 
 const KEY_PREFIX = 'logslate:equity_view_default:'
-const DEFAULT: EquityView = 'curve'
+const DEFAULT: EquityView = 'candles'
 
 function keyFor(accountId: string): string {
   return KEY_PREFIX + accountId
