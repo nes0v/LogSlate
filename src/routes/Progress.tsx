@@ -307,7 +307,7 @@ export function ProgressRoute() {
           <button
             type="button"
             onClick={() => shiftDate(-1)}
-            className="p-1.5 rounded text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)"
+            className="p-1.5 rounded-(--radius) text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)"
           >
             <ChevronLeft className="size-4" />
           </button>
@@ -315,6 +315,7 @@ export function ProgressRoute() {
             value={date}
             onChange={v => v && setDate(v)}
             compact
+            bare
             disableWeekends
             max={nextSessionKey}
             ariaLabel="Selected date"
@@ -328,7 +329,7 @@ export function ProgressRoute() {
                 ? `${nextSessionLabel} is the furthest ahead you can go`
                 : undefined
             }
-            className="p-1.5 rounded text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2) disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-(--color-text-dim)"
+            className="p-1.5 rounded-(--radius) text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2) disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-(--color-text-dim)"
           >
             <ChevronRight className="size-4" />
           </button>

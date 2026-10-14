@@ -246,7 +246,7 @@ export function CalendarRoute() {
               <button
                 type="button"
                 onClick={toggle}
-                className="text-lg font-semibold rounded-(--radius) cursor-pointer hover:text-(--color-accent)"
+                className="pt-[3px] px-2.5 pb-1 text-lg font-semibold rounded-(--radius) cursor-pointer focus:outline-none focus:ring-2 focus:ring-(--color-accent-soft)"
               >
                 {format(month, 'MMMM yyyy')}
               </button>
@@ -536,11 +536,11 @@ const CELL_PALETTE: Record<CellVariant, CellPalette> = {
     winRate: '',
     icon: 'text-(--color-cal-empty-icon)',
   },
-  // Out-of-month padding cells — transparent surface with a hairline
+  // Out-of-month padding cells — page-bg surface with a hairline
   // border. PNL/meta/icons inherit the faint text colour from the surface.
   pad: {
     surface:
-      'bg-transparent border-(--color-cal-pad-border) hover:bg-(--color-panel)/40 text-(--color-text-faint)',
+      'bg-(--color-bg) border-(--color-cal-pad-border) hover:bg-[color-mix(in_srgb,var(--color-panel)_40%,var(--color-bg))] text-(--color-text-faint)',
     date: 'text-(--color-text-dim)',
     dateToday: 'text-(--color-text-dim)',
     pnl: '',
@@ -581,7 +581,7 @@ function WeekCard({
       <div
         aria-hidden
         className={cn(
-          'rounded-[22px] border border-(--color-cal-pad-border) bg-transparent',
+          'rounded-[22px] border border-(--color-cal-pad-border) bg-(--color-bg)',
           CELL_HEIGHT_CLASS,
         )}
       />

@@ -37,6 +37,9 @@ interface DatePickerProps {
   clearable?: boolean
   /** Tighter trigger padding for dense rows (matches `inputClassCompact`). */
   compact?: boolean
+  /** Transparent trigger instead of the recessed `--color-bg` fill — for
+   *  pickers sitting in a page header rather than a form row. */
+  bare?: boolean
   /** Grey out and block Saturday/Sunday cells (and the Today shortcut when
    *  today is a weekend). Used for cash-flow dates, which must land on a
    *  trading day so they aren't dropped from the daily equity candles. */
@@ -56,6 +59,7 @@ export function DatePicker({
   className,
   clearable = false,
   compact = false,
+  bare = false,
   disableWeekends = false,
   max,
   ariaLabel,
@@ -111,7 +115,8 @@ export function DatePicker({
   // and chevron weight so date pickers read as the same control vocabulary.
   const triggerClass = cn(
     'w-full h-8 flex items-center justify-between gap-2 text-sm rounded-(--radius)',
-    'bg-(--color-bg) text-(--color-text) cursor-pointer',
+    bare ? 'bg-transparent' : 'bg-(--color-bg)',
+    'text-(--color-text) cursor-pointer',
     'focus:outline-none focus:ring-2 focus:ring-(--color-accent-soft)',
     compact ? 'pl-2 pr-2' : 'pl-2.5 pr-2',
   )

@@ -36,7 +36,7 @@ export function Layout() {
   const navReady = equity !== undefined && accounts !== undefined
   return (
     <ConfirmProvider>
-    <div className="min-h-full flex flex-col">
+    <div className="app-grain min-h-full flex flex-col">
       <header className="sticky top-0 z-30 border-b border-(--color-border) bg-(--color-panel)/85 backdrop-blur-md backdrop-saturate-150">
         <div className="mx-auto max-w-7xl px-4 h-14 flex items-center gap-6">
           {/* Brand + nav share an `items-baseline` group: the brand is
@@ -91,7 +91,7 @@ export function Layout() {
           </div>
         </div>
       </header>
-      <main className="flex-1 mx-auto max-w-7xl w-full px-4 pt-6 pb-40">
+      <main className="relative z-1 flex-1 mx-auto max-w-7xl w-full px-4 pt-6 pb-40">
         <NotificationBanner />
         <PendingUploadBanner />
         <Outlet />
