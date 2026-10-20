@@ -287,6 +287,9 @@ export const DistributionDonuts = memo(function DistributionDonuts({
         value: donutCounts.model.get(p.id) ?? 0,
         color: MODEL_PALETTE[i % MODEL_PALETTE.length],
       }))
+      // Drafts only show once trades actually reference them. Filtered after
+      // the map so each model keeps its palette color across draft toggles.
+      .filter((s, i) => !models[i].draft || s.value > 0)
     if (unmodelled > 0) {
       segments.push({
         label: DEFAULT_MODEL_NAME,
