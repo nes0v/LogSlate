@@ -4,7 +4,7 @@ import { Controller, useFieldArray, useForm, useWatch, type Control } from 'reac
 import { zodResolver } from '@hookform/resolvers/zod'
 import type { z } from 'zod'
 import { ArrowLeft, Plus, Save, Trash2, X } from 'lucide-react'
-import { detectSession, emptyForm, formToDraft, tradeFormSchema, type TradeFormValues } from '@/lib/form-schema'
+import { detectSession, emptyForm, formToDraft, tradeFormSchema, tradingDaySeconds, type TradeFormValues } from '@/lib/form-schema'
 import { SESSION_BADGE, SESSION_BADGE_CLASS } from '@/lib/session-badge'
 import { listAllTrades, listModels, listSymbols } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
@@ -41,14 +41,6 @@ const ORDER_TYPE_OPTIONS = [
   { value: 'mkt', label: 'mkt' },
   { value: 'lmt', label: 'lmt' },
 ] as const
-
-// Parses a partial-or-full HH:MM[:SS] wallclock into ms-within-day.
-// Used by the live-stats duration calculation; assumes the regex
-// `^([01]\d|2[0-3]):[0-5]\d` has already matched.
-function timeToMs(t: string): number {
-  const [hh, mm, ss = '0'] = t.split(':')
-  return ((Number(hh) * 60 + Number(mm)) * 60 + Number(ss)) * 1000
-}
 
 interface TradeFormProps {
   initialValues?: TradeFormValues
@@ -609,10 +601,12 @@ function LiveStatsSection({
     let earliest = times[0]
     let latest = times[0]
     for (const t of times) {
-      if (t < earliest) earliest = t
-      if (t > latest) latest = t
+      if (tradingDaySeconds(t) < tradingDaySeconds(earliest)) earliest = t
+      if (tradingDaySeconds(t) > tradingDaySeconds(latest)) latest = t
     }
-    const duration = earliest === latest ? null : timeToMs(latest) - timeToMs(earliest)
+    const duration = earliest === latest
+      ? null
+      : (tradingDaySeconds(latest) - tradingDaySeconds(earliest)) * 1000
     return { session: detectSession(earliest, latest), durationMs: duration }
   }, [executions])
 

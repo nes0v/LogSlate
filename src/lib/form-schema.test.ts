@@ -104,6 +104,38 @@ describe('formToDraft', () => {
     expect(draft.executions[1].kind).toBe('sell')
     expect(draft.executions[0].time).toMatch(/^\d{4}-\d{2}-\d{2}T/)
   })
+
+  it('stamps fills at or after the 17:00 rollover on the previous calendar day', () => {
+    const draft = formToDraft(
+      validForm({
+        date: '2026-03-01',
+        executions: [
+          { kind: 'buy', order_type: 'lmt', price: 20000, time: '18:02:00', contracts: 1 },
+          { kind: 'sell', order_type: 'lmt', price: 20010, time: '16:59:00', contracts: 1 },
+        ],
+      }),
+      symbolSnapshot(),
+    )
+    expect(draft.executions.map(e => e.time)).toEqual([
+      '2026-02-28T18:02:00.000Z',
+      '2026-03-01T16:59:00.000Z',
+    ])
+  })
+
+  it('keeps a long held through midnight a long in the evening session', () => {
+    const draft = formToDraft(
+      validForm({
+        executions: [
+          { kind: 'sell', order_type: 'lmt', price: 20010, time: '00:10:00', contracts: 1 },
+          { kind: 'buy', order_type: 'lmt', price: 20000, time: '23:50:00', contracts: 1 },
+        ],
+      }),
+      symbolSnapshot(),
+    )
+    expect(draft.executions.map(e => e.kind)).toEqual(['buy', 'sell'])
+    expect(draft.executions[0].time).toBe('2026-04-14T23:50:00.000Z')
+    expect(draft.session).toBe('aft')
+  })
 })
 
 describe('detectSession — bands (no promotion when close === open)', () => {
@@ -166,12 +198,16 @@ describe('detectSession — next-session promotion', () => {
     expect(detectSession('11:25', '12:05')).toBe('lunch')
   })
 
-  it('promotes pm → aft when conditions hold', () => {
-    expect(detectSession('16:50', '17:35')).toBe('aft')
+  it('promotes aft → pre across midnight when conditions hold', () => {
+    expect(detectSession('23:50', '00:40')).toBe('pre')
   })
 
-  it('aft never promotes (last band, no next)', () => {
-    expect(detectSession('17:05', '23:55')).toBe('aft')
+  it('pm never promotes (last band of the trading day, no next)', () => {
+    expect(detectSession('16:50', '16:59')).toBe('pm')
+  })
+
+  it('keeps aft for an evening trade that closes before midnight', () => {
+    expect(detectSession('18:05', '23:55')).toBe('aft')
   })
 
   it('zero-duration trade (close === open) keeps the open session even at the tail', () => {

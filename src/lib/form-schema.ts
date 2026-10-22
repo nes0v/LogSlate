@@ -10,15 +10,25 @@ import {
   type TradeRecord,
 } from '@/db/types'
 
-// Session bands as half-open intervals [previous endMin, endMin) of minutes
-// since midnight, NY-local. The implicit start of each band is the previous
-// row's `endMin`; pre starts at 0, aft runs to end-of-day.
+// The trading day runs 17:00 → 17:00 NY, matching the CME session: the
+// equity-index futures halt 17:00–18:00 and the evening reopen belongs to
+// the NEXT day's statement. So a trade filed under day D with a fill at
+// 19:00 happened on the evening of D-1. The cut sits inside the halt, so
+// no fill can straddle it — which also keeps a trade held through
+// midnight in order (23:50 is D-1, 00:10 is D).
+const ROLLOVER_MIN = 17 * 60
+const DAY_MIN = 24 * 60
+
+// Session bands as half-open intervals [previous endMin, endMin) of
+// minutes since the 17:00 rollover — i.e. in trading-day order. The
+// implicit start of each band is the previous row's `endMin`; aft opens
+// the day at 17:00 and pm closes it at 17:00.
 const SESSION_BANDS: ReadonlyArray<{ session: Session; endMin: number }> = [
-  { session: 'pre',   endMin: 9 * 60 + 30 },   // [00:00, 09:30)
-  { session: 'am',    endMin: 11 * 60 + 30 },  // [09:30, 11:30)
-  { session: 'lunch', endMin: 13 * 60 + 30 },  // [11:30, 13:30)
-  { session: 'pm',    endMin: 17 * 60 },       // [13:30, 17:00)
-  { session: 'aft',   endMin: 24 * 60 },       // [17:00, 24:00)
+  { session: 'aft',   endMin: 7 * 60 },                // [17:00, 24:00)
+  { session: 'pre',   endMin: 7 * 60 + 9 * 60 + 30 },  // [00:00, 09:30)
+  { session: 'am',    endMin: 7 * 60 + 11 * 60 + 30 }, // [09:30, 11:30)
+  { session: 'lunch', endMin: 7 * 60 + 13 * 60 + 30 }, // [11:30, 13:30)
+  { session: 'pm',    endMin: DAY_MIN },               // [13:30, 17:00)
 ]
 
 // Promote to the next session if the trade opened within the last
@@ -32,6 +42,19 @@ function timeToMin(t: string): number {
   return Number(hh) * 60 + Number(mm)
 }
 
+/** Seconds since the 17:00 rollover for a HH:MM[:SS] wallclock — the
+ *  order fills happen in within one trading day. Compare fills with this,
+ *  never with the raw string: 23:50 comes before 00:10. */
+export function tradingDaySeconds(t: string): number {
+  const [hh, mm = '0', ss = '0'] = t.split(':')
+  const sec = (Number(hh) * 60 + Number(mm)) * 60 + Number(ss)
+  return (sec - ROLLOVER_MIN * 60 + DAY_MIN * 60) % (DAY_MIN * 60)
+}
+
+function tradingDayMin(t: string): number {
+  return (timeToMin(t) - ROLLOVER_MIN + DAY_MIN) % DAY_MIN
+}
+
 // Decides which session a trade "belongs to". Default = the session the
 // trade opened in. Promoted one step to the next session when the open
 // happened in the last 15 minutes of its session AND the close happened
@@ -42,13 +65,13 @@ function timeToMin(t: string): number {
 // is logically "the next session's", not the one it timestamped into.
 //
 // Promotion never chains — even a trade spanning multiple sessions only
-// checks the open's immediate next session. `aft` has no next, so it
-// never promotes. Times are HH:MM[:SS]; seconds are truncated.
+// checks the open's immediate next session. `pm` closes the trading day,
+// so it never promotes. Times are HH:MM[:SS]; seconds are truncated.
 export function detectSession(openTime: string, closeTime: string): Session {
-  const openMin = timeToMin(openTime)
-  const closeMin = timeToMin(closeTime)
+  const openMin = tradingDayMin(openTime)
+  const closeMin = tradingDayMin(closeTime)
   const idx = SESSION_BANDS.findIndex(b => openMin < b.endMin)
-  if (idx < 0) return 'aft'
+  if (idx < 0) return 'pm'
   const open = SESSION_BANDS[idx]
   const next = SESSION_BANDS[idx + 1]
   if (!next) return open.session
@@ -160,13 +183,18 @@ export const tradeFormSchema = z
 // `formToDraft` runs after validation succeeds and casts where needed.
 export type TradeFormValues = z.input<typeof tradeFormSchema>
 
-// Combine a calendar date and a NY wallclock time into a single ISO string.
+// Combine a trading date and a NY wallclock time into a single ISO string.
 // The app treats every typed time as NY — no timezone conversion happens at
 // store/read time. The trailing `Z` makes the string round-trip cleanly
 // through Date/Date.parse for sorting and duration math; the underlying
 // "instant" is fictional but globally consistent for every execution row.
+// A fill at or after the 17:00 rollover happened the calendar day before
+// the trading date it's filed under.
 function toIso(date: string, time: string): string {
-  return `${date}T${time}.000Z`
+  if (timeToMin(time) < ROLLOVER_MIN) return `${date}T${time}.000Z`
+  const d = new Date(`${date}T00:00:00.000Z`)
+  d.setUTCDate(d.getUTCDate() - 1)
+  return `${d.toISOString().slice(0, 10)}T${time}.000Z`
 }
 
 // `symbol_spec` is resolved by the caller (TradeForm) from the selected symbol
@@ -187,13 +215,12 @@ export function formToDraft(v: TradeFormValues, symbol_spec: SymbolSnapshot): Tr
     .sort((a, b) => Date.parse(a.time) - Date.parse(b.time))
 
   // Session is auto-detected from the open + close times (earliest +
-  // latest of the executions). Lexical sort on HH:MM:SS works because
-  // they all share the same date.
+  // latest of the executions, in trading-day order).
   let earliest: string | null = null
   let latest: string | null = null
   for (const e of v.executions) {
-    if (earliest === null || e.time < earliest) earliest = e.time
-    if (latest === null || e.time > latest) latest = e.time
+    if (earliest === null || tradingDaySeconds(e.time) < tradingDaySeconds(earliest)) earliest = e.time
+    if (latest === null || tradingDaySeconds(e.time) > tradingDaySeconds(latest)) latest = e.time
   }
   if (earliest === null || latest === null) {
     // Zod's `.min(2)` upstream guarantees this never happens, but stay
@@ -231,7 +258,7 @@ export function recordToForm(r: TradeRecord): TradeFormValues {
       kind: e.kind,
       order_type: e.order_type,
       price: e.price,
-      // Stored ISO is `${date}T${HH:MM:SS}.000Z` — slice off the wallclock.
+      // Stored ISO is `${calendarDate}T${HH:MM:SS}.000Z` — slice off the wallclock.
       time: e.time.slice(11, 19),
       contracts: e.contracts,
     }))
