@@ -43,16 +43,6 @@ const FRESH_MS = 15 * 60 * 1000
 const RETRY_MS = 5 * 60 * 1000
 const STORE_KEY = 'logslate:ff:week.v1'
 
-// Pre-week store: a 120-day day-keyed archive that this cache replaces. Its
-// contents are either in the current week's fetch or in IndexedDB, so it is
-// dead weight (up to a few hundred KB of it). Delete on sight.
-// MIGRATION-PATTERN: strip this once it has run on the device.
-try {
-  localStorage.removeItem('logslate:ff:days.v1')
-} catch {
-  // storage unavailable — nothing to clean
-}
-
 const PROXY_KEY = (import.meta.env.VITE_CORSPROXY_KEY ?? '').trim()
 
 export const FF_IMPACTS = ['High', 'Medium', 'Low', 'Holiday'] as const
