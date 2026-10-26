@@ -97,6 +97,11 @@ class LogslateDB extends Dexie {
     // row, leaving the adjustments ledger holding only real cash movements. It
     // has run and been stripped per MIGRATION-PATTERN.
     this.version(20)
+
+    // v21: the day-reflection section was removed. The one-time upgrade that
+    // deleted its fields from every stored day row has run and been stripped
+    // per MIGRATION-PATTERN.
+    this.version(21)
   }
 }
 
@@ -147,20 +152,12 @@ export function dayHasContent(
     | 'screenshots'
     | 'note'
     | 'pnl_override'
-    | 'hardest_moment'
-    | 'wanted_to'
-    | 'instead_did'
   >,
 ): boolean {
   return (
     day.screenshots.length > 0 ||
     !!day.note ||
-    typeof day.pnl_override === 'number' ||
-    // A day whose only content is the reflection must survive — without these
-    // the empty-row collector would delete the journal entry behind the user.
-    !!day.hardest_moment ||
-    !!day.wanted_to ||
-    !!day.instead_did
+    typeof day.pnl_override === 'number'
   )
 }
 

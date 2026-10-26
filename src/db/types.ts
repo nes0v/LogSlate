@@ -218,18 +218,6 @@ export interface Day {
   date: string // YYYY-MM-DD
   screenshots: string[]
   note?: string
-  // The day's reflection: ONE incident, written as three completions of fixed
-  // sentence stems ("Today the hardest moment was …" / "I wanted to …" /
-  // "And I …"). The stems are UI chrome, never stored — only the user's
-  // continuations live here.
-  //
-  // Three fields rather than one joined string even though they read as a
-  // single narrative: joining is free at render time, splitting is not. A
-  // "hardest moments this month" list stays a field read instead of a parse,
-  // and there's no delimiter to invent (or to have the user's own text break).
-  hardest_moment?: string
-  wanted_to?: string
-  instead_did?: string
   // Manual net-PNL override for the whole day (signed USD). When set, this
   // value REPLACES the sum of the day's trade PNLs in every money/equity
   // statistic — it's how a chaotic "tilt"/revenge day gets recorded as a
