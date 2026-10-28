@@ -5,13 +5,11 @@ interface RuleCheckProps {
   checked: boolean
   onChange: (checked: boolean) => void
   label: string
-  /** Rule is currently archived (Progress: deleted but kept for past
-   *  adherence). Renders the label with italics + a struck-through tone
-   *  so the user can tell this is a historical rule they can no longer
-   *  see in the today checklist. */
-  archived?: boolean
-  /** Not yet tickable — the Progress checklist uses this for a day that
-   *  hasn't happened, where a tick would record adherence in advance. */
+  /** Small faint text after the label — the Progress checklist uses it to
+   *  say when a rule shown on this day has since been archived. */
+  note?: string
+  /** Not tickable — the Progress checklist uses this on every day but
+   *  today, and on today too at the weekend. */
   disabled?: boolean
   className?: string
 }
@@ -23,7 +21,7 @@ export function RuleCheck({
   checked,
   onChange,
   label,
-  archived,
+  note,
   disabled,
   className,
 }: RuleCheckProps) {
@@ -66,12 +64,15 @@ export function RuleCheck({
         className={cn(
           'text-sm leading-tight',
           checked ? 'text-(--color-text)' : 'text-(--color-text-dim)',
-          archived && 'italic text-(--color-text-faint) line-through',
         )}
-        title={archived ? 'Archived rule — kept for historical adherence' : undefined}
       >
         {label}
       </span>
+      {note && (
+        <span className="ml-auto text-xs text-(--color-text-faint) shrink-0 mt-px">
+          {note}
+        </span>
+      )}
     </label>
   )
 }

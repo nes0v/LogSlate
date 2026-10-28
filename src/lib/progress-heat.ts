@@ -13,7 +13,7 @@
 import { addDays, format, isWeekend } from 'date-fns'
 import { dateKeyToDate } from '@/lib/tz'
 import { isFutureDay } from '@/lib/progress-day'
-import { ruleActiveOn } from '@/lib/progress-periods'
+import { ruleCountsOn } from '@/lib/progress-periods'
 import type { ProgressCheck, ProgressRule } from '@/db/types'
 
 export type HeatCell = {
@@ -47,7 +47,7 @@ function dayScore(
   day: string,
   list: ProgressCheck[],
 ): { checked: number; total: number; pct: number } {
-  const activeIds = new Set(rules.filter(r => ruleActiveOn(r, day)).map(r => r.id))
+  const activeIds = new Set(rules.filter(r => ruleCountsOn(r, day)).map(r => r.id))
   const total = activeIds.size
   const checked = list.filter(c => c.checked && activeIds.has(c.rule_id)).length
   return { checked, total, pct: total > 0 ? checked / total : 0 }

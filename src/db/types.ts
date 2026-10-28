@@ -271,9 +271,11 @@ export interface Model {
 // during which the rule was active. `until: null` means the period is
 // still open. A rule with no periods has never been activated. A rule
 // counts toward a day D's denominator iff some period covers D
-// (from <= D AND (until === null OR D <= until)). This is what lets
-// past-day adherence stay stable when the user adds or retires rules
-// today — only edits to a rule's text affect history retroactively.
+// (from <= D AND (until === null OR D <= until)) — except a line
+// (`kind: 'line'`), which is drawn on those days but never counted. This
+// is what lets past-day adherence stay stable when the user adds or
+// retires rules today — only edits to a rule's text affect history
+// retroactively.
 export interface ProgressRulePeriod {
   from: string // YYYY-MM-DD inclusive
   until: string | null // YYYY-MM-DD inclusive, or null while still active
@@ -283,10 +285,13 @@ export interface ProgressRule {
   account_id: string
   text: string
   periods: ProgressRulePeriod[]
-  /** Soft-delete flag. Hidden rules vanish from the UI (rule list and
-   *  every day's checklist) but their `periods` and `progress_checks`
-   *  rows stay in the DB so historical adherence ratios don't drift. */
+  /** Archived. Gone from the rule list and from every day after it
+   *  stopped; past days still show it, and its `periods` and
+   *  `progress_checks` rows stay so those days' scores don't drift. */
   hidden?: boolean
+  /** A line dividing groups of rules, not a rule. Dated like one, so it
+   *  shows on the right days; `ruleCountsOn` keeps it out of every score. */
+  kind?: 'line'
   sort: number
   created_at: string
   updated_at: string

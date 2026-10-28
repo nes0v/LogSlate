@@ -124,25 +124,6 @@ export async function ensureMainAccount(): Promise<void> {
   })
 }
 
-// Garbage-collect hidden progress rules that no longer have any check
-// rows referencing them. A rule is soft-deleted (`hidden: true`) when
-// the user clicks X on a rule with at least one historical check — the
-// row stays so past adherence ratios don't drift. If the user later
-// goes back and unchecks every day for that rule, the soft-delete
-// becomes a pure tombstone and can be removed safely.
-export async function cleanEmptyHiddenRules(): Promise<void> {
-  const hidden = await db.progress_rules.filter(r => r.hidden === true).toArray()
-  if (hidden.length === 0) return
-  const inUse = new Set<string>()
-  await db.progress_checks.toCollection().each(c => {
-    inUse.add(c.rule_id)
-  })
-  const stale = hidden.filter(r => !inUse.has(r.id))
-  if (stale.length === 0) return
-  await db.progress_rules.bulkDelete(stale.map(r => r.id))
-}
-
-
 // True when a day row carries something worth keeping. Used by every
 // empty-row garbage collector so a day that holds ONLY a PNL override
 // (no note, no screenshots) is never dropped.

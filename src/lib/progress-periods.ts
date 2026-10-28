@@ -6,12 +6,19 @@ import { addDays, format } from 'date-fns'
 import { dateKeyToDate, nextWeekdayKey, previousWeekdayKey } from '@/lib/tz'
 import type { ProgressRule, ProgressRulePeriod } from '@/db/types'
 
-// A rule counts toward day D's denominator if any period covers D
-// inclusively. Periods with `until: null` are still open.
+// A rule is in force on day D if any period covers D inclusively — it
+// shows on D's checklist, and counts toward D's score unless it's a line
+// (see `ruleCountsOn`). Periods with `until: null` are still open.
 export function ruleActiveOn(rule: ProgressRule, date: string): boolean {
   return rule.periods.some(
     p => p.from <= date && (p.until === null || date <= p.until),
   )
+}
+
+// Whether the rule is part of day D's score. A line runs on periods
+// like a rule, so it shows on the right days, but it is never scored.
+export function ruleCountsOn(rule: ProgressRule, date: string): boolean {
+  return rule.kind !== 'line' && ruleActiveOn(rule, date)
 }
 
 export function ruleHasOpenPeriod(rule: ProgressRule): boolean {
@@ -46,6 +53,28 @@ function tradingDayBefore(today: string): string {
   return previousWeekdayKey(
     format(addDays(dateKeyToDate(today), -1), 'yyyy-MM-dd'),
   )
+}
+
+// The first trading day after `day` — Monday from a Friday. Mirror of
+// `tradingDayBefore`.
+export function tradingDayAfter(day: string): string {
+  return nextWeekdayKey(format(addDays(dateKeyToDate(day), 1), 'yyyy-MM-dd'))
+}
+
+// Day D's checklist as drawn: the rules in force that day, in list order,
+// with that day's lines between them. A line only shows where it
+// divides something, so one left at either end, or next to another once the
+// rules around it are off that day, drops out.
+export function checklistFor(rules: ProgressRule[], date: string): ProgressRule[] {
+  const items: ProgressRule[] = []
+  for (const r of rules) {
+    if (!ruleActiveOn(r, date)) continue
+    const afterLine = items.length === 0 || items[items.length - 1].kind === 'line'
+    if (r.kind === 'line' && afterLine) continue
+    items.push(r)
+  }
+  if (items.at(-1)?.kind === 'line') items.pop()
+  return items
 }
 
 // True once the rule has been in force on a trading day before `today` — some

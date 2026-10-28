@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from './schema'
 import {
+  createProgressLine,
   createProgressRule,
   deleteProgressRule,
   reorderProgressRules,
@@ -123,6 +124,17 @@ describe('deleteProgressRule', () => {
     ])
   })
 
+  it('keeps a line on the past days it ran, as it does a rule', async () => {
+    await db.progress_rules.put({
+      ...rule('line', [{ from: '2026-09-14', until: null }]),
+      kind: 'line',
+    })
+    expect(await deleteProgressRule('line', '2026-09-16')).toBe('archived')
+    const stored = (await db.progress_rules.get('line'))!
+    expect(stored.hidden).toBe(true)
+    expect(stored.periods).toEqual([{ from: '2026-09-14', until: '2026-09-15' }])
+  })
+
   it('deletes rather than archives when the only tick is one it strands', async () => {
     // The rule that was switched on and off inside a single session: its
     // period is dropped, so the tick it collected anchors nothing. Archiving
@@ -170,6 +182,20 @@ describe('toggleProgressCheck', () => {
     expect(row.checked).toBe(true)
     expect(row.created_at).toBe(TS)
     expect(row.updated_at > TS).toBe(true)
+  })
+})
+
+describe('createProgressLine', () => {
+  it('runs from the day it was added on, not before', async () => {
+    // Added while planning Tuesday: Monday's checklist never shows it.
+    const made = await createProgressLine('main', '2026-09-15')
+    expect(made.kind).toBe('line')
+    expect(made.periods).toEqual([{ from: '2026-09-15', until: null }])
+  })
+
+  it('from the weekend, starts on Monday', async () => {
+    const made = await createProgressLine('main', '2026-09-19')
+    expect(made.periods).toEqual([{ from: '2026-09-21', until: null }])
   })
 })
 

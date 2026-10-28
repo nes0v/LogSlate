@@ -1,15 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import { isWeekend } from 'date-fns'
 import { dateKeyToDate } from '@/lib/tz'
-import type { ProgressRule } from '@/db/types'
+import type { ProgressRule, ProgressRulePeriod } from '@/db/types'
 import {
+  checklistFor,
   closePeriod,
   lastPeriodEnd,
   openPeriod,
   openPeriodStart,
   ruleActiveOn,
+  ruleCountsOn,
   ruleHasHistoryBefore,
   ruleHasOpenPeriod,
+  tradingDayAfter,
 } from './progress-periods'
 
 function rule(overrides: Partial<ProgressRule> = {}): ProgressRule {
@@ -310,5 +313,53 @@ describe('ruleHasHistoryBefore', () => {
   it('counts a closed period from the past', () => {
     const r = rule({ periods: [{ from: '2026-05-04', until: '2026-05-06' }] })
     expect(ruleHasHistoryBefore(r, '2026-05-13')).toBe(true)
+  })
+})
+
+describe('tradingDayAfter', () => {
+  it('is the next weekday, Monday from a Friday', () => {
+    expect(tradingDayAfter('2026-05-12')).toBe('2026-05-13')
+    expect(tradingDayAfter('2026-05-15')).toBe('2026-05-18')
+  })
+})
+
+describe('ruleCountsOn', () => {
+  it('counts a rule in force but never a line', () => {
+    const periods = [{ from: '2026-05-11', until: null }]
+    expect(ruleCountsOn(rule({ periods }), '2026-05-13')).toBe(true)
+    expect(ruleCountsOn(rule({ periods, kind: 'line' }), '2026-05-13')).toBe(false)
+  })
+})
+
+describe('checklistFor', () => {
+  const on: ProgressRulePeriod[] = [{ from: '2026-05-11', until: null }]
+  const off: ProgressRulePeriod[] = [{ from: '2026-05-18', until: null }]
+  const r = (id: string, periods = on) => rule({ id, periods })
+  const line = (id: string, periods = on) => rule({ id, periods, kind: 'line' })
+  const ids = (rules: ProgressRule[]) => checklistFor(rules, '2026-05-13').map(x => x.id)
+
+  it('keeps a line between two rules', () => {
+    expect(ids([r('a'), line('l'), r('b')])).toEqual(['a', 'l', 'b'])
+  })
+
+  it('drops a line at either end', () => {
+    expect(ids([line('l1'), r('a'), line('l2')])).toEqual(['a'])
+  })
+
+  it('collapses lines left next to each other', () => {
+    expect(ids([r('a'), line('l1'), line('l2'), r('b')])).toEqual(['a', 'l1', 'b'])
+  })
+
+  it('collapses lines once the rules between them are off that day', () => {
+    expect(ids([r('a'), line('l1'), r('x', off), line('l2'), r('b')])).toEqual(['a', 'l1', 'b'])
+  })
+
+  it('leaves out a line not in force that day', () => {
+    expect(ids([r('a'), line('l', off), r('b')])).toEqual(['a', 'b'])
+  })
+
+  it('keeps an archived line on the days it ran', () => {
+    const ended = [{ from: '2026-05-11', until: '2026-05-14' }]
+    expect(ids([r('a'), { ...line('l', ended), hidden: true }, r('b')])).toEqual(['a', 'l', 'b'])
   })
 })

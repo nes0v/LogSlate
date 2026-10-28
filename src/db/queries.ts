@@ -25,7 +25,7 @@ import {
   ruleActiveOn,
   ruleHasHistoryBefore,
 } from '@/lib/progress-periods'
-import { nextWeekdayKey } from '@/lib/tz'
+import { nextWeekdayKey, nyToday } from '@/lib/tz'
 
 function now(): string {
   return new Date().toISOString()
@@ -412,13 +412,15 @@ export async function cloneAccount(
       // counting days before it existed against its adherence denominator.
       // Cloned rules arrive switched off (no periods, exactly like a
       // hand-added rule) so they can be reworded before being turned on;
-      // toggling one opens its first period from that day. Hidden rules are
-      // skipped: a soft-deleted rule exists only to keep old checks honest,
-      // and a fresh account has none.
+      // toggling one opens its first period from that day. A line has no
+      // switch, so it runs from today instead (Monday at the weekend).
+      // Hidden rules are skipped: a soft-deleted rule exists only to keep
+      // old checks honest, and a fresh account has none.
       const clonedRules: ProgressRule[] = rules
         .filter(r => r.hidden !== true)
         .map(r => {
-          const copy: ProgressRule = { ...r, ...stamp, id: newId(), periods: [] }
+          const periods = r.kind === 'line' ? [{ from: nextWeekdayKey(nyToday()), until: null }] : []
+          const copy: ProgressRule = { ...r, ...stamp, id: newId(), periods }
           // Drop the soft-delete flag outright rather than carrying `false` —
           // the rest of the app treats "absent" and "not hidden" alike.
           delete copy.hidden
@@ -895,24 +897,44 @@ async function pruneOrphanChecks(rule: ProgressRule): Promise<void> {
   if (orphans.length > 0) await db.progress_checks.bulkDelete(orphans)
 }
 
-/**
- * Add an empty rule to the end of the list.
- *
- * The sort value is read inside the transaction: two quick taps on "Add rule"
- * both computed it from the same on-screen snapshot and landed on the same
- * number.
- */
+/** Add an empty rule to the end of the list. */
 export async function createProgressRule(accountId: string): Promise<ProgressRule> {
+  // No periods: the user fills the text in place and switches the rule on,
+  // which opens its first period. Until then it counts toward no day.
+  return appendProgressRule(accountId, {})
+}
+
+/**
+ * Add a line to the end of the list, running from `date` — the day on
+ * screen, as a rule switched on there would. Planning the next session
+ * doesn't draw it into today's checklist or any day behind it.
+ */
+export async function createProgressLine(
+  accountId: string,
+  date: string,
+): Promise<ProgressRule> {
+  return appendProgressRule(accountId, {
+    kind: 'line',
+    periods: [{ from: nextWeekdayKey(date), until: null }],
+  })
+}
+
+// The sort value is read inside the transaction: two quick taps on "Add rule"
+// both computed it from the same on-screen snapshot and landed on the same
+// number.
+async function appendProgressRule(
+  accountId: string,
+  fields: Partial<Pick<ProgressRule, 'kind' | 'periods'>>,
+): Promise<ProgressRule> {
   return db.transaction('rw', db.progress_rules, async () => {
     const existing = await db.progress_rules.where('account_id').equals(accountId).toArray()
     const ts = now()
-    // No periods: the user fills the text in place and switches the rule on,
-    // which opens its first period. Until then it counts toward no day.
     const rule: ProgressRule = {
       id: newId(),
       account_id: accountId,
       text: '',
       periods: [],
+      ...fields,
       sort: existing.reduce((m, r) => Math.max(m, r.sort), 0) + 1,
       created_at: ts,
       updated_at: ts,
@@ -1055,7 +1077,7 @@ async function retireRule(
  * Archived rules stay in the slots they already had: past days still list
  * them in their checklist, interleaved by `sort`, so renumbering only the
  * visible rules would shuffle those days' checklists around the archived
- * ones. Read inside the transaction, for the same reason `createProgressRule`
+ * ones. Read inside the transaction, for the same reason `appendProgressRule`
  * is.
  */
 export async function reorderProgressRules(

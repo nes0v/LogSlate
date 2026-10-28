@@ -10,8 +10,9 @@
 // All arguments and results are `YYYY-MM-DD` keys. Those are zero-padded, so
 // a plain string compare is a date compare.
 
-import { addDays, format, isWeekend } from 'date-fns'
-import { dateKeyToDate, nextWeekdayKey, previousWeekdayKey } from '@/lib/tz'
+import { isWeekend } from 'date-fns'
+import { dateKeyToDate, previousWeekdayKey } from '@/lib/tz'
+import { tradingDayAfter } from '@/lib/progress-periods'
 
 /** True when `today` is itself a trading day. Futures are shut Sat/Sun. */
 export function marketOpenOn(today: string): boolean {
@@ -34,7 +35,7 @@ export function landingDayFor(today: string): string {
  * Friday's close through Sunday.
  */
 export function nextSessionFor(today: string): string {
-  return nextWeekdayKey(format(addDays(dateKeyToDate(today), 1), 'yyyy-MM-dd'))
+  return tradingDayAfter(today)
 }
 
 /**
@@ -60,6 +61,16 @@ export function canEditRulesOn(date: string, today: string): boolean {
  */
 export function isFutureDay(date: string, today: string): boolean {
   return date > today
+}
+
+/**
+ * Ticks are allowed on today only, and only when today is a trading day.
+ * Any earlier day is part of the record and stays as it was journalled:
+ * ticking it now would move a score, the streak and the average after the
+ * fact. A day that hasn't happened has nothing to tick yet.
+ */
+export function canTickOn(date: string, today: string): boolean {
+  return date === today && marketOpenOn(today)
 }
 
 /**

@@ -2,7 +2,6 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { RouterProvider } from 'react-router-dom'
 import {
-  cleanEmptyHiddenRules,
   cleanOrphanedPendingRefs,
   ensureMainAccount,
 } from '@/db/schema'
@@ -14,7 +13,6 @@ import '@/db/seed' // registers dev helpers on window in dev builds; no-op in pr
 
 void ensureMainAccount()
 void cleanOrphanedPendingRefs()
-void cleanEmptyHiddenRules()
 pruneLegacyStorageKeys()
 
 createRoot(document.getElementById('root')!).render(

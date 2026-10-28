@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   canEditRulesOn,
   canNavigateTo,
+  canTickOn,
   isFutureDay,
   landingDayFor,
   marketOpenOn,
@@ -109,6 +110,24 @@ describe('isFutureDay', () => {
     // Monday's checklist is a preview on Sunday — editable rules, no ticking.
     expect(isFutureDay(MON, SUN)).toBe(true)
     expect(canEditRulesOn(MON, SUN)).toBe(true)
+  })
+})
+
+describe('canTickOn', () => {
+  it('allows today only', () => {
+    expect(canTickOn(THU, THU)).toBe(true)
+    expect(canTickOn(WED, THU)).toBe(false)
+    expect(canTickOn(FRI, MON)).toBe(false)
+  })
+
+  it('allows nothing at the weekend, Friday included', () => {
+    expect(canTickOn(FRI, SAT)).toBe(false)
+    expect(canTickOn(SAT, SAT)).toBe(false)
+  })
+
+  it('never allows a day that has not happened', () => {
+    expect(canTickOn(FRI, THU)).toBe(false)
+    expect(canTickOn(MON, SUN)).toBe(false)
   })
 })
 

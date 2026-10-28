@@ -10,11 +10,14 @@ import { ChevronLeft, ChevronRight, GripVertical, Plus, X } from 'lucide-react'
 import { db } from '@/db/schema'
 import type { ProgressRule } from '@/db/types'
 import {
+  checklistFor,
   lastPeriodEnd,
   openPeriodStart,
   ruleActiveOn,
+  ruleCountsOn,
   ruleHasHistoryBefore,
   ruleHasOpenPeriod,
+  tradingDayAfter,
 } from '@/lib/progress-periods'
 import {
   averageAdherence,
@@ -31,6 +34,7 @@ import { BTN_ACCENT } from '@/components/form/buttonClass'
 import { useAccountQuery } from '@/lib/use-account-query'
 import { useSortableReorder } from '@/lib/use-sortable-reorder'
 import {
+  createProgressLine,
   createProgressRule,
   deleteProgressRule,
   reorderProgressRules,
@@ -44,6 +48,7 @@ import { useNyToday } from '@/lib/use-ny-today'
 import {
   canEditRulesOn,
   canNavigateTo,
+  canTickOn,
   isFutureDay,
   landingDayFor,
   marketOpenOn,
@@ -58,7 +63,16 @@ function relativeDayLabel(key: string, relativeTo: string): string {
   const gap = Math.abs(
     differenceInCalendarDays(dateKeyToDate(key), dateKeyToDate(relativeTo)),
   )
-  return format(dateKeyToDate(key), gap <= 6 ? 'EEE' : 'd MMM')
+  return format(dateKeyToDate(key), gap <= 6 ? 'EEE' : 'MMM d')
+}
+
+// "archived on Thu" for a rule that has since been archived: the first
+// trading day it no longer applied, i.e. the one after its last period ends.
+function archivedLabel(rule: ProgressRule, relativeTo: string): string | undefined {
+  if (!rule.hidden) return undefined
+  const end = lastPeriodEnd(rule)
+  if (!end) return undefined
+  return `archived on ${relativeDayLabel(tradingDayAfter(end), relativeTo)}`
 }
 
 export function ProgressRoute() {
@@ -89,6 +103,7 @@ export function ProgressRoute() {
   // A future day's checklist previews what that session will ask of you. It
   // is not something to fill in ahead of time, or to score.
   const isFuture = isFutureDay(date, today)
+  const canTick = canTickOn(date, today)
 
   // No default values on the primary queries — `loaded` gates the
   // rendering of the score band + heat strip + checklist so we don't
@@ -145,12 +160,14 @@ export function ProgressRoute() {
   const loaded =
     rules !== undefined && allChecks !== undefined && tradedDays !== undefined
 
-  // Rules active on the currently-viewed date — drives the checklist
-  // and today's-adherence tile.
-  const rulesActiveOnDate = useMemo(
-    () => (rules ?? []).filter(r => ruleActiveOn(r, date)),
+  // Rules scored on the currently-viewed date — drives the adherence tile
+  // and the checklist's empty state. Lines are left out; the checklist
+  // itself draws from `checklistItems`.
+  const rulesScoredOnDate = useMemo(
+    () => (rules ?? []).filter(r => ruleCountsOn(r, date)),
     [rules, date],
   )
+  const checklistItems = useMemo(() => checklistFor(rules ?? [], date), [rules, date])
   const checkMap = useMemo(() => {
     const m = new Map<string, boolean>()
     for (const c of checksToday ?? []) m.set(c.rule_id, c.checked)
@@ -158,11 +175,11 @@ export function ProgressRoute() {
   }, [checksToday])
 
   const adherenceRatio = useMemo(() => {
-    if (rulesActiveOnDate.length === 0) return null
+    if (rulesScoredOnDate.length === 0) return null
     let n = 0
-    for (const r of rulesActiveOnDate) if (checkMap.get(r.id)) n++
-    return n / rulesActiveOnDate.length
-  }, [rulesActiveOnDate, checkMap])
+    for (const r of rulesScoredOnDate) if (checkMap.get(r.id)) n++
+    return n / rulesScoredOnDate.length
+  }, [rulesScoredOnDate, checkMap])
   // Null means "no score to show" — rendered as an em dash. A day that hasn't
   // happened has no adherence yet: scoring it 0% would read as a session
   // already failed, which is exactly backwards when the user is sitting on
@@ -195,6 +212,10 @@ export function ProgressRoute() {
 
   async function addRule() {
     await createProgressRule(accountId)
+  }
+
+  async function addLine() {
+    await createProgressLine(accountId, date)
   }
 
   // Resolves false when the user backs out, so the row can put the old words
@@ -232,7 +253,11 @@ export function ProgressRoute() {
   async function deleteRule(id: string) {
     const snapshot = (rules ?? []).find(r => r.id === id)
     if (!snapshot) return
+    // Nothing to ask about for a line or a rule never named. Either one
+    // that ran on a past day is still archived, not lost.
     if (
+      snapshot.kind !== 'line' &&
+      snapshot.text.trim() !== '' &&
       !(await confirm({
         title: 'Delete this rule?',
         description:
@@ -244,17 +269,9 @@ export function ProgressRoute() {
   }
 
   async function toggleCheck(rule: ProgressRule) {
-    // Progress is weekday-only — a weekend-dated check row is unreadable by
-    // every consumer (heat strip, streak and the 30-day average all skip
-    // Sat/Sun) and unreachable afterwards, so it can only ever be orphan
-    // data. No navigation path reaches a weekend any more; this is the
-    // backstop for the ones that don't go through navigation at all.
-    if (isWeekend(dateKeyToDate(date))) return
-    // Nor on a day that hasn't happened. The next session's page is
-    // editable so rules can be planned there, which puts a live checklist
-    // in front of the user a day early — ticking it would bank adherence
-    // for a session they haven't traded.
-    if (isFutureDay(date, today)) return
+    // Today only, and never at the weekend — see `canTickOn`. The checklist
+    // is disabled everywhere else already; this is the backstop.
+    if (!canTickOn(date, today)) return
     await toggleProgressCheck(accountId, date, rule.id)
   }
 
@@ -348,7 +365,7 @@ export function ProgressRoute() {
               : `${Math.round(adherenceToday * 100)}%`
           }
           caption={
-            rulesActiveOnDate.length === 0
+            rulesScoredOnDate.length === 0
               ? // Only an invitation on a day the rules can actually be
                 // edited. On a past day it would point at a panel that is
                 // locked, for a day adding a rule now could never score.
@@ -356,8 +373,8 @@ export function ProgressRoute() {
                 ? 'Add some rules to get started'
                 : 'No rules on this day'
               : isFuture
-                ? `${rulesActiveOnDate.length} rule${rulesActiveOnDate.length === 1 ? '' : 's'} planned`
-                : `${rulesActiveOnDate.filter(r => checkMap.get(r.id)).length} / ${rulesActiveOnDate.length} rules`
+                ? `${rulesScoredOnDate.length} rule${rulesScoredOnDate.length === 1 ? '' : 's'} planned`
+                : `${rulesScoredOnDate.filter(r => checkMap.get(r.id)).length} / ${rulesScoredOnDate.length} rules`
           }
         />
         <ScoreTile
@@ -429,7 +446,7 @@ export function ProgressRoute() {
           <div className="text-sm font-medium mb-2">
             {isCurrentDay ? "Today's checklist" : 'Checklist'}
           </div>
-          {rulesActiveOnDate.length === 0 ? (
+          {rulesScoredOnDate.length === 0 ? (
             <div className="text-xs text-(--color-text-dim) text-center py-3">
               {canEditRules
                 ? 'No active rules on this day. Add some on the right →'
@@ -437,7 +454,13 @@ export function ProgressRoute() {
             </div>
           ) : (
             <div className="space-y-1">
-              {rulesActiveOnDate.map(r => (
+              {checklistItems.map(r => r.kind === 'line' ? (
+                // Same 24px box as the rules panel's line row, so rows
+                // listed in both panels stay level.
+                <div key={r.id} className="h-6 px-1 flex items-center">
+                  <div className="flex-1 border-t border-(--color-panel-2)" />
+                </div>
+              ) : (
                 <RuleCheck
                   key={r.id}
                   checked={checkMap.get(r.id) ?? false}
@@ -446,8 +469,11 @@ export function ProgressRoute() {
                   // a checkbox with nothing beside it. Same wording the
                   // archived drawer uses.
                   label={r.text || '(unnamed)'}
-                  archived={r.hidden === true}
-                  disabled={isFuture}
+                  // Every rule listed here counted on this day, archived
+                  // since or not, so it reads like the rest; the note only
+                  // says when it stopped.
+                  note={archivedLabel(r, date)}
+                  disabled={!canTick}
                 />
               ))}
             </div>
@@ -456,8 +482,11 @@ export function ProgressRoute() {
 
         <RuleManager
           rules={(rules ?? []).filter(r => !r.hidden)}
-          archived={(rules ?? []).filter(r => r.hidden === true)}
+          // A deleted line with history is kept for the days it drew
+          // on, but there's nothing to restore.
+          archived={(rules ?? []).filter(r => r.hidden === true && r.kind !== 'line')}
           onAdd={addRule}
+          onAddLine={addLine}
           onRename={renameRule}
           onReorder={ids => reorderProgressRules(accountId, ids)}
           onSetActive={setRuleActive}
@@ -507,6 +536,7 @@ function RuleManager({
   rules,
   archived,
   onAdd,
+  onAddLine,
   onRename,
   onReorder,
   onSetActive,
@@ -521,6 +551,7 @@ function RuleManager({
   rules: ProgressRule[]
   archived: ProgressRule[]
   onAdd: () => void
+  onAddLine: () => void
   onRename: (rule: ProgressRule, text: string) => Promise<boolean>
   onReorder: (orderedIds: string[]) => Promise<void>
   onSetActive: (rule: ProgressRule, next: boolean) => void
@@ -572,7 +603,16 @@ function RuleManager({
           tooltip, exactly when the panel is locked and the tooltip is the
           only thing left explaining the row. */}
       <div className={cn('space-y-1', disabled && 'opacity-50')}>
-        {visible.map((r, i) => (
+        {visible.map((r, i) => r.kind === 'line' ? (
+          <LineRow
+            key={r.id}
+            rule={r}
+            sortable={rowProps(r.id, i)}
+            lifted={isActiveDrag && draggingId === r.id}
+            onDelete={onDelete}
+            disabled={disabled}
+          />
+        ) : (
           <RuleRow
             key={r.id}
             rule={r}
@@ -592,21 +632,34 @@ function RuleManager({
           </div>
         )}
       </div>
-      <button
-        type="button"
-        onClick={onAdd}
-        disabled={disabled}
-        className={cn(
-          'text-xs inline-flex items-center gap-1 mt-1',
-          disabled
-            ? 'text-(--color-text-faint) cursor-not-allowed'
-            : 'text-(--color-text-dim) hover:text-(--color-text)',
-        )}
-      >
-        <Plus className="size-3" /> Add rule
-      </button>
+      {/* Each button in its own block, as "Add rule" sat before: an
+          inline-flex button sits in a text row as tall as the parent's
+          line-height, and that row is the spacing above and below it. A
+          flex column drops it and squeezes the gaps. */}
+      <div className="mt-3">
+        <div>
+          <button
+            type="button"
+            onClick={onAdd}
+            disabled={disabled}
+            className={addButtonClass(disabled)}
+          >
+            <Plus className="size-3" /> Add rule
+          </button>
+        </div>
+        <div>
+          <button
+            type="button"
+            onClick={onAddLine}
+            disabled={disabled}
+            className={addButtonClass(disabled)}
+          >
+            <Plus className="size-3" /> Add line
+          </button>
+        </div>
+      </div>
       {archived.length > 0 && (
-        <div className="pt-2 mt-2 border-t border-(--color-panel-2)">
+        <div className="pt-2 mt-3 border-t border-(--color-panel-2)">
           <button
             type="button"
             onClick={() => setShowArchived(v => !v)}
@@ -621,7 +674,7 @@ function RuleManager({
                   key={r.id}
                   className="flex items-start gap-2 px-1 py-1 rounded-sm text-sm"
                 >
-                  <span className="flex-1 text-(--color-text-dim) italic line-through leading-tight">
+                  <span className="flex-1 text-(--color-text-dim) italic leading-tight">
                     {r.text || '(unnamed)'}
                   </span>
                   <button
@@ -643,6 +696,93 @@ function RuleManager({
   )
 }
 
+function addButtonClass(disabled: boolean) {
+  return cn(
+    'text-xs inline-flex items-center gap-1',
+    disabled
+      ? 'text-(--color-text-faint) cursor-not-allowed'
+      : 'text-(--color-text-dim) hover:text-(--color-text)',
+  )
+}
+
+type SortableRowProps = ReturnType<ReturnType<typeof useSortableReorder>['rowProps']>
+
+// The drag handle every row in the rule list starts with.
+function RowGrip({
+  sortable,
+  disabled,
+  className,
+}: {
+  sortable: SortableRowProps
+  disabled: boolean
+  className?: string
+}) {
+  return (
+    <span
+      onPointerDown={disabled ? undefined : sortable.onPointerDown}
+      // Grabbing a row must not take the focus from a rule being edited:
+      // that blur saves it, and a rule with history would put its "save as
+      // a new rule?" confirm up in the middle of the drag.
+      onMouseDown={e => e.preventDefault()}
+      style={{ touchAction: 'none' }}
+      className={cn(
+        'size-4 inline-flex items-center justify-center shrink-0 -mr-1 text-(--color-text-faint)',
+        disabled ? 'cursor-not-allowed' : 'cursor-grab hover:text-(--color-text-dim)',
+        className,
+      )}
+      title={disabled ? undefined : 'Drag to reorder'}
+    >
+      <GripVertical className="size-3.5" />
+    </span>
+  )
+}
+
+// The ✕ every row in the rule list ends with.
+function RowDelete({ onClick, disabled }: { onClick: () => void; disabled: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="rounded text-(--color-text-dim) hover:text-(--color-loss) shrink-0 disabled:cursor-not-allowed disabled:hover:text-(--color-text-dim)"
+      title="Delete"
+    >
+      <X className="size-3.5" />
+    </button>
+  )
+}
+
+// A divider in the rule list: dragged and deleted like a rule, nothing else.
+function LineRow({
+  rule,
+  sortable,
+  lifted,
+  onDelete,
+  disabled,
+}: {
+  rule: ProgressRule
+  sortable: SortableRowProps
+  lifted: boolean
+  onDelete: (id: string) => void
+  disabled: boolean
+}) {
+  return (
+    <div
+      data-sortable-row
+      // Handle-only `touch-action`, as in RuleRow below.
+      style={{ ...sortable.style, touchAction: undefined }}
+      className={cn(
+        'flex items-center gap-2 px-1 py-1 rounded-sm',
+        lifted && 'bg-(--color-panel-2)',
+      )}
+    >
+      <RowGrip sortable={sortable} disabled={disabled} />
+      <div className="flex-1 border-t border-(--color-panel-2)" />
+      <RowDelete onClick={() => onDelete(rule.id)} disabled={disabled} />
+    </div>
+  )
+}
+
 function RuleRow({
   rule,
   sortable,
@@ -654,7 +794,7 @@ function RuleRow({
   disabled,
 }: {
   rule: ProgressRule
-  sortable: ReturnType<ReturnType<typeof useSortableReorder>['rowProps']>
+  sortable: SortableRowProps
   /** Being dragged: drawn over the rows it passes. */
   lifted: boolean
   onRename: (rule: ProgressRule, text: string) => Promise<boolean>
@@ -731,21 +871,7 @@ function RuleRow({
         lifted && 'bg-(--color-panel-2)',
       )}
     >
-      <span
-        onPointerDown={disabled ? undefined : sortable.onPointerDown}
-        // Grabbing a row must not take the focus from a rule being edited:
-        // that blur saves it, and a rule with history would put its "save as
-        // a new rule?" confirm up in the middle of the drag.
-        onMouseDown={e => e.preventDefault()}
-        style={{ touchAction: 'none' }}
-        className={cn(
-          'size-4 inline-flex items-center justify-center shrink-0 mt-px -mr-1 text-(--color-text-faint)',
-          disabled ? 'cursor-not-allowed' : 'cursor-grab hover:text-(--color-text-dim)',
-        )}
-        title={disabled ? undefined : 'Drag to reorder'}
-      >
-        <GripVertical className="size-3.5" />
-      </span>
+      <RowGrip sortable={sortable} disabled={disabled} className="mt-px" />
       <span
         className="size-4 inline-flex items-center justify-center shrink-0 mt-px"
         title={tooltip}
@@ -809,15 +935,7 @@ function RuleRow({
           {scheduledOn ? 'from' : 'until'} {edgeLabel}
         </span>
       )}
-      <button
-        type="button"
-        onClick={() => onDelete(rule.id)}
-        disabled={disabled}
-        className="rounded text-(--color-text-dim) hover:text-(--color-loss) shrink-0 disabled:cursor-not-allowed disabled:hover:text-(--color-text-dim)"
-        title="Delete"
-      >
-        <X className="size-3.5" />
-      </button>
+      <RowDelete onClick={() => onDelete(rule.id)} disabled={disabled} />
     </div>
   )
 }

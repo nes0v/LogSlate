@@ -94,6 +94,17 @@ describe('buildHeat', () => {
     expect(heat[0]).toMatchObject({ checked: 0, total: 1, pct: 0 })
   })
 
+  it('never scores a line, though it runs on the same days', () => {
+    const heat = buildHeat({
+      date: '2026-09-18',
+      today: '2026-09-18',
+      rules: [rule('a'), rule('l', { kind: 'line' })],
+      checks: [check('2026-09-18', 'a')],
+      count: 1,
+    })
+    expect(heat[0]).toMatchObject({ checked: 1, total: 1, pct: 1 })
+  })
+
   it('flags a session that has not happened instead of scoring it 0', () => {
     const heat = buildHeat({
       date: '2026-09-21',

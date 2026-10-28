@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { db, ensureMainAccount } from './schema'
+import { nextWeekdayKey, nyToday } from '@/lib/tz'
 import {
   addDayScreenshot,
   addPendingDayScreenshot,
@@ -411,6 +412,37 @@ describe('account queries', () => {
       // No periods, so the rule counts toward nothing until the user enables it.
       expect(rules[0].periods).toEqual([])
       expect(rules[0].sort).toBe(2)
+    })
+
+    it('a cloned line runs from today, having no switch to turn it on', async () => {
+      await db.progress_rules.put({
+        id: 'src-line',
+        account_id: MAIN_ACCOUNT_ID,
+        text: '',
+        kind: 'line',
+        periods: [{ from: '2026-01-02', until: null }],
+        sort: 1,
+        created_at: '2026-01-01T00:00:00.000Z',
+        updated_at: '2026-01-01T00:00:00.000Z',
+      })
+      // An archived line is skipped like any archived rule.
+      await db.progress_rules.put({
+        id: 'src-old-line',
+        account_id: MAIN_ACCOUNT_ID,
+        text: '',
+        kind: 'line',
+        periods: [{ from: '2025-01-02', until: '2025-06-01' }],
+        hidden: true,
+        sort: 2,
+        created_at: '2026-01-01T00:00:00.000Z',
+        updated_at: '2026-01-01T00:00:00.000Z',
+      })
+      const clone = await cloneAccount({ name: 'Eval 2', starting_balance: 0 }, MAIN_ACCOUNT_ID)
+      const cloned = await db.progress_rules.where('account_id').equals(clone.id).toArray()
+      expect(cloned).toHaveLength(1)
+      const [line] = cloned
+      expect(line.kind).toBe('line')
+      expect(line.periods).toEqual([{ from: nextWeekdayKey(nyToday()), until: null }])
     })
 
     it('seeds the symbol filter cache so the clone paints its pills immediately', async () => {

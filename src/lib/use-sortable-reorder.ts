@@ -1,18 +1,23 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent } from 'react'
 
 // Pointer-driven vertical sortable list, shared by the Models and Symbols
-// sidebars. Inspired by @dnd-kit/sortable: measure row geometry on pointerdown,
-// the dragged row follows the cursor's Y, other rows shift by ±itemHeight as
-// the live target index sweeps past them. A short drop keeps an optimistic
-// order for the frame before the live query catches up, so rows don't snap
-// back through the old order.
+// sidebars and the Progress rule list. Inspired by @dnd-kit/sortable: measure
+// row geometry on pointerdown, the dragged row follows the cursor's Y, other
+// rows shift by ±itemHeight as the live target index sweeps past them. A
+// short drop keeps an optimistic order for the frame before the live query
+// catches up, so rows don't snap back through the old order.
 
-type DragState = {
+export type DragState = {
   id: string
   fromIdx: number
   startY: number
   currentY: number
   itemHeight: number
+  /** Each row's top and bottom at pointerdown, in display order — set when
+   *  rows differ in height (Progress: rules and the shorter lines), where a
+   *  single pitch drifts a slot over a long drag. Absent, every row is
+   *  `itemHeight` apart. */
+  bounds?: { top: number; bottom: number }[]
   /** Sticky promotion to a "real drag" — flips true the first move past
    *  CLICK_THRESHOLD and never back, so swinging the cursor back over the
    *  origin mid-drag doesn't drop the shadow / re-arm click selection. */
@@ -27,9 +32,25 @@ const CLICK_THRESHOLD = 5
 export const SORTABLE_ROW_GAP_PX = 6
 export const SORTABLE_ROW_GAP_CLASS = 'space-y-1.5'
 
-function targetSlot(d: DragState, listLen: number): number {
-  const slots = Math.round((d.currentY - d.startY) / d.itemHeight)
-  return Math.max(0, Math.min(listLen - 1, d.fromIdx + slots))
+export function targetSlot(d: DragState, listLen: number): number {
+  if (!d.bounds) {
+    const slots = Math.round((d.currentY - d.startY) / d.itemHeight)
+    return Math.max(0, Math.min(listLen - 1, d.fromIdx + slots))
+  }
+  // A row is passed once the dragged row's leading edge crosses its middle —
+  // about halfway, measured against the row being passed.
+  const b = d.bounds
+  const dy = d.currentY - d.startY
+  const middle = (i: number) => (b[i].top + b[i].bottom) / 2
+  // One direction only: run both and a row much taller than the ones it
+  // passes gets pulled back by the loop facing the other way.
+  let idx = d.fromIdx
+  if (dy > 0) {
+    while (idx + 1 < listLen && b[d.fromIdx].bottom + dy > middle(idx + 1)) idx++
+  } else {
+    while (idx - 1 >= 0 && b[d.fromIdx].top + dy < middle(idx - 1)) idx--
+  }
+  return idx
 }
 
 interface Options<T extends { id: string }> {
@@ -53,7 +74,10 @@ export interface SortableReorder<T> {
   /** Spread onto each row button; supplies the drag handler + live transform.
    *  A row dragged by a handle takes `style` and marks itself
    *  `data-sortable-row`, and the handle takes `onPointerDown` — the row, not
-   *  the handle, is what gets measured. */
+   *  the handle, is what gets measured. Marked rows are also measured one by
+   *  one, so rows of different heights land in the right slot; if the marked
+   *  siblings don't match the list, every row is taken as the dragged row's
+   *  height. */
   rowProps: (id: string, index: number) => {
     onPointerDown: (e: PointerEvent<HTMLElement>) => void
     style: CSSProperties
@@ -189,14 +213,26 @@ export function useSortableReorder<T extends { id: string }>({
     return {
       onPointerDown: (e: PointerEvent<HTMLElement>) => {
         if (e.button !== 0) return
-        const row = e.currentTarget.closest('[data-sortable-row]') ?? e.currentTarget
+        const marked = e.currentTarget.closest('[data-sortable-row]')
+        const row = marked ?? e.currentTarget
         const rect = row.getBoundingClientRect()
+        // Only rows that mark themselves can be found as siblings; a count
+        // that doesn't match the list means something else is in there.
+        const siblings = marked?.parentElement?.querySelectorAll(':scope > [data-sortable-row]')
+        const bounds =
+          siblings && siblings.length === visible.length
+            ? Array.from(siblings, el => {
+                const r = el.getBoundingClientRect()
+                return { top: r.top, bottom: r.bottom }
+              })
+            : undefined
         setDrag({
           id,
           fromIdx: index,
           startY: e.clientY,
           currentY: e.clientY,
           itemHeight: rect.height + rowGapPx,
+          bounds,
           active: false,
         })
       },
