@@ -9,10 +9,6 @@ import { dateKeyToDate, nextWeekdayKey, previousWeekdayKey } from '@/lib/tz'
 import { coerceFilters, type TradeFilters } from '@/lib/filters'
 import { loadJsonFromStorage, removeFromStorage, saveJsonToStorage } from '@/lib/storage'
 
-// v2: the `symbol` enum + `contract` fields were replaced by a `symbol_id`
-// reference. A v1 blob's `symbol: 'NQ'` would coerce away to null anyway, but
-// bumping the key drops the stale slot outright (the old key is pruned at boot
-// via `pruneLegacyStorageKeys`).
 const KEY = 'logslate.shared-filters.v2'
 
 /** Default one-month inclusive range ending on `baseDate` (YYYY-MM-DD) —

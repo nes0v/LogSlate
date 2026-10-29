@@ -232,17 +232,6 @@ export function bucketKeyToTs(key: string): number {
   return 0
 }
 
-// ---------- chart-axis helpers ----------
-
-/**
- * X-axis tick label for a day: just the day number, except the 1st of each
- * month keeps the month prefix so the axis still anchors which month we're in.
- */
-export function chartDayLabel(dateKey: string): string {
-  const d = dateKeyToDate(dateKey)
-  return d.getDate() === 1 ? format(d, 'MMM d') : format(d, 'd')
-}
-
 // ---------- period navigation helpers ----------
 
 export function parseYearMonth(ym: string | undefined): Date {

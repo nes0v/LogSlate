@@ -670,7 +670,7 @@ export function OverviewRoute() {
             saveJsonToStorage(TRADES_SECTION_OPEN_STORAGE_KEY, open)
           }}
         >
-          <summary className="text-sm font-medium cursor-pointer text-(--color-text) hover:text-(--color-accent) list-none flex items-center gap-1">
+          <summary className="text-sm font-medium cursor-pointer text-(--color-text) list-none flex items-center gap-1">
             <ChevronRight className="size-4 group-open:rotate-90" />
             Trades{' '}
             <span className="text-(--color-text-dim) font-normal">({filtered.length})</span>

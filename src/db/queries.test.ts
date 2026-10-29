@@ -35,7 +35,6 @@ import {
   setDayFeesOverride,
   setDayPnlOverride,
   slugifyAccountName,
-  updateAdjustment,
   updateTrade,
 } from './queries'
 import { MAIN_ACCOUNT_ID } from './types'
@@ -229,15 +228,6 @@ describe('adjustment queries', () => {
     expect(a.account_id).toBe(MAIN_ACCOUNT_ID)
   })
 
-  it('updateAdjustment bumps updated_at', async () => {
-    const a = await createAdjustment(adjustmentDraft({ amount: 100 }))
-    await new Promise(r => setTimeout(r, 2))
-    await updateAdjustment(a.id, { amount: 200 })
-    const [fetched] = await listAdjustments(MAIN_ACCOUNT_ID)
-    expect(fetched.amount).toBe(200)
-    expect(fetched.updated_at >= a.updated_at).toBe(true)
-  })
-
   it('deleteAdjustment removes the record', async () => {
     const a = await createAdjustment(adjustmentDraft())
     await deleteAdjustment(a.id)
@@ -403,18 +393,33 @@ describe('account queries', () => {
       expect(await listSymbols(MAIN_ACCOUNT_ID)).toHaveLength(1)
     })
 
-    it('cloned rules arrive switched off, skipping hidden ones', async () => {
+    it('cloned rules run from today, skipping hidden ones', async () => {
       await seedSource()
       const clone = await cloneAccount({ name: 'Eval 2', starting_balance: 0 }, MAIN_ACCOUNT_ID)
       const rules = await db.progress_rules.where('account_id').equals(clone.id).toArray()
       expect(rules).toHaveLength(1)
       expect(rules[0].text).toBe('no trades before 9:45')
-      // No periods, so the rule counts toward nothing until the user enables it.
-      expect(rules[0].periods).toEqual([])
+      // None of the source's history: the rule starts fresh on the new account.
+      expect(rules[0].periods).toEqual([{ from: nextWeekdayKey(nyToday()), until: null }])
       expect(rules[0].sort).toBe(2)
     })
 
-    it('a cloned line runs from today, having no switch to turn it on', async () => {
+    it('a blank cloned rule waits to be named', async () => {
+      await db.progress_rules.put({
+        id: 'src-blank',
+        account_id: MAIN_ACCOUNT_ID,
+        text: '',
+        periods: [{ from: '2026-01-02', until: null }],
+        sort: 1,
+        created_at: '2026-01-01T00:00:00.000Z',
+        updated_at: '2026-01-01T00:00:00.000Z',
+      })
+      const clone = await cloneAccount({ name: 'Eval 2', starting_balance: 0 }, MAIN_ACCOUNT_ID)
+      const [blank] = await db.progress_rules.where('account_id').equals(clone.id).toArray()
+      expect(blank.periods).toEqual([])
+    })
+
+    it('a cloned line runs from today', async () => {
       await db.progress_rules.put({
         id: 'src-line',
         account_id: MAIN_ACCOUNT_ID,

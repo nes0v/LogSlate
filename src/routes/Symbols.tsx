@@ -61,7 +61,7 @@ export function SymbolsRoute() {
 
   async function createNew() {
     // Slot the new row below every existing one. Persist a dense order with the
-    // new id last rather than a bare `maxSort+1`: migrated symbols are sort-less
+    // new id last rather than a bare `maxSort+1`: sort-less symbols
     // (they sort to the bottom), so a plain increment would jump the new row
     // above them. Reordering the current display order + the new row backfills
     // `sort` on everything and keeps the newcomer at the bottom.
@@ -153,9 +153,7 @@ function SymbolEditorImpl({ symbol, onSave, onDelete }: SymbolEditorProps) {
   const accountId = useActiveAccountId()
   const confirm = useConfirm()
   const [name, setName] = useState(symbol.name)
-  // Normalise a legacy `undefined` description to '' so clearing the field
-  // returns to the initial state (else `'' !== undefined` keeps it dirty).
-  const [description, setDescription] = useState(symbol.description ?? '')
+  const [description, setDescription] = useState(symbol.description)
   const [pointValue, setPointValue] = useState<number | null>(symbol.point_value)
   const [tickSize, setTickSize] = useState<number | null>(symbol.tick_size)
   const [feePerSide, setFeePerSide] = useState<number | null>(symbol.fee_per_side)
@@ -165,7 +163,7 @@ function SymbolEditorImpl({ symbol, onSave, onDelete }: SymbolEditorProps) {
 
   const isDirty =
     name !== symbol.name ||
-    description !== (symbol.description ?? '') ||
+    description !== symbol.description ||
     pointValue !== symbol.point_value ||
     tickSize !== symbol.tick_size ||
     feePerSide !== symbol.fee_per_side ||

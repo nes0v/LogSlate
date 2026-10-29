@@ -161,8 +161,8 @@ export function AccountsPanel({ accounts }: AccountsPanelProps) {
             />
           </label>
           {/* Copies the source account's setup — models, symbols and progress
-              rules — and nothing else. Cloned rules arrive switched off so they
-              can be reworded before they start counting. */}
+              rules — and nothing else. Cloned rules start fresh from today,
+              with none of the source account's history. */}
           <label className="text-xs text-(--color-text-dim) space-y-2 flex-1 min-w-[8rem]">
             <div>Copy setup from</div>
             <Select

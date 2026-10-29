@@ -7,7 +7,7 @@ import {
   saveSharedFilters,
 } from './shared-filters'
 
-const KEY = 'logslate.shared-filters.v1'
+const KEY = 'logslate.shared-filters.v2'
 
 afterEach(() => {
   localStorage.removeItem(KEY)

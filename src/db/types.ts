@@ -269,12 +269,12 @@ export interface Model {
 //
 // `periods` is the rule's effective history — each entry is a date range
 // during which the rule was active. `until: null` means the period is
-// still open. A rule with no periods has never been activated. A rule
+// still open. A rule with no periods is waiting to be named. A rule
 // counts toward a day D's denominator iff some period covers D
 // (from <= D AND (until === null OR D <= until)) — except a line
 // (`kind: 'line'`), which is drawn on those days but never counted. This
 // is what lets past-day adherence stay stable when the user adds or
-// retires rules today — only edits to a rule's text affect history
+// archives rules today — only edits to a rule's text affect history
 // retroactively.
 export interface ProgressRulePeriod {
   from: string // YYYY-MM-DD inclusive

@@ -153,17 +153,6 @@ export function ReportsRoute() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params])
 
-  // Legacy: the standalone Symbol tab was folded into Compare's Symbol axis.
-  // Send old ?tab=symbol links there instead of silently falling back to
-  // General. `compare` defaults to 'symbol', so it's left off the URL.
-  useEffect(() => {
-    if (params.get('tab') !== 'symbol') return
-    const p = new URLSearchParams(params)
-    p.set('tab', 'compare')
-    p.delete('compare')
-    setParams(p, { replace: true })
-  }, [params, setParams])
-
   const accountId = useActiveAccountId()
   // No default value — `allTrades` stays undefined while Dexie resolves so
   // we can suppress the empty-state placeholder until the real data lands

@@ -38,7 +38,7 @@ export function DayNoteSection({ accountId, date, stored }: DayNoteSectionProps)
         StarterKit.configure({ trailingNode: false, heading: { levels: [1, 3] } }),
         Placeholder.configure({ placeholder: 'What did you notice today?' }),
       ],
-      content: toEditorContent(stored),
+      content: stored,
       editorProps: {
         // Each paragraph is one visual line, so a plain-text copy must put a
         // single "\n" at each block boundary. ProseMirror's default serializer
@@ -100,9 +100,8 @@ export function DayNoteSection({ accountId, date, stored }: DayNoteSectionProps)
   // Day route into the error boundary.
   useEffect(() => {
     if (!editor || editor.isDestroyed || editor.isFocused) return
-    const next = toEditorContent(stored)
-    if (getHtml(editor) === next) return
-    editor.commands.setContent(next)
+    if (getHtml(editor) === stored) return
+    editor.commands.setContent(stored)
   }, [editor, stored])
 
   return (
@@ -125,23 +124,6 @@ export function DayNoteSection({ accountId, date, stored }: DayNoteSectionProps)
  *  a stray "<p></p>"). */
 function getHtml(editor: Editor): string {
   return editor.isEmpty ? '' : editor.getHTML()
-}
-
-// Any HTML this editor emits starts with a block tag (ProseMirror wraps even
-// inline content in a paragraph), so a stored value carrying one of these is
-// already rich text and loads as-is.
-const RICH_TEXT = /<(?:p|h[1-6]|ul|ol|hr|pre|blockquote)[\s/>]/i
-
-/** Prepares a stored note for the editor. Legacy notes from the old plain-text
- *  textarea have no markup; feeding their raw `\n` text as HTML would collapse
- *  every line break into a space. Map each line to a paragraph instead (our
- *  paragraphs are one visual line each), preserving the layout exactly. HTML
- *  notes pass through untouched. The note migrates to HTML on the next blur. */
-function toEditorContent(stored: string): string {
-  if (stored === '' || RICH_TEXT.test(stored)) return stored
-  const esc = (s: string) =>
-    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  return stored.split('\n').map(line => `<p>${esc(line)}</p>`).join('')
 }
 
 function Toolbar({ editor }: { editor: Editor | null }) {

@@ -117,9 +117,6 @@ describe('mergeById — accounts', () => {
   })
 
   it('carries starting_balance across, newer side winning', () => {
-    // The v20 migration relied on exactly this: it rewrote every account row
-    // with a bumped updated_at so the funded local copy beats the pre-migration
-    // one still sitting in Drive.
     const local = [
       accountRecord({ id: 'eval', starting_balance: 50_000, updated_at: '2026-08-27T10:00:00Z' }),
     ]

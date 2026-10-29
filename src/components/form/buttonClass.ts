@@ -22,3 +22,7 @@ export const BTN_GHOST =
 export const BTN_ACTION =
   `${BTN_BASE} border border-(--color-border) text-(--color-text-dim)`
 export const BTN_DELETE = `${BTN_ACTION} hover:text-(--color-loss)`
+
+/** "+ Add …" text link under a list (Add execution, Add rule, Add line). */
+export const BTN_ADD_LINK =
+  'inline-flex items-center gap-1 text-xs text-(--color-accent) hover:underline disabled:text-(--color-text-faint) disabled:no-underline disabled:cursor-not-allowed'

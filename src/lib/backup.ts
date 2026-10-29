@@ -18,7 +18,6 @@ import type {
   TradeRecord,
   TradingSymbol,
 } from '@/db/types'
-import { MAIN_ACCOUNT_ID } from '@/db/types'
 
 const BACKUP_VERSION = 7
 
@@ -110,26 +109,9 @@ export async function importBackup(
     throw new Error('Backup file is malformed (no trades array).')
   }
 
-  // Back-compat: pre-v4 backups have no accounts and no account_id field. Stamp
-  // trades/adjustments to the main account so the imported data is visible.
-  const stamp = <T extends { account_id?: string }>(rows: T[]): T[] =>
-    rows.map(r => ({ ...r, account_id: r.account_id ?? MAIN_ACCOUNT_ID }))
-
-  // Back-compat: accounts predating `starting_balance` open at 0, matching what
-  // their equity curve showed when the backup was taken.
-  const fundAccounts = <T extends { starting_balance?: number }>(rows: T[]): T[] =>
-    rows.map(r => ({ ...r, starting_balance: r.starting_balance ?? 0 }))
-
   const arrays: Row[][] = SPECS.map(s => {
     const v = parsed[s.fileKey]
-    const arr = Array.isArray(v) ? (v as Row[]) : []
-    if (s.fileKey === 'trades' || s.fileKey === 'adjustments') {
-      return stamp(arr as Array<Row & { account_id?: string }>) as Row[]
-    }
-    if (s.fileKey === 'accounts') {
-      return fundAccounts(arr as Array<Row & { starting_balance?: number }>) as Row[]
-    }
-    return arr
+    return Array.isArray(v) ? (v as Row[]) : []
   })
 
   await db.transaction(

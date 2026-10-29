@@ -11,7 +11,6 @@ import {
   ruleActiveOn,
   ruleCountsOn,
   ruleHasHistoryBefore,
-  ruleHasOpenPeriod,
   tradingDayAfter,
 } from './progress-periods'
 
@@ -62,14 +61,6 @@ describe('ruleActiveOn', () => {
 
 })
 
-describe('ruleHasOpenPeriod', () => {
-  it('true iff at least one period has until=null', () => {
-    expect(ruleHasOpenPeriod(rule({ periods: [{ from: '2026-05-11', until: null }] }))).toBe(true)
-    expect(ruleHasOpenPeriod(rule({ periods: [{ from: '2026-05-11', until: '2026-05-16' }] }))).toBe(false)
-    expect(ruleHasOpenPeriod(rule({ periods: [] }))).toBe(false)
-  })
-})
-
 describe('openPeriodStart', () => {
   it('returns the open period start, ignoring closed ones', () => {
     const r = rule({
@@ -89,14 +80,12 @@ describe('openPeriodStart', () => {
   })
 
   it('distinguishes a scheduled rule from a live one', () => {
-    // Both are switched on; only the second has taken effect by Friday.
+    // Both are running; only the second has taken effect by Friday.
     const scheduled = rule({ periods: [{ from: '2026-05-18', until: null }] })
     const live = rule({ periods: [{ from: '2026-05-11', until: null }] })
     const friday = '2026-05-15'
     expect(openPeriodStart(scheduled)! > friday).toBe(true)
     expect(openPeriodStart(live)! > friday).toBe(false)
-    // ...which is exactly the gap ruleHasOpenPeriod cannot see.
-    expect(ruleHasOpenPeriod(scheduled)).toBe(ruleHasOpenPeriod(live))
   })
 })
 
@@ -115,15 +104,6 @@ describe('lastPeriodEnd', () => {
   it('returns null when nothing is closed', () => {
     expect(lastPeriodEnd(rule({ periods: [{ from: '2026-05-11', until: null }] }))).toBeNull()
     expect(lastPeriodEnd(rule({ periods: [] }))).toBeNull()
-  })
-
-  it('spots a rule retired ahead of time — off, but today still counts it', () => {
-    // Unticked on Tuesday's page while today is Monday: closes at Monday.
-    const r = rule({ periods: [{ from: '2026-05-04', until: '2026-05-18' }] })
-    const monday = '2026-05-18'
-    expect(ruleHasOpenPeriod(r)).toBe(false)       // right panel: unticked
-    expect(ruleActiveOn(r, monday)).toBe(true)     // left panel: still listed
-    expect(lastPeriodEnd(r)).toBe(monday)          // ...so the row can say "until Mon"
   })
 })
 
@@ -191,7 +171,7 @@ describe('closePeriod', () => {
 // must not disturb the week that just closed.
 //   2026-05-15 Fri · 05-16 Sat · 05-17 Sun · 05-18 Mon · 05-19 Tue
 describe('weekend anchoring', () => {
-  it('opens on Monday when the rule is switched on over the weekend', () => {
+  it('opens on Monday when the rule is opened over the weekend', () => {
     expect(openPeriod(rule({ periods: [] }), '2026-05-16')).toEqual([
       { from: '2026-05-18', until: null },
     ])
@@ -260,7 +240,7 @@ describe('openPeriod re-opening rather than splitting', () => {
     ])
   })
 
-  it('appends when a trading day passed with the rule switched off', () => {
+  it('appends when a trading day passed with the rule archived', () => {
     // Off on Thursday the 17th, back on Friday the 18th: that Thursday is a
     // real gap and has to stay one.
     const r = rule({ periods: [{ from: '2026-09-01', until: '2026-09-16' }] })
@@ -286,7 +266,7 @@ describe('openPeriod re-opening rather than splitting', () => {
 
 // 2026-05-11 Mon … 2026-05-15 Fri; 2026-05-18 the next Monday.
 describe('ruleHasHistoryBefore', () => {
-  it('is false for a rule never switched on', () => {
+  it('is false for a rule never named', () => {
     expect(ruleHasHistoryBefore(rule(), '2026-05-13')).toBe(false)
   })
 

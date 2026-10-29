@@ -25,7 +25,7 @@ import { RuleCheck } from '@/components/form/RuleCheck'
 import { NumberInput } from '@/components/form/NumberInput'
 import { QtyInput } from '@/components/form/QtyInput'
 import { Select } from '@/components/form/Select'
-import { BTN_BASE, BTN_OUTLINED } from '@/components/form/buttonClass'
+import { BTN_ADD_LINK, BTN_BASE, BTN_OUTLINED } from '@/components/form/buttonClass'
 import { computeOrphanRules } from '@/lib/model-rules'
 import { computeAhpc, computeNetPnl } from '@/lib/trade-math'
 import { formatDuration } from '@/lib/duration'
@@ -342,7 +342,7 @@ export function TradeForm({
             <button
               type="button"
               onClick={addExecution}
-              className="inline-flex items-center gap-1 text-xs text-(--color-accent) hover:underline"
+              className={BTN_ADD_LINK}
             >
               <Plus className="size-3" /> Add execution
             </button>

@@ -7,7 +7,6 @@ import {
   bucketByWeek,
   bucketByYear,
   bucketKeyToTs,
-  chartDayLabel,
   dateToBucketKey,
   parseYearMonth,
   WEEK_OPTS,
@@ -44,19 +43,6 @@ describe('parseYearMonth', () => {
       expect(d.getFullYear()).toBe(Number(yyyy))
       expect(d.getMonth()).toBe(Number(mm) - 1)
     }
-  })
-})
-
-describe('chartDayLabel', () => {
-  it('returns MMM d for the 1st of the month', () => {
-    expect(chartDayLabel('2026-04-01')).toBe('Apr 1')
-    expect(chartDayLabel('2026-05-01')).toBe('May 1')
-  })
-
-  it('returns just the day number for other days', () => {
-    expect(chartDayLabel('2026-04-02')).toBe('2')
-    expect(chartDayLabel('2026-04-15')).toBe('15')
-    expect(chartDayLabel('2026-04-30')).toBe('30')
   })
 })
 

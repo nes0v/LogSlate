@@ -21,23 +21,20 @@ export function ruleCountsOn(rule: ProgressRule, date: string): boolean {
   return rule.kind !== 'line' && ruleActiveOn(rule, date)
 }
 
-export function ruleHasOpenPeriod(rule: ProgressRule): boolean {
+function ruleHasOpenPeriod(rule: ProgressRule): boolean {
   return rule.periods.some(p => p.until === null)
 }
 
-// Start date of the rule's open period, or null when the rule is retired.
-// Lets a caller tell a rule that is switched ON but hasn't taken effect yet
-// (scheduled for a later session) from one that is in force right now —
-// `ruleHasOpenPeriod` alone can't, since it carries no date.
+// Start date of the rule's open period, or null when it has none. Lets a
+// caller tell a rule named for a later session, not in force yet, from one
+// in force right now — `ruleHasOpenPeriod` alone can't, since it carries no
+// date.
 export function openPeriodStart(rule: ProgressRule): string | null {
   return rule.periods.find(p => p.until === null)?.from ?? null
 }
 
 // Latest end date across the rule's closed periods, or null when it has
-// none. Mirror of `openPeriodStart`: together they describe the two ways a
-// rule row can disagree with the checklist beside it — switched ON but not
-// started yet, or switched OFF but still running out its last day (retired
-// on the next session's page, so today still counts it).
+// none. Mirror of `openPeriodStart`.
 export function lastPeriodEnd(rule: ProgressRule): string | null {
   let latest: string | null = null
   for (const p of rule.periods) {
@@ -96,13 +93,13 @@ export function ruleHasHistoryBefore(rule: ProgressRule, today: string): boolean
 // rule on Saturday must not grow Friday's denominator: Friday is closed,
 // journalled, and drawn in the heat strip.
 //
-// No-op (returns a defensive copy) if a period is already open — toggling
-// on twice shouldn't fork the history. Always returns a fresh array so
+// No-op (returns a defensive copy) if a period is already open — restoring
+// or naming twice shouldn't fork the history. Always returns a fresh array so
 // callers can't accidentally mutate the underlying rule.periods.
 //
-// When no trading day elapsed with the rule switched off, the last period is
-// re-opened rather than a new one appended. Retiring a rule from the next
-// session's page and then keeping it from today's is the way in: it closes
+// When no trading day elapsed with the rule archived, the last period is
+// re-opened rather than a new one appended. Deleting a rule from the next
+// session's page and then restoring it from today's is the way in: it closes
 // at today and re-opens at today, and storing that as two periods meeting on
 // one day describes a rule that never stopped as though it had.
 export function openPeriod(rule: ProgressRule, today: string): ProgressRulePeriod[] {
@@ -134,7 +131,7 @@ export function closePeriod(rule: ProgressRule, today: string): ProgressRulePeri
       if (p.until !== null) return p
       // Start past end ⇒ no trading day ever elapsed under this period
       // (opened and retired before one did). Drop it rather than store an
-      // empty range. Catches both same-day toggling and the weekend case,
+      // empty range. Catches both a same-day delete and the weekend case,
       // where `openPeriod` parked the start on Monday.
       if (p.from > until) return null
       return { from: p.from, until }

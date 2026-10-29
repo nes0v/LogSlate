@@ -276,14 +276,6 @@ export async function createAdjustment(
   return rec
 }
 
-export async function updateAdjustment(
-  id: string,
-  patch: Partial<AdjustmentDraft>,
-): Promise<void> {
-  if (patch.date !== undefined) assertWeekday(patch.date)
-  await db.adjustments.update(id, { ...patch, updated_at: now() })
-}
-
 export async function deleteAdjustment(id: string): Promise<void> {
   await db.adjustments.delete(id)
 }
@@ -410,16 +402,16 @@ export async function cloneAccount(
       // `periods` is the SOURCE account's activity history — copying it would
       // give the new account rules that claim to have been live for months,
       // counting days before it existed against its adherence denominator.
-      // Cloned rules arrive switched off (no periods, exactly like a
-      // hand-added rule) so they can be reworded before being turned on;
-      // toggling one opens its first period from that day. A line has no
-      // switch, so it runs from today instead (Monday at the weekend).
-      // Hidden rules are skipped: a soft-deleted rule exists only to keep
-      // old checks honest, and a fresh account has none.
+      // Cloned rules and lines run from today instead (Monday at the
+      // weekend), as if just named there. Hidden rules are skipped: a
+      // soft-deleted rule exists only to keep old checks honest, and a fresh
+      // account has none.
       const clonedRules: ProgressRule[] = rules
         .filter(r => r.hidden !== true)
         .map(r => {
-          const periods = r.kind === 'line' ? [{ from: nextWeekdayKey(nyToday()), until: null }] : []
+          // Still blank, it waits to be named like a fresh rule.
+          const starts = r.kind === 'line' || r.text.trim() !== ''
+          const periods = starts ? [{ from: nextWeekdayKey(nyToday()), until: null }] : []
           const copy: ProgressRule = { ...r, ...stamp, id: newId(), periods }
           // Drop the soft-delete flag outright rather than carrying `false` —
           // the rest of the app treats "absent" and "not hidden" alike.
@@ -899,14 +891,14 @@ async function pruneOrphanChecks(rule: ProgressRule): Promise<void> {
 
 /** Add an empty rule to the end of the list. */
 export async function createProgressRule(accountId: string): Promise<ProgressRule> {
-  // No periods: the user fills the text in place and switches the rule on,
-  // which opens its first period. Until then it counts toward no day.
+  // No periods: it starts when it's named (see `setProgressRuleText`), so a
+  // blank row never lands in a checklist as "(unnamed)" and scores.
   return appendProgressRule(accountId, {})
 }
 
 /**
  * Add a line to the end of the list, running from `date` — the day on
- * screen, as a rule switched on there would. Planning the next session
+ * screen, as a rule named there would. Planning the next session
  * doesn't draw it into today's checklist or any day behind it.
  */
 export async function createProgressLine(
@@ -954,37 +946,10 @@ export async function restoreProgressRule(ruleId: string, date: string): Promise
   await db.transaction('rw', db.progress_rules, async () => {
     const rule = await db.progress_rules.get(ruleId)
     if (!rule) return
-    await db.progress_rules.put({
-      ...rule,
-      hidden: false,
-      periods: openPeriod(rule, date),
-      updated_at: now(),
-    })
-  })
-}
-
-/**
- * Switch a rule on or off as of `date` — the day being VIEWED, which is how
- * planning the next session works (see `canEditRulesOn`).
- *
- * Re-reads the rule inside the transaction rather than trusting the caller's
- * live-query snapshot, which can be a render behind the user's last click.
- */
-export async function setProgressRuleActive(
-  ruleId: string,
-  date: string,
-  active: boolean,
-): Promise<void> {
-  await db.transaction('rw', db.progress_rules, db.progress_checks, async () => {
-    const rule = await db.progress_rules.get(ruleId)
-    if (!rule) return
-    const next: ProgressRule = {
-      ...rule,
-      periods: active ? openPeriod(rule, date) : closePeriod(rule, date),
-      updated_at: now(),
-    }
+    const next: ProgressRule = { ...rule, periods: openPeriod(rule, date), updated_at: now() }
+    // Drop the flag rather than store `false`, as `cloneAccount` does.
+    delete next.hidden
     await db.progress_rules.put(next)
-    await pruneOrphanChecks(next)
   })
 }
 
@@ -1059,7 +1024,7 @@ async function retireRule(
     periods: closePeriod(rule, date),
     updated_at: now(),
   }
-  // With no period left, no day ever counted the rule — switched on and off
+  // With no period left, no day ever counted the rule — named and deleted
   // within one session, say — and the prune clears every tick it collected.
   await pruneOrphanChecks(next)
   if (next.periods.length === 0) {
@@ -1114,7 +1079,8 @@ export type ProgressRuleTextChange = 'renamed' | 'replaced' | 'missing'
  * — swapping the texts of two rules to reorder them turned "20 min prep" into
  * "3 trades max" on every day already journalled. So the old rule retires
  * from `date` exactly as deleting it would, and a new rule with the new words
- * takes its place in the list, starting `date` if the old one was running.
+ * takes its place in the list, starting `date` — or the later session the old
+ * one was planned for.
  */
 export async function setProgressRuleText(
   ruleId: string,
@@ -1125,23 +1091,33 @@ export async function setProgressRuleText(
     const rule = await db.progress_rules.get(ruleId)
     if (!rule) return 'missing'
     if (!ruleHasHistoryBefore(rule, date)) {
-      await db.progress_rules.put({ ...rule, text, updated_at: now() })
+      // A new rule starts the first time it's named, from the day on screen,
+      // and goes back to waiting if its name is cleared before any day
+      // scored it — a blank row never lands in a checklist as "(unnamed)".
+      const blank = text.trim() === ''
+      const next: ProgressRule = {
+        ...rule,
+        text,
+        periods: blank ? closePeriod(rule, date) : openPeriod(rule, date),
+        updated_at: now(),
+      }
+      await db.progress_rules.put(next)
+      if (blank) await pruneOrphanChecks(next)
       return 'renamed'
     }
-    // A rule already switched on for a later session keeps that start: the
-    // replacement inherits the plan, not just the words.
+    // A rule named for a later session keeps that start: the replacement
+    // inherits the plan, not just the words. Otherwise it starts on the day
+    // on screen (Monday at the weekend), as the old one retires there.
     const openFrom = openPeriodStart(rule)
     const startFrom = nextWeekdayKey(date)
+    const from = openFrom !== null && openFrom > startFrom ? openFrom : startFrom
     const ts = now()
     await retireRule(rule, date)
     await db.progress_rules.put({
       id: newId(),
       account_id: rule.account_id,
       text,
-      periods:
-        openFrom === null
-          ? []
-          : [{ from: openFrom > startFrom ? openFrom : startFrom, until: null }],
+      periods: [{ from, until: null }],
       sort: rule.sort,
       created_at: ts,
       updated_at: ts,

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { cn, entries, errorMessage, mergeRefs } from './utils'
+import { cn, errorMessage, mergeRefs } from './utils'
 
 describe('errorMessage', () => {
   it('extracts message from Error instances', () => {
@@ -59,20 +59,6 @@ describe('cn', () => {
     expect(cn('text-(--color-text-dim)', 'text-(--color-text)')).toContain(
       'text-(--color-text)',
     )
-  })
-})
-
-describe('entries', () => {
-  it('returns key-value tuples preserving the narrow key type at runtime', () => {
-    const map = { a: 1, b: 2 } as const
-    expect(entries(map)).toEqual([
-      ['a', 1],
-      ['b', 2],
-    ])
-  })
-
-  it('returns an empty array for an empty record', () => {
-    expect(entries({} as Record<string, number>)).toEqual([])
   })
 })
 

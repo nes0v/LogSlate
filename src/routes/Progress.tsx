@@ -16,7 +16,6 @@ import {
   ruleActiveOn,
   ruleCountsOn,
   ruleHasHistoryBefore,
-  ruleHasOpenPeriod,
   tradingDayAfter,
 } from '@/lib/progress-periods'
 import {
@@ -26,11 +25,10 @@ import {
   heatDays,
 } from '@/lib/progress-heat'
 import { useActiveAccountId } from '@/lib/active-account'
-import { Checkbox } from '@/components/form/Checkbox'
 import { DatePicker } from '@/components/form/DatePicker'
 import { RuleCheck } from '@/components/form/RuleCheck'
 import { useConfirm } from '@/components/ConfirmDialog'
-import { BTN_ACCENT } from '@/components/form/buttonClass'
+import { BTN_ACCENT, BTN_ADD_LINK } from '@/components/form/buttonClass'
 import { useAccountQuery } from '@/lib/use-account-query'
 import { useSortableReorder } from '@/lib/use-sortable-reorder'
 import {
@@ -39,7 +37,6 @@ import {
   deleteProgressRule,
   reorderProgressRules,
   restoreProgressRule,
-  setProgressRuleActive,
   setProgressRuleText,
   toggleProgressCheck,
 } from '@/db/queries'
@@ -210,6 +207,11 @@ export function ProgressRoute() {
     [heat, tradedDays],
   )
 
+  // Rule edits apply to the day being VIEWED, not the calendar day. That's
+  // what makes planning the next session honest: on a Sunday you step to
+  // Monday and the rule you name starts Monday, visible in the checklist
+  // beside the panel. Editing is gated to today + the next session
+  // (`canEditRules`), so `date` here is never an arbitrary date.
   async function addRule() {
     await createProgressRule(accountId)
   }
@@ -235,15 +237,6 @@ export function ProgressRoute() {
       return false
     await setProgressRuleText(rule.id, date, text)
     return true
-  }
-
-  // Rule edits apply to the day being VIEWED, not the calendar day. That's
-  // what makes planning the next session honest: on a Sunday you step to
-  // Monday and the rule you switch on starts Monday, visible in the
-  // checklist beside the panel. Editing is gated to today + the next
-  // session (`canEditRules`), so `date` here is never an arbitrary date.
-  async function setRuleActive(rule: ProgressRule, next: boolean) {
-    await setProgressRuleActive(rule.id, date, next)
   }
 
   async function restoreRule(rule: ProgressRule) {
@@ -465,8 +458,8 @@ export function ProgressRoute() {
                   key={r.id}
                   checked={checkMap.get(r.id) ?? false}
                   onChange={() => toggleCheck(r)}
-                  // A rule switched on before it was named would otherwise be
-                  // a checkbox with nothing beside it. Same wording the
+                  // Clearing a name sends the rule back to waiting, so a
+                  // blank one here is only old data. Same wording the
                   // archived drawer uses.
                   label={r.text || '(unnamed)'}
                   // Every rule listed here counted on this day, archived
@@ -489,7 +482,6 @@ export function ProgressRoute() {
           onAddLine={addLine}
           onRename={renameRule}
           onReorder={ids => reorderProgressRules(accountId, ids)}
-          onSetActive={setRuleActive}
           onDelete={deleteRule}
           onRestore={restoreRule}
           date={date}
@@ -498,7 +490,7 @@ export function ProgressRoute() {
             marketOpen ? 'Switch to today to edit' : 'Closed for the weekend'
           }
           // Offered from the landing day only — today, or Friday over a
-          // weekend. Rules switched on today count against a session already
+          // weekend. Rules named today count against a session already
           // underway, so an evening review belongs on the next session. On
           // any other past date a locked panel means you're off reviewing
           // history, and the header's Today button is the way back.
@@ -539,7 +531,6 @@ function RuleManager({
   onAddLine,
   onRename,
   onReorder,
-  onSetActive,
   onDelete,
   onRestore,
   date,
@@ -554,7 +545,6 @@ function RuleManager({
   onAddLine: () => void
   onRename: (rule: ProgressRule, text: string) => Promise<boolean>
   onReorder: (orderedIds: string[]) => Promise<void>
-  onSetActive: (rule: ProgressRule, next: boolean) => void
   onDelete: (id: string) => void
   onRestore: (rule: ProgressRule) => void
   /** The day on screen — a rule row needs it to say whether the rule has
@@ -619,7 +609,6 @@ function RuleManager({
             sortable={rowProps(r.id, i)}
             lifted={isActiveDrag && draggingId === r.id}
             onRename={onRename}
-            onSetActive={onSetActive}
             onDelete={onDelete}
             date={date}
             disabled={disabled}
@@ -642,7 +631,7 @@ function RuleManager({
             type="button"
             onClick={onAdd}
             disabled={disabled}
-            className={addButtonClass(disabled)}
+            className={BTN_ADD_LINK}
           >
             <Plus className="size-3" /> Add rule
           </button>
@@ -652,7 +641,7 @@ function RuleManager({
             type="button"
             onClick={onAddLine}
             disabled={disabled}
-            className={addButtonClass(disabled)}
+            className={BTN_ADD_LINK}
           >
             <Plus className="size-3" /> Add line
           </button>
@@ -663,9 +652,12 @@ function RuleManager({
           <button
             type="button"
             onClick={() => setShowArchived(v => !v)}
-            className="text-xs text-(--color-text-dim) hover:text-(--color-text) inline-flex items-center gap-1"
+            // Same look as the Overview's "Trades (19)" section toggle.
+            className="text-sm font-medium cursor-pointer text-(--color-text) flex items-center gap-1"
           >
-            {showArchived ? '▾' : '▸'} {archived.length} archived rule{archived.length === 1 ? '' : 's'}
+            <ChevronRight className={cn('size-4', showArchived && 'rotate-90')} />
+            Archived rules{' '}
+            <span className="text-(--color-text-dim) font-normal">({archived.length})</span>
           </button>
           {showArchived && (
             <div className={cn('mt-2 space-y-1', disabled && 'opacity-50')}>
@@ -693,15 +685,6 @@ function RuleManager({
         </div>
       )}
     </div>
-  )
-}
-
-function addButtonClass(disabled: boolean) {
-  return cn(
-    'text-xs inline-flex items-center gap-1',
-    disabled
-      ? 'text-(--color-text-faint) cursor-not-allowed'
-      : 'text-(--color-text-dim) hover:text-(--color-text)',
   )
 }
 
@@ -788,7 +771,6 @@ function RuleRow({
   sortable,
   lifted,
   onRename,
-  onSetActive,
   onDelete,
   date,
   disabled,
@@ -798,7 +780,6 @@ function RuleRow({
   /** Being dragged: drawn over the rows it passes. */
   lifted: boolean
   onRename: (rule: ProgressRule, text: string) => Promise<boolean>
-  onSetActive: (rule: ProgressRule, next: boolean) => void
   onDelete: (id: string) => void
   date: string
   disabled: boolean
@@ -815,51 +796,9 @@ function RuleRow({
     if (document.activeElement === inputRef.current) return
     setText(rule.text)
   }, [rule.text])
-  const isActive = ruleHasOpenPeriod(rule)
-  const liveToday = ruleActiveOn(rule, date)
-  // The checkbox answers "is this rule retired?", which carries no date. The
-  // checklist beside it answers "is it in force on the day I'm looking at?".
-  // Those agreed until rules could be scheduled ahead; now they can diverge
-  // in BOTH directions, and each looks like a bug on its own:
-  //
-  //   ticked + absent from the checklist  -> switched on for a later session
-  //   unticked + present in the checklist -> retired from a later session,
-  //                                          so today still counts it
-  //
-  // Date-scoping the checkbox would fix the look and break the switch, since
-  // turning on an already-open rule is a no-op. So name the boundary instead
-  // and let the two panels read as one statement.
-  const scheduledOn = isActive && !liveToday
-  const scheduledOff = !isActive && liveToday
-  const startsOn = openPeriodStart(rule)
-  const endsOn = lastPeriodEnd(rule)
-  // `scheduledOn` implies an open period, `scheduledOff` implies a closed
-  // one, so the matching date is always present in the branch that reads it.
-  const edgeLabel =
-    scheduledOn && startsOn
-      ? relativeDayLabel(startsOn, date)
-      : scheduledOff && endsOn
-        ? relativeDayLabel(endsOn, date)
-        : null
-  const viewedLabel = relativeDayLabel(date, date)
-  // Split so a locked panel states the rule's status without promising an
-  // action the user can't take — the tooltip matters MOST when locked, since
-  // that's when the row is read-only and has only itself to explain it.
-  const state = scheduledOn
-    ? `Starts ${edgeLabel}`
-    : scheduledOff
-      ? `Runs until ${edgeLabel}`
-      : isActive
-        ? 'Active'
-        : 'Retired'
-  const action = scheduledOn
-    ? 'untick to cancel'
-    : scheduledOff
-      ? 'tick to keep it'
-      : isActive
-        ? `untick to drop it from ${viewedLabel} on`
-        : `tick to start it ${viewedLabel}`
-  const tooltip = disabled ? state : `${state} — ${action}`
+  // Named on the next session's page, a rule starts that day: it's in this
+  // list but not yet in the checklist beside it, so the row says when.
+  const startsOn = ruleActiveOn(rule, date) ? null : openPeriodStart(rule)
   return (
     <div
       data-sortable-row
@@ -872,18 +811,6 @@ function RuleRow({
       )}
     >
       <RowGrip sortable={sortable} disabled={disabled} className="mt-px" />
-      <span
-        className="size-4 inline-flex items-center justify-center shrink-0 mt-px"
-        title={tooltip}
-      >
-        <Checkbox
-          size="sm"
-          checked={isActive}
-          onChange={e => onSetActive(rule, e.target.checked)}
-          disabled={disabled}
-          title={tooltip}
-        />
-      </span>
       <input
         ref={inputRef}
         value={text}
@@ -896,7 +823,12 @@ function RuleRow({
         disabled={disabled}
         onBlur={async () => {
           const v = text.trim()
-          if (v === rule.text) return
+          // Nothing to save, but drop stray spaces so a blank row shows its
+          // placeholder again.
+          if (v === rule.text) {
+            setText(rule.text)
+            return
+          }
           // Blanking a rule that has history would replace it with an unnamed
           // one, which is never what clearing the field meant.
           if (v === '' && ruleHasHistoryBefore(rule, date)) {
@@ -924,15 +856,12 @@ function RuleRow({
         }}
         className={cn(
           'flex-1 bg-transparent border-0 outline-none text-sm leading-tight p-0 placeholder:text-(--color-text-faint)',
-          (!isActive || scheduledOn) && 'text-(--color-text-dim)',
+          startsOn && 'text-(--color-text-dim)',
         )}
       />
-      {edgeLabel && (
-        <span
-          className="text-xs text-(--color-text-faint) shrink-0 mt-px"
-          title={tooltip}
-        >
-          {scheduledOn ? 'from' : 'until'} {edgeLabel}
+      {startsOn && (
+        <span className="text-xs text-(--color-text-faint) shrink-0 mt-px">
+          from {relativeDayLabel(startsOn, date)}
         </span>
       )}
       <RowDelete onClick={() => onDelete(rule.id)} disabled={disabled} />

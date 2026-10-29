@@ -6,7 +6,6 @@ import {
   deleteProgressRule,
   reorderProgressRules,
   restoreProgressRule,
-  setProgressRuleActive,
   setProgressRuleText,
   toggleProgressCheck,
 } from './queries'
@@ -50,53 +49,6 @@ beforeEach(async () => {
   await db.progress_checks.clear()
 })
 
-describe('setProgressRuleActive', () => {
-  it('opens a period from the day on screen', async () => {
-    await db.progress_rules.put(rule('r', []))
-    await setProgressRuleActive('r', '2026-09-16', true)
-    expect((await db.progress_rules.get('r'))!.periods).toEqual([
-      { from: '2026-09-16', until: null },
-    ])
-  })
-
-  it('retires the rule at the previous trading day', async () => {
-    await db.progress_rules.put(rule('r', [{ from: '2026-09-01', until: null }]))
-    await setProgressRuleActive('r', '2026-09-16', false)
-    expect((await db.progress_rules.get('r'))!.periods).toEqual([
-      { from: '2026-09-01', until: '2026-09-15' },
-    ])
-  })
-
-  it('clears the tick that retiring the rule strands on today', async () => {
-    await db.progress_rules.put(rule('r', [{ from: '2026-09-01', until: null }]))
-    await db.progress_checks.bulkPut([check('2026-09-15', 'r'), check('2026-09-16', 'r')])
-    await setProgressRuleActive('r', '2026-09-16', false)
-    // The 15th sits inside the period that survives; the 16th no longer does.
-    expect(await checkDates('r')).toEqual(['2026-09-15'])
-  })
-
-  it('leaves another rule’s ticks on the same day alone', async () => {
-    await db.progress_rules.put(rule('r', [{ from: '2026-09-01', until: null }]))
-    await db.progress_rules.put(rule('other', [{ from: '2026-09-01', until: null }]))
-    await db.progress_checks.bulkPut([check('2026-09-16', 'r'), check('2026-09-16', 'other')])
-    await setProgressRuleActive('r', '2026-09-16', false)
-    expect(await checkDates('other')).toEqual(['2026-09-16'])
-  })
-
-  it('clears the tick a rule collected in the afternoon it existed for', async () => {
-    await db.progress_rules.put(rule('r', []))
-    await setProgressRuleActive('r', '2026-09-16', true)
-    await db.progress_checks.put(check('2026-09-16', 'r'))
-    await setProgressRuleActive('r', '2026-09-16', false)
-    expect((await db.progress_rules.get('r'))!.periods).toEqual([])
-    expect(await checkDates('r')).toEqual([])
-  })
-
-  it('ignores a rule that is already gone', async () => {
-    await expect(setProgressRuleActive('nope', '2026-09-16', false)).resolves.toBeUndefined()
-  })
-})
-
 describe('deleteProgressRule', () => {
   it('deletes a rule nothing in the past depends on', async () => {
     await db.progress_rules.put(rule('r', [{ from: '2026-09-16', until: null }]))
@@ -124,6 +76,14 @@ describe('deleteProgressRule', () => {
     ])
   })
 
+  it('leaves another rule’s ticks on the same day alone', async () => {
+    await db.progress_rules.put(rule('r', [{ from: '2026-09-01', until: null }]))
+    await db.progress_rules.put(rule('other', [{ from: '2026-09-01', until: null }]))
+    await db.progress_checks.bulkPut([check('2026-09-16', 'r'), check('2026-09-16', 'other')])
+    await deleteProgressRule('r', '2026-09-16')
+    expect(await checkDates('other')).toEqual(['2026-09-16'])
+  })
+
   it('keeps a line on the past days it ran, as it does a rule', async () => {
     await db.progress_rules.put({
       ...rule('line', [{ from: '2026-09-14', until: null }]),
@@ -136,7 +96,7 @@ describe('deleteProgressRule', () => {
   })
 
   it('deletes rather than archives when the only tick is one it strands', async () => {
-    // The rule that was switched on and off inside a single session: its
+    // The rule that was named and deleted inside a single session: its
     // period is dropped, so the tick it collected anchors nothing. Archiving
     // it would leave a rule that scored no day at all sitting in the drawer
     // forever.
@@ -234,7 +194,7 @@ describe('restoreProgressRule', () => {
     })
     await restoreProgressRule('r', '2026-09-16')
     const stored = (await db.progress_rules.get('r'))!
-    expect(stored.hidden).toBe(false)
+    expect(stored.hidden).toBeUndefined()
     expect(stored.periods).toEqual([
       { from: '2026-09-01', until: '2026-09-11' },
       { from: '2026-09-16', until: null },
@@ -260,6 +220,42 @@ describe('setProgressRuleText', () => {
     expect(await setProgressRuleText('r', '2026-09-16', 'new')).toBe('renamed')
     expect((await db.progress_rules.get('r'))!.text).toBe('new')
     expect(await checkDates('r')).toEqual(['2026-09-16'])
+  })
+
+  it('starts a new rule the first time it is named, from the day on screen', async () => {
+    await db.progress_rules.put(rule('r', []))
+    expect(await setProgressRuleText('r', '2026-09-16', 'new')).toBe('renamed')
+    expect((await db.progress_rules.get('r'))!.periods).toEqual([
+      { from: '2026-09-16', until: null },
+    ])
+  })
+
+  it('leaves a new rule waiting while its name is blank', async () => {
+    await db.progress_rules.put(rule('r', []))
+    await setProgressRuleText('r', '2026-09-16', '  ')
+    expect((await db.progress_rules.get('r'))!.periods).toEqual([])
+  })
+
+  it('sends a rule back to waiting when its name is cleared the day it started', async () => {
+    await db.progress_rules.put(rule('r', []))
+    await setProgressRuleText('r', '2026-09-16', 'new')
+    await db.progress_checks.put(check('2026-09-16', 'r'))
+    await setProgressRuleText('r', '2026-09-16', '')
+    expect((await db.progress_rules.get('r'))!.periods).toEqual([])
+    expect(await checkDates('r')).toEqual([])
+    // Named again, it starts over from the day on screen.
+    await setProgressRuleText('r', '2026-09-16', 'again')
+    expect((await db.progress_rules.get('r'))!.periods).toEqual([
+      { from: '2026-09-16', until: null },
+    ])
+  })
+
+  it('does not restart a running rule when it is renamed', async () => {
+    await db.progress_rules.put(rule('r', [{ from: '2026-09-16', until: null }]))
+    await setProgressRuleText('r', '2026-09-16', 'new')
+    expect((await db.progress_rules.get('r'))!.periods).toEqual([
+      { from: '2026-09-16', until: null },
+    ])
   })
 
   it('renames a rule only planned for the next session', async () => {
@@ -298,7 +294,7 @@ describe('setProgressRuleText', () => {
   })
 
   it('keeps a later planned start on the replacement', async () => {
-    // Ran earlier, switched back on from Thursday's page while viewing it.
+    // Ran earlier, restored from Thursday's page while viewing it.
     await db.progress_rules.put(
       rule('r', [
         { from: '2026-09-01', until: '2026-09-10' },
@@ -319,11 +315,12 @@ describe('setProgressRuleText', () => {
     })
   })
 
-  it('replaces a retired rule with a retired one', async () => {
+  it('starts the replacement of a stalled rule from the day on screen', async () => {
+    // Listed but with no open period: no checklist would ever show it.
     await db.progress_rules.put(rule('r', [{ from: '2026-09-01', until: '2026-09-10' }]))
     await db.progress_checks.put(check('2026-09-10', 'r'))
     await setProgressRuleText('r', '2026-09-16', 'new')
-    expect((await visible())[0].periods).toEqual([])
+    expect((await visible())[0].periods).toEqual([{ from: '2026-09-16', until: null }])
     expect((await db.progress_rules.get('r'))!.hidden).toBe(true)
   })
 

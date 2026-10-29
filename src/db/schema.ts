@@ -28,9 +28,9 @@ class LogslateDB extends Dexie {
   constructor() {
     super('logslate')
 
-    // Pre-release schema. All prior shapes (v1–v8 in this file, plus
-    // dozens more rolled into the original v1 before that) were
-    // collapsed once it became clear no one else was on an older shape.
+    // The version number only has to stay at or above the one the device's
+    // IndexedDB already holds; Dexie refuses to open a database declared
+    // lower than it is stored.
     //
     // Index policy: only fields that appear in `db.<table>.where(...)` /
     // `orderBy(...)` get an index. Standalone indexes covered by an
@@ -38,70 +38,33 @@ class LogslateDB extends Dexie {
     // are redundant — Dexie can satisfy the unscoped query through the
     // compound's first key.
     //
-    // Surviving indexes:
+    // Indexes:
     //   - `&id` is the primary key (mandatory).
     //   - `[account_id+date]` — calendar/date-range queries scoped to one account.
     //   - `[account_id+model_id]` — powers `countTradesUsingModel`.
-    //   - `account_id` — `deleteAccount` + `countAccountData` cascade scans.
+    //   - `[account_id+symbol_id]` — powers `countTradesUsingSymbol`.
+    //   - `account_id` — per-account lists, plus the `deleteAccount` and
+    //     `countAccountData` cascade scans.
     //   - `*screenshots` on `days` is multi-entry so the drainer locates
     //     day rows by ref.
     //   - `news.date` — Day page looks up news by date.
     //   - `progress_rules.sort` — `sortBy('sort')` in the rule list.
     //   - `updated_at` everywhere is kept for sync ergonomics — sync
     //     currently calls `.toArray()` but indexed updated_at lets us
-    //     migrate to incremental pulls without another schema bump.
-    this.version(9).stores({
-      trades: '&id, [account_id+date], [account_id+model_id], account_id, updated_at',
+    //     move to incremental pulls without another schema bump.
+    this.version(21).stores({
+      trades:
+        '&id, [account_id+date], [account_id+model_id], [account_id+symbol_id], account_id, updated_at',
       adjustments: '&id, [account_id+date], account_id, updated_at',
       accounts: '&id, updated_at',
       pending_uploads: '&id, account_id',
       days: '&id, [account_id+date], account_id, *screenshots, updated_at',
       models: '&id, account_id, updated_at',
+      symbols: '&id, account_id, updated_at',
       progress_rules: '&id, account_id, sort, updated_at',
       progress_checks: '&id, [account_id+date], account_id, updated_at',
       news: '&id, date, updated_at',
     })
-
-    this.version(10)
-
-    // v11: adds optional `Day.pnl_override` (non-indexed) — no migration
-    // needed, IndexedDB stores are schemaless for unindexed fields.
-    this.version(11)
-
-    // v12: adds optional `Day.fees_override` (non-indexed) — informational
-    // fees for an override day. No migration needed (unindexed field).
-    this.version(12)
-
-    // v13: user-defined per-account symbols. Adds the `symbols` store and the
-    // `[account_id+symbol_id]` trades index. Its one-time upgrade has run and
-    // been stripped per MIGRATION-PATTERN.
-    this.version(13).stores({
-      trades:
-        '&id, [account_id+date], [account_id+model_id], [account_id+symbol_id], account_id, updated_at',
-      symbols: '&id, account_id, updated_at',
-    })
-
-    // v14–v18: the emotion vocabulary was renamed while it settled. The
-    // one-time upgrade that rewrote the stored values has run and been stripped
-    // per MIGRATION-PATTERN.
-    this.version(18)
-
-    // v19: a removed free-text trade field was deleted from every stored row.
-    // The one-time upgrade has run and been stripped per MIGRATION-PATTERN.
-    this.version(19)
-
-    // v20: accounts gain `starting_balance` (unindexed). Until now the only way
-    // to fund an account was a seed `deposit`, which is a lie for a prop-firm
-    // eval — nothing was transferred. The one-time upgrade folded each
-    // account's single seed deposit into its opening balance and dropped the
-    // row, leaving the adjustments ledger holding only real cash movements. It
-    // has run and been stripped per MIGRATION-PATTERN.
-    this.version(20)
-
-    // v21: the day-reflection section was removed. The one-time upgrade that
-    // deleted its fields from every stored day row has run and been stripped
-    // per MIGRATION-PATTERN.
-    this.version(21)
   }
 }
 
