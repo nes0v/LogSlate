@@ -3,40 +3,23 @@ import { db } from './schema'
 import {
   createProgressLine,
   createProgressRule,
+  deleteBlankProgressRule,
   deleteProgressRule,
   reorderProgressRules,
   restoreProgressRule,
   setProgressRuleText,
   toggleProgressCheck,
 } from './queries'
-import type { ProgressCheck, ProgressRule, ProgressRulePeriod } from './types'
+import type { ProgressRulePeriod } from './types'
+import { progressCheck, progressRule } from '@/test/fixtures'
 
 // 2026-09-14 Mon … 2026-09-18 Fri; 2026-09-21 is the following Monday.
 const TS = '2026-09-01T00:00:00.000Z'
 
-function rule(id: string, periods: ProgressRulePeriod[]): ProgressRule {
-  return {
-    id,
-    account_id: 'main',
-    text: id,
-    periods,
-    sort: 0,
-    created_at: TS,
-    updated_at: TS,
-  }
-}
-
-function check(date: string, ruleId: string): ProgressCheck {
-  return {
-    id: `main:${date}:${ruleId}`,
-    account_id: 'main',
-    date,
-    rule_id: ruleId,
-    checked: true,
-    created_at: TS,
-    updated_at: TS,
-  }
-}
+const rule = (id: string, periods: ProgressRulePeriod[]) =>
+  progressRule({ id, text: id, periods, created_at: TS, updated_at: TS })
+const check = (date: string, ruleId: string) =>
+  progressCheck(date, ruleId, { created_at: TS, updated_at: TS })
 
 const checkDates = async (ruleId: string) =>
   (await db.progress_checks.toArray())
@@ -116,7 +99,6 @@ describe('toggleProgressCheck', () => {
   it('ticks, then unticks, deleting the row rather than storing a false', async () => {
     expect(await toggleProgressCheck('main', '2026-09-16', 'r')).toBe(true)
     expect(await db.progress_checks.get('main:2026-09-16:r')).toMatchObject({
-      checked: true,
       date: '2026-09-16',
       rule_id: 'r',
     })
@@ -135,14 +117,6 @@ describe('toggleProgressCheck', () => {
     expect(await db.progress_checks.count()).toBe(0)
   })
 
-  it('keeps the original created_at when a tick comes back', async () => {
-    await db.progress_checks.put({ ...check('2026-09-16', 'r'), checked: false })
-    await toggleProgressCheck('main', '2026-09-16', 'r')
-    const row = (await db.progress_checks.get('main:2026-09-16:r'))!
-    expect(row.checked).toBe(true)
-    expect(row.created_at).toBe(TS)
-    expect(row.updated_at > TS).toBe(true)
-  })
 })
 
 describe('createProgressLine', () => {
@@ -156,6 +130,18 @@ describe('createProgressLine', () => {
   it('from the weekend, starts on Monday', async () => {
     const made = await createProgressLine('main', '2026-09-19')
     expect(made.periods).toEqual([{ from: '2026-09-21', until: null }])
+  })
+})
+
+describe('deleteBlankProgressRule', () => {
+  it('deletes a rule that was never named, and leaves a named one', async () => {
+    const blank = await createProgressRule('main')
+    const named = await createProgressRule('main')
+    await setProgressRuleText(named.id, '2026-09-14', 'Max 3 trades')
+    await deleteBlankProgressRule(blank.id)
+    await deleteBlankProgressRule(named.id)
+    expect(await db.progress_rules.get(blank.id)).toBeUndefined()
+    expect((await db.progress_rules.get(named.id))?.text).toBe('Max 3 trades')
   })
 })
 
@@ -220,6 +206,10 @@ describe('setProgressRuleText', () => {
     expect(await setProgressRuleText('r', '2026-09-16', 'new')).toBe('renamed')
     expect((await db.progress_rules.get('r'))!.text).toBe('new')
     expect(await checkDates('r')).toEqual(['2026-09-16'])
+    // The running period is kept, not restarted.
+    expect((await db.progress_rules.get('r'))!.periods).toEqual([
+      { from: '2026-09-16', until: null },
+    ])
   })
 
   it('starts a new rule the first time it is named, from the day on screen', async () => {
@@ -245,14 +235,6 @@ describe('setProgressRuleText', () => {
     expect(await checkDates('r')).toEqual([])
     // Named again, it starts over from the day on screen.
     await setProgressRuleText('r', '2026-09-16', 'again')
-    expect((await db.progress_rules.get('r'))!.periods).toEqual([
-      { from: '2026-09-16', until: null },
-    ])
-  })
-
-  it('does not restart a running rule when it is renamed', async () => {
-    await db.progress_rules.put(rule('r', [{ from: '2026-09-16', until: null }]))
-    await setProgressRuleText('r', '2026-09-16', 'new')
     expect((await db.progress_rules.get('r'))!.periods).toEqual([
       { from: '2026-09-16', until: null },
     ])
@@ -315,20 +297,18 @@ describe('setProgressRuleText', () => {
     })
   })
 
-  it('starts the replacement of a stalled rule from the day on screen', async () => {
-    // Listed but with no open period: no checklist would ever show it.
-    await db.progress_rules.put(rule('r', [{ from: '2026-09-01', until: '2026-09-10' }]))
-    await db.progress_checks.put(check('2026-09-10', 'r'))
-    await setProgressRuleText('r', '2026-09-16', 'new')
-    expect((await visible())[0].periods).toEqual([{ from: '2026-09-16', until: null }])
-    expect((await db.progress_rules.get('r'))!.hidden).toBe(true)
-  })
-
   it('drops the tick the old rule strands on the day of the change', async () => {
     await db.progress_rules.put(rule('r', [{ from: '2026-09-01', until: null }]))
     await db.progress_checks.bulkPut([check('2026-09-15', 'r'), check('2026-09-16', 'r')])
     await setProgressRuleText('r', '2026-09-16', 'new')
     expect(await checkDates('r')).toEqual(['2026-09-15'])
+  })
+
+  it('refuses to blank a rule with history', async () => {
+    await db.progress_rules.put(rule('r', [{ from: '2026-09-01', until: null }]))
+    expect(await setProgressRuleText('r', '2026-09-16', ' ')).toBe('kept')
+    expect(await db.progress_rules.count()).toBe(1)
+    expect((await db.progress_rules.get('r'))!.text).toBe('r')
   })
 
   it('reports a rule that is already gone', async () => {

@@ -34,8 +34,6 @@ function sampleEvent(overrides: Partial<FFEvent> = {}): FFEvent {
     country: 'USD',
     date: '2026-04-21T14:30:00-04:00',
     impact: 'High',
-    forecast: '',
-    previous: '',
     ...overrides,
   }
 }
@@ -313,6 +311,13 @@ describe('refreshNews', () => {
       }),
     )
     await expect(refreshNews()).rejects.toThrow(/Origin or Referer is not registered/)
+  })
+
+  it('turns a hung request into a readable timeout error', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(
+      new DOMException('signal timed out', 'TimeoutError'),
+    )
+    await expect(refreshNews()).rejects.toThrow(/didn't answer in time/)
   })
 
   it('rejects a feed that is not an array rather than storing junk', async () => {

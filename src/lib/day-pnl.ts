@@ -1,7 +1,6 @@
 import type { EquityAdjustment, TradeRecord } from '@/db/types'
 import { computeNetPnl } from '@/lib/trade-math'
 import { signedAdjustment } from '@/lib/trade-stats'
-import { resolveResets } from '@/lib/adjustment-resets'
 
 // A day-level net-PNL override (`Day.pnl_override`) REPLACES the sum of that
 // day's trade PNLs in every money/equity statistic. These helpers are the
@@ -48,13 +47,6 @@ const MAX_DATE_KEY = '9999-12-31'
  * Equity on one side of a date cut: opening capital, plus every signed cash
  * flow and net PNL falling inside the cut.
  *
- * Resets are resolved HERE rather than trusted from the caller. A reset row
- * stores a target balance, not a movement, so summing an unresolved one
- * silently drops it — and this is the funnel every windowed equity number in
- * the app flows through, which makes it the right place to make that
- * impossible. Resolution is idempotent, so callers that already resolved for
- * their own per-day maps lose nothing by passing the resolved list.
- *
  * Reads off maps the caller already holds rather than querying by date. That's
  * deliberate: a Dexie query keyed on a cutoff date hands back the PREVIOUS
  * date's value for one render after the cutoff moves (dexie-react-hooks keeps
@@ -77,7 +69,7 @@ function equityAcrossCut(
     ? (d: string) => d <= dateKey
     : (d: string) => d < dateKey
   let eq = startingBalance
-  for (const a of resolveResets(adjustments, netByDate, startingBalance)) {
+  for (const a of adjustments) {
     if (within(a.date)) eq += signedAdjustment(a)
   }
   return eq + sumNetPnl(netByDate, within)
@@ -110,27 +102,13 @@ export function equityBefore(
 }
 
 /**
- * Equity at the END of `dateKey` — that day's activity INCLUDED. The inclusive
- * sibling of `equityBefore`; the reset dialog prices against it so a
- * back-dated reset is measured by what equity actually was that evening.
- */
-export function accountEquityThrough(
-  dateKey: string,
-  netByDate: Map<string, number>,
-  adjustments: EquityAdjustment[],
-  startingBalance: number,
-): number {
-  return equityAcrossCut(dateKey, netByDate, adjustments, startingBalance, true)
-}
-
-/**
  * Equity across ALL of an account's history — the number the header shows.
- * The uncut sibling of the two above.
+ * The uncut sibling of `equityBefore`.
  */
 export function accountEquity(
   netByDate: Map<string, number>,
   adjustments: EquityAdjustment[],
   startingBalance: number,
 ): number {
-  return accountEquityThrough(MAX_DATE_KEY, netByDate, adjustments, startingBalance)
+  return equityAcrossCut(MAX_DATE_KEY, netByDate, adjustments, startingBalance, true)
 }

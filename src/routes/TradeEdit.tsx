@@ -7,6 +7,7 @@ import { deleteTrade, getTrade, updateTrade } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
 import { recordToForm, type TradeFormValues } from '@/lib/form-schema'
 import { BTN_BASE } from '@/components/form/buttonClass'
+import { refreshDayCache } from '@/lib/day-cache'
 import { errorMessage } from '@/lib/utils'
 import { formatDisplayDate } from '@/lib/tz'
 import type { TradeDraft, TradeRecord } from '@/db/types'
@@ -53,7 +54,9 @@ export function TradeEditRoute() {
       await updateTrade(id, draft)
     } catch (e) {
       alert(errorMessage(e))
+      return false
     }
+    void refreshDayCache(accountId, draft.date)
   }
 
   async function handleDelete() {
@@ -61,6 +64,7 @@ export function TradeEditRoute() {
     if (!(await confirm({ title: 'Delete this trade?' }))) return
     try {
       await deleteTrade(id)
+      await refreshDayCache(accountId, state.record.date)
       navigate(`/day/${state.record.date}`)
     } catch (e) {
       alert(`Failed to delete trade: ${errorMessage(e)}`)

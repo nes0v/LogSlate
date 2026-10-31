@@ -1,8 +1,7 @@
 // Deeper analytics on top of `aggregate` — profit factor, expectancy R,
 // drawdown timeseries, Sharpe/Sortino/Calmar, K-Ratio, Ulcer, SQN,
-// classifyTrade-aware win/loss aggregations.
-// streak math, R-multiple distribution, MAE/MFE summaries, and the
-// Zella-style composite score. Each function takes plain inputs so it
+// classifyTrade-aware win/loss aggregations, streak math, R-multiple
+// distribution, MAE/MFE summaries, and the Zella-style composite score. Each function takes plain inputs so it
 // stays pure and testable.
 
 import type { TradeRecord } from '@/db/types'
@@ -19,6 +18,7 @@ import {
 } from '@/lib/trade-math'
 import { netPnlByDate } from '@/lib/day-pnl'
 import { WEEKDAYS } from '@/lib/filters'
+import { roundTo } from '@/lib/money'
 import { dateKeyToDate } from '@/lib/tz'
 
 // ---------- profit factor / payoff / expectancy ---------------------
@@ -39,8 +39,8 @@ export function profitFactor(trades: TradeRecord[]): number | null {
   return wins / Math.abs(losses)
 }
 
-/** avg_win / |avg_loss|. */
-export function payoffRatio(trades: TradeRecord[]): number | null {
+/** Count and PNL sum of the winners and the losers (scratches skipped). */
+function winLossSums(trades: TradeRecord[]) {
   let wn = 0
   let ws = 0
   let ln = 0
@@ -56,8 +56,20 @@ export function payoffRatio(trades: TradeRecord[]): number | null {
       ln++
     }
   }
+  return { wn, ws, ln, ls }
+}
+
+/** avg_win / |avg_loss|. */
+export function payoffRatio(trades: TradeRecord[]): number | null {
+  const { wn, ws, ln, ls } = winLossSums(trades)
   if (wn === 0 || ln === 0) return null
   return ws / wn / Math.abs(ls / ln)
+}
+
+/** Realized R of a decisive trade; null for a scratch or a trade without a
+ *  stop. Shared by expectancy R, SQN and the R distribution. */
+function decisiveR(t: TradeRecord): number | null {
+  return tradeMetrics(t).outcome === 'scratch' ? null : computeRealizedRr(t)
 }
 
 /** Mean R-multiple. R = pnl / stop_loss. Scratch trades
@@ -66,10 +78,9 @@ export function expectancyR(trades: TradeRecord[]): number | null {
   let n = 0
   let s = 0
   for (const t of trades) {
-    if (t.stop_loss <= 0) continue
-    const { pnl, outcome } = tradeMetrics(t)
-    if (outcome === 'scratch') continue
-    s += (pnl ?? 0) / t.stop_loss
+    const r = decisiveR(t)
+    if (r === null) continue
+    s += r
     n++
   }
   return n > 0 ? s / n : null
@@ -77,22 +88,7 @@ export function expectancyR(trades: TradeRecord[]): number | null {
 
 /** $ per trade on average — (win% * avg_win) - (loss% * |avg_loss|). */
 export function expectancyDollars(trades: TradeRecord[]): number | null {
-  if (trades.length === 0) return null
-  let wn = 0
-  let ws = 0
-  let ln = 0
-  let ls = 0
-  for (const t of trades) {
-    const { pnl, outcome } = tradeMetrics(t)
-    const p = pnl ?? 0
-    if (outcome === 'win') {
-      ws += p
-      wn++
-    } else if (outcome === 'loss') {
-      ls += p
-      ln++
-    }
-  }
+  const { wn, ws, ln, ls } = winLossSums(trades)
   const decided = wn + ln
   if (decided === 0) return null
   const wr = wn / decided
@@ -109,10 +105,8 @@ export function expectancyDollars(trades: TradeRecord[]): number | null {
 export function sqn(trades: TradeRecord[]): number | null {
   const rs: number[] = []
   for (const t of trades) {
-    if (t.stop_loss <= 0) continue
-    const { pnl, outcome } = tradeMetrics(t)
-    if (outcome === 'scratch') continue
-    rs.push((pnl ?? 0) / t.stop_loss)
+    const r = decisiveR(t)
+    if (r !== null) rs.push(r)
   }
   if (rs.length < 2) return null
   const m = rs.reduce((a, b) => a + b, 0) / rs.length
@@ -227,12 +221,16 @@ export function dailyEquitySeries(
   let equity = startEquity
   let peak = startEquity
   return dates.map(d => {
-    const pnl = byDay.get(d) ?? 0
+    // Whole cents, so a day whose trades net to float dust reads as flat
+    // (and drops out of the traded-day series) instead of a tiny loss.
+    const pnl = roundTo(byDay.get(d) ?? 0)
     const adj = adjustmentsByDate?.get(d) ?? 0
     equity += pnl + adj
     peak += adj
     if (equity > peak) peak = equity
-    const dd = equity - peak
+    // Cents again: equity and peak are running float sums, so a loss won back
+    // exactly can leave −9e-13 and count the day as still underwater.
+    const dd = roundTo(equity - peak)
     const ddPct = peak > 0 ? dd / peak : 0
     return { date: d, pnl, equity, peak, dd, ddPct }
   })
@@ -351,12 +349,14 @@ export function ratioStats(series: EquityPoint[]): RatioStats {
   const calmar = maxDd < 0 ? cagrLike / Math.abs(maxDd) : null
 
   // K-Ratio (simplified) — slope of cumulative-return regression
-  // divided by its standard error, scaled by √n. Equity is already
-  // cumulative so we regress equity_i vs i.
+  // divided by its standard error, scaled by √n. Regresses cumulative
+  // trade PNL, not equity, so deposits and withdrawals don't read as
+  // trading growth.
   let kRatio: number | null = null
   if (series.length >= 5) {
     const xs = series.map((_, i) => i)
-    const ys = series.map(p => p.equity)
+    let cum = 0
+    const ys = pnls.map(p => (cum += p))
     const n = xs.length
     const sumX = xs.reduce((a, b) => a + b, 0)
     const sumY = ys.reduce((a, b) => a + b, 0)
@@ -380,10 +380,10 @@ export function ratioStats(series: EquityPoint[]): RatioStats {
   }
 
   // Tail ratio — averaged-tail formulation (Crittenden / Wilcox):
-  // mean of the top 5% over the magnitude of the bottom 5%. The old
-  // single-percentile form (|p95| / |p5|) exploded when one near-zero
-  // value happened to land at the boundary; averaging at least three
-  // samples on each side smooths it. Requires ≥5 daily returns. Note the
+  // mean of the top 5% over the magnitude of the bottom 5%. The
+  // single-percentile form (|p95| / |p5|) explodes when one near-zero
+  // value lands at the boundary; averaging at least three samples on each
+  // side smooths it. Requires ≥5 daily returns. Note the
   // three-sample tails overlap below six days (the middle day lands in
   // both), so 5-day readings lean optimistic — kept low by request.
   let tailRatio: number | null = null
@@ -419,7 +419,9 @@ export function rDistribution(trades: TradeRecord[]): RBucket[] {
   // stop, fees) belongs in the `-1R` bucket, not `-2R`. `-1R` is
   // widened all the way to 0 to absorb small losses (and `+1R` to 0
   // for small wins), since R-multiples below ±0.5 still represent the
-  // "near-stop" outcome class.
+  // "near-stop" outcome class. An exact half-R rounds away from zero:
+  // losing bins are (lo, hi], winning bins [lo, hi), so −1.5R is `-2R`
+  // and +1.5R is `+2R`.
   const edges: Array<[number, number, string]> = [
     [-Infinity, -5.5, '< -5R'],
     [-5.5, -4.5, '-5R'],
@@ -441,12 +443,13 @@ export function rDistribution(trades: TradeRecord[]): RBucket[] {
     cumulative: 0,
   }))
   for (const t of trades) {
-    if (t.stop_loss <= 0) continue
-    const { pnl, outcome } = tradeMetrics(t)
-    if (outcome === 'scratch') continue
-    const r = (pnl ?? 0) / t.stop_loss
+    const raw = decisiveR(t)
+    if (raw === null) continue
+    // Rounded so float noise (1.4999999R from tick math) can't dodge an edge.
+    const r = Math.round(raw * 1e6) / 1e6
     for (const b of buckets) {
-      if (r > b.range[0] && r <= b.range[1]) {
+      const [lo, hi] = b.range
+      if (r > 0 ? r >= lo && r < hi : r > lo && r <= hi) {
         b.count++
         break
       }
@@ -702,6 +705,7 @@ export function compositeScore(args: {
   profitFactor: number | null
   payoff: number | null
   winRate: number | null
+  maxDd: number // ≤ 0, dollars
   maxDdPct: number // ≤ 0
   recoveryFactor: number | null
   dailyPnls: number[]
@@ -744,14 +748,17 @@ export function compositeScore(args: {
   // and a >100% drawdown means the account actually blew up.
   const noCapitalAnchor =
     args.peakEquity === undefined || args.peakEquity <= 0
+  // With no anchor, `maxDdPct` also reads 0 for a real dollar drawdown
+  // (`dailyEquitySeries` can't divide by a peak ≤ 0) — that's undefined
+  // too, not a perfect record.
   const maxDd: number | null =
-    args.maxDdPct < -1 && noCapitalAnchor
+    noCapitalAnchor && (args.maxDdPct < -1 || (args.maxDdPct === 0 && args.maxDd < 0))
       ? null
       : Math.max(0, Math.min(100, 100 - Math.abs(args.maxDdPct) * 100))
   // Recovery: <1.0 -> 0, 3.5+ -> 100, linear in between. A zero-drawdown
   // window with positive PNL is a perfect drawdown record (recovery is
   // mathematically infinite); treat as the ceiling rather than 0.
-  const noDrawdown = args.maxDdPct === 0
+  const noDrawdown = args.maxDd === 0
   const recovery =
     noDrawdown && args.netPnl > 0
       ? 100
@@ -854,8 +861,8 @@ export interface DailyStats {
 // account shouldn't tip the day into the green/red bucket. A hard
 // floor keeps tiny accounts (where 0.4% rounds to pennies) from going
 // green/red on a few dollars of slippage.
-export const SCRATCH_DAY_PCT = 0.004
-export const SCRATCH_DAY_MIN_USD = 8
+const SCRATCH_DAY_PCT = 0.004
+const SCRATCH_DAY_MIN_USD = 8
 
 export function classifyDayPnl(
   pnl: number,
@@ -920,7 +927,7 @@ export function dailyStats(
   return {
     bestDay: best,
     worstDay: worst,
-    avgDailyPnl: total / tradingDays.length,
+    avgDailyPnl: roundTo(total / tradingDays.length),
     dayWinRate: decided > 0 ? green / decided : null,
     greenDays: green,
     redDays: red,

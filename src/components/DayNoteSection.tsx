@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useEditor, EditorContent, type Editor } from '@tiptap/react'
+import { useEditor, EditorContent, isNodeEmpty, type Editor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { Placeholder } from '@tiptap/extensions'
 import { Bold, Heading1, Heading3, Italic, List, Strikethrough, Underline } from 'lucide-react'
@@ -18,8 +18,7 @@ interface DayNoteSectionProps {
  * **HTML** on the Day row's `note` field (one row per (account, date)). HTML
  * round-trips the document exactly: paragraph breaks, blank lines, and hard
  * (Shift+Enter) breaks all reload byte-for-byte as they were typed, so the
- * saved note always matches what was on screen while editing. Plain-text notes
- * (no markup) load unchanged — TipTap just wraps them in a paragraph.
+ * saved note always matches what was on screen while editing.
  *
  * Persisted on blur — keystroke-time writes would mean a Dexie transaction per
  * character. The editor is only re-synced from `stored` when the value changes
@@ -121,9 +120,9 @@ export function DayNoteSection({ accountId, date, stored }: DayNoteSectionProps)
 
 /** Serialises the current document to HTML, collapsing an empty doc to "" so
  *  it matches an empty stored note (and clears the row rather than persisting
- *  a stray "<p></p>"). */
+ *  a stray "<p></p>"). Spaces and bare line breaks count as empty too. */
 function getHtml(editor: Editor): string {
-  return editor.isEmpty ? '' : editor.getHTML()
+  return isNodeEmpty(editor.state.doc, { ignoreWhitespace: true }) ? '' : editor.getHTML()
 }
 
 function Toolbar({ editor }: { editor: Editor | null }) {

@@ -283,6 +283,21 @@ describe('classifyTrade', () => {
     expect(classifyTrade(t)).toBe('scratch')
   })
 
+  it('a scaled trade exactly on the band is a scratch despite float noise', () => {
+    const t = tradeRecord({
+      symbol_spec: symbolSnapshot({ scratch_handles: 3 }),
+      executions: [
+        execution({ kind: 'buy', price: 16380.75, contracts: 1 }),
+        execution({ kind: 'buy', price: 16381.25, contracts: 1 }),
+        execution({ kind: 'buy', price: 16381.5, contracts: 1 }),
+        execution({ kind: 'sell', price: 16384, contracts: 1 }),
+        execution({ kind: 'sell', price: 16384, contracts: 1 }),
+        execution({ kind: 'sell', price: 16384.5, contracts: 1 }),
+      ],
+    })
+    expect(classifyTrade(t)).toBe('scratch')
+  })
+
   it('NQ: > 4 handles is win when positive', () => {
     const t = tradeRecord({
       symbol_spec: symbolSnapshot(),

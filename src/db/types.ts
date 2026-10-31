@@ -17,14 +17,15 @@ export interface Execution {
   kind: ExecutionKind
   order_type: OrderType
   price: number
-  time: string // ISO 8601
+  time: string // NY wall-clock time written as ISO 8601 with a nominal `Z` (see form-schema `stampFills`)
   contracts: number
 }
 
 // A user-defined instrument, scoped to one account (mirrors `Model`). Holds the
-// economics the math layer needs: point value, tick size, broker fee, and the
-// scratch threshold. Editing a symbol only affects NEW trades — existing trades
-// carry a frozen `SymbolSnapshot` (see `TradeRecord.symbol_spec`).
+// economics the math layer needs: point value, broker fee, and the scratch
+// threshold, plus a tick size the user records alongside them. Editing a
+// symbol only affects NEW trades — existing trades carry a frozen
+// `SymbolSnapshot` (see `TradeRecord.symbol_spec`).
 export interface TradingSymbol {
   id: string
   account_id: string
@@ -33,20 +34,22 @@ export interface TradingSymbol {
   point_value: number // USD per 1.0 price move per contract
   tick_size: number // minimum price increment
   fee_per_side: number // USD per contract per side
-  scratch_handles: number // |AHPC| below this (in points) counts as a scratch
+  scratch_handles: number // |AHPC| at or below this (in points) counts as a scratch
   /** Drafts stay visible on the Symbols page but are hidden from the trade
    *  form's symbol picker, so a half-configured symbol can't be logged against. */
   draft: boolean
   /** User-controlled ordinal for the Symbols sidebar (drag-and-drop). Lower =
-   *  higher up. Optional so existing rows back-fill lazily on first reorder. */
-  sort?: number
+   *  higher up. A new symbol goes to the bottom. */
+  sort: number
   created_at: string
   updated_at: string
 }
 
+export type ModelDraft = Omit<Model, 'id' | 'account_id' | 'sort' | 'created_at' | 'updated_at'>
+
 export type TradingSymbolDraft = Omit<
   TradingSymbol,
-  'id' | 'account_id' | 'created_at' | 'updated_at'
+  'id' | 'account_id' | 'sort' | 'created_at' | 'updated_at'
 >
 
 // The subset of a `TradingSymbol`'s economics frozen onto a trade at log time.
@@ -129,20 +132,25 @@ export interface TradeRecord {
 
 export type TradeDraft = Omit<TradeRecord, 'id' | 'account_id' | 'created_at' | 'updated_at'>
 
-// Single source for the kind vocabulary — consumers map over this rather than
-// re-listing members inline, so adding one can't leave a binary
-// `kind === 'deposit' ? win : loss` silently mis-colouring the new member.
-export const ADJUSTMENT_KINDS = ['deposit', 'withdraw', 'fee', 'reset'] as const
+// Single source for the kind vocabulary. Per-kind behaviour goes through a
+// `Record<AdjustmentKind, …>` (as the colour/prefix maps below do) rather than a
+// binary `kind === 'deposit' ? … : …`, so adding a kind is a type error at
+// every place that has to decide about it.
+export const ADJUSTMENT_KINDS = ['deposit', 'withdraw', 'fee'] as const
 export type AdjustmentKind = (typeof ADJUSTMENT_KINDS)[number]
 
-/** Per-kind text colour token. Resets are neither a gain nor a loss — the
- *  capital came from outside — so they read in the accent tone rather than
- *  borrowing win/loss. */
+/** Per-kind text colour token. */
 export const ADJUSTMENT_KIND_COLOR: Record<AdjustmentKind, string> = {
   deposit: 'var(--color-win)',
   withdraw: 'var(--color-loss)',
   fee: 'var(--color-loss)',
-  reset: 'var(--color-accent)',
+}
+
+/** Per-kind amount prefix: + in, − out. */
+export const ADJUSTMENT_KIND_PREFIX: Record<AdjustmentKind, string> = {
+  deposit: '+',
+  withdraw: '−',
+  fee: '−',
 }
 
 export interface EquityAdjustment {
@@ -150,27 +158,13 @@ export interface EquityAdjustment {
   account_id: string
   date: string // YYYY-MM-DD (local)
   kind: AdjustmentKind
-  /** Positive USD. For deposit/withdraw/fee the kind determines the sign at
-   *  the math layer. A `reset` row is different: this is the TARGET balance
-   *  the account is being set to, not a cash movement, so it carries no sign
-   *  of its own — `resolveResets` derives the step from account history. */
+  /** Positive USD; the kind determines the sign at the math layer. */
   amount: number
-  note: string
-  /** Reset rows only, and only after `resolveResets` has run: the signed
-   *  cash-equivalent step that lands equity on `amount`. Derived in memory,
-   *  NEVER persisted — a stored reset row holds only its target, so the step
-   *  re-derives correctly when earlier history changes. */
-  delta?: number
   created_at: string // ISO
   updated_at: string // ISO
 }
 
-// `delta` is excluded: it's derived in memory by `resolveResets` and must
-// never reach storage, so the draft type simply can't carry it.
-export type AdjustmentDraft = Omit<
-  EquityAdjustment,
-  'id' | 'account_id' | 'created_at' | 'updated_at' | 'delta'
->
+export type AdjustmentDraft = Omit<EquityAdjustment, 'id' | 'account_id' | 'created_at' | 'updated_at'>
 
 // Day screenshots are uploaded to Drive. When the user picks an image while
 // offline (or before any manual sync), the blob is stashed in this table;
@@ -223,14 +217,14 @@ export interface Day {
   // statistic — it's how a chaotic "tilt"/revenge day gets recorded as a
   // single net figure instead of logging each trade. Per-trade population
   // stats (win rate, R-distribution, donuts) still read actual trade rows,
-  // so the override never masquerades as a trade. Absent/null = no override.
-  pnl_override?: number | null
+  // so the override never masquerades as a trade. Absent = no override.
+  pnl_override?: number
   // Informational total broker fees for an OVERRIDE day (positive USD). Only
   // meaningful when `pnl_override` is set. Never alters net or equity —
   // `pnl_override` is already net of fees. This only (a) folds into the `fees`
   // headline so it isn't blind to override days and (b) lets gross reconcile
-  // as net + fees. Absent/null = the override day's fees are unknown (0).
-  fees_override?: number | null
+  // as net + fees. Absent = the override day's fees are unknown (0).
+  fees_override?: number
   created_at: string
   updated_at: string
 }
@@ -256,9 +250,8 @@ export interface Model {
   draft: boolean
   /** User-controlled ordinal — drag-and-drop in the Models sidebar
    *  rewrites this to match the new visible order. Lower = higher up.
-   *  Optional so existing rows back-fill lazily on first reorder;
-   *  missing values fall through to alphabetical at the bottom. */
-  sort?: number
+   *  A new model goes to the bottom. */
+  sort: number
   created_at: string
   updated_at: string
 }
@@ -287,8 +280,9 @@ export interface ProgressRule {
   periods: ProgressRulePeriod[]
   /** Archived. Gone from the rule list and from every day after it
    *  stopped; past days still show it, and its `periods` and
-   *  `progress_checks` rows stay so those days' scores don't drift. */
-  hidden?: boolean
+   *  `progress_checks` rows stay so those days' scores don't drift. Absent
+   *  when not archived, never `false`. */
+  hidden?: true
   /** A line dividing groups of rules, not a rule. Dated like one, so it
    *  shows on the right days; `ruleCountsOn` keeps it out of every score. */
   kind?: 'line'
@@ -296,12 +290,12 @@ export interface ProgressRule {
   created_at: string
   updated_at: string
 }
+// A stored row is a tick; unticking deletes it.
 export interface ProgressCheck {
   id: string // `${account_id}:${date}:${rule_id}`
   account_id: string
   date: string // YYYY-MM-DD
   rule_id: string
-  checked: boolean
   created_at: string
   updated_at: string
 }
@@ -313,14 +307,12 @@ export interface ProgressCheck {
 // Not scoped per account — economic news is global — so no `account_id`.
 export type PersistedNewsImpact = 'High' | 'Medium'
 export interface NewsEvent {
-  id: string // `${date}${title}` (unit-separator avoids title collisions)
+  id: string // `${scheduledIso}${country}${title}` — the event's exact time, not `date` (see news-sync `eventId`)
   date: string // YYYY-MM-DD (NY calendar)
   title: string
   country: string // always 'USD' for now
   impact: PersistedNewsImpact
   scheduled_at: string // ISO 8601 UTC, the event's actual clock time
-  forecast: string
-  previous: string
   created_at: string
   updated_at: string
 }

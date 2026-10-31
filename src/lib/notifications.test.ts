@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { renderHook } from '@testing-library/react'
+import { act } from 'react'
 import {
   clearNotifications,
   dismissNotification,
@@ -15,8 +16,13 @@ afterEach(() => {
 
 describe('pushError', () => {
   it('returns the new notification id and stores the entry', () => {
-    const id = pushError('boom')
+    const { result } = renderHook(() => useNotifications())
+    let id: string | null = null
+    act(() => {
+      id = pushError('boom')
+    })
     expect(id).toBeTruthy()
+    expect(result.current).toEqual([{ id, kind: 'error', message: 'boom', action: undefined }])
   })
 
   it('de-dupes repeat errors with the same message', () => {
@@ -26,9 +32,13 @@ describe('pushError', () => {
     expect(second).toBeNull()
   })
 
-  it('allows actions with a route or onClick', () => {
-    const id = pushError('reconnect needed', { label: 'Settings', to: '/settings' })
-    expect(id).toBeTruthy()
+  it('stores the action with the entry', () => {
+    const { result } = renderHook(() => useNotifications())
+    const action = { label: 'Settings', to: '/settings' }
+    act(() => {
+      pushError('reconnect needed', action)
+    })
+    expect(result.current[0].action).toEqual(action)
   })
 
   it('does NOT de-dupe two errors with the same message but different actions', () => {
@@ -71,9 +81,9 @@ describe('dismissNotification', () => {
 
   it('is a no-op for an unknown id', () => {
     pushError('x')
-    const before = pushError('x') // dupe
     dismissNotification('not-a-real-id')
-    expect(before).toBeNull()
+    // 'x' is still there, so a repeat is still de-duped.
+    expect(pushError('x')).toBeNull()
   })
 })
 
@@ -86,9 +96,15 @@ describe('clearNotifications', () => {
     expect(pushError('b')).toBeTruthy()
   })
 
-  it('is a no-op when there is nothing to clear', () => {
-    // Just exercise the early-return — no observable effect, no throw.
-    expect(() => clearNotifications()).not.toThrow()
+  it('does not notify subscribers when there is nothing to clear', () => {
+    let renders = 0
+    renderHook(() => {
+      renders++
+      return useNotifications()
+    })
+    const before = renders
+    act(() => clearNotifications())
+    expect(renders).toBe(before)
   })
 })
 
@@ -107,11 +123,17 @@ describe('useNotifications', () => {
     expect(result.current).toEqual([])
   })
 
-  it('cleanly unsubscribes on unmount', () => {
-    const { unmount } = renderHook(() => useNotifications())
+  it('stops rendering after unmount', () => {
+    let renders = 0
+    const { unmount } = renderHook(() => {
+      renders++
+      return useNotifications()
+    })
     unmount()
-    // Pushing after unmount must not throw — exercises the listener-removal
-    // branch in `subscribe`.
-    expect(() => pushError('after-unmount')).not.toThrow()
+    const before = renders
+    act(() => {
+      pushError('after-unmount')
+    })
+    expect(renders).toBe(before)
   })
 })

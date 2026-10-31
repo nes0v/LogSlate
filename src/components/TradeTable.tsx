@@ -75,7 +75,7 @@ export const TradeTable = memo(function TradeTable({
                   index={i + 1}
                   expanded={expanded}
                   reversedFromPrev={reversed}
-                  onToggle={() => onToggle(t.id)}
+                  onToggle={onToggle}
                   modelName={model?.name ?? null}
                   showDate={showDate}
                 />
@@ -113,13 +113,15 @@ interface RowProps {
   /** True when the previous trade reversed into this one — renders a small
    *  "@ price" label floating above the top edge of this row. */
   reversedFromPrev: boolean
-  onToggle: () => void
+  /** Stable across renders (the parent's callback), so `memo` lets an
+   *  expand/collapse re-render only the row that changed. */
+  onToggle: (id: string) => void
   /** Resolved model name (if the trade has one) — passed in so each row
    *  doesn't open its own `db.models.get` subscription. */
   modelName: string | null
   showDate: boolean
 }
-function TradeTableRow({
+const TradeTableRow = memo(function TradeTableRow({
   trade,
   index,
   expanded,
@@ -138,11 +140,11 @@ function TradeTableRow({
 
   return (
     <tr
-      onClick={onToggle}
+      onClick={() => onToggle(trade.id)}
       onKeyDown={e => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
-          onToggle()
+          onToggle(trade.id)
         }
       }}
       role="button"
@@ -250,5 +252,4 @@ function TradeTableRow({
       )}
     </tr>
   )
-}
-
+})

@@ -4,67 +4,26 @@
 
 import type { EntityTable } from 'dexie'
 import { db, ensureMainAccount } from '@/db/schema'
-import { clearSyncState } from '@/lib/sync'
+import { clearSyncState, markLocalAuthoritative } from '@/lib/sync'
+import { refreshAllDayCaches } from '@/lib/day-cache'
 import { clearAllSymbolFilterCaches } from '@/lib/symbol-filter-cache'
+import { clearPendingDeletes } from '@/lib/drive-images'
 import { clearAllLastActivityDates } from '@/lib/last-activity-cache'
-import type {
-  Account,
-  Day,
-  EquityAdjustment,
-  Model,
-  NewsEvent,
-  ProgressCheck,
-  ProgressRule,
-  TradeRecord,
-  TradingSymbol,
-} from '@/db/types'
+import { DATA_TABLES } from '@/lib/data-tables'
 
-const BACKUP_VERSION = 7
+const BACKUP_VERSION = 9
 
 interface Row {
   id: string
 }
 
-interface Spec<T extends Row> {
-  fileKey: string
-  table: () => EntityTable<T, 'id'>
-}
-
-const SPECS = [
-  { fileKey: 'accounts',        table: () => db.accounts },
-  { fileKey: 'trades',          table: () => db.trades },
-  { fileKey: 'adjustments',     table: () => db.adjustments },
-  { fileKey: 'days', table: () => db.days },
-  { fileKey: 'models',          table: () => db.models },
-  { fileKey: 'symbols',         table: () => db.symbols },
-  { fileKey: 'progress_rules',  table: () => db.progress_rules },
-  { fileKey: 'progress_checks', table: () => db.progress_checks },
-  { fileKey: 'news',     table: () => db.news },
-] as const satisfies ReadonlyArray<Spec<Row>>
-
-interface BackupFile {
-  version: number
-  exported_at: string
-  trades?: TradeRecord[]
-  adjustments?: EquityAdjustment[]
-  accounts?: Account[]
-  days?: Day[]
-  models?: Model[]
-  symbols?: TradingSymbol[]
-  progress_rules?: ProgressRule[]
-  progress_checks?: ProgressCheck[]
-  news?: NewsEvent[]
-}
-
 export async function exportBackup(): Promise<void> {
-  const arrays = await Promise.all(SPECS.map(s => s.table().toArray()))
-  const file: BackupFile = {
+  const arrays = await Promise.all(DATA_TABLES.map(s => s.table().toArray()))
+  const file = {
     version: BACKUP_VERSION,
     exported_at: new Date().toISOString(),
+    ...Object.fromEntries(DATA_TABLES.map((s, i) => [s.fileKey, arrays[i]])),
   }
-  SPECS.forEach((s, i) => {
-    ;(file as unknown as Record<string, unknown>)[s.fileKey] = arrays[i]
-  })
   const blob = new Blob([JSON.stringify(file, null, 2)], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -81,21 +40,36 @@ export async function importBackup(
   file: File,
 ): Promise<Record<string, number>> {
   const text = await file.text()
-  let parsed: Partial<BackupFile> & Record<string, unknown>
+  let parsed: Record<string, unknown>
   try {
-    parsed = JSON.parse(text) as Partial<BackupFile> & Record<string, unknown>
+    parsed = JSON.parse(text) as Record<string, unknown>
   } catch {
     throw new Error('Backup file is not valid JSON.')
   }
   if (!parsed || typeof parsed !== 'object') {
     throw new Error('Backup file is malformed (not an object).')
   }
+  if (typeof parsed.version !== 'number') {
+    throw new Error('Backup file is malformed (no version).')
+  }
+  // A newer build's backup may be shaped differently; importing it could
+  // drop what this build doesn't understand.
+  if (parsed.version > BACKUP_VERSION) {
+    throw new Error(
+      `Backup file was written by a newer version of LogSlate (v${parsed.version}, this device reads v${BACKUP_VERSION}). Update this device first.`,
+    )
+  }
+  // An older backup holds row shapes this build no longer reads.
+  if (parsed.version < BACKUP_VERSION) {
+    throw new Error(
+      `Backup file is from an older version of LogSlate (v${parsed.version}, this device reads v${BACKUP_VERSION}) and can't be imported.`,
+    )
+  }
   // Validate the entire structure up front. The transaction below is
   // destructive (truncates every table), so we refuse anything that
   // isn't shaped like a real backup before touching local data.
-  for (const s of SPECS) {
+  for (const s of DATA_TABLES) {
     const v = parsed[s.fileKey]
-    if (v === undefined) continue
     if (!Array.isArray(v)) {
       throw new Error(`Backup file is malformed (${s.fileKey} is not an array).`)
     }
@@ -105,27 +79,33 @@ export async function importBackup(
       }
     }
   }
-  if (!Array.isArray(parsed.trades)) {
-    throw new Error('Backup file is malformed (no trades array).')
-  }
-
-  const arrays: Row[][] = SPECS.map(s => {
-    const v = parsed[s.fileKey]
-    return Array.isArray(v) ? (v as Row[]) : []
-  })
+  const arrays: Row[][] = DATA_TABLES.map(s => parsed[s.fileKey] as Row[])
 
   await db.transaction(
     'rw',
-    SPECS.map(s => s.table()),
+    [...DATA_TABLES.map(s => s.table()), db.pending_uploads],
     async () => {
-      for (let i = 0; i < SPECS.length; i++) {
-        await SPECS[i].table().clear()
+      for (let i = 0; i < DATA_TABLES.length; i++) {
+        await DATA_TABLES[i].table().clear()
         if (arrays[i].length > 0)
-          await (SPECS[i].table() as EntityTable<Row, 'id'>).bulkAdd(arrays[i])
+          await (DATA_TABLES[i].table() as EntityTable<Row, 'id'>).bulkAdd(arrays[i])
       }
+      // Queued screenshot uploads aren't in the backup. Keep the ones a
+      // restored day still points at (a backup of this same browser); the
+      // rest would upload to Drive as files nothing references.
+      const referenced = new Set<string>()
+      for (const d of await db.days.toArray()) {
+        for (const ref of d.screenshots) {
+          if (ref.startsWith('pending:')) referenced.add(ref.slice('pending:'.length))
+        }
+      }
+      const stale = (await db.pending_uploads.toCollection().primaryKeys()).filter(
+        id => !referenced.has(id),
+      )
+      if (stale.length > 0) await db.pending_uploads.bulkDelete(stale)
     },
   )
-  // Ensure the main account exists even if the backup had no accounts array.
+  // A backup with no accounts still leaves the app somewhere to land.
   await ensureMainAccount()
 
   // Same reasoning as the sync ledger below: these localStorage snapshots are
@@ -136,17 +116,20 @@ export async function importBackup(
   // alone — those are choices the user made, not snapshots of the data.
   clearAllSymbolFilterCaches()
   clearAllLastActivityDates()
+  // A queued Drive delete could target a screenshot the restored rows use.
+  clearPendingDeletes()
 
   // The local DB was just wholesale-replaced, so the old sync ledger
-  // (`lastSyncedIds` + Drive account fingerprint) no longer describes
-  // what's on disk. Clear it so the next sync is treated as a first
-  // sync — a full, non-destructive reconcile that keeps every imported
-  // row. Without this, rows whose ids were in the stale ledger but
-  // absent from Drive get misread as local deletions and dropped.
+  // (`lastSyncedIds` + Drive account fingerprint) no longer describes what's
+  // on disk. Clear it, and have the next sync make Drive match what was just
+  // imported: a merge would bring back every row the backup left out and let
+  // newer Drive edits beat the restored copies.
   clearSyncState()
+  markLocalAuthoritative()
+  void refreshAllDayCaches()
 
   const counts: Record<string, number> = {}
-  SPECS.forEach((s, i) => {
+  DATA_TABLES.forEach((s, i) => {
     counts[s.fileKey] = arrays[i].length
   })
   return counts

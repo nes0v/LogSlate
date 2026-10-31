@@ -204,19 +204,19 @@ export function computeAhpc(t: Pick<TradeRecord, 'executions'>): number | null {
 export function computeRealizedRr(
   t: Pick<TradeRecord, 'executions' | 'symbol_spec' | 'stop_loss'>,
 ): number | null {
-  if (!t.stop_loss || t.stop_loss === 0) return null
+  if (!(t.stop_loss > 0)) return null
   const pnl = computeNetPnl(t)
   if (pnl === null) return null
   return pnl / t.stop_loss
 }
 
-// Planned R:R is derived from the user's stop loss and profit target —
-// no longer a separately stored field. Returns null when stop loss is
-// zero (the form rejects negative or null on save).
+// Planned R:R is derived from the user's stop loss and profit target, not
+// stored. Returns null without a positive stop loss (the form rejects negative
+// or null on save).
 export function computePlannedRr(
   t: Pick<TradeRecord, 'stop_loss' | 'profit_target'>,
 ): number | null {
-  if (t.stop_loss === 0) return null
+  if (!(t.stop_loss > 0)) return null
   return t.profit_target / t.stop_loss
 }
 
@@ -274,7 +274,7 @@ export function outcomeTextClass(
 // all three numbers per trade — returning them together avoids redundant
 // `weightedAvgPrice` / fee passes.
 //
-// Outcome rule: a trade whose absolute AHPC sits below the symbol's frozen
+// Outcome rule: a trade whose absolute AHPC sits at or below the symbol's frozen
 // `scratch_handles` band is a scratch even when net PNL is non-zero; above the
 // threshold, PNL sign decides.
 export interface TradeMetrics {
@@ -290,7 +290,9 @@ export function tradeMetrics(
   const ahpc = computeAhpc(t)
   const pnl = computeNetPnl(t)
   let outcome: TradeOutcome
-  if (ahpc !== null && Math.abs(ahpc) <= t.symbol_spec.scratch_handles) outcome = 'scratch'
+  // The epsilon absorbs float noise in the weighted-average prices: three
+  // contracts averaging exactly 3.00 handles can compute as 3.000000000002.
+  if (ahpc !== null && Math.abs(ahpc) <= t.symbol_spec.scratch_handles + 1e-9) outcome = 'scratch'
   else if (pnl === null || pnl === 0) outcome = 'scratch'
   else outcome = pnl > 0 ? 'win' : 'loss'
   const result: TradeMetrics = { ahpc, pnl, outcome }

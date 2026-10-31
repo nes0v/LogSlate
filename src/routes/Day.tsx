@@ -4,11 +4,17 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { format, isWeekend, parseISO } from 'date-fns'
 import { Plus } from 'lucide-react'
 import { db, dayHasContent } from '@/db/schema'
-import type { Model, NewsEvent, TradeRecord } from '@/db/types'
+import type { Model } from '@/db/types'
 import { getDayFeesOverride, getDayNote, getDayPnlOverride, listDayScreenshotsFor, listModels } from '@/db/queries'
+import {
+  byFirstExecution,
+  dayCacheKey,
+  patchDayCache,
+  preloadDay,
+  readDayCache,
+} from '@/lib/day-cache'
 import { parseScreenshotRef, resolveScreenshotUrl } from '@/lib/drive-images'
 import { useActiveAccountId } from '@/lib/active-account'
-import { firstExecutionMs } from '@/lib/trade-math'
 import { aggregate } from '@/lib/trade-stats'
 import { useArrowNavigation } from '@/lib/use-arrow-navigation'
 import { dateKeyToDate, isDateKey } from '@/lib/tz'
@@ -22,93 +28,8 @@ import { StatsGrid } from '@/components/StatsGrid'
 import { TradeTable } from '@/components/TradeTable'
 import { BTN_ACCENT } from '@/components/form/buttonClass'
 
-// Module-level LRU cache keyed by `${accountId}|${date}`. Every time a
-// live query on the Day page resolves, the result is mirrored here, and
-// the prev/next neighbours of the current day are warmed in the
-// background. On navigation, the next day's render reads its data
-// straight out of the cache — no blink while Dexie re-queries.
-//
-// Cap: ~100 days × per-day payload (trades + news + note + screenshot
-// refs, all small string/number records) stays well under a megabyte.
-// Eviction uses insertion-order with LRU touch on read, so frequently
-// revisited days survive long navigation sessions.
-interface CachedDay {
-  trades?: TradeRecord[]
-  news?: NewsEvent[]
-  note?: string
-  screenshots?: string[]
-  pnlOverride?: number | null
-  feesOverride?: number | null
-}
-const DAY_CACHE_CAP = 100
-const dayDataCache = new Map<string, CachedDay>()
-const dayCacheKey = (accountId: string, date: string) => `${accountId}|${date}`
-
-function readDayCache(key: string): CachedDay | undefined {
-  const entry = dayDataCache.get(key)
-  if (entry) {
-    // LRU touch: re-insert moves the entry to the end so the oldest
-    // entries (the ones a long-session would naturally evict first)
-    // are the genuinely least-recently-read ones.
-    dayDataCache.delete(key)
-    dayDataCache.set(key, entry)
-  }
-  return entry
-}
-
-function writeDayCache(key: string, value: CachedDay): void {
-  if (dayDataCache.has(key)) dayDataCache.delete(key)
-  dayDataCache.set(key, value)
-  while (dayDataCache.size > DAY_CACHE_CAP) {
-    const oldest = dayDataCache.keys().next().value
-    if (oldest === undefined) break
-    dayDataCache.delete(oldest)
-  }
-}
-
-function patchDayCache(accountId: string, date: string, patch: CachedDay) {
-  if (!accountId || !date) return
-  const key = dayCacheKey(accountId, date)
-  writeDayCache(key, { ...dayDataCache.get(key), ...patch })
-}
-
-async function preloadDay(accountId: string, date: string): Promise<void> {
-  if (!accountId || !date) return
-  const key = dayCacheKey(accountId, date)
-  if (dayDataCache.has(key)) return
-  const [tradeRows, newsRows, note, screenshots, pnlOverride, feesOverride] =
-    await Promise.all([
-      db.trades.where('[account_id+date]').equals([accountId, date]).toArray(),
-      db.news.where('date').equals(date).toArray(),
-      getDayNote(accountId, date),
-      listDayScreenshotsFor(accountId, date),
-      getDayPnlOverride(accountId, date),
-      getDayFeesOverride(accountId, date),
-    ])
-  const trades = tradeRows.sort((a, b) => {
-    const ka = firstExecutionMs(a) ?? Date.parse(a.created_at)
-    const kb = firstExecutionMs(b) ?? Date.parse(b.created_at)
-    if (ka !== kb) return ka - kb
-    // Second-resolution times tie for same-second trades — break on `id`
-    // so the order is deterministic across renders.
-    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
-  })
-  newsRows.sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at))
-  writeDayCache(key, {
-    trades,
-    news: newsRows,
-    note,
-    screenshots,
-    pnlOverride,
-    feesOverride,
-  })
-  // Warm the screenshot URL cache so thumbs paint as an image on the
-  // first frame after navigation instead of flashing the "loading…"
-  // placeholder while resolveScreenshotUrl awaits the IndexedDB blob.
-  await Promise.all(
-    screenshots.map(ref => resolveScreenshotUrl(ref).catch(() => null)),
-  )
-}
+// The last navigable-day list per account, for the first frame (see DayView).
+const navigableDaysCache = new Map<string, string[]>()
 
 // Weekend guard. The calendar already makes Saturday/Sunday cells
 // non-clickable, but a hand-typed `/day/2026-06-20` URL would still land on
@@ -120,10 +41,8 @@ async function preloadDay(accountId: string, date: string): Promise<void> {
 export function DayRoute() {
   const { date = '' } = useParams()
   // `isDateKey`, not a shape regex: `/day/2026-13-45` matches the shape but
-  // parses to an Invalid Date, which threw `RangeError: Invalid time value`
-  // out of `format` below and took the page down — while `/day/garbage` fell
-  // through to a day page titled "garbage". Neither is a real date, so both
-  // are Not found.
+  // parses to an Invalid Date, which would throw out of `format` below.
+  // Neither it nor `/day/garbage` is a real date, so both are Not found.
   if (!isDateKey(date)) return <NotFoundRoute />
   if (isWeekend(dateKeyToDate(date))) {
     return <Navigate to={`/month/${date.slice(0, 7)}`} replace />
@@ -138,7 +57,7 @@ function DayView() {
   const pretty = format(dateKeyToDate(date), 'EEEE, dd MMM yyyy')
 
   const accountId = useActiveAccountId()
-  // All four day-scoped queries live here so the page can reveal as a
+  // All six day-scoped queries live here so the page can reveal as a
   // single unit. Each result is tagged with the `date` it was loaded
   // for and unwrapped only when that date matches the current URL —
   // otherwise dexie-react-hooks' stale-while-revalidate behaviour
@@ -150,9 +69,7 @@ function DayView() {
         .where('[account_id+date]')
         .equals([accountId, date])
         .toArray()
-      const sortKey = (t: typeof rows[number]) =>
-        firstExecutionMs(t) ?? Date.parse(t.created_at)
-      const sorted = rows.sort((a, b) => sortKey(a) - sortKey(b))
+      const sorted = rows.sort(byFirstExecution)
       patchDayCache(accountId, date, { trades: sorted })
       return { forDate: date, forAccount: accountId, rows: sorted }
     },
@@ -277,7 +194,7 @@ function DayView() {
   // genuinely-empty days in prev/next navigation. Trade dates come from the
   // compound index via `uniqueKeys()` (no rows pulled into memory); day rows
   // are filtered by the shared `dayHasContent` keep-rule and merged in.
-  const navigableDays = useLiveQuery(
+  const navigableResult = useLiveQuery(
     async () => {
       const tradeKeys = await db.trades
         .where('[account_id+date]')
@@ -289,13 +206,21 @@ function DayView() {
       // Drop weekend dates: a note/screenshot/override could be stored on a
       // Sat/Sun, but the weekend Day page redirects to the month view — so a
       // weekend neighbour would make prev/next bounce out of the Day view.
-      return Array.from(set)
+      const days = Array.from(set)
         .filter(k => !isWeekend(parseISO(k)))
         .sort()
+      navigableDaysCache.set(accountId, days)
+      return { forAccount: accountId, days }
     },
     [accountId],
-    [] as string[],
   )
+  // Tagged with its account so a switch can't use the old account's days for
+  // a frame; until the query lands, the last list seen for this account
+  // keeps the prev/next arrows on the first frame.
+  const navigableDays =
+    navigableResult?.forAccount === accountId
+      ? navigableResult.days
+      : navigableDaysCache.get(accountId)
 
   const { prevDate, nextDate } = useMemo(() => {
     const list = navigableDays ?? []
@@ -337,10 +262,9 @@ function DayView() {
   // The day-override and trades are mutually exclusive (a tilt day is logged
   // as one net figure INSTEAD of its individual trades). An override is
   // "active" when one is stored; in that state we hide the New-trade button.
-  // The override field itself stays visible whenever there are no trades OR
-  // an override already exists, so a legacy both-day can still be cleared.
+  // The override field shows only on a day with no trades.
   const overrideActive = pnlOverride != null
-  const showOverrideField = (trades?.length ?? 0) === 0 || overrideActive
+  const showOverrideField = (trades?.length ?? 0) === 0
 
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
   // Stable identity so the memoized `<TradeTable>` doesn't re-render on
@@ -363,7 +287,9 @@ function DayView() {
         prevLabel="Previous day with activity"
         nextLabel="Next day with activity"
         rightSlot={
-          overrideActive ? undefined : (
+          // Held back until the override has loaded: on an override day it
+          // would otherwise show for a frame and vanish.
+          pnlOverride === undefined || overrideActive ? undefined : (
             <Link
               to={`/trade/new?date=${date}`}
               state={{ from: `/day/${date}` }}
@@ -389,9 +315,9 @@ function DayView() {
 
           <DayNewsSection events={news} />
 
-          {/* Keyed on account AND date so the local `value` state can't flash
-              the previous day's note for one frame after navigation while its
-              internal `stored → value` sync effect catches up. The account half
+          {/* Keyed on account AND date so the editor can't show the previous
+              day's note for one frame after navigation while its sync effect
+              catches up to the new `stored` value. The account half
               matters just as much: an account switch keeps the same URL, so
               without it React reuses the mounted component and only swaps the
               props — leaving one account's draft state sitting above the other

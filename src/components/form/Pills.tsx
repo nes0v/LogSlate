@@ -4,8 +4,7 @@ import { cn } from '@/lib/utils'
 // Canonical "select one of N" control. Used wherever the user picks from a
 // short, mutually-exclusive set (form fields like Symbol/Contract/Session,
 // filter bars, etc.). Visual: an iOS-style segmented control — recessed
-// track on the parent card, active item lifts out on `panel` with a subtle
-// shadow.
+// track on the parent card, active item lifts out on `panel`.
 //
 // `prefix` is rendered before the label inside each pill (typically an
 // icon swatch). Pass it on the option, not as JSX label, so the layout

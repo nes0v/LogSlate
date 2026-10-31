@@ -36,9 +36,8 @@ export function SettingsRoute() {
   }, [])
 
   // Drive the page-level loaded gate so the whole Settings body reveals
-  // at once. Panels keep their own internal queries (Dexie de-duplicates
-  // so the cost is negligible); this just blocks paint until the data
-  // they need is available.
+  // at once. The panels read these as props, so they never paint ahead
+  // of their data.
   const accountId = useActiveAccountId()
   const accounts = useLiveQuery(() => listAccounts(), [])
   const adjustments = useAccountQuery(accountId, () => listAdjustments(accountId))
@@ -55,16 +54,18 @@ export function SettingsRoute() {
     await requestManualSync({ recreateRemoteIfMissing: true })
   }
 
-  /** Confirms the corrupt-file recovery — overwrites the unparseable
-   *  Drive file with local data. Destructive on the Drive side (the
+  /** Confirms the corrupt-file recovery — overwrites the unreadable or
+   *  incomplete Drive file with local data. Destructive on the Drive side (the
    *  corrupted bytes are gone for good), so the action is gated behind
-   *  an explicit click and a confirm() dialog. */
+   *  an explicit click and a confirm dialog. */
   async function handleOverwriteCorruptRemote() {
-    const ok = window.confirm(
-      "Overwrite the corrupted Drive file with your local data? " +
-      "Whatever the corrupted file contained will be lost — but your " +
-      "local trades, models, and settings will be preserved.",
-    )
+    const ok = await confirm({
+      title: 'Overwrite the corrupted Drive file with your local data?',
+      description:
+        'Whatever the corrupted file contained will be lost — but your ' +
+        'local trades, models, and settings will be preserved.',
+      confirmLabel: 'Overwrite',
+    })
     if (!ok) return
     await requestManualSync({ overwriteCorruptRemote: true })
   }
@@ -85,12 +86,9 @@ export function SettingsRoute() {
 
   async function handleImport(file: File) {
     if (importing) return
-    // Import truncates EVERY table, and it used to run the instant a file was
-    // picked — the "Local DB replaced" alert arrived after the fact. It's the
-    // most destructive action in the app, so it gets an explicit confirm, and
-    // the current data is exported first: a mis-picked file (or an old backup
-    // predating a feature, which empties the tables it says nothing about) is
-    // then always recoverable from the downloaded copy.
+    // Import truncates EVERY table — the most destructive action in the app —
+    // so it gets an explicit confirm, and the current data is exported first:
+    // a mis-picked file is then always recoverable from the downloaded copy.
     const ok = await confirm({
       title: 'Replace ALL local data with this backup?',
       description:

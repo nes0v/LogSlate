@@ -17,6 +17,7 @@ import {
 // no fill can straddle it — which also keeps a trade held through
 // midnight in order (23:50 is D-1, 00:10 is D).
 const ROLLOVER_MIN = 17 * 60
+const RTH_OPEN_MIN = 9 * 60 + 30
 const DAY_MIN = 24 * 60
 
 // Session bands as half-open intervals [previous endMin, endMin) of
@@ -45,14 +46,14 @@ function timeToMin(t: string): number {
 /** Seconds since the 17:00 rollover for a HH:MM[:SS] wallclock — the
  *  order fills happen in within one trading day. Compare fills with this,
  *  never with the raw string: 23:50 comes before 00:10. */
-export function tradingDaySeconds(t: string): number {
+function tradingDaySeconds(t: string): number {
   const [hh, mm = '0', ss = '0'] = t.split(':')
   const sec = (Number(hh) * 60 + Number(mm)) * 60 + Number(ss)
   return (sec - ROLLOVER_MIN * 60 + DAY_MIN * 60) % (DAY_MIN * 60)
 }
 
 function tradingDayMin(t: string): number {
-  return (timeToMin(t) - ROLLOVER_MIN + DAY_MIN) % DAY_MIN
+  return Math.floor(tradingDaySeconds(t) / 60)
 }
 
 // Decides which session a trade "belongs to". Default = the session the
@@ -188,13 +189,27 @@ export type TradeFormValues = z.input<typeof tradeFormSchema>
 // store/read time. The trailing `Z` makes the string round-trip cleanly
 // through Date/Date.parse for sorting and duration math; the underlying
 // "instant" is fictional but globally consistent for every execution row.
-// A fill at or after the 17:00 rollover happened the calendar day before
-// the trading date it's filed under.
-function toIso(date: string, time: string): string {
-  if (timeToMin(time) < ROLLOVER_MIN) return `${date}T${time}.000Z`
+// A fill at or after the 17:00 rollover normally happened the calendar day
+// before the trading date it's filed under (the evening open). The exception
+// is a position held through the close: when a fill ABOVE it in the form is
+// in the regular session (09:30–17:00), the ≥17:00 fill is that same day's
+// evening. So "buy 15:00, sell 18:00" is a 3h long, while "sell 18:00, buy
+// 09:00" stays an overnight short. Only a regular-session fill counts, so an
+// overnight trade typed exit-first ("sell 00:10, buy 23:50") stays a long
+// held through midnight. Times are in form row order; returns one ISO each.
+export function stampFills(date: string, times: string[]): string[] {
   const d = new Date(`${date}T00:00:00.000Z`)
   d.setUTCDate(d.getUTCDate() - 1)
-  return `${d.toISOString().slice(0, 10)}T${time}.000Z`
+  const eveBefore = d.toISOString().slice(0, 10)
+  let heldThroughClose = false
+  return times.map(time => {
+    const min = timeToMin(time)
+    if (min < ROLLOVER_MIN) {
+      if (min >= RTH_OPEN_MIN) heldThroughClose = true
+      return `${date}T${time}.000Z`
+    }
+    return `${heldThroughClose ? date : eveBefore}T${time}.000Z`
+  })
 }
 
 // `symbol_spec` is resolved by the caller (TradeForm) from the selected symbol
@@ -204,31 +219,23 @@ export function formToDraft(v: TradeFormValues, symbol_spec: SymbolSnapshot): Tr
   // After zod validation the required-positive fields are guaranteed
   // non-null; refine's type guards don't propagate through zod's inferred
   // type, so we narrow here at the boundary.
+  const stamps = stampFills(v.date, v.executions.map(e => e.time))
   const executions = v.executions
-    .map(e => ({
+    .map((e, i) => ({
       kind: e.kind,
       order_type: e.order_type,
       price: e.price as number,
-      time: toIso(v.date, e.time),
+      time: stamps[i],
       contracts: e.contracts as number,
     }))
     .sort((a, b) => Date.parse(a.time) - Date.parse(b.time))
 
-  // Session is auto-detected from the open + close times (earliest +
-  // latest of the executions, in trading-day order).
-  let earliest: string | null = null
-  let latest: string | null = null
-  for (const e of v.executions) {
-    if (earliest === null || tradingDaySeconds(e.time) < tradingDaySeconds(earliest)) earliest = e.time
-    if (latest === null || tradingDaySeconds(e.time) > tradingDaySeconds(latest)) latest = e.time
-  }
-  if (earliest === null || latest === null) {
-    // Zod's `.min(2)` upstream guarantees this never happens, but stay
-    // defensive so a regression in validation doesn't crash here.
-    earliest = '00:00:00'
-    latest = '00:00:00'
-  }
-  const session = detectSession(earliest, latest)
+  // Session is auto-detected from the open + close (first and last fill).
+  // Zod's `.min(2)` upstream guarantees at least two executions.
+  const session = detectSession(
+    executions[0].time.slice(11, 19),
+    executions[executions.length - 1].time.slice(11, 19),
+  )
 
   return {
     date: v.date,

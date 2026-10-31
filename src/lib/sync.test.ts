@@ -1,10 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { DATA_TABLE_KEYS } from '@/lib/data-tables'
 import type { Account } from '@/db/types'
 import { MAIN_ACCOUNT_ID } from '@/db/types'
 import { db } from '@/db/schema'
+import { FRESH_DB_KEY } from '@/db/schema'
 import {
   clearSyncState,
   lastSyncAt,
+  markLocalAuthoritative,
   mergeById,
   syncNow,
   type SyncResult,
@@ -16,6 +19,18 @@ import {
   uploadAppDataFile,
 } from './drive'
 import { adjustmentRecord, tradeRecord } from '@/test/fixtures'
+
+// A Drive file as a push writes it: the version and every table.
+function syncFile(tables: Record<string, unknown[]>, exported_at = '2026-04-15T11:00:00Z') {
+  return {
+    version: 6,
+    exported_at,
+    ...Object.fromEntries(
+      DATA_TABLE_KEYS.map(k => [k, []]),
+    ),
+    ...tables,
+  }
+}
 
 vi.mock('./drive', () => ({
   findAppDataFile: vi.fn(),
@@ -109,7 +124,7 @@ describe('mergeById — accounts', () => {
     expect(merged.map(a => a.id).sort()).toEqual(['funded', MAIN_ACCOUNT_ID].sort())
   })
 
-  it('prefers the newer side when names diverge (rename)', () => {
+  it('prefers the newer side when the two copies of a row differ', () => {
     const local = [accountRecord({ id: 'alpha', name: 'Alpha', updated_at: '2026-04-20T10:00:00Z' })]
     const remote = [accountRecord({ id: 'alpha', name: 'Beta', updated_at: '2026-04-20T14:00:00Z' })]
     const merged = mergeById(local, remote, new Set())
@@ -219,6 +234,111 @@ describe('syncNow', () => {
     return { id, name: 'logslate.json', modifiedTime: '2026-04-15T12:00:00.000Z' } as never
   }
 
+  it('pulls everything back when the database was wiped but the ledger survived', async () => {
+    const real = accountRecord({ id: MAIN_ACCOUNT_ID, name: 'Main', is_main: true, starting_balance: 50_000 })
+    const trade = tradeRecord({ id: 't1' })
+    findFile.mockResolvedValue({ id: 'f', name: 'logslate.json', modifiedTime: 't' })
+    downloadFile.mockResolvedValue(JSON.stringify(syncFile({ accounts: [real], trades: [trade] })))
+    uploadFile.mockResolvedValue(uploaded('f'))
+    // Ledger from an earlier sync; the database itself is fresh, with only a
+    // re-seeded main (newer, unfunded).
+    localStorage.setItem('logslate:sync:trade_ids', JSON.stringify(['t1']))
+    localStorage.setItem('logslate:sync:account_ids', JSON.stringify([MAIN_ACCOUNT_ID]))
+    // What the database's creation event leaves behind (see schema.ts).
+    localStorage.setItem(FRESH_DB_KEY, '1')
+    await db.accounts.add(
+      accountRecord({ id: MAIN_ACCOUNT_ID, name: 'Main', is_main: true, updated_at: '2099-01-01T00:00:00Z' }),
+    )
+
+    await syncNow()
+
+    expect(await db.trades.get('t1')).toBeDefined()
+    expect((await db.accounts.get(MAIN_ACCOUNT_ID))?.starting_balance).toBe(50_000)
+  })
+
+  it('keeps a deletion that empties the database (not a wipe)', async () => {
+    const eval1 = accountRecord({ id: 'eval-1', name: 'Eval 1' })
+    const trade = tradeRecord({ id: 't1', account_id: 'eval-1' })
+    await db.accounts.bulkAdd([accountRecord({ id: MAIN_ACCOUNT_ID, name: 'Main', is_main: true }), eval1])
+    await db.trades.add(trade)
+    findFile.mockResolvedValue(null)
+    uploadFile.mockResolvedValue(uploaded('f'))
+    await syncNow()
+    const pushed = uploadFile.mock.calls.at(-1)![0].body
+
+    // The user deletes the only account with data; main is empty.
+    await db.trades.clear()
+    await db.accounts.delete('eval-1')
+    findFile.mockResolvedValue({ id: 'f', name: 'logslate.json', modifiedTime: 't' })
+    downloadFile.mockResolvedValue(pushed)
+    await syncNow()
+
+    expect(await db.accounts.get('eval-1')).toBeUndefined()
+    expect(await db.trades.count()).toBe(0)
+  })
+
+  it('after a backup import, makes Drive match local instead of merging', async () => {
+    const old = tradeRecord({ id: 't1', notes: 'old', updated_at: '2026-04-01T00:00:00Z' })
+    const edited = { ...old, notes: 'edited later', updated_at: '2026-05-01T00:00:00Z' }
+    const extra = tradeRecord({ id: 't2' })
+    await db.trades.add(old)
+    markLocalAuthoritative()
+    findFile.mockResolvedValue({ id: 'f', name: 'logslate.json', modifiedTime: 't' })
+    downloadFile.mockResolvedValue(JSON.stringify(syncFile({ trades: [edited, extra] })))
+    uploadFile.mockResolvedValue(uploaded('f'))
+
+    await syncNow()
+
+    const rows = await db.trades.toArray()
+    expect(rows.map(r => [r.id, r.notes])).toEqual([['t1', 'old']])
+    const body = JSON.parse(uploadFile.mock.calls.at(-1)![0].body) as { trades: Array<{ id: string }> }
+    expect(body.trades.map(t => t.id)).toEqual(['t1'])
+  })
+
+  it('writes nothing locally when nothing changed', async () => {
+    const trade = tradeRecord({ id: 't1' })
+    await db.trades.add(trade)
+    localStorage.setItem('logslate:sync:trade_ids', JSON.stringify(['t1']))
+    findFile.mockResolvedValue({ id: 'f', name: 'logslate.json', modifiedTime: 't' })
+    downloadFile.mockResolvedValue(JSON.stringify(syncFile({ trades: [trade] })))
+    let writes = 0
+    const count = () => {
+      writes++
+    }
+    db.trades.hook('creating', count)
+    db.trades.hook('deleting', count)
+    try {
+      const res = await syncNow()
+      expect(res.skippedPush).toBe(true)
+    } finally {
+      db.trades.hook('creating').unsubscribe(count)
+      db.trades.hook('deleting').unsubscribe(count)
+    }
+    expect(writes).toBe(0)
+  })
+
+  it('keeps a row written while the Drive download is in flight', async () => {
+    findFile.mockResolvedValue({ id: 'f', name: 'logslate.json', modifiedTime: 't' })
+    let release!: () => void
+    const gate = new Promise<void>(r => (release = r))
+    downloadFile.mockImplementation(async () => {
+      await gate
+      return JSON.stringify(syncFile({}))
+    })
+    uploadFile.mockResolvedValue(uploaded('f'))
+
+    const sync = syncNow()
+    await new Promise(r => setTimeout(r, 10))
+    // The user saves a trade while "Syncing…" spins.
+    await db.trades.add(tradeRecord({ id: 'mid-sync' }))
+    release()
+    await sync
+
+    expect(await db.trades.get('mid-sync')).toBeDefined()
+    const body = JSON.parse(uploadFile.mock.calls.at(-1)![0].body) as { trades: Array<{ id: string }> }
+    expect(body.trades.map(t => t.id)).toEqual(['mid-sync'])
+  })
+
   it('uploads a fresh file when no remote exists', async () => {
     await db.trades.add(tradeRecord({ id: 't1', notes: 'first' }))
     findFile.mockResolvedValue(null)
@@ -248,13 +368,11 @@ describe('syncNow', () => {
       name: 'logslate.json',
       modifiedTime: '2026-04-15T11:00:00Z',
     })
-    const remoteFile = {
-      version: 6,
-      exported_at: '2026-04-15T11:00:00Z',
+    const remoteFile = syncFile({
       trades: [
         tradeRecord({ id: 't2', notes: 'remote-only', updated_at: '2026-04-15T11:00:00Z' }),
       ],
-    }
+    })
     downloadFile.mockResolvedValue(JSON.stringify(remoteFile))
     uploadFile.mockResolvedValue(uploaded('fid'))
 
@@ -277,11 +395,7 @@ describe('syncNow', () => {
       modifiedTime: '2026-04-15T11:00:00Z',
     })
     downloadFile.mockResolvedValue(
-      JSON.stringify({
-        version: 6,
-        exported_at: '2026-04-15T11:00:00Z',
-        trades: [trade],
-      }),
+      JSON.stringify(syncFile({ trades: [trade] })),
     )
 
     const result = await syncNow()
@@ -289,7 +403,6 @@ describe('syncNow', () => {
     expect(uploadFile).not.toHaveBeenCalled()
     expect(result.skippedPush).toBe(true)
     expect(result.createdRemote).toBe(false)
-    expect(result.fileId).toBe('fid')
   })
 
   it('throws DriveFileCorruptError when remote JSON is unparseable and confirmation is missing', async () => {
@@ -306,6 +419,21 @@ describe('syncNow', () => {
     // Guard fires before any clear/bulkAdd, before any upload.
     expect(uploadFile).not.toHaveBeenCalled()
     expect(await db.trades.count()).toBe(1)
+  })
+
+  it('throws DriveFileCorruptError when the remote file is missing a table', async () => {
+    findFile.mockResolvedValue({
+      id: 'fid',
+      name: 'logslate.json',
+      modifiedTime: '2026-04-15T11:00:00Z',
+    })
+    const partial: Record<string, unknown> = syncFile({})
+    delete partial.news
+    downloadFile.mockResolvedValue(JSON.stringify(partial))
+
+    const { DriveFileCorruptError } = await import('./sync')
+    await expect(syncNow()).rejects.toBeInstanceOf(DriveFileCorruptError)
+    expect(uploadFile).not.toHaveBeenCalled()
   })
 
   it('throws DriveFileVersionError when remote file declares a newer version', async () => {
@@ -349,6 +477,39 @@ describe('syncNow', () => {
     expect(stored).toHaveLength(1)
   })
 
+  it('overwriteCorruptRemote keeps rows synced before, instead of reading them as deleted', async () => {
+    await db.trades.add(tradeRecord({ id: 't1', notes: 'synced before' }))
+    localStorage.setItem('logslate:sync:trade_ids', JSON.stringify(['t1']))
+    findFile.mockResolvedValue({
+      id: 'fid',
+      name: 'logslate.json',
+      modifiedTime: '2026-04-15T11:00:00Z',
+    })
+    downloadFile.mockResolvedValue('not json {{{')
+    uploadFile.mockResolvedValue(uploaded('fid'))
+
+    await syncNow({ overwriteCorruptRemote: true })
+
+    expect((await db.trades.toArray()).map(t => t.id)).toEqual(['t1'])
+    const pushed = JSON.parse(uploadFile.mock.calls[0][0].body)
+    expect(pushed.trades.map((t: { id: string }) => t.id)).toEqual(['t1'])
+  })
+
+  it('overwriteCorruptRemote pushes even when there is nothing local', async () => {
+    findFile.mockResolvedValue({
+      id: 'fid',
+      name: 'logslate.json',
+      modifiedTime: '2026-04-15T11:00:00Z',
+    })
+    downloadFile.mockResolvedValue('not json {{{')
+    uploadFile.mockResolvedValue(uploaded('fid'))
+
+    const result = await syncNow({ overwriteCorruptRemote: true })
+
+    expect(result.skippedPush).toBe(false)
+    expect(uploadFile).toHaveBeenCalledTimes(1)
+  })
+
   it('reports per-table counts for every spec', async () => {
     await db.trades.add(tradeRecord({ id: 't1' }))
     await db.adjustments.add(adjustmentRecord({ id: 'a1' }))
@@ -384,7 +545,7 @@ describe('syncNow', () => {
       modifiedTime: '2026-04-15T11:00:00Z',
     })
     downloadFile.mockResolvedValue(
-      JSON.stringify({ version: 6, exported_at: '2026-04-15T11:00:00Z', trades: [] }),
+      JSON.stringify(syncFile({})),
     )
     uploadFile.mockResolvedValue(uploaded('fid'))
 
@@ -414,7 +575,7 @@ describe('syncNow', () => {
         modifiedTime: '2026-04-15T11:05:00Z',
       })
     downloadFile.mockResolvedValue(
-      JSON.stringify({ version: 6, exported_at: '2026-04-15T11:00:00Z', trades: [] }),
+      JSON.stringify(syncFile({})),
     )
 
     await expect(syncNow()).rejects.toThrow(/Drive file changed during sync/)
@@ -438,11 +599,7 @@ describe('syncNow', () => {
       modifiedTime: '2026-04-15T11:00:00Z',
     })
     downloadFile.mockResolvedValue(
-      JSON.stringify({
-        version: 6,
-        exported_at: '2026-04-15T11:00:00Z',
-        trades: [tradeRecord({ id: 'r1', notes: 'remote-only' })],
-      }),
+      JSON.stringify(syncFile({ trades: [tradeRecord({ id: 'r1', notes: 'remote-only' })] })),
     )
     uploadFile.mockRejectedValueOnce(new Error('network down'))
 
@@ -472,13 +629,10 @@ describe('syncNow', () => {
 
   it('does not silently drop a locally-created row when its first push fails', async () => {
     // Scenario: user creates l1 locally, syncs (no remote yet) → push
-    // fails. With the OLD post-push save, lastSyncedIds stayed empty
-    // and l1 survived. With a naive pre-push save of the merged set,
-    // l1 would have been added to lastSyncedIds, and a deletion-then-
-    // resync would have resurrected it from… nothing. With the
-    // conservative pre-push save, l1 is NOT added to lastSyncedIds
-    // until the push actually succeeds, so it cannot be silently
-    // tombstoned by a future merge.
+    // fails. A pre-push save of the merged set would add l1 to
+    // lastSyncedIds, and the next merge would then read it as deleted on
+    // Drive. The conservative pre-push save leaves l1 out of lastSyncedIds
+    // until the push actually succeeds, so it can't be tombstoned.
     await db.trades.add(tradeRecord({ id: 'l1', notes: 'first ever' }))
     findFile.mockResolvedValue(null)
     uploadFile.mockRejectedValueOnce(new Error('network down'))

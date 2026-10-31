@@ -30,43 +30,51 @@ class LogslateDB extends Dexie {
 
     // The version number only has to stay at or above the one the device's
     // IndexedDB already holds; Dexie refuses to open a database declared
-    // lower than it is stored.
+    // lower than it is stored. Dexie adds and drops indexes itself when the
+    // declared ones change.
     //
-    // Index policy: only fields that appear in `db.<table>.where(...)` /
-    // `orderBy(...)` get an index. Standalone indexes covered by an
-    // existing compound (e.g. `date` when `[account_id+date]` is here)
-    // are redundant — Dexie can satisfy the unscoped query through the
-    // compound's first key.
+    // Index policy: only fields that appear in `db.<table>.where(...)` get an
+    // index. A field that leads a compound index needs none of its own —
+    // Dexie answers `where('account_id')` through `[account_id+date]`.
     //
     // Indexes:
     //   - `&id` is the primary key (mandatory).
-    //   - `[account_id+date]` — calendar/date-range queries scoped to one account.
+    //   - `[account_id+date]` — trade and adjustment date-range queries.
     //   - `[account_id+model_id]` — powers `countTradesUsingModel`.
     //   - `[account_id+symbol_id]` — powers `countTradesUsingSymbol`.
-    //   - `account_id` — per-account lists, plus the `deleteAccount` and
-    //     `countAccountData` cascade scans.
+    //   - `account_id` — per-account lists and the `deleteAccount` /
+    //     `countAccountData` cascade scans on tables without an
+    //     `[account_id+…]` compound.
     //   - `*screenshots` on `days` is multi-entry so the drainer locates
     //     day rows by ref.
     //   - `news.date` — Day page looks up news by date.
-    //   - `progress_rules.sort` — `sortBy('sort')` in the rule list.
-    //   - `updated_at` everywhere is kept for sync ergonomics — sync
-    //     currently calls `.toArray()` but indexed updated_at lets us
-    //     move to incremental pulls without another schema bump.
-    this.version(21).stores({
-      trades:
-        '&id, [account_id+date], [account_id+model_id], [account_id+symbol_id], account_id, updated_at',
-      adjustments: '&id, [account_id+date], account_id, updated_at',
-      accounts: '&id, updated_at',
+    this.version(22).stores({
+      trades: '&id, [account_id+date], [account_id+model_id], [account_id+symbol_id]',
+      adjustments: '&id, [account_id+date]',
+      accounts: '&id',
       pending_uploads: '&id, account_id',
-      days: '&id, [account_id+date], account_id, *screenshots, updated_at',
-      models: '&id, account_id, updated_at',
-      symbols: '&id, account_id, updated_at',
-      progress_rules: '&id, account_id, sort, updated_at',
-      progress_checks: '&id, [account_id+date], account_id, updated_at',
-      news: '&id, date, updated_at',
+      days: '&id, account_id, *screenshots',
+      models: '&id, account_id',
+      symbols: '&id, account_id',
+      progress_rules: '&id, account_id',
+      progress_checks: '&id, account_id',
+      news: '&id, date',
+    })
+    // Runs only when the database is created from nothing: first install, or
+    // IndexedDB wiped while localStorage survived. Sync reads this to tell a
+    // wipe apart from the user deleting everything (see `syncNow`).
+    this.on('populate', () => {
+      try {
+        localStorage.setItem(FRESH_DB_KEY, '1')
+      } catch {
+        // Without storage there's no sync ledger to misread either.
+      }
     })
   }
 }
+
+/** Set when the database was just created; cleared by the next sync. */
+export const FRESH_DB_KEY = 'logslate:sync:fresh_db'
 
 export const db = new LogslateDB()
 

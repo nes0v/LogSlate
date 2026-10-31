@@ -1,5 +1,6 @@
 import { addDayScreenshot, addPendingDayScreenshot, removeDayScreenshot } from '@/db/queries'
 import { dayScreenshotSuffix, discardScreenshotRef } from '@/lib/drive-images'
+import { errorMessage } from '@/lib/utils'
 import { ScreenshotThumb } from '@/components/ScreenshotThumb'
 import { ScreenshotUploadButton } from '@/components/ScreenshotUploadButton'
 
@@ -19,9 +20,16 @@ export function DayScreenshotSection({
   date,
   screenshots,
 }: DayScreenshotSectionProps) {
+  // Off the day first, then the file: if the first step fails, the
+  // screenshot is still there and its file still exists.
   async function handleRemove(ref: string) {
+    try {
+      await removeDayScreenshot(accountId, date, ref)
+    } catch (e) {
+      alert(`Failed to remove screenshot: ${errorMessage(e)}`)
+      return
+    }
     await discardScreenshotRef(ref)
-    await removeDayScreenshot(accountId, date, ref)
   }
 
   return (

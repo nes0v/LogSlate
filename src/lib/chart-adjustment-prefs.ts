@@ -33,7 +33,7 @@ function subscribe(cb: () => void): () => void {
   return () => listeners.delete(cb)
 }
 
-export function getChartAdjustmentPrefs(): ChartAdjustmentPrefs {
+function getChartAdjustmentPrefs(): ChartAdjustmentPrefs {
   return current
 }
 

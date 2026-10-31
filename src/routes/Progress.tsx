@@ -28,12 +28,13 @@ import { useActiveAccountId } from '@/lib/active-account'
 import { DatePicker } from '@/components/form/DatePicker'
 import { RuleCheck } from '@/components/form/RuleCheck'
 import { useConfirm } from '@/components/ConfirmDialog'
-import { BTN_ACCENT, BTN_ADD_LINK } from '@/components/form/buttonClass'
+import { BTN_ACCENT, BTN_ADD_LINK, SECTION_TOGGLE } from '@/components/form/buttonClass'
 import { useAccountQuery } from '@/lib/use-account-query'
 import { useSortableReorder } from '@/lib/use-sortable-reorder'
 import {
   createProgressLine,
   createProgressRule,
+  deleteBlankProgressRule,
   deleteProgressRule,
   reorderProgressRules,
   restoreProgressRule,
@@ -142,7 +143,7 @@ export function ProgressRoute() {
     const keys = await db.trades
       .where('[account_id+date]')
       .between([accountId, ''], [accountId, '￿'], true, true)
-      .keys()
+      .uniqueKeys()
     // Compound `[account_id+date]` keys come back as [account, date] pairs.
     for (const k of keys) set.add((k as unknown as [string, string])[1])
     const dayRows = await db.days.where('account_id').equals(accountId).toArray()
@@ -165,18 +166,17 @@ export function ProgressRoute() {
     [rules, date],
   )
   const checklistItems = useMemo(() => checklistFor(rules ?? [], date), [rules, date])
-  const checkMap = useMemo(() => {
-    const m = new Map<string, boolean>()
-    for (const c of checksToday ?? []) m.set(c.rule_id, c.checked)
-    return m
-  }, [checksToday])
+  const checkedIds = useMemo(
+    () => new Set(checksToday.map(c => c.rule_id)),
+    [checksToday],
+  )
 
   const adherenceRatio = useMemo(() => {
     if (rulesScoredOnDate.length === 0) return null
     let n = 0
-    for (const r of rulesScoredOnDate) if (checkMap.get(r.id)) n++
+    for (const r of rulesScoredOnDate) if (checkedIds.has(r.id)) n++
     return n / rulesScoredOnDate.length
-  }, [rulesScoredOnDate, checkMap])
+  }, [rulesScoredOnDate, checkedIds])
   // Null means "no score to show" — rendered as an em dash. A day that hasn't
   // happened has no adherence yet: scoring it 0% would read as a session
   // already failed, which is exactly backwards when the user is sitting on
@@ -187,7 +187,7 @@ export function ProgressRoute() {
   // 30-day average — which days count, and which are simply not the app's
   // business, is decided in `progress-heat.ts` where it can be tested.
   const heat = useMemo(
-    () => buildHeat({ date, today, rules: rules ?? [], checks: recent ?? [] }),
+    () => buildHeat({ date, today, rules: rules ?? [], checks: recent }),
     [date, today, rules, recent],
   )
   // Over ALL of the history, not just the strip — see `progress-heat.ts`.
@@ -212,8 +212,19 @@ export function ProgressRoute() {
   // Monday and the rule you name starts Monday, visible in the checklist
   // beside the panel. Editing is gated to today + the next session
   // (`canEditRules`), so `date` here is never an arbitrary date.
+  // The rule to focus. `n` bumps on every request, so asking again for the
+  // same row focuses it again.
+  const [focusRule, setFocusRule] = useState<{ id: string; n: number } | null>(null)
+  const adding = useRef(false)
   async function addRule() {
-    await createProgressRule(accountId)
+    if (adding.current) return
+    adding.current = true
+    try {
+      const rule = await createProgressRule(accountId)
+      setFocusRule(f => ({ id: rule.id, n: (f?.n ?? 0) + 1 }))
+    } finally {
+      adding.current = false
+    }
   }
 
   async function addLine() {
@@ -246,11 +257,12 @@ export function ProgressRoute() {
   async function deleteRule(id: string) {
     const snapshot = (rules ?? []).find(r => r.id === id)
     if (!snapshot) return
-    // Nothing to ask about for a line or a rule never named. Either one
-    // that ran on a past day is still archived, not lost.
+    // Nothing to ask about for a line, or a rule no past day has scored:
+    // the first is archived like any rule that ran, the second only loses
+    // what was done with it on the day on screen.
     if (
       snapshot.kind !== 'line' &&
-      snapshot.text.trim() !== '' &&
+      ruleHasHistoryBefore(snapshot, date) &&
       !(await confirm({
         title: 'Delete this rule?',
         description:
@@ -291,6 +303,19 @@ export function ProgressRoute() {
   const isLandingDay = date === tradingToday
   const nextSessionLabel = format(dateKeyToDate(nextSessionKey), 'EEEE')
   const canEditRules = canEditRulesOn(date, today)
+
+  // A rule never named is only worth keeping while it's the one being typed
+  // into. Any other — a double click's extra row, a blank the focus never
+  // reached — goes. Blur covers the focused row (see RuleRow).
+  useEffect(() => {
+    if (!canEditRules) return
+    for (const r of rules ?? []) {
+      if (r.kind !== 'line' && r.text === '' && r.periods.length === 0 && r.id !== focusRule?.id) {
+        void deleteBlankProgressRule(r.id)
+      }
+    }
+  }, [rules, focusRule, canEditRules])
+
   // "Today's X" is a lie on every other date — a past day being reviewed, or
   // the next session being planned. The date picker in the header already
   // names which day, so the generic label is enough.
@@ -317,6 +342,7 @@ export function ProgressRoute() {
           <button
             type="button"
             onClick={() => shiftDate(-1)}
+            aria-label="Previous day"
             className="p-1.5 rounded-(--radius) text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)"
           >
             <ChevronLeft className="size-4" />
@@ -334,6 +360,7 @@ export function ProgressRoute() {
             type="button"
             onClick={() => shiftDate(1)}
             disabled={date >= nextSessionKey}
+            aria-label="Next day"
             title={
               date >= nextSessionKey
                 ? `${nextSessionLabel} is the furthest ahead you can go`
@@ -367,7 +394,7 @@ export function ProgressRoute() {
                 : 'No rules on this day'
               : isFuture
                 ? `${rulesScoredOnDate.length} rule${rulesScoredOnDate.length === 1 ? '' : 's'} planned`
-                : `${rulesScoredOnDate.filter(r => checkMap.get(r.id)).length} / ${rulesScoredOnDate.length} rules`
+                : `${rulesScoredOnDate.filter(r => checkedIds.has(r.id)).length} / ${rulesScoredOnDate.length} rules`
           }
         />
         <ScoreTile
@@ -456,12 +483,9 @@ export function ProgressRoute() {
               ) : (
                 <RuleCheck
                   key={r.id}
-                  checked={checkMap.get(r.id) ?? false}
+                  checked={checkedIds.has(r.id)}
                   onChange={() => toggleCheck(r)}
-                  // Clearing a name sends the rule back to waiting, so a
-                  // blank one here is only old data. Same wording the
-                  // archived drawer uses.
-                  label={r.text || '(unnamed)'}
+                  label={r.text}
                   // Every rule listed here counted on this day, archived
                   // since or not, so it reads like the rest; the note only
                   // says when it stopped.
@@ -480,6 +504,7 @@ export function ProgressRoute() {
           archived={(rules ?? []).filter(r => r.hidden === true && r.kind !== 'line')}
           onAdd={addRule}
           onAddLine={addLine}
+          focusRule={focusRule}
           onRename={renameRule}
           onReorder={ids => reorderProgressRules(accountId, ids)}
           onDelete={deleteRule}
@@ -529,6 +554,7 @@ function RuleManager({
   archived,
   onAdd,
   onAddLine,
+  focusRule,
   onRename,
   onReorder,
   onDelete,
@@ -543,6 +569,7 @@ function RuleManager({
   archived: ProgressRule[]
   onAdd: () => void
   onAddLine: () => void
+  focusRule: { id: string; n: number } | null
   onRename: (rule: ProgressRule, text: string) => Promise<boolean>
   onReorder: (orderedIds: string[]) => Promise<void>
   onDelete: (id: string) => void
@@ -612,6 +639,7 @@ function RuleManager({
             onDelete={onDelete}
             date={date}
             disabled={disabled}
+            focusToken={focusRule?.id === r.id ? focusRule.n : 0}
           />
         ))}
         {rules.length === 0 && (
@@ -652,8 +680,7 @@ function RuleManager({
           <button
             type="button"
             onClick={() => setShowArchived(v => !v)}
-            // Same look as the Overview's "Trades (19)" section toggle.
-            className="text-sm font-medium cursor-pointer text-(--color-text) flex items-center gap-1"
+            className={SECTION_TOGGLE}
           >
             <ChevronRight className={cn('size-4', showArchived && 'rotate-90')} />
             Archived rules{' '}
@@ -667,7 +694,7 @@ function RuleManager({
                   className="flex items-start gap-2 px-1 py-1 rounded-sm text-sm"
                 >
                   <span className="flex-1 text-(--color-text-dim) italic leading-tight">
-                    {r.text || '(unnamed)'}
+                    {r.text}
                   </span>
                   <button
                     type="button"
@@ -774,6 +801,7 @@ function RuleRow({
   onDelete,
   date,
   disabled,
+  focusToken,
 }: {
   rule: ProgressRule
   sortable: SortableRowProps
@@ -783,6 +811,8 @@ function RuleRow({
   onDelete: (id: string) => void
   date: string
   disabled: boolean
+  /** Non-zero, and changed, when the row should take the focus. */
+  focusToken: number
 }) {
   // Local `text` state shadows `rule.text` so typing feels immediate
   // without re-rendering the whole list per keystroke. We re-sync from
@@ -796,6 +826,9 @@ function RuleRow({
     if (document.activeElement === inputRef.current) return
     setText(rule.text)
   }, [rule.text])
+  useEffect(() => {
+    if (focusToken > 0) inputRef.current?.focus()
+  }, [focusToken])
   // Named on the next session's page, a rule starts that day: it's in this
   // list but not yet in the checklist beside it, so the row says when.
   const startsOn = ruleActiveOn(rule, date) ? null : openPeriodStart(rule)
@@ -823,29 +856,33 @@ function RuleRow({
         disabled={disabled}
         onBlur={async () => {
           const v = text.trim()
+          // Left blank and never scored: nothing worth keeping, so the row
+          // goes rather than sitting in the list as an empty input forever.
+          if (v === '' && !ruleHasHistoryBefore(rule, date)) {
+            onDelete(rule.id)
+            return
+          }
           // Nothing to save, but drop stray spaces so a blank row shows its
           // placeholder again.
           if (v === rule.text) {
             setText(rule.text)
             return
           }
-          // Blanking a rule that has history would replace it with an unnamed
-          // one, which is never what clearing the field meant.
+          // Refused for a rule with history (see `setProgressRuleText`).
           if (v === '' && ruleHasHistoryBefore(rule, date)) {
             setText(rule.text)
             return
           }
           if (!(await onRename(rule, v))) setText(rule.text)
         }}
-        // Enter is how a one-line field is finished, and it was doing
-        // nothing: the text sat in local state, on screen and unsaved, until
-        // something else happened to take the focus away. Escape abandons
-        // the edit the same way.
+        // Enter is how a one-line field is finished: it saves by blurring,
+        // rather than leaving the text unsaved until something else takes
+        // the focus away. Escape abandons the edit the same way.
         onKeyDown={e => {
           if (e.key === 'Enter') {
             // Blur once this keypress is done: saving a rule with history
             // opens a confirm, whose window-level Enter handler is in place
-            // before this same keydown reaches the window — and accepted it.
+            // before this same keydown reaches the window — and would accept it.
             requestAnimationFrame(() => inputRef.current?.blur())
           } else if (e.key === 'Escape') {
             setText(rule.text)

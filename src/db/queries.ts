@@ -7,6 +7,7 @@ import type {
   Day,
   EquityAdjustment,
   Model,
+  ModelDraft,
   PendingUpload,
   ProgressRule,
   TradeDraft,
@@ -15,13 +16,14 @@ import type {
   TradingSymbolDraft,
 } from '@/db/types'
 import { getActiveAccountId } from '@/lib/active-account'
-import { netPnlByDate } from '@/lib/day-pnl'
 import { clearSymbolFilterCache, writeSymbolFilterCache } from '@/lib/symbol-filter-cache'
 import { clearLastActivityDate } from '@/lib/last-activity-cache'
+import { clearDefaultEquityView } from '@/lib/equity-view-preference'
+import { clearDriveFolderCaches, discardScreenshotRef } from '@/lib/drive-images'
 import {
   closePeriod,
   openPeriod,
-  openPeriodStart,
+  restartFrom,
   ruleActiveOn,
   ruleHasHistoryBefore,
 } from '@/lib/progress-periods'
@@ -31,8 +33,13 @@ function now(): string {
   return new Date().toISOString()
 }
 
-function newId(): string {
+export function newId(): string {
   return crypto.randomUUID()
+}
+
+/** The `sort` that puts a new row below every existing one. */
+function nextSort(rows: Array<{ sort: number }>): number {
+  return rows.reduce((max, r) => Math.max(max, r.sort), 0) + 1
 }
 
 // logslate records no weekend-dated activity: the futures the user trades are
@@ -150,18 +157,49 @@ export async function getLastTradeDate(accountId: string): Promise<string | null
 // ---------- models ----------
 
 // Canonical model list for an account — ordered by the user's manual
-// `sort` if set (drag-and-drop in the Models sidebar), with rows that
-// have no sort value falling through to alphabetical at the bottom.
+// `sort` (drag-and-drop in the Models sidebar), alphabetical on a tie.
 // The sidebar / filter dropdowns / trade-form pickers all read this so
 // they stay in sync with the user's chosen order.
 export async function listModels(accountId: string): Promise<Model[]> {
   const rows = await db.models.where('account_id').equals(accountId).toArray()
   return rows.sort((a, b) => {
-    const sa = a.sort ?? Number.MAX_SAFE_INTEGER
-    const sb = b.sort ?? Number.MAX_SAFE_INTEGER
-    if (sa !== sb) return sa - sb
+    if (a.sort !== b.sort) return a.sort - b.sort
     return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
   })
+}
+
+/** Add a model to the bottom of the account's list. */
+export async function createModel(
+  accountId: string,
+  fields: Pick<Model, 'name' | 'groups'>,
+): Promise<Model> {
+  return db.transaction('rw', db.models, async () => {
+    const ts = now()
+    const rec: Model = {
+      id: newId(),
+      account_id: accountId,
+      description: '',
+      sessions: [],
+      draft: false,
+      ...fields,
+      sort: nextSort(await db.models.where('account_id').equals(accountId).toArray()),
+      created_at: ts,
+      updated_at: ts,
+    }
+    await db.models.add(rec)
+    return rec
+  })
+}
+
+export async function updateModel(
+  id: string,
+  patch: Partial<ModelDraft>,
+): Promise<void> {
+  await db.models.update(id, { ...patch, updated_at: now() })
+}
+
+export async function deleteModel(id: string): Promise<void> {
+  await db.models.delete(id)
 }
 
 // Persists the user's drag-and-drop order. Renumbers from 1..N in a
@@ -193,15 +231,12 @@ export async function countTradesUsingModel(
 // ---------- symbols ----------
 
 // Canonical symbol list for an account — ordered by the user's manual `sort`
-// (drag-and-drop in the Symbols sidebar), with rows that have no sort value
-// falling through to alphabetical at the bottom. The sidebar, trade-form
-// picker, and filter dropdowns all read this so they stay in sync.
+// (drag-and-drop in the Symbols sidebar), alphabetical on a tie. The sidebar,
+// trade-form picker, and filter dropdowns all read this so they stay in sync.
 export async function listSymbols(accountId: string): Promise<TradingSymbol[]> {
   const rows = await db.symbols.where('account_id').equals(accountId).toArray()
   return rows.sort((a, b) => {
-    const sa = a.sort ?? Number.MAX_SAFE_INTEGER
-    const sb = b.sort ?? Number.MAX_SAFE_INTEGER
-    if (sa !== sb) return sa - sb
+    if (a.sort !== b.sort) return a.sort - b.sort
     return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
   })
 }
@@ -210,16 +245,20 @@ export async function createSymbol(
   draft: TradingSymbolDraft,
   accountId?: string,
 ): Promise<TradingSymbol> {
-  const ts = now()
-  const rec: TradingSymbol = {
-    ...draft,
-    id: newId(),
-    account_id: accountId ?? getActiveAccountId(),
-    created_at: ts,
-    updated_at: ts,
-  }
-  await db.symbols.add(rec)
-  return rec
+  const account = accountId ?? getActiveAccountId()
+  return db.transaction('rw', db.symbols, async () => {
+    const ts = now()
+    const rec: TradingSymbol = {
+      ...draft,
+      id: newId(),
+      account_id: account,
+      sort: nextSort(await db.symbols.where('account_id').equals(account).toArray()),
+      created_at: ts,
+      updated_at: ts,
+    }
+    await db.symbols.add(rec)
+    return rec
+  })
 }
 
 export async function updateSymbol(
@@ -403,21 +442,21 @@ export async function cloneAccount(
       // give the new account rules that claim to have been live for months,
       // counting days before it existed against its adherence denominator.
       // Cloned rules and lines run from today instead (Monday at the
-      // weekend), as if just named there. Hidden rules are skipped: a
-      // soft-deleted rule exists only to keep old checks honest, and a fresh
-      // account has none.
+      // weekend), as if just named there — or from the later session one
+      // was planned for. Hidden rules are skipped: a soft-deleted rule exists
+      // only to keep old checks honest, and a fresh account has none.
+      const today = nyToday()
+      // A blank rule isn't copied: Progress drops unnamed rules anyway.
       const clonedRules: ProgressRule[] = rules
-        .filter(r => r.hidden !== true)
-        .map(r => {
-          // Still blank, it waits to be named like a fresh rule.
-          const starts = r.kind === 'line' || r.text.trim() !== ''
-          const periods = starts ? [{ from: nextWeekdayKey(nyToday()), until: null }] : []
-          const copy: ProgressRule = { ...r, ...stamp, id: newId(), periods }
-          // Drop the soft-delete flag outright rather than carrying `false` —
-          // the rest of the app treats "absent" and "not hidden" alike.
-          delete copy.hidden
-          return copy
-        })
+        .filter(r => r.hidden !== true && (r.kind === 'line' || r.text.trim() !== ''))
+        .map(r =>
+          unhidden({
+            ...r,
+            ...stamp,
+            id: newId(),
+            periods: [{ from: restartFrom(r, today), until: null }],
+          }),
+        )
 
       await db.accounts.add(rec)
       if (clonedModels.length > 0) await db.models.bulkAdd(clonedModels)
@@ -434,91 +473,10 @@ export async function cloneAccount(
   // transaction threw we never get here to cache an account that doesn't
   // exist. Nothing to seed for a source with no symbols — an empty cache reads
   // the same as none, so writing one is just a stray key.
-  if (seededSymbols.length > 0) writeSymbolFilterCache(rec.id, seededSymbols)
+  if (seededSymbols.length > 0) {
+    writeSymbolFilterCache(rec.id, seededSymbols.map(({ id, name, draft }) => ({ id, name, draft })))
+  }
   return rec
-}
-
-export interface AccountResetContext {
-  startingBalance: number
-  netByDate: Map<string, number>
-  adjustments: EquityAdjustment[]
-}
-
-/**
- * Everything the reset dialog needs to price a reset, fetched once when it
- * opens. It hands back the raw pieces rather than a single equity number
- * because the dialog's date is editable: moving it re-measures the step
- * against equity as it stood on THAT day, and re-querying per keystroke would
- * both flicker and race.
- */
-export async function getAccountResetContext(
-  accountId: string,
-): Promise<AccountResetContext> {
-  const [account, trades, adjustments, overrides] = await Promise.all([
-    db.accounts.get(accountId),
-    listAllTrades(accountId),
-    listAdjustments(accountId),
-    listDayPnlOverrides(accountId),
-  ])
-  return {
-    startingBalance: account?.starting_balance ?? 0,
-    netByDate: netPnlByDate(trades, overrides),
-    adjustments,
-  }
-}
-
-/**
- * Puts an account back to `newBalance`.
- *
- * Two paths, and which one runs depends on whether there is any history to stay
- * continuous with:
- *
- *  - Nothing logged yet (no trades, no adjustments) — rewrite
- *    `starting_balance` and leave no trace. There is no curve to keep
- *    continuous, so a ledger row would be inventing an event. This is also the
- *    only way to correct a balance fat-fingered at creation, since the field is
- *    otherwise fixed.
- *  - Anything logged — insert a `reset` row dated today. Equity is a continuous
- *    function of time and the account really did gain capital from outside, so
- *    the step belongs on the curve where it happened. `starting_balance` is
- *    left alone: it is where the account BEGAN, which a later reset doesn't
- *    change.
- *
- * The row stores the target, not the step — see `resolveResets`.
- */
-export async function resetAccountBalance(
-  accountId: string,
-  newBalance: number,
-  date: string,
-): Promise<void> {
-  if (!Number.isFinite(newBalance) || newBalance < 0) {
-    throw new Error('Balance must be zero or a positive number.')
-  }
-  // Day-level PNL overrides count as history too. Without them in this check,
-  // an account whose only activity is an override day takes the rewrite path —
-  // and since the override still applies on top, equity lands at
-  // `newBalance + override` instead of on the target the user asked for.
-  const [trades, adjustments, overrides] = await Promise.all([
-    db.trades.where('account_id').equals(accountId).count(),
-    db.adjustments.where('account_id').equals(accountId).count(),
-    listDayPnlOverrides(accountId),
-  ])
-  if (trades === 0 && adjustments === 0 && overrides.size === 0) {
-    await db.accounts.update(accountId, {
-      starting_balance: newBalance,
-      updated_at: now(),
-    })
-    return
-  }
-  // `createAdjustment` rejects a weekend date for the same reason every other
-  // money row does: the equity chart's daily timeframe omits weekend buckets,
-  // so a Saturday reset would vanish from the D curve while still counting in
-  // W/M/Q/Y. The dialog's picker disables weekends, so this only bites a
-  // hand-crafted call.
-  await createAdjustment(
-    { date, kind: 'reset', amount: newBalance, note: '' },
-    accountId,
-  )
 }
 
 // Cascading delete: the account's trades, adjustments, day screenshots and
@@ -528,6 +486,7 @@ export async function resetAccountBalance(
 export async function deleteAccount(id: string): Promise<void> {
   const total = await db.accounts.count()
   if (total <= 1) throw new Error('At least one account must remain.')
+  let screenshotRefs: string[] = []
   await db.transaction(
     'rw',
     [
@@ -544,6 +503,8 @@ export async function deleteAccount(id: string): Promise<void> {
     async () => {
       await db.trades.where('account_id').equals(id).delete()
       await db.adjustments.where('account_id').equals(id).delete()
+      const days = await db.days.where('account_id').equals(id).toArray()
+      screenshotRefs = days.flatMap(d => d.screenshots)
       await db.days.where('account_id').equals(id).delete()
       await db.pending_uploads.where('account_id').equals(id).delete()
       await db.models.where('account_id').equals(id).delete()
@@ -553,17 +514,15 @@ export async function deleteAccount(id: string): Promise<void> {
       await db.accounts.delete(id)
     },
   )
-  // Clear per-account preferences and Drive folder caches so a later account
-  // that happens to reuse this id doesn't inherit the old state.
-  try {
-    localStorage.removeItem(`logslate:equity_view_default:${id}`)
-    localStorage.removeItem(`logslate:drive:screenshots_folder:${id}`)
-    localStorage.removeItem(`logslate:drive:month_folders:${id}`)
-  } catch {
-    // localStorage unavailable — keys will linger but are harmless.
-  }
+  // Clear per-account preferences and caches so a later account that happens
+  // to reuse this id doesn't inherit the old state.
+  clearDefaultEquityView(id)
+  clearDriveFolderCaches(id)
   clearSymbolFilterCache(id)
   clearLastActivityDate(id)
+  // The day rows are gone, so their Drive files would be unreachable. Not
+  // awaited: deletes that can't run now (signed out, offline) are queued.
+  void Promise.all(screenshotRefs.map(discardScreenshotRef))
 }
 
 // Counts the data an account owns — used by the UI confirm dialog before a
@@ -711,11 +670,10 @@ export async function getDayPnlOverride(
   return day?.pnl_override ?? null
 }
 
-/** Both day-level override maps from ONE scan of the days table. The net and
- *  fees maps used to be two exported queries run side by side, which meant the
- *  same `where('account_id')` scan — and a full structured clone of every day
- *  row, notes included — twice, both on the critical path of the default
- *  date-range window. Overrides are rare (one per tilt/revenge day) so
+/** Both day-level override maps from ONE scan of the days table: two queries
+ *  would mean the same `where('account_id')` scan — and a full structured
+ *  clone of every day row, notes included — twice, both on the critical path
+ *  of the default date-range window. Overrides are rare (one per tilt/revenge day) so
  *  filtering in memory still beats a dedicated index. */
 export async function listDayOverrides(
   accountId: string,
@@ -749,9 +707,7 @@ export async function setDayPnlOverride(
   const ts = now()
   await db.transaction('rw', db.days, db.trades, async () => {
     // Mutual exclusion (the override side): a day with logged trades can't
-    // also carry a net-PNL override — the override would hide them. Clearing
-    // (value == null) is always allowed so a legacy both-day OR a legacy
-    // weekend row can still be recovered.
+    // also carry a net-PNL override — the override would hide them.
     if (value != null) {
       assertWeekday(date)
       const tradeCount = await db.trades
@@ -779,13 +735,14 @@ export async function setDayPnlOverride(
       })
       return
     }
-    const next: Day = {
-      ...existing,
-      pnl_override: value ?? undefined,
+    const next: Day = { ...existing, updated_at: ts }
+    if (value == null) {
       // Fees are informational about the net override; clearing the net
       // orphans them, so drop fees_override whenever the override is cleared.
-      fees_override: value == null ? undefined : existing.fees_override,
-      updated_at: ts,
+      delete next.pnl_override
+      delete next.fees_override
+    } else {
+      next.pnl_override = value
     }
     if (!dayHasContent(next)) {
       await db.days.delete(id)
@@ -819,11 +776,9 @@ export async function setDayFeesOverride(
     const existing = await db.days.get(id)
     // Fees are meaningless without a net override to attribute them to.
     if (!existing || typeof existing.pnl_override !== 'number') return
-    const next: Day = {
-      ...existing,
-      fees_override: value == null ? undefined : Math.abs(value),
-      updated_at: ts,
-    }
+    const next: Day = { ...existing, updated_at: ts }
+    if (value == null) delete next.fees_override
+    else next.fees_override = Math.abs(value)
     await db.days.put(next)
   })
 }
@@ -854,11 +809,9 @@ export async function setDayNote(
       })
       return
     }
-    const next: Day = {
-      ...existing,
-      note: trimmed === '' ? undefined : trimmed,
-      updated_at: ts,
-    }
+    const next: Day = { ...existing, updated_at: ts }
+    if (trimmed === '') delete next.note
+    else next.note = trimmed
     if (!dayHasContent(next)) {
       await db.days.delete(id)
       return
@@ -872,8 +825,7 @@ export async function setDayNote(
 // A tick only means anything on a day the rule was actually in force: the
 // checklist shows the rules active on the day, and the heat strip counts a
 // day's ticks against that same set. A row on any other day is invisible
-// everywhere — residue, and the same write amplification as the `checked:
-// false` rows that used to fill this table.
+// everywhere — residue that only grows the table.
 //
 // They appear whenever a period shrinks underneath a tick already made.
 // Ticking a rule and then retiring it the same day is the ordinary way in:
@@ -892,7 +844,7 @@ async function pruneOrphanChecks(rule: ProgressRule): Promise<void> {
 /** Add an empty rule to the end of the list. */
 export async function createProgressRule(accountId: string): Promise<ProgressRule> {
   // No periods: it starts when it's named (see `setProgressRuleText`), so a
-  // blank row never lands in a checklist as "(unnamed)" and scores.
+  // blank row counts toward no day.
   return appendProgressRule(accountId, {})
 }
 
@@ -911,6 +863,14 @@ export async function createProgressLine(
   })
 }
 
+/** The soft-delete flag is absent, never `false`: the rest of the app treats
+ *  "absent" and "not hidden" alike. */
+function unhidden(rule: ProgressRule): ProgressRule {
+  const copy = { ...rule }
+  delete copy.hidden
+  return copy
+}
+
 // The sort value is read inside the transaction: two quick taps on "Add rule"
 // both computed it from the same on-screen snapshot and landed on the same
 // number.
@@ -927,7 +887,7 @@ async function appendProgressRule(
       text: '',
       periods: [],
       ...fields,
-      sort: existing.reduce((m, r) => Math.max(m, r.sort), 0) + 1,
+      sort: nextSort(existing),
       created_at: ts,
       updated_at: ts,
     }
@@ -946,21 +906,18 @@ export async function restoreProgressRule(ruleId: string, date: string): Promise
   await db.transaction('rw', db.progress_rules, async () => {
     const rule = await db.progress_rules.get(ruleId)
     if (!rule) return
-    const next: ProgressRule = { ...rule, periods: openPeriod(rule, date), updated_at: now() }
-    // Drop the flag rather than store `false`, as `cloneAccount` does.
-    delete next.hidden
-    await db.progress_rules.put(next)
+    await db.progress_rules.put(
+      unhidden({ ...rule, periods: openPeriod(rule, date), updated_at: now() }),
+    )
   })
 }
 
 /**
  * Flip a rule's tick for a day, deciding from what is stored rather than from
- * what was on screen. A double tap used to read "unticked" twice — the live
- * query hadn't come back between the two — and wrote the tick twice, leaving
- * it on when the user had just turned it off.
+ * what was on screen: on a double tap the live query hasn't come back between
+ * the two, and reading the screen would write the tick twice.
  *
- * Unticking deletes the row outright: every read path treats a missing row as
- * unticked, so storing `checked: false` is pure write amplification.
+ * Unticking deletes the row outright: a stored row is a tick.
  */
 export async function toggleProgressCheck(
   accountId: string,
@@ -969,8 +926,7 @@ export async function toggleProgressCheck(
 ): Promise<boolean> {
   const id = `${accountId}:${date}:${ruleId}`
   return db.transaction('rw', db.progress_checks, async () => {
-    const existing = await db.progress_checks.get(id)
-    if (existing?.checked) {
+    if (await db.progress_checks.get(id)) {
       await db.progress_checks.delete(id)
       return false
     }
@@ -980,24 +936,34 @@ export async function toggleProgressCheck(
       account_id: accountId,
       date,
       rule_id: ruleId,
-      checked: true,
-      created_at: existing?.created_at ?? ts,
+      created_at: ts,
       updated_at: ts,
     })
     return true
   })
 }
 
-export type ProgressRuleDeletion = 'deleted' | 'archived' | 'missing'
+type ProgressRuleDeletion = 'deleted' | 'archived' | 'missing'
+
+/** Delete a rule only if it's still blank and never ran — re-checked inside
+ *  the transaction, so a name saved a moment earlier wins. */
+export async function deleteBlankProgressRule(ruleId: string): Promise<void> {
+  await db.transaction('rw', db.progress_rules, async () => {
+    const rule = await db.progress_rules.get(ruleId)
+    if (rule && rule.text === '' && rule.periods.length === 0 && rule.kind !== 'line') {
+      await db.progress_rules.delete(ruleId)
+    }
+  })
+}
 
 /**
  * Remove a rule from `date` on.
  *
- A rule no past day depends on is deleted outright. One that was in force on
+ * A rule no past day depends on is deleted outright. One that was in force on
  * any day behind us is hidden instead, keeping its periods and its ticks so
  * those days' adherence doesn't drift. Ticked or not makes no difference: an
- * unticked day still counted the rule in its total, and deciding by ticks
- * used to delete such a rule and raise those days' scores after the fact.
+ * unticked day still counted the rule in its total, so deleting such a rule
+ * would raise those days' scores after the fact.
  *
  * All of it in one transaction: a write landing midway can't leave check rows
  * orphaned from a rule that is already gone.
@@ -1068,7 +1034,7 @@ export async function reorderProgressRules(
   })
 }
 
-export type ProgressRuleTextChange = 'renamed' | 'replaced' | 'missing'
+type ProgressRuleTextChange = 'renamed' | 'replaced' | 'kept' | 'missing'
 
 /**
  * Change a rule's words as of `date`, the day being viewed.
@@ -1090,14 +1056,14 @@ export async function setProgressRuleText(
   return db.transaction('rw', db.progress_rules, db.progress_checks, async () => {
     const rule = await db.progress_rules.get(ruleId)
     if (!rule) return 'missing'
+    const blank = text.trim() === ''
     if (!ruleHasHistoryBefore(rule, date)) {
       // A new rule starts the first time it's named, from the day on screen,
       // and goes back to waiting if its name is cleared before any day
-      // scored it — a blank row never lands in a checklist as "(unnamed)".
-      const blank = text.trim() === ''
+      // scored it, so a blank row counts toward no day.
       const next: ProgressRule = {
         ...rule,
-        text,
+        text: blank ? '' : text,
         periods: blank ? closePeriod(rule, date) : openPeriod(rule, date),
         updated_at: now(),
       }
@@ -1105,12 +1071,12 @@ export async function setProgressRuleText(
       if (blank) await pruneOrphanChecks(next)
       return 'renamed'
     }
-    // A rule named for a later session keeps that start: the replacement
-    // inherits the plan, not just the words. Otherwise it starts on the day
-    // on screen (Monday at the weekend), as the old one retires there.
-    const openFrom = openPeriodStart(rule)
-    const startFrom = nextWeekdayKey(date)
-    const from = openFrom !== null && openFrom > startFrom ? openFrom : startFrom
+    // Blanking it would replace it with an unnamed rule that scores, which
+    // is never what clearing the field meant.
+    if (blank) return 'kept'
+    // The replacement starts where the old one retires, or keeps the later
+    // session it was planned for: it inherits the plan, not just the words.
+    const from = restartFrom(rule, date)
     const ts = now()
     await retireRule(rule, date)
     await db.progress_rules.put({

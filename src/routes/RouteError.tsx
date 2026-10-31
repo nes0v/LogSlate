@@ -8,8 +8,7 @@ import { errorMessage } from '@/lib/utils'
  * The app already has a top-level `ErrorBoundary` (wrapping `RouterProvider`),
  * but it never sees a render crash inside a route: the data router catches
  * those first and, with no `ErrorBoundary` on the route, falls back to React
- * Router's own bare-bones "Unexpected Application Error!" screen. A hand-typed
- * bad date — `/day/2026-13-45`, `/overview?from=garbage` — used to land there.
+ * Router's own bare-bones "Unexpected Application Error!" screen.
  *
  * This is attached to every child route (see `router.tsx`) rather than to the
  * Layout route, so it renders INSIDE the layout: the header and nav stay live

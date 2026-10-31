@@ -5,7 +5,7 @@
 
 import { useSyncExternalStore } from 'react'
 
-export type NotificationKind = 'error' | 'info'
+type NotificationKind = 'error' | 'info'
 
 export interface NotificationAction {
   label: string

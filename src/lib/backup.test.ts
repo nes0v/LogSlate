@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { DATA_TABLE_KEYS } from '@/lib/data-tables'
 import { db, ensureMainAccount } from '@/db/schema'
 import { createAdjustment, createTrade, listAllTrades, listAdjustments } from '@/db/queries'
 import { MAIN_ACCOUNT_ID } from '@/db/types'
@@ -19,18 +20,25 @@ afterEach(async () => {
   await db.accounts.clear()
 })
 
+// A backup as export writes it: the version and every table.
+function backupFile(tables: Record<string, unknown>, name = 'backup.json'): File {
+  const payload = {
+    version: 9,
+    exported_at: new Date().toISOString(),
+    ...Object.fromEntries(
+      DATA_TABLE_KEYS.map(k => [k, []]),
+    ),
+    ...tables,
+  }
+  return new File([JSON.stringify(payload)], name, { type: 'application/json' })
+}
+
 async function buildBackupFileFromDb(): Promise<File> {
   const [trades, adjustments] = await Promise.all([
     db.trades.toArray(),
     db.adjustments.toArray(),
   ])
-  const payload = {
-    version: 3,
-    trades,
-    adjustments,
-    exported_at: new Date().toISOString(),
-  }
-  return new File([JSON.stringify(payload)], 'backup.json', { type: 'application/json' })
+  return backupFile({ trades, adjustments })
 }
 
 describe('importBackup', () => {
@@ -66,26 +74,38 @@ describe('importBackup', () => {
       created_at: '2026-01-01T00:00:00.000Z',
       updated_at: '2026-01-01T00:00:00.000Z',
     })
-    const payload = {
-      version: 3,
-      trades: [],
-      accounts: await db.accounts.toArray(),
-      exported_at: new Date().toISOString(),
-    }
-    const file = new File([JSON.stringify(payload)], 'backup.json', {
-      type: 'application/json',
-    })
+    const file = backupFile({ accounts: await db.accounts.toArray() })
     await db.accounts.clear()
     await importBackup(file)
     expect((await db.accounts.get(MAIN_ACCOUNT_ID))?.starting_balance).toBe(50_000)
   })
 
-  it('handles backups without an adjustments field (v2 files)', async () => {
-    const payload = { version: 2, trades: [], exported_at: new Date().toISOString() }
-    const file = new File([JSON.stringify(payload)], 'legacy.json', { type: 'application/json' })
-    const result = await importBackup(file)
-    expect(result.trades).toBe(0)
-    expect(result.adjustments).toBe(0)
+  it('rejects a backup from an older version', async () => {
+    const file = new File(
+      [JSON.stringify({ ...JSON.parse(await backupFile({}).text()), version: 7 })],
+      'old.json',
+      { type: 'application/json' },
+    )
+    await expect(importBackup(file)).rejects.toThrow(/older version/)
+  })
+
+  it('rejects a backup from a newer version before touching the DB', async () => {
+    await createTrade(tradeDraft({ notes: 'must survive' }))
+    const file = new File(
+      [JSON.stringify({ ...JSON.parse(await backupFile({}).text()), version: 99 })],
+      'newer.json',
+      { type: 'application/json' },
+    )
+    await expect(importBackup(file)).rejects.toThrow(/newer version/)
+    expect(await listAllTrades(MAIN_ACCOUNT_ID)).toHaveLength(1)
+  })
+
+  it('rejects a backup missing a table', async () => {
+    await createTrade(tradeDraft({ notes: 'must survive' }))
+    const payload = { version: 9, trades: [], exported_at: new Date().toISOString() }
+    const file = new File([JSON.stringify(payload)], 'partial.json', { type: 'application/json' })
+    await expect(importBackup(file)).rejects.toThrow(/is not an array/)
+    expect(await listAllTrades(MAIN_ACCOUNT_ID)).toHaveLength(1)
   })
 
   it('drops caches derived from the database it just replaced', async () => {
@@ -96,10 +116,7 @@ describe('importBackup', () => {
       JSON.stringify([{ id: 'gone', name: 'GONE' }]),
     )
     localStorage.setItem(`logslate:last_activity_date:${MAIN_ACCOUNT_ID}`, '2020-01-02')
-    const payload = { version: 3, trades: [], exported_at: new Date().toISOString() }
-    await importBackup(
-      new File([JSON.stringify(payload)], 'b.json', { type: 'application/json' }),
-    )
+    await importBackup(backupFile({}))
     expect(readSymbolFilterCache(MAIN_ACCOUNT_ID)).toBeUndefined()
     expect(readLastActivityDate(MAIN_ACCOUNT_ID)).toBeNull()
   })
@@ -120,13 +137,7 @@ describe('importBackup', () => {
 
   it('rejects when a known table is not an array', async () => {
     await createTrade(tradeDraft({ notes: 'must survive' }))
-    const payload = {
-      version: 6,
-      exported_at: new Date().toISOString(),
-      trades: [],
-      models: 'oops',
-    }
-    const file = new File([JSON.stringify(payload)], 'bad.json', { type: 'application/json' })
+    const file = backupFile({ models: 'oops' })
     await expect(importBackup(file)).rejects.toThrow(/models is not an array/)
     const trades = await listAllTrades(MAIN_ACCOUNT_ID)
     expect(trades).toHaveLength(1) // pre-import data preserved
@@ -134,12 +145,7 @@ describe('importBackup', () => {
 
   it('rejects rows without a string id', async () => {
     await createTrade(tradeDraft({ notes: 'must survive' }))
-    const payload = {
-      version: 6,
-      exported_at: new Date().toISOString(),
-      trades: [{ id: 42, notes: 'wrong-type id' }],
-    }
-    const file = new File([JSON.stringify(payload)], 'bad.json', { type: 'application/json' })
+    const file = backupFile({ trades: [{ id: 42, notes: 'wrong-type id' }] })
     await expect(importBackup(file)).rejects.toThrow(/missing a string id/)
     const trades = await listAllTrades(MAIN_ACCOUNT_ID)
     expect(trades).toHaveLength(1)

@@ -29,7 +29,7 @@ const CLICK_THRESHOLD = 5
 
 // Visible gap between rows. Must match the container's Tailwind gap class
 // (exported below) — added to row height to get the slot pitch.
-export const SORTABLE_ROW_GAP_PX = 6
+const SORTABLE_ROW_GAP_PX = 6
 export const SORTABLE_ROW_GAP_CLASS = 'space-y-1.5'
 
 export function targetSlot(d: DragState, listLen: number): number {

@@ -70,9 +70,8 @@ describe('cleanOrphanedPendingRefs', () => {
   })
 
   it('preserves a day row whose only screenshot is orphaned but has a note', async () => {
-    // Regression: previously the orphan-cleanup deleted the whole day
-    // row when screenshots became empty, wiping the user's journal note
-    // for that day. Notes are independent of screenshots.
+    // Emptying the screenshots must not delete the row and take the day's
+    // journal note with it: notes are independent of screenshots.
     await db.days.add({
       id: `${MAIN_ACCOUNT_ID}:2026-04-15`,
       account_id: MAIN_ACCOUNT_ID,

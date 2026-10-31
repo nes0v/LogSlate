@@ -7,7 +7,7 @@ import { computeOrphanRules } from '@/lib/model-rules'
 import { computeAhpc, totalContracts } from '@/lib/trade-math'
 import { formatUsd } from '@/lib/money'
 import { BTN_BASE } from '@/components/form/buttonClass'
-import { cn } from '@/lib/utils'
+import { cn, errorMessage } from '@/lib/utils'
 
 interface TradeExpandedDetailsProps {
   trade: TradeRecord
@@ -36,7 +36,11 @@ export function TradeExpandedDetails({ trade, model }: TradeExpandedDetailsProps
 
   async function handleDelete() {
     if (!(await confirm({ title: 'Delete this trade?' }))) return
-    await deleteTrade(trade.id)
+    try {
+      await deleteTrade(trade.id)
+    } catch (e) {
+      alert(`Failed to delete trade: ${errorMessage(e)}`)
+    }
   }
 
   return (

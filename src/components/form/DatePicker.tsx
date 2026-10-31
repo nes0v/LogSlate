@@ -167,7 +167,7 @@ export function DatePicker({
             {weekdayInitials.map((wd, i) => (
               <div
                 key={i}
-                className="text-center text-[10px] uppercase tracking-wide text-(--color-text-faint) py-1"
+                className="text-center text-xs uppercase tracking-wide text-(--color-text-faint) py-1"
               >
                 {wd}
               </div>

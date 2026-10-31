@@ -7,7 +7,7 @@
 // Files are organised per account, by month:
 //
 //   LogSlate/
-//     {accountName}/           ← cached by account id, not name (safe on rename)
+//     {accountName}/           ← folder id cached per account
 //       YYYY-MM/
 //         17-apr-2026-fri-01.png
 //
@@ -41,10 +41,7 @@ import type { StoredScreenshot } from '@/db/types'
 
 const TOP_FOLDER_NAME = 'LogSlate'
 
-// Per-account cache keys. The old global keys
-// `logslate:drive:screenshots_folder` / `logslate:drive:month_folders` are
-// intentionally abandoned — they mapped to the flat pre-per-account layout
-// and would be wrong under the new structure.
+// Per-account caches of the Drive folder ids screenshots upload into.
 function accountFolderKey(accountId: string): string {
   return `logslate:drive:screenshots_folder:${accountId}`
 }
@@ -52,31 +49,31 @@ function monthFolderMapKey(accountId: string): string {
   return `logslate:drive:month_folders:${accountId}`
 }
 
+/** Forget an account's folder caches (the account is being deleted). */
+export function clearDriveFolderCaches(accountId: string): void {
+  removeFromStorage(accountFolderKey(accountId))
+  removeFromStorage(monthFolderMapKey(accountId))
+  accountFolderPromises.delete(accountId)
+  for (const key of [...monthFolderPromises.keys()]) {
+    if (key.startsWith(`${accountId}:`)) monthFolderPromises.delete(key)
+  }
+}
+
 interface CachedAccountFolder {
   id: string
-  name: string
 }
 
 function loadCachedAccountFolder(accountId: string): CachedAccountFolder | null {
-  // Back-compat: old cache stored the bare id string — has to be sniffed
-  // before JSON.parse, so this one can't use loadJsonFromStorage.
-  try {
-    const raw = localStorage.getItem(accountFolderKey(accountId))
-    if (!raw) return null
-    if (!raw.startsWith('{')) return { id: raw, name: '' }
-    const parsed = JSON.parse(raw) as unknown
-    if (
-      parsed &&
-      typeof parsed === 'object' &&
-      typeof (parsed as { id?: unknown }).id === 'string' &&
-      typeof (parsed as { name?: unknown }).name === 'string'
-    ) {
-      return parsed as CachedAccountFolder
-    }
-    return null
-  } catch {
-    return null
-  }
+  return loadJsonFromStorage<CachedAccountFolder | null>(
+    accountFolderKey(accountId),
+    raw =>
+      raw &&
+      typeof raw === 'object' &&
+      typeof (raw as { id?: unknown }).id === 'string'
+        ? { id: (raw as CachedAccountFolder).id }
+        : null,
+    null,
+  )
 }
 
 function saveCachedAccountFolder(
@@ -144,10 +141,7 @@ async function getOrCreateAccountScreenshotsFolder(accountId: string): Promise<s
   const p = (async () => {
     const name = await accountFolderName(accountId)
     const cached = loadCachedAccountFolder(accountId)
-    // Cache hit only when both the id is still alive AND the cached folder
-    // name matches the current account name. Renaming an account would
-    // otherwise route uploads to the old folder forever.
-    if (cached && cached.name === name) {
+    if (cached) {
       try {
         if (await driveFileExists(cached.id)) return cached.id
       } catch {
@@ -158,11 +152,11 @@ async function getOrCreateAccountScreenshotsFolder(accountId: string): Promise<s
     const topId = await getOrCreateTopFolder()
     const existing = await findDriveFolder(name, topId)
     if (existing) {
-      saveCachedAccountFolder(accountId, { id: existing, name })
+      saveCachedAccountFolder(accountId, { id: existing })
       return existing
     }
     const created = await createDriveFolder(name, topId)
-    saveCachedAccountFolder(accountId, { id: created, name })
+    saveCachedAccountFolder(accountId, { id: created })
     return created
   })()
   accountFolderPromises.set(accountId, p)
@@ -208,6 +202,31 @@ async function getOrCreateMonthFolder(accountId: string, monthKey: string): Prom
   } catch (e) {
     monthFolderPromises.delete(cacheKey)
     throw e
+  }
+}
+
+// Upload into the month folder. Folder ids are remembered for the session
+// (and the account/month ones in localStorage), so a folder deleted in Drive
+// would fail every upload until reload. On a failure other than a scope
+// error, forget the folders and try once more: the second attempt finds or
+// recreates them.
+async function uploadToMonthFolder(
+  accountId: string,
+  monthKey: string,
+  name: string,
+  body: Blob,
+): Promise<string> {
+  const attempt = async () => {
+    const parentId = await getOrCreateMonthFolder(accountId, monthKey)
+    return (await uploadDriveFile({ name, body, parentId })).id
+  }
+  try {
+    return await attempt()
+  } catch (e) {
+    if (e instanceof DriveScopeError) throw e
+    clearDriveFolderCaches(accountId)
+    topFolderPromise = null
+    return attempt()
   }
 }
 
@@ -285,7 +304,7 @@ function canUploadToDrive(): boolean {
 
 export interface ScreenshotContext {
   date: string // YYYY-MM-DD — drives the month folder + filename
-  filenameSuffix: string // e.g. "trade-3", "day"
+  filenameSuffix: string // from `dayScreenshotSuffix`
 }
 
 interface ResolvedFilename {
@@ -305,12 +324,7 @@ async function uploadDirectly(
   resolved: ResolvedFilename,
   accountId: string,
 ): Promise<string> {
-  const folderId = await getOrCreateMonthFolder(accountId, resolved.month_key)
-  const { id } = await uploadDriveFile({
-    name: resolved.filename,
-    body: blob,
-    parentId: folderId,
-  })
+  const id = await uploadToMonthFolder(accountId, resolved.month_key, resolved.filename, blob)
   const ref = `drive:${id}`
   // Prime the render cache with the bytes we already have so the preview
   // renders instantly instead of doing a round-trip to re-download the file
@@ -347,7 +361,7 @@ async function stagePending(
   }
 }
 
-// Called by the trade form / day page when the user picks a screenshot.
+// Called by the day page when the user picks a screenshot.
 // Returns a StoredScreenshot: a `drive:` ref when uploaded immediately, or
 // a `pending:` ref plus the uncommitted blob record when queued. The caller
 // must persist that record together with the ref (see `StoredScreenshot`).
@@ -377,7 +391,8 @@ export async function storeScreenshot(
 // removed. For Drive refs, delete the Drive file so the folder doesn't
 // keep orphans the user can never reach again. For pending refs, drop
 // the queued blob. Failures are swallowed — the Day row is the source
-// of truth for the user.
+// of truth for the user. A Drive delete that fails (signed out, offline)
+// is queued and retried by `drainPendingDeletes` on the next sync.
 export async function discardScreenshotRef(raw: string): Promise<void> {
   const ref = parseScreenshotRef(raw)
   if (!ref) return
@@ -392,10 +407,61 @@ export async function discardScreenshotRef(raw: string): Promise<void> {
   }
   try {
     await deleteDriveFile(ref.fileId)
-  } catch {
-    // The user sees the new file in their folder regardless; log would be
-    // noise here. Orphaned files can be deleted manually from Drive.
+  } catch (e) {
+    if (!isRetryable(e)) return
+    const queued = loadPendingDeletes()
+    if (!queued.includes(ref.fileId)) savePendingDeletes([...queued, ref.fileId])
   }
+}
+
+// Worth retrying: signed out, offline, a scope that a re-sign-in grants,
+// throttling or a server error. A definite 4xx (e.g. a file this app can't
+// touch) would fail the same way on every sync forever.
+function isRetryable(e: unknown): boolean {
+  const status = e instanceof Error ? /: (\d{3})$/.exec(e.message)?.[1] : undefined
+  if (!status) return true
+  const code = Number(status)
+  return code >= 500 || code === 401 || code === 408 || code === 429
+}
+
+// Drive file ids whose delete failed, retried once Drive is reachable.
+const PENDING_DELETES_KEY = 'logslate:drive-pending-deletes'
+
+function loadPendingDeletes(): string[] {
+  return loadJsonFromStorage(
+    PENDING_DELETES_KEY,
+    raw => (Array.isArray(raw) && raw.every(x => typeof x === 'string') ? raw : null),
+    [],
+  )
+}
+
+function savePendingDeletes(ids: string[]): void {
+  if (ids.length === 0) removeFromStorage(PENDING_DELETES_KEY)
+  else saveJsonToStorage(PENDING_DELETES_KEY, ids)
+}
+
+/** Forget queued deletes — for a backup restore, whose day rows may point at
+ *  a file that was queued for deletion before the restore. */
+export function clearPendingDeletes(): void {
+  removeFromStorage(PENDING_DELETES_KEY)
+}
+
+// --- delete retry (runs at the start of every sync) ---
+
+export async function drainPendingDeletes(): Promise<void> {
+  if (!canUploadToDrive()) return
+  const done = new Set<string>()
+  for (const id of loadPendingDeletes()) {
+    try {
+      await deleteDriveFile(id)
+      done.add(id)
+    } catch (e) {
+      if (!isRetryable(e)) done.add(id) // give up — see isRetryable
+    }
+  }
+  // Re-read rather than overwrite: a delete that failed during the awaits
+  // above queued its id meanwhile.
+  savePendingDeletes(loadPendingDeletes().filter(id => !done.has(id)))
 }
 
 // --- rendering ---
@@ -407,7 +473,7 @@ export async function discardScreenshotRef(raw: string): Promise<void> {
 // detached ObjectURLs.
 //
 // Dimensions are captured at every entry point that creates a blob URL
-// (resolveScreenshotUrl, enqueuePending, uploadDirectly) by decoding the
+// (resolveScreenshotUrl, stagePending, uploadDirectly) by decoding the
 // blob once with `img.decode()`. ScreenshotThumb then sets the cached
 // `width`/`height` on the rendered `<img>` element so the browser
 // reserves layout space at the correct dims before its own decode
@@ -466,9 +532,8 @@ async function buildCacheEntry(blob: Blob): Promise<CachedScreenshot> {
     width = img.naturalWidth
     height = img.naturalHeight
   } catch {
-    // Decode failure → leave dims at 0; the `<img>` element will render
-    // at intrinsic size (same as the old "no-dims" behaviour) and the
-    // surrounding layout briefly collapses. Acceptable fallback for
+    // Decode failure → leave dims at 0; the `<img>` element renders at
+    // intrinsic size and the surrounding layout briefly collapses. Acceptable fallback for
     // corrupt blobs.
   }
   return { url, width, height }
@@ -487,12 +552,6 @@ async function blobForDrive(fileId: string): Promise<Blob> {
 // failure (missing pending blob, Drive fetch error, scope issue) so
 // callers can surface a meaningful message — swallowing made "image
 // won't load" bugs impossible to diagnose without devtools.
-/** Per-ref resolution result: either a blob URL + dims ready for
- *  `<img>` or the error message from the failed fetch. */
-export type ResolvedScreenshot =
-  | { url: string; width: number; height: number }
-  | { error: string }
-
 export async function resolveScreenshotUrl(
   raw: string | null | undefined,
 ): Promise<CachedScreenshot> {
@@ -525,14 +584,11 @@ export async function resolveScreenshotUrl(
 export async function drainPendingUploads(): Promise<void> {
   if (!canUploadToDrive()) return
   const pending = await db.pending_uploads.toArray()
+  let failed = 0
   for (const p of pending) {
     try {
-      const folderId = await getOrCreateMonthFolder(p.account_id, p.month_key)
-      const { id: driveId } = await uploadDriveFile({
-        name: p.filename,
-        body: p.blob,
-        parentId: folderId,
-      })
+      const driveId = await uploadToMonthFolder(p.account_id, p.month_key, p.filename, p.blob)
+      let orphaned = false
       const oldRef = `pending:${p.id}`
       const newRef = `drive:${driveId}`
       // Rewrite any day rows that pointed at this pending id. The URL cache
@@ -556,6 +612,9 @@ export async function drainPendingUploads(): Promise<void> {
             const screenshots = d.screenshots.map(s => (s === oldRef ? newRef : s))
             await db.days.update(d.id, { screenshots, updated_at: now })
           }
+          // Removed from its day while it was uploading: nothing will
+          // ever point at the new file.
+          orphaned = affectedDays.length === 0
           await db.pending_uploads.delete(p.id)
           // Transfer the cached blob URL + dims from the pending entry
           // to a new entry under the Drive ref — same underlying Blob,
@@ -568,14 +627,21 @@ export async function drainPendingUploads(): Promise<void> {
           }
         },
       )
+      if (orphaned) await discardScreenshotRef(newRef)
     } catch (e) {
       // Scope errors will re-happen for every pending item until the user
       // reconnects; bubble them so the sync coordinator surfaces one
       // notification and stops draining instead of spamming the queue.
       if (e instanceof DriveScopeError) throw e
-      // Transient errors (network, 5xx) — leave this one queued and retry
-      // on the next drain pass.
+      // Anything else — leave it queued for the next drain pass, but say so:
+      // a quiet failure would sit in the queue forever behind a "synced".
+      failed++
     }
+  }
+  if (failed > 0) {
+    pushError(
+      `${failed} screenshot${failed === 1 ? '' : 's'} couldn't upload to Drive — will retry on the next sync.`,
+    )
   }
 }
 

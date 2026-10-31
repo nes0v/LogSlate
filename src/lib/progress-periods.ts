@@ -21,16 +21,19 @@ export function ruleCountsOn(rule: ProgressRule, date: string): boolean {
   return rule.kind !== 'line' && ruleActiveOn(rule, date)
 }
 
-function ruleHasOpenPeriod(rule: ProgressRule): boolean {
-  return rule.periods.some(p => p.until === null)
-}
-
 // Start date of the rule's open period, or null when it has none. Lets a
 // caller tell a rule named for a later session, not in force yet, from one
-// in force right now — `ruleHasOpenPeriod` alone can't, since it carries no
-// date.
+// in force right now.
 export function openPeriodStart(rule: ProgressRule): string | null {
   return rule.periods.find(p => p.until === null)?.from ?? null
+}
+
+// Where a rule (re)started from `date` begins: the session `date` lands on
+// (Monday at the weekend), or the later one it was already planned for.
+export function restartFrom(rule: ProgressRule, date: string): string {
+  const start = nextWeekdayKey(date)
+  const planned = openPeriodStart(rule)
+  return planned !== null && planned > start ? planned : start
 }
 
 // Latest end date across the rule's closed periods, or null when it has
@@ -103,11 +106,9 @@ export function ruleHasHistoryBefore(rule: ProgressRule, today: string): boolean
 // at today and re-opens at today, and storing that as two periods meeting on
 // one day describes a rule that never stopped as though it had.
 export function openPeriod(rule: ProgressRule, today: string): ProgressRulePeriod[] {
-  if (ruleHasOpenPeriod(rule)) return rule.periods.slice()
+  if (openPeriodStart(rule) !== null) return rule.periods.slice()
   const from = nextWeekdayKey(today)
-  const previous = previousWeekdayKey(
-    format(addDays(dateKeyToDate(from), -1), 'yyyy-MM-dd'),
-  )
+  const previous = tradingDayBefore(from)
   const latest = lastPeriodEnd(rule)
   if (latest !== null && latest >= previous) {
     return rule.periods.map(p =>

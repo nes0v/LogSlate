@@ -25,11 +25,13 @@ export function windowRange(
 ): WindowRange {
   if (from && to) return { rangeStart: from, rangeEnd: to }
   if (filtered.length === 0) return { rangeStart: null, rangeEnd: null }
-  const dates = filtered.map(t => t.date).sort()
-  return {
-    rangeStart: from ?? dates[0],
-    rangeEnd: to ?? dates[dates.length - 1],
+  let first = filtered[0].date
+  let last = first
+  for (const t of filtered) {
+    if (t.date < first) first = t.date
+    else if (t.date > last) last = t.date
   }
+  return { rangeStart: from ?? first, rangeEnd: to ?? last }
 }
 
 /** Memoized `windowRange`, keyed on the filtered set and the date bounds. */

@@ -10,9 +10,6 @@ function isPersistableEvent(
   return e.impact === 'High' || e.impact === 'Medium'
 }
 
-// Unit Separator () is non-printable and effectively impossible inside
-// a real news headline, so it can't collide with characters in `title`.
-const KEY_SEP = ''
 /**
  * Identity of an event: its exact time, its currency, and its title.
  *
@@ -20,9 +17,13 @@ const KEY_SEP = ''
  * appearing morning and afternoon) and repeats it across currencies on the
  * same day — this week's live feed carries "Unemployment Rate" for both CNY
  * and GBP. Keying on the day alone silently kept whichever row landed last.
+ *
+ * The parts are concatenated with no separator. Stored ids are keyed this way,
+ * so adding one would re-key every news row; the ISO time and the 3-letter
+ * country code keep the boundaries unambiguous anyway.
  */
 function eventId(e: FFEvent): string {
-  return `${e.date}${KEY_SEP}${e.country}${KEY_SEP}${e.title}`
+  return `${e.date}${e.country}${e.title}`
 }
 
 /** True when the stored row already says exactly what the feed says. */
@@ -32,9 +33,7 @@ function unchanged(row: NewsEvent, e: FFEvent, dayKey: string): boolean {
     row.title === e.title &&
     row.country === e.country &&
     row.impact === e.impact &&
-    row.scheduled_at === e.date &&
-    row.forecast === e.forecast &&
-    row.previous === e.previous
+    row.scheduled_at === e.date
   )
 }
 
@@ -103,8 +102,6 @@ export async function syncWeekNews(events: FFEvent[]): Promise<void> {
           country: event.country,
           impact: event.impact,
           scheduled_at: event.date,
-          forecast: event.forecast,
-          previous: event.previous,
           created_at: prev?.created_at ?? now,
           updated_at: now,
         })
@@ -145,8 +142,6 @@ export async function readArchivedWeek(weekStart: string): Promise<ArchivedWeek>
       country: r.country,
       date: r.scheduled_at,
       impact: r.impact,
-      forecast: r.forecast,
-      previous: r.previous,
     })
   }
   for (const events of Object.values(byDay)) {

@@ -1,24 +1,25 @@
-import type { ReactNode } from 'react'
+import { useId, type ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 
 interface FieldProps {
   label: string
-  hint?: string
   error?: string
   children: ReactNode
   className?: string
 }
 
-export function Field({ label, hint, error, children, className }: FieldProps) {
+export function Field({ label, error, children, className }: FieldProps) {
   // `<div>` (not `<label>`) on purpose: when a label wraps multiple form
   // controls (e.g. a group of pill-buttons), browsers forward `:hover`
   // and click events to the *first* labeled control, which causes the
   // first pill to spuriously appear hovered when any sibling is hovered.
+  // The group role + aria-labelledby gives the controls inside the label's
+  // name instead.
+  const labelId = useId()
   return (
-    <div className={cn('flex flex-col gap-2', className)}>
-      <span className="text-xs text-(--color-text-dim)">{label}</span>
+    <div role="group" aria-labelledby={labelId} className={cn('flex flex-col gap-2', className)}>
+      <span id={labelId} className="text-xs text-(--color-text-dim)">{label}</span>
       {children}
-      {hint && !error && <span className="text-xs text-(--color-text-dim)">{hint}</span>}
       {error && <span className="text-xs text-(--color-loss)">{error}</span>}
     </div>
   )

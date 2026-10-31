@@ -1,9 +1,16 @@
 import { memo, useCallback, useMemo, useState, type ReactNode } from 'react'
 import { Check, Pencil, Plus, Save, Trash2, X } from 'lucide-react'
-import { db } from '@/db/schema'
-import { countTradesUsingModel, listModels, reorderModels } from '@/db/queries'
-import type { Model, ModelRuleGroup, Session } from '@/db/types'
-import { SESSIONS } from '@/db/types'
+import {
+  countTradesUsingModel,
+  createModel,
+  deleteModel,
+  listModels,
+  newId,
+  reorderModels,
+  updateModel,
+} from '@/db/queries'
+import type { Model, ModelDraft, ModelRuleGroup, Session } from '@/db/types'
+import { DEFAULT_MODEL_NAME, SESSIONS } from '@/db/types'
 import { useActiveAccountId } from '@/lib/active-account'
 import { useAccountQuery } from '@/lib/use-account-query'
 import { useConfirm } from '@/components/ConfirmDialog'
@@ -13,10 +20,6 @@ import { useAutosizeTextarea } from '@/lib/use-autosize-textarea'
 import { SORTABLE_ROW_GAP_CLASS, useSortableReorder } from '@/lib/use-sortable-reorder'
 import { SESSION_BG, SESSION_FG } from '@/lib/session-colors'
 import { cn } from '@/lib/utils'
-
-function newId(): string {
-  return crypto.randomUUID()
-}
 
 const DEFAULT_GROUPS = (): ModelRuleGroup[] => [
   { id: newId(), name: 'Entry', rules: [] },
@@ -78,25 +81,9 @@ export function ModelsRoute() {
     return list[0] ?? null
   }, [visible, selectedId])
 
-  async function createModel() {
-    const ts = new Date().toISOString()
-    // Slot the new row below every existing one. Create it sort-less, then
-    // persist a dense order with the new id last: a bare `maxSort+1` would jump
-    // above any sort-less rows (which `listModels` sends to the bottom).
-    const p: Model = {
-      id: newId(),
-      account_id: accountId,
-      name: 'New model',
-      description: '',
-      sessions: [],
-      groups: DEFAULT_GROUPS(),
-      draft: false,
-      created_at: ts,
-      updated_at: ts,
-    }
-    await db.models.put(p)
-    await reorderModels([...visible.map(m => m.id), p.id])
-    setSelectedId(p.id)
+  async function addModel() {
+    const m = await createModel(accountId, { name: 'New model', groups: DEFAULT_GROUPS() })
+    setSelectedId(m.id)
   }
 
   // Callbacks are stabilized so the memoized `ModelEditor` doesn't
@@ -105,29 +92,31 @@ export function ModelsRoute() {
   // which is itself memoized, so identity only flips on selection
   // change. See ModelEditor's `memo()` wrapper at the bottom of the file.
   const save = useCallback(
-    async (patch: Partial<Model>) => {
+    async (patch: Partial<ModelDraft>) => {
       if (!selected) return
-      await db.models.update(selected.id, {
-        ...patch,
-        updated_at: new Date().toISOString(),
-      })
+      await updateModel(selected.id, patch)
     },
     [selected],
   )
 
   const remove = useCallback(async () => {
     if (!selected) return
-    if (!(await confirm({ title: `Delete "${selected.name}" permanently?` }))) return
+    const inUse = await countTradesUsingModel(accountId, selected.id)
+    const extra =
+      inUse > 0
+        ? ` ${inUse} logged trade${inUse === 1 ? '' : 's'} will count as ${DEFAULT_MODEL_NAME}.`
+        : ''
+    if (!(await confirm({ title: `Delete "${selected.name}" permanently?${extra}` }))) return
     const id = selected.id
     setSelectedId(null)
-    await db.models.delete(id)
-  }, [selected, confirm])
+    await deleteModel(id)
+  }, [selected, confirm, accountId])
 
   return (
     <div className="pt-1 space-y-8">
       <div className="flex items-center justify-between mb-8">
         <h1 className="h-8 flex items-center text-lg font-semibold">Models</h1>
-        <button type="button" onClick={createModel} className={BTN_ACCENT}>
+        <button type="button" onClick={addModel} className={BTN_ACCENT}>
           <Plus className="size-4" /> New model
         </button>
       </div>
@@ -193,7 +182,7 @@ function EmptyPanel({ children }: { children: ReactNode }) {
 
 interface ModelEditorProps {
   model: Model
-  onSave: (patch: Partial<Model>) => void
+  onSave: (patch: Partial<ModelDraft>) => void
   onDelete: () => void
 }
 function ModelEditorImpl({ model, onSave, onDelete }: ModelEditorProps) {
@@ -264,8 +253,11 @@ function ModelEditorImpl({ model, onSave, onDelete }: ModelEditorProps) {
     setGroups(groups.filter(g => g.id !== groupId))
   }
 
+  // Same rule as Symbols: a blank name would list as an empty option.
+  const valid = name.trim().length > 0
+
   async function handleSave() {
-    if (!isDirty) return
+    if (!isDirty || !valid) return
     const usageCount = await countTradesUsingModel(accountId, model.id)
     if (usageCount > 0) {
       const ok = await confirm({
@@ -286,6 +278,7 @@ function ModelEditorImpl({ model, onSave, onDelete }: ModelEditorProps) {
           value={name}
           onChange={e => setName(e.target.value)}
           placeholder="Model name"
+          aria-label="Model name"
           className="flex-1 bg-transparent border-0 outline-none text-lg font-medium"
         />
         <button
@@ -293,7 +286,7 @@ function ModelEditorImpl({ model, onSave, onDelete }: ModelEditorProps) {
           onClick={handleSave}
           className={cn(
             `${BTN_BASE} border`,
-            isDirty
+            isDirty && valid
               ? 'bg-(--color-accent) border-(--color-accent) text-(--color-accent-fg) hover:opacity-90'
               : 'border-(--color-border) text-(--color-text-dim) hover:text-(--color-text)',
           )}
@@ -325,6 +318,7 @@ function ModelEditorImpl({ model, onSave, onDelete }: ModelEditorProps) {
         value={description}
         onChange={e => setDescription(e.target.value)}
         placeholder="Describe the setup, market conditions, when to use it…"
+        aria-label="Model description"
         className={cn(inputClass, 'w-full min-h-[95px] resize-none overflow-hidden')}
       />
 
@@ -370,6 +364,7 @@ function ModelEditorImpl({ model, onSave, onDelete }: ModelEditorProps) {
                 value={g.name}
                 onChange={e => setGroupName(g.id, e.target.value)}
                 placeholder="Group name"
+                aria-label="Group name"
                 className="bg-transparent border-0 outline-none text-sm font-medium flex-1"
               />
               <button
@@ -396,6 +391,7 @@ function ModelEditorImpl({ model, onSave, onDelete }: ModelEditorProps) {
                     value={r}
                     onChange={e => setRule(g.id, i, e.target.value)}
                     placeholder="Rule…"
+                    aria-label="Rule"
                     className="flex-1 bg-transparent border-0 outline-none text-sm"
                   />
                   <button

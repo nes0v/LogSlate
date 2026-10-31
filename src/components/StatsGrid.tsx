@@ -1,5 +1,5 @@
 import type { AggregateStats } from '@/lib/trade-stats'
-import { formatUsd } from '@/lib/money'
+import { formatUsd, roundTo } from '@/lib/money'
 import { formatDuration } from '@/lib/duration'
 import { cn } from '@/lib/utils'
 
@@ -15,6 +15,8 @@ interface StatsGridProps {
 
 export function StatsGrid({ stats, hideBreakdown, emptyPnl }: StatsGridProps) {
   const s = stats
+  // Toned on the shown value, so −0.001x reads "0.00x" in neutral, not red.
+  const avgRr = s.avg_realized_rr === null ? null : roundTo(s.avg_realized_rr)
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
       <Stat
@@ -33,14 +35,14 @@ export function StatsGrid({ stats, hideBreakdown, emptyPnl }: StatsGridProps) {
       />
       <Stat
         label="Avg RR"
-        value={s.avg_realized_rr === null ? '—' : `${s.avg_realized_rr.toFixed(2)}x`}
+        value={avgRr === null ? '—' : `${avgRr.toFixed(2)}x`}
         sub={s.avg_planned_rr === null ? undefined : `planned ${s.avg_planned_rr.toFixed(2)}x`}
         tone={
-          s.avg_realized_rr === null
+          avgRr === null
             ? 'neutral'
-            : s.avg_realized_rr > 0
+            : avgRr > 0
               ? 'win'
-              : s.avg_realized_rr < 0
+              : avgRr < 0
                 ? 'loss'
                 : 'neutral'
         }

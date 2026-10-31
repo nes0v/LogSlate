@@ -5,17 +5,17 @@ import { MODEL_NONE } from '@/lib/filters'
 /**
  * Clears account-scoped filters carried over from another account.
  *
- * `symbol_id` and `model` are per-account ids (unlike the old cross-account
- * `NQ` symbol enum). Switching accounts — or any URL / shared-filter carried
+ * `symbol_id` and `model` are per-account ids. Switching accounts — or any URL / shared-filter carried
  * over — leaves a foreign id that matches zero trades, so the page renders
  * empty with no pill highlighted to explain why. When an id is unknown to the
  * account we drop it back to "All".
  *
  * "Known" means one of the account's own symbols/models — used or not, so
  * picking a model with no trades yet shows the honest empty state instead of
- * snapping back to "All". Also kept: a since-deleted symbol/model that still
- * has trades (its orphans stay filterable via the id on their records), and
- * the `MODEL_NONE` sentinel ("no model"), which is valid in every account.
+ * snapping back to "All". Also kept: a since-deleted symbol that still has
+ * trades (it stays a Symbol pill under its frozen name), and the `MODEL_NONE`
+ * sentinel ("no model"), which is valid in every account. A deleted model is
+ * NOT kept: its trades count as gambling, reachable through MODEL_NONE.
  *
  * Shared by the Overview and Reports pages so they can't drift.
  */
@@ -43,12 +43,9 @@ export function useValidAccountFilters(
       !symbols.some(s => s.id === symbolId) &&
       !allTrades.some(t => t.symbol_id === symbolId)
     ) patch.symbol_id = null
-    if (
-      model &&
-      model !== MODEL_NONE &&
-      !models.some(m => m.id === model) &&
-      !allTrades.some(t => t.model_id === model)
-    ) patch.model = null
+    // A deleted model is dropped even if trades still carry its id: those
+    // trades count as gambling now, and the Model dropdown can't show it.
+    if (model && model !== MODEL_NONE && !models.some(m => m.id === model)) patch.model = null
     if (patch.symbol_id !== undefined || patch.model !== undefined) onDropRef.current(patch)
   }, [allTrades, symbols, models, symbolId, model])
 }

@@ -2,10 +2,9 @@
 // read off it, and the current streak — which counts over the whole history,
 // not just the part the strip can show.
 //
-// Extracted from the Progress route for the same reason as `progress-day.ts`:
-// every rule here is a judgement about which days count, and the only way to
-// check them used to be opening the app on the right day of the week with the
-// right history behind it.
+// Kept out of the Progress route for the same reason as `progress-day.ts`:
+// every rule here is a judgement about which days count, testable here
+// without opening the app on the right day with the right history.
 //
 // All dates are `YYYY-MM-DD` keys; they are zero-padded, so a string compare
 // is a date compare.
@@ -26,7 +25,7 @@ export type HeatCell = {
   future: boolean
 }
 
-export const HEAT_DAYS = 30
+const HEAT_DAYS = 30
 
 function bucketByDay(checks: ProgressCheck[]): Map<string, ProgressCheck[]> {
   const byDay = new Map<string, ProgressCheck[]>()
@@ -49,7 +48,7 @@ function dayScore(
 ): { checked: number; total: number; pct: number } {
   const activeIds = new Set(rules.filter(r => ruleCountsOn(r, day)).map(r => r.id))
   const total = activeIds.size
-  const checked = list.filter(c => c.checked && activeIds.has(c.rule_id)).length
+  const checked = list.filter(c => activeIds.has(c.rule_id)).length
   return { checked, total, pct: total > 0 ? checked / total : 0 }
 }
 
@@ -139,8 +138,8 @@ export function currentStreak(args: {
 
 /**
  * Mean adherence across the strip's traded weekdays, or null when it has
- * none. Same exclusions as the streak: weekends, unstarted sessions and
- * untraded weekdays would otherwise drag the score toward 0% on days where
+ * none. Same exclusions as the streak (the strip already holds no weekends):
+ * unstarted sessions and untraded weekdays would otherwise drag the score toward 0% on days where
  * no routine was ever expected.
  */
 export function averageAdherence(
@@ -151,7 +150,6 @@ export function averageAdherence(
     d =>
       d.total > 0 &&
       !d.future &&
-      !isWeekend(dateKeyToDate(d.date)) &&
       tradedDays.has(d.date),
   )
   if (scored.length === 0) return null

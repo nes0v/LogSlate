@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import { createAdjustment, deleteAdjustment } from '@/db/queries'
-import type { EquityAdjustment } from '@/db/types'
+import { ADJUSTMENT_KIND_COLOR, ADJUSTMENT_KIND_PREFIX, type EquityAdjustment } from '@/db/types'
 import { useConfirm } from '@/components/ConfirmDialog'
 import { inputClassCompact as inputClass } from '@/components/form/Field'
 import { MonthPicker } from '@/components/form/MonthPicker'
@@ -43,16 +43,11 @@ export function BrokerFeesPanel({ adjustments }: BrokerFeesPanelProps) {
       setError('Amount must be a positive number.')
       return
     }
-    if (!/^\d{4}-\d{2}$/.test(month)) {
-      setError('Invalid month.')
-      return
-    }
     setError(null)
     await createAdjustment({
       date: firstWeekdayOfMonth(month),
       kind: 'fee',
       amount,
-      note: '',
     })
     setAmount(null)
   }
@@ -85,7 +80,7 @@ export function BrokerFeesPanel({ adjustments }: BrokerFeesPanelProps) {
           <div>Month</div>
           <MonthPicker
             value={month}
-            onChange={v => v && setMonth(v)}
+            onChange={setMonth}
             compact
             ariaLabel="Fee month"
           />
@@ -118,8 +113,8 @@ export function BrokerFeesPanel({ adjustments }: BrokerFeesPanelProps) {
                     <td className="px-3 py-2 text-xs font-mono tabular-nums text-(--color-text-dim) whitespace-nowrap">
                       {formatDisplayDate(a.date)}
                     </td>
-                    <td className="px-3 py-2 w-full font-mono font-medium tabular-nums text-(--color-loss) whitespace-nowrap text-right">
-                      -{formatUsd(a.amount)}
+                    <td className="px-3 py-2 w-full font-mono font-medium tabular-nums whitespace-nowrap text-right" style={{ color: ADJUSTMENT_KIND_COLOR.fee }}>
+                      {ADJUSTMENT_KIND_PREFIX.fee}{formatUsd(a.amount)}
                     </td>
                     <td className="px-3 py-2 w-10 text-right">
                       <button
@@ -138,7 +133,7 @@ export function BrokerFeesPanel({ adjustments }: BrokerFeesPanelProps) {
           </div>
           <div className="text-xs text-(--color-text-dim) font-mono">
             {list.length} fee{list.length === 1 ? '' : 's'} · total{' '}
-            <span className="text-(--color-loss)">-{formatUsd(total)}</span>
+            <span style={{ color: ADJUSTMENT_KIND_COLOR.fee }}>{ADJUSTMENT_KIND_PREFIX.fee}{formatUsd(total)}</span>
           </div>
         </>
       )}

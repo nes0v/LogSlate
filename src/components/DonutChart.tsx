@@ -3,6 +3,9 @@ import { createPortal } from 'react-dom'
 import { cn } from '@/lib/utils'
 
 interface DonutSegment {
+  /** React key. Defaults to `label`; pass one when labels can repeat
+   *  (two models may share a name). */
+  id?: string
   label: string
   value: number
   /** CSS color or `var(--…)`. */
@@ -11,19 +14,13 @@ interface DonutSegment {
    *  the side legend. Used for buckets like "(unset)" / "(deleted)" that
    *  should affect the proportions but not the labelled list. */
   legendHidden?: boolean
-  /** Optional custom node rendered in place of the legend text label.
-   *  The string `label` is still used for the hover tooltip. */
-  legendNode?: React.ReactNode
 }
 
 interface DonutChartProps {
   title: string
   segments: DonutSegment[]
-  /** Optional inner label, e.g. "248 trades". Falls back to total count. */
-  centerLabel?: string
-  className?: string
   /** Legend column count. Defaults to 1 (vertical list). Set to 2 when the
-   *  segment count is large (≥ 8) so the card doesn't grow unusually tall. */
+   *  segment count is large so the card doesn't grow unusually tall. */
   legendColumns?: 1 | 2
 }
 
@@ -38,7 +35,7 @@ interface Tip {
   value: number
 }
 
-function DonutChartImpl({ title, segments, centerLabel, className, legendColumns = 1 }: DonutChartProps) {
+function DonutChartImpl({ title, segments, legendColumns = 1 }: DonutChartProps) {
   const total = segments.reduce((n, s) => n + s.value, 0)
   const R = 50
   const visible = segments.filter(s => s.value > 0)
@@ -72,7 +69,7 @@ function DonutChartImpl({ title, segments, centerLabel, className, legendColumns
   const slices = visible.map((s, i) => {
     const fraction = s.value / total
     if (fraction >= 1) {
-      return <circle key={s.label} cx={R} cy={R} r={R} fill={s.color} {...bindHover(s)} />
+      return <circle key={s.id ?? s.label} cx={R} cy={R} r={R} fill={s.color} {...bindHover(s)} />
     }
     const baseStart = cursor
     const baseEnd = cursor + fraction * 2 * Math.PI
@@ -90,7 +87,7 @@ function DonutChartImpl({ title, segments, centerLabel, className, legendColumns
     const wedge = `M ${R} ${R} L ${sx} ${sy} A ${R} ${R} 0 ${largeArc} 1 ${ex} ${ey} Z`
     const arc = `M ${sx} ${sy} A ${R} ${R} 0 ${largeArc} 1 ${ex} ${ey}`
     return (
-      <g key={s.label} {...bindHover(s)}>
+      <g key={s.id ?? s.label} {...bindHover(s)}>
         <path d={wedge} fill={s.color} />
         <path d={arc} fill="none" stroke={s.color} strokeWidth={0.5} />
       </g>
@@ -98,12 +95,7 @@ function DonutChartImpl({ title, segments, centerLabel, className, legendColumns
   })
 
   return (
-    <div
-      className={cn(
-        'rounded-(--radius) bg-(--color-panel) p-3 space-y-3',
-        className,
-      )}
-    >
+    <div className="rounded-(--radius) bg-(--color-panel) p-3 space-y-3">
       <div className="text-xs tracking-wider text-(--color-text-dim)">{title}</div>
       <div className="flex items-center gap-4">
         <svg
@@ -117,17 +109,6 @@ function DonutChartImpl({ title, segments, centerLabel, className, legendColumns
           ) : (
             <circle cx={R} cy={R} r={R} fill="var(--color-bg)" />
           )}
-          {centerLabel ? (
-            <text
-              x={50}
-              y={50}
-              textAnchor="middle"
-              dominantBaseline="central"
-              className="fill-(--color-text) font-mono text-[12px]"
-            >
-              {centerLabel}
-            </text>
-          ) : null}
         </svg>
 
         <ul
@@ -141,14 +122,14 @@ function DonutChartImpl({ title, segments, centerLabel, className, legendColumns
           {segments.filter(s => !s.legendHidden).map(s => {
             const pct = total > 0 ? (s.value / total) * 100 : 0
             return (
-              <li key={s.label} className="flex items-center gap-2">
+              <li key={s.id ?? s.label} className="flex items-center gap-2">
                 <span
                   className="size-2.5 rounded-full shrink-0"
                   style={{ backgroundColor: s.color }}
                   aria-hidden
                 />
                 <span className="text-(--color-text) truncate">
-                  {s.legendNode ?? s.label}
+                  {s.label}
                 </span>
                 <span className="ml-auto font-mono tabular-nums text-(--color-text-dim)">
                   {pct.toFixed(0)}%

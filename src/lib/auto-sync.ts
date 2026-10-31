@@ -8,7 +8,8 @@
 
 import { useSyncExternalStore } from 'react'
 import { DriveScopeError } from '@/lib/drive'
-import { drainPendingUploads } from '@/lib/drive-images'
+import { drainPendingDeletes, drainPendingUploads } from '@/lib/drive-images'
+import { refreshAllDayCaches } from '@/lib/day-cache'
 import { pushError } from '@/lib/notifications'
 import {
   DriveAccountMismatchError,
@@ -92,9 +93,12 @@ async function runSync(options: SyncOptions = {}): Promise<SyncResult | null> {
   update({ status: 'syncing', error: null, errorKind: null })
   try {
     // Drain any screenshots queued while offline before pushing the sync
-    // file — the Drive ids land in trade records and go out with this push.
+    // file — the Drive ids land in day rows and go out with this push.
     await drainPendingUploads()
+    // Then retry Drive deletes of screenshots removed while signed out.
+    await drainPendingDeletes()
     const result = await syncNow(options)
+    void refreshAllDayCaches()
     update({ status: 'idle', error: null, errorKind: null, lastResult: result })
     return result
   } catch (e) {

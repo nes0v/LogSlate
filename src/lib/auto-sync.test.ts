@@ -24,6 +24,7 @@ vi.mock('./drive', async () => {
 
 vi.mock('./drive-images', () => ({
   drainPendingUploads: () => drainMock(),
+  drainPendingDeletes: async () => {},
 }))
 
 vi.mock('./sync', async () => {
@@ -86,9 +87,6 @@ const fakeResult = {
   perTable: {},
   createdRemote: false,
   skippedPush: false,
-  fileId: 'f',
-  modifiedTime: '2026-04-20T00:00:00Z',
-  mergedAt: '2026-04-20T00:00:00Z',
 }
 
 describe('requestManualSync', () => {

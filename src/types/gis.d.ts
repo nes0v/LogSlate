@@ -15,7 +15,6 @@ declare global {
             prompt?: string
           }): TokenClient
           revoke(accessToken: string, done: () => void): void
-          hasGrantedAllScopes(tokenResponse: TokenResponse, ...scopes: string[]): boolean
         }
       }
     }

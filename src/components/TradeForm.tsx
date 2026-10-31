@@ -4,7 +4,7 @@ import { Controller, useFieldArray, useForm, useWatch, type Control } from 'reac
 import { zodResolver } from '@hookform/resolvers/zod'
 import type { z } from 'zod'
 import { ArrowLeft, Plus, Save, Trash2, X } from 'lucide-react'
-import { detectSession, emptyForm, formToDraft, tradeFormSchema, tradingDaySeconds, type TradeFormValues } from '@/lib/form-schema'
+import { detectSession, emptyForm, formToDraft, stampFills, tradeFormSchema, type TradeFormValues } from '@/lib/form-schema'
 import { SESSION_BADGE, SESSION_BADGE_CLASS } from '@/lib/session-badge'
 import { listAllTrades, listModels, listSymbols } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
@@ -29,7 +29,7 @@ import { BTN_ADD_LINK, BTN_BASE, BTN_OUTLINED } from '@/components/form/buttonCl
 import { computeOrphanRules } from '@/lib/model-rules'
 import { computeAhpc, computeNetPnl } from '@/lib/trade-math'
 import { formatDuration } from '@/lib/duration'
-import { formatUsd } from '@/lib/money'
+import { formatUsd, roundTo } from '@/lib/money'
 import { useAutosizeTextarea } from '@/lib/use-autosize-textarea'
 import { cn, mergeRefs } from '@/lib/utils'
 
@@ -45,7 +45,8 @@ const ORDER_TYPE_OPTIONS = [
 interface TradeFormProps {
   initialValues?: TradeFormValues
   initialDate: string // YYYY-MM-DD
-  onSubmit: (draft: TradeDraft) => Promise<void> | void
+  /** Resolves `false` when the save failed, so the form stays dirty. */
+  onSubmit: (draft: TradeDraft) => Promise<void | false>
   onCancel: () => void
   /** The editing trade's frozen symbol, if any. Snapshot semantics: its spec
    *  is preserved on save unless the user picks a different symbol. Omitted for
@@ -104,6 +105,7 @@ export function TradeForm({
     formState: { errors, isSubmitting, isDirty },
     getValues,
     setValue,
+    setError,
     reset,
   } = useForm<TradeFormValues, unknown, z.output<typeof tradeFormSchema>>({
     resolver: zodResolver(tradeFormSchema),
@@ -124,8 +126,23 @@ export function TradeForm({
     const stillValid = !!current && symbols.some(s => s.id === current && !s.draft)
     if (!stillValid) setValue('symbol_id', symbolOpts[0]?.value ?? null)
   }, [symbols, symbolOpts, isNewTrade, getValues, setValue])
+  // Same for the model: one deleted or drafted mid-form (and the rules ticked
+  // on it) would otherwise save as a dangling reference.
+  useEffect(() => {
+    if (!isNewTrade || models === undefined) return
+    const current = getValues('model_id')
+    if (current && !models.some(m => m.id === current)) {
+      setValue('model_id', null)
+      setValue('model_rules_followed', [])
+    }
+  }, [models, isNewTrade, getValues, setValue])
 
   const executions = useFieldArray({ control, name: 'executions' })
+  // Array-level issues (unbalanced contracts, no buy/sell) land on `root` for
+  // a field array; read `message` too in case the resolver puts them there.
+  const executionsError =
+    errors.executions?.root?.message ??
+    (errors.executions && 'message' in errors.executions ? errors.executions.message : undefined)
   // Scope the top-level subscription to a single field. The free-text
   // textareas re-render on every keystroke; subscribing to the whole form
   // (`useWatch({ control })`) would re-render the entire shell each time.
@@ -145,8 +162,12 @@ export function TradeForm({
   async function submit(v: TradeFormValues) {
     // Freeze the symbol's economics onto the trade (see resolveSymbolSpec).
     const spec = resolveSymbolSpec(original, v.symbol_id as string, symbolsById)
-    if (!spec) return // selected symbol vanished (deleted mid-edit) — abort save
-    await onSubmit(formToDraft(v, spec))
+    if (!spec) {
+      // The chosen symbol was deleted (in another tab) while this was open.
+      setError('symbol_id', { message: 'this symbol no longer exists — pick another' })
+      return
+    }
+    if ((await onSubmit(formToDraft(v, spec))) === false) return
     reset(getValues(), { keepValues: true })
   }
 
@@ -218,18 +239,21 @@ export function TradeForm({
 
           <div className="space-y-2">
             <div className="text-xs text-(--color-text-dim)">Executions</div>
-            {errors.executions && 'message' in errors.executions && errors.executions.message && (
-              <div className="text-xs text-(--color-loss)">{String(errors.executions.message)}</div>
+            {executionsError && (
+              <div className="text-xs text-(--color-loss)">{executionsError}</div>
             )}
-            {Array.isArray(errors.executions) && errors.executions
+            {Object.entries(errors.executions ?? {})
+              // Numeric keys are rows; with an array-level error alongside,
+              // the errors object isn't an array, so don't gate on that.
               // Prefix each message with its row so a multi-execution trade
               // points the user at the offending row instead of a bare
               // "time must be HH:MM" with no location.
-              .flatMap((e, idx) =>
-                Object.values(e ?? {})
-                  .map(v => (v as { message?: string }).message)
+              .filter(([key]) => /^\d+$/.test(key))
+              .flatMap(([key, e]) =>
+                Object.values((e ?? {}) as Record<string, { message?: string }>)
+                  .map(v => v?.message)
                   .filter(Boolean)
-                  .map(msg => `Row ${idx + 1}: ${msg}`),
+                  .map(msg => `Row ${Number(key) + 1}: ${msg}`),
               )
               .slice(0, 3)
               .map((msg, i) => (
@@ -432,7 +456,11 @@ export function TradeForm({
                 render={({ field }) => (
                   <Select
                     value={field.value ?? null}
-                    onChange={v => field.onChange(v)}
+                    onChange={v => {
+                      // Ticked rules belong to the model they were ticked on.
+                      if (v !== field.value) setValue('model_rules_followed', [])
+                      field.onChange(v)
+                    }}
                     options={(models ?? []).map(m => ({ value: m.id, label: m.name }))}
                     ariaLabel="Model"
                   />
@@ -588,7 +616,8 @@ function LiveStatsSection({
       }))
     const ahpc = computeAhpc({ executions: execs })
     const spec = resolveSymbolSpec(original, symbol_id, symbolsById)
-    const pnl = spec ? computeNetPnl({ executions: execs, symbol_spec: spec }) : null
+    const net = spec ? computeNetPnl({ executions: execs, symbol_spec: spec }) : null
+    const pnl = net === null ? null : roundTo(net)
     const rr = stop_loss && stop_loss > 0 && pnl !== null ? pnl / stop_loss : null
     return { ahpc, pnl, rr }
   }, [executions, symbol_id, stop_loss, symbolsById, original])
@@ -598,16 +627,15 @@ function LiveStatsSection({
       .map(e => e?.time)
       .filter((t): t is string => typeof t === 'string' && /^([01]\d|2[0-3]):[0-5]\d/.test(t))
     if (times.length === 0) return { session: null, durationMs: null }
-    let earliest = times[0]
-    let latest = times[0]
-    for (const t of times) {
-      if (tradingDaySeconds(t) < tradingDaySeconds(earliest)) earliest = t
-      if (tradingDaySeconds(t) > tradingDaySeconds(latest)) latest = t
+    // Same stamping as save; only relative order matters, so any weekday works.
+    const stamps = stampFills('2000-01-04', times.map(t => `${t.slice(0, 5)}:${t.slice(6, 8).padEnd(2, '0')}`)).sort()
+    const earliest = stamps[0]
+    const latest = stamps[stamps.length - 1]
+    const duration = earliest === latest ? null : Date.parse(latest) - Date.parse(earliest)
+    return {
+      session: detectSession(earliest.slice(11, 19), latest.slice(11, 19)),
+      durationMs: duration,
     }
-    const duration = earliest === latest
-      ? null
-      : (tradingDaySeconds(latest) - tradingDaySeconds(earliest)) * 1000
-    return { session: detectSession(earliest, latest), durationMs: duration }
   }, [executions])
 
   return (

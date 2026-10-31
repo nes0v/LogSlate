@@ -9,7 +9,12 @@ function isDefaultRangeMonths(v: unknown): v is DefaultRangeMonths {
   return v === 1 || v === 2 || v === 3
 }
 
+// A choice localStorage refused to save. Wins over storage for the rest of
+// the session, so the choice still applies — it just isn't remembered.
+let memory: DefaultRangeMonths | null = null
+
 function load(): DefaultRangeMonths {
+  if (memory !== null) return memory
   try {
     const v = Number(localStorage.getItem(KEY))
     return isDefaultRangeMonths(v) ? v : DEFAULT
@@ -25,8 +30,9 @@ export function setDefaultRangeMonths(months: DefaultRangeMonths): void {
   if (months === prev) return
   try {
     localStorage.setItem(KEY, String(months))
+    memory = null
   } catch {
-    // localStorage unavailable — in-memory state still works for this session.
+    memory = months
   }
   listeners.forEach(fn => fn())
 }

@@ -2,6 +2,7 @@ import { addDays, format } from 'date-fns'
 import type { EquityAdjustment, TradeRecord } from '@/db/types'
 import type { Bucket } from '@/lib/buckets'
 import { dateKeyToDate } from '@/lib/tz'
+import { roundTo } from '@/lib/money'
 import { netPnlByDate, sumNetPnl } from '@/lib/day-pnl'
 import {
   classifyTrade,
@@ -21,14 +22,6 @@ export function signedAdjustment(a: EquityAdjustment): number {
     case 'withdraw':
     case 'fee':
       return -a.amount
-    case 'reset':
-      // `amount` on a reset is a target balance, not a movement, so it is
-      // deliberately NOT read here — adding it would inject the whole balance
-      // into equity. The step lives in `delta`, which `resolveResets` fills
-      // in. An unresolved reset therefore contributes 0 rather than a wrong
-      // number: the curve looks like the reset hasn't happened yet, which is
-      // recoverable, where a 50k jump is not.
-      return a.delta ?? 0
   }
 }
 
@@ -70,7 +63,7 @@ export function foldOverridesIntoStats(
   const inWindow = (d: string) => (from == null || d >= from) && (to == null || d <= to)
   const net = sumNetPnl(netPnlByDate(trades, overrides), inWindow)
   const fees = base.fees + sumNetPnl(feeOverrides, inWindow)
-  return { ...base, net_pnl: net, fees }
+  return { ...base, net_pnl: roundTo(net), fees: roundTo(fees) }
 }
 
 export function aggregate(trades: TradeRecord[]): AggregateStats {
@@ -148,6 +141,11 @@ export function aggregate(trades: TradeRecord[]): AggregateStats {
       durationCount++
     }
   }
+
+  // Money is whole cents; summing floats leaves dust that reads as a loss.
+  result.net_pnl = roundTo(result.net_pnl)
+  result.gross_pnl = roundTo(result.gross_pnl)
+  result.fees = roundTo(result.fees)
 
   const decided = result.wins + result.losses
   result.win_rate = decided === 0 ? null : result.wins / decided
@@ -364,12 +362,7 @@ export function computeCandles(
   return out
 }
 
-/** Groups signed adjustments by their date string (bucket key for day buckets).
- *
- *  Callers must pass a list that `resolveResets` has already been through.
- *  This can't do it itself — resolving needs the account's trade history and
- *  opening balance, neither of which a date-grouping helper should know about
- *  — and a raw `reset` row sums as 0, silently flattening the step. */
+/** Groups signed adjustments by their date string (bucket key for day buckets). */
 export function adjustmentsByDate(adjustments: EquityAdjustment[]): Map<string, number> {
   const m = new Map<string, number>()
   for (const a of adjustments) {

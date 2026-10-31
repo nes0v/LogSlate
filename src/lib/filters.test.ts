@@ -21,40 +21,40 @@ describe('applyFilters', () => {
   ]
 
   it('filters by date range inclusively', () => {
-    const out = applyFilters(trades, { ...EMPTY_FILTERS, from: '2026-04-06', to: '2026-04-15' })
+    const out = applyFilters(trades, { ...EMPTY_FILTERS, from: '2026-04-06', to: '2026-04-15' }, true)
     expect(out).toHaveLength(1)
     expect(out[0].date).toBe('2026-04-10')
   })
 
   it('filters by symbol', () => {
-    const out = applyFilters(trades, { ...EMPTY_FILTERS, symbol_id: 'nq' })
+    const out = applyFilters(trades, { ...EMPTY_FILTERS, symbol_id: 'nq' }, true)
     expect(out).toHaveLength(2)
     expect(out.every(t => t.symbol_id === 'nq')).toBe(true)
   })
 
   it('filters by session', () => {
-    const out = applyFilters(trades, { ...EMPTY_FILTERS, session: 'am' })
+    const out = applyFilters(trades, { ...EMPTY_FILTERS, session: 'am' }, true)
     expect(out).toHaveLength(1)
   })
 
   it('filters by rating', () => {
-    const out = applyFilters(trades, { ...EMPTY_FILTERS, rating: 'excellent' })
+    const out = applyFilters(trades, { ...EMPTY_FILTERS, rating: 'excellent' }, true)
     expect(out).toHaveLength(1)
   })
 
   it('combines multiple filters', () => {
-    const out = applyFilters(trades, { ...EMPTY_FILTERS, symbol_id: 'nq', session: 'lunch' })
+    const out = applyFilters(trades, { ...EMPTY_FILTERS, symbol_id: 'nq', session: 'lunch' }, true)
     expect(out).toHaveLength(1)
     expect(out[0].date).toBe('2026-04-20')
   })
 
   it('returns all trades for the empty filter', () => {
-    expect(applyFilters(trades, EMPTY_FILTERS)).toHaveLength(3)
+    expect(applyFilters(trades, EMPTY_FILTERS, true)).toHaveLength(3)
   })
 
   it('filters by weekday (using local-day arithmetic on the trade date)', () => {
     // 2026-04-05 is Sun, 04-10 is Fri, 04-20 is Mon.
-    const out = applyFilters(trades, { ...EMPTY_FILTERS, weekday: 'mon' })
+    const out = applyFilters(trades, { ...EMPTY_FILTERS, weekday: 'mon' }, true)
     expect(out.map(t => t.date)).toEqual(['2026-04-20'])
   })
 
@@ -72,16 +72,24 @@ describe('applyFilters', () => {
       ],
     })
     const all = [longTrade, shortTrade]
-    expect(applyFilters(all, { ...EMPTY_FILTERS, side: 'long' })).toEqual([longTrade])
-    expect(applyFilters(all, { ...EMPTY_FILTERS, side: 'short' })).toEqual([shortTrade])
+    expect(applyFilters(all, { ...EMPTY_FILTERS, side: 'long' }, true)).toEqual([longTrade])
+    expect(applyFilters(all, { ...EMPTY_FILTERS, side: 'short' }, true)).toEqual([shortTrade])
   })
 
   it('filters by model id, with MODEL_NONE matching trades that have no model', () => {
     const withModel = tradeRecord({ model_id: 'abc-1' })
     const noModel = tradeRecord({ model_id: null })
     const all = [withModel, noModel]
-    expect(applyFilters(all, { ...EMPTY_FILTERS, model: 'abc-1' })).toEqual([withModel])
-    expect(applyFilters(all, { ...EMPTY_FILTERS, model: MODEL_NONE })).toEqual([noModel])
+    expect(applyFilters(all, { ...EMPTY_FILTERS, model: 'abc-1' }, true)).toEqual([withModel])
+    expect(applyFilters(all, { ...EMPTY_FILTERS, model: MODEL_NONE }, true)).toEqual([noModel])
+  })
+
+  it('MODEL_NONE also matches trades whose model was deleted', () => {
+    const live = tradeRecord({ model_id: 'live' })
+    const deleted = tradeRecord({ model_id: 'gone' })
+    const noModel = tradeRecord({ model_id: null })
+    const out = applyFilters([live, deleted, noModel], { ...EMPTY_FILTERS, model: MODEL_NONE }, true, new Set(['live']))
+    expect(out).toEqual([deleted, noModel])
   })
 })
 
@@ -204,8 +212,8 @@ describe('applyFilters — newer filter dimensions', () => {
       ],
     })
     const all = [winT, lossT]
-    expect(applyFilters(all, { ...EMPTY_FILTERS, outcome: 'win' })).toEqual([winT])
-    expect(applyFilters(all, { ...EMPTY_FILTERS, outcome: 'loss' })).toEqual([lossT])
+    expect(applyFilters(all, { ...EMPTY_FILTERS, outcome: 'win' }, true)).toEqual([winT])
+    expect(applyFilters(all, { ...EMPTY_FILTERS, outcome: 'loss' }, true)).toEqual([lossT])
   })
 
   it('includeScratches=false drops scratch trades globally', () => {
@@ -223,8 +231,8 @@ describe('applyFilters — newer filter dimensions', () => {
       ],
     })
     const all = [winT, scratchT]
-    // Default keeps scratches (back-compat with every other caller).
-    expect(applyFilters(all, EMPTY_FILTERS)).toEqual(all)
+    // On keeps scratches.
+    expect(applyFilters(all, EMPTY_FILTERS, true)).toEqual(all)
     // Off removes them entirely.
     expect(applyFilters(all, EMPTY_FILTERS, false)).toEqual([winT])
   })
@@ -233,7 +241,7 @@ describe('applyFilters — newer filter dimensions', () => {
     const calm = tradeRecord({ emotion: 'calm' })
     const anxious = tradeRecord({ emotion: 'anxious' })
     expect(
-      applyFilters([calm, anxious], { ...EMPTY_FILTERS, emotion: 'calm' }),
+      applyFilters([calm, anxious], { ...EMPTY_FILTERS, emotion: 'calm' }, true),
     ).toEqual([calm])
   })
 
@@ -243,16 +251,14 @@ describe('applyFilters — newer filter dimensions', () => {
     const untagged = tradeRecord({ setup_tags: [] })
     const noField = tradeRecord({ setup_tags: undefined })
     expect(
-      applyFilters([breakout, reversal, untagged, noField], {
-        ...EMPTY_FILTERS,
-        tag: 'breakout',
-      }),
+      applyFilters(
+        [breakout, reversal, untagged, noField],
+        { ...EMPTY_FILTERS, tag: 'breakout' },
+        true,
+      ),
     ).toEqual([breakout])
     expect(
-      applyFilters([breakout, reversal], {
-        ...EMPTY_FILTERS,
-        tag: 'trend-cont',
-      }),
+      applyFilters([breakout, reversal], { ...EMPTY_FILTERS, tag: 'trend-cont' }, true),
     ).toEqual([breakout])
   })
 
@@ -270,10 +276,10 @@ describe('applyFilters — newer filter dimensions', () => {
       ],
     })
     expect(
-      applyFilters([short, long], { ...EMPTY_FILTERS, hold: '1-5m' }),
+      applyFilters([short, long], { ...EMPTY_FILTERS, hold: '1-5m' }, true),
     ).toEqual([short])
     expect(
-      applyFilters([short, long], { ...EMPTY_FILTERS, hold: '1-2h' }),
+      applyFilters([short, long], { ...EMPTY_FILTERS, hold: '1-2h' }, true),
     ).toEqual([long])
   })
 })

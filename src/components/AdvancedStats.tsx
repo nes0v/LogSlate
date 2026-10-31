@@ -2,7 +2,7 @@ import { Children, memo, useMemo } from 'react'
 import { eachDayOfInterval, format, isWeekend, parseISO } from 'date-fns'
 import { DonutChart } from '@/components/DonutChart'
 import { type AggregateStats } from '@/lib/trade-stats'
-import { formatUsd } from '@/lib/money'
+import { formatUsd, roundTo } from '@/lib/money'
 import { classifyTrade, OUTCOME_COLORS, TRADE_OUTCOMES } from '@/lib/trade-math'
 import { RATING_COLORS, RATING_DISPLAY_ORDER } from '@/lib/rating'
 import { HOLD_BUCKETS, holdBucketOf } from '@/lib/filters'
@@ -132,10 +132,9 @@ export const DistributionDonuts = memo(function DistributionDonuts({
    *  100%" before re-rendering with the real data. */
   models: Model[]
 }) {
-  // One pass over `filtered` populates every donut's counts. Previously
-  // each donut had its own useMemo with its own loop — at 6 donuts and N
-  // trades that's 6N work plus per-trade `classifyTrade` / `holdBucketOf`
-  // calls (which are themselves O(executions) without their own caches).
+  // One pass over `filtered` populates every donut's counts. A loop per
+  // donut would be 6N work at 6 donuts and N trades, plus per-trade
+  // `classifyTrade` / `holdBucketOf` calls (themselves O(executions)).
   // Single-pass keeps everything to N.
   const donutCounts = useMemo(() => {
     const outcome = Object.fromEntries(TRADE_OUTCOMES.map(o => [o, 0])) as Record<
@@ -277,12 +276,13 @@ export const DistributionDonuts = memo(function DistributionDonuts({
     // Segments follow the user-set model order from the Models page (the
     // order `models` already arrives in), not trade count.
     const segments: Array<{
+      id: string
       label: string
       value: number
       color: string
-      legendHidden?: boolean
-    }> = (models ?? [])
+    }> = models
       .map((p, i) => ({
+        id: p.id,
         label: p.name,
         value: donutCounts.model.get(p.id) ?? 0,
         color: MODEL_PALETTE[i % MODEL_PALETTE.length],
@@ -292,6 +292,7 @@ export const DistributionDonuts = memo(function DistributionDonuts({
       .filter((s, i) => !models[i].draft || s.value > 0)
     if (unmodelled > 0) {
       segments.push({
+        id: '(unmodelled)',
         label: DEFAULT_MODEL_NAME,
         value: unmodelled,
         color: 'var(--color-chart-muted)',
@@ -379,6 +380,7 @@ export const CompositeScoreSection = memo(function CompositeScoreSection({
         profitFactor: pf,
         payoff,
         winRate: stats.win_rate,
+        maxDd: ddStats.maxDd,
         maxDdPct: ddStats.maxDdPct,
         recoveryFactor: ddStats.recoveryFactor,
         dailyPnls: tradingSeries.map(p => p.pnl),
@@ -391,6 +393,7 @@ export const CompositeScoreSection = memo(function CompositeScoreSection({
       pf,
       payoff,
       stats.win_rate,
+      ddStats.maxDd,
       ddStats.maxDdPct,
       ddStats.recoveryFactor,
       tradingSeries,
@@ -448,11 +451,22 @@ export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
     () => drawdownStats(tradingSeries, stats.net_pnl),
     [tradingSeries, stats.net_pnl],
   )
-  const ratios = useMemo(() => ratioStats(tradingSeries), [tradingSeries])
+  // Shown to 2 decimals, so captions and tones judge the shown value: a
+  // −0.001 Sharpe reads "0.00 weak", not "-0.00 negative".
+  const ratios = useMemo(() => {
+    const r = ratioStats(tradingSeries)
+    return {
+      sharpe: round2(r.sharpe),
+      sortino: round2(r.sortino),
+      calmar: round2(r.calmar),
+      kRatio: round2(r.kRatio),
+      tailRatio: round2(r.tailRatio),
+    }
+  }, [tradingSeries])
   const pf = useMemo(() => profitFactor(filtered), [filtered])
-  const expR = useMemo(() => expectancyR(filtered), [filtered])
-  const expDollars = useMemo(() => expectancyDollars(filtered), [filtered])
-  const sqnVal = useMemo(() => sqn(filtered), [filtered])
+  const expR = useMemo(() => round2(expectancyR(filtered)), [filtered])
+  const expDollars = useMemo(() => round2(expectancyDollars(filtered)), [filtered])
+  const sqnVal = useMemo(() => round2(sqn(filtered)), [filtered])
   // Override days within the window — passed to streakStats so a tilt day
   // breaks the win/loss run. Scoped to [rangeStart, rangeEnd] so an override
   // outside the filter can't reset a streak it isn't part of.
@@ -913,6 +927,10 @@ function CompositeScoreCard({ score }: { score: ReturnType<typeof compositeScore
       </div>
     </section>
   )
+}
+
+function round2(v: number | null): number | null {
+  return v === null || !Number.isFinite(v) ? v : roundTo(v)
 }
 
 function qualSqn(v: number | null): string | undefined {

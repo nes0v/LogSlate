@@ -11,6 +11,7 @@ import {
 } from '@/db/types'
 import {
   classifyTrade,
+  computeDuration,
   inferSide,
   TRADE_OUTCOMES,
   type TradeOutcome,
@@ -45,17 +46,13 @@ const HOLD_BUCKET_RANGES_MIN: Record<HoldBucket, [number, number]> = {
 
 /** Holding duration in minutes — first to last execution time. Returns
  *  null when the trade has fewer than two parsable execution times. */
-export function holdMinutes(t: TradeRecord): number | null {
-  const times = t.executions
-    .map(e => Date.parse(e.time))
-    .filter(n => !Number.isNaN(n))
-  if (times.length < 2) return null
-  return (Math.max(...times) - Math.min(...times)) / 60000
+function holdMinutes(t: TradeRecord): number | null {
+  const ms = computeDuration(t).total_ms
+  return ms === null ? null : ms / 60000
 }
 
 // Memoized — `applyFilters` calls this for every trade on every filter
-// change, and `holdMinutes` re-parses every execution timestamp each
-// call. Keyed off the trade record reference: a trade is replaced (not
+// change. Keyed off the trade record reference: a trade is replaced (not
 // mutated in place) on edit, so a fresh ref invalidates naturally.
 const holdBucketCache = new WeakMap<TradeRecord, HoldBucket | null>()
 
@@ -173,9 +170,12 @@ export function applyFilters(
   trades: TradeRecord[],
   f: TradeFilters,
   // The "Show scratch trades" toggle. When false, scratch trades drop out of
-  // every stat/chart entirely (global, like the override-days toggle). Default
-  // true so the many other callers (and tests) keep their existing behavior.
-  includeScratches = true,
+  // every stat/chart entirely (global, like the override-days toggle).
+  includeScratches: boolean,
+  // The account's live model ids. With it, the "gambling" model filter also
+  // matches trades whose model was deleted — the same trades the Models donut
+  // and the trade table call gambling.
+  modelIds?: { has(id: string): boolean },
 ): TradeRecord[] {
   return trades.filter(t => {
     if (f.from && t.date < f.from) return false
@@ -197,7 +197,7 @@ export function applyFilters(
     if (f.emotion && t.emotion !== f.emotion) return false
     if (f.model) {
       if (f.model === MODEL_NONE) {
-        if (t.model_id) return false
+        if (t.model_id && (!modelIds || modelIds.has(t.model_id))) return false
       } else if (t.model_id !== f.model) return false
     }
     if (f.tag) {
@@ -215,10 +215,9 @@ export function filtersFromParams(p: URLSearchParams): TradeFilters {
   const rawModel = p.get('model')
   const rawSymbol = p.get('symbol')
   return {
-    // Validated like every other param here: an unparseable bound used to be
-    // passed straight through to date-fns, where `?from=2026-13-45` threw
-    // `RangeError: Invalid time value` mid-render and took the page down.
-    // Dropping it to null just means "no lower bound", matching how an
+    // Validated like every other param here: passed straight to date-fns,
+    // `?from=2026-13-45` would throw `RangeError: Invalid time value`
+    // mid-render. Dropping it to null just means "no lower bound", matching how an
     // unrecognised `session=` or `rating=` is handled.
     from: isDateKey(p.get('from')) ? p.get('from') : null,
     to: isDateKey(p.get('to')) ? p.get('to') : null,

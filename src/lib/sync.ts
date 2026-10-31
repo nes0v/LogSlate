@@ -5,19 +5,19 @@
 // the other device". After merge, the combined result is written to both
 // local and remote so they converge.
 //
-// New tables are added by appending to `SPECS` — everything else (loading,
-// merging, file format, settings UI counts) is driven off that list.
+// Tables come from `DATA_TABLES` — everything else (loading, merging, file
+// format, settings UI counts) is driven off that list.
 
 import type { EntityTable } from 'dexie'
-import { db } from '@/db/schema'
+import { db, FRESH_DB_KEY } from '@/db/schema'
 import {
   downloadAppDataFile,
   fetchDriveUser,
   findAppDataFile,
   uploadAppDataFile,
-  type DriveFileMeta,
 } from '@/lib/drive'
 import { loadJsonFromStorage, saveJsonToStorage, removeFromStorage } from '@/lib/storage'
+import { DATA_TABLES, type DataTableKey } from '@/lib/data-tables'
 
 const FILE_NAME = 'logslate.json'
 const LAST_SYNC_AT_KEY = 'logslate:sync:at'
@@ -67,7 +67,7 @@ export class DriveFileGoneError extends Error {
 export class DriveFileCorruptError extends Error {
   constructor() {
     super(
-      'Your Drive sync file is corrupted — its JSON could not be parsed. Confirm to overwrite it with your local data.',
+      'Your Drive sync file is unreadable or incomplete. Confirm to overwrite it with your local data.',
     )
     this.name = 'DriveFileCorruptError'
   }
@@ -80,15 +80,11 @@ export class DriveFileCorruptError extends Error {
  *  because the alternative (overwrite with this device's older shape)
  *  would silently lose whatever the newer client added. */
 export class DriveFileVersionError extends Error {
-  readonly remoteVersion: number
-  readonly localVersion: number
   constructor(remoteVersion: number, localVersion: number) {
     super(
       `Your Drive sync file was written by a newer version of LogSlate (v${remoteVersion}, this device speaks v${localVersion}). Update this device before syncing.`,
     )
     this.name = 'DriveFileVersionError'
-    this.remoteVersion = remoteVersion
-    this.localVersion = localVersion
   }
 }
 
@@ -106,17 +102,47 @@ interface SyncSpec {
   table: () => EntityTable<SyncItem, 'id'>
 }
 
-const SPECS: SyncSpec[] = [
-  { fileKey: 'trades',          idsKey: 'logslate:sync:trade_ids',          table: () => db.trades as unknown as EntityTable<SyncItem, 'id'> },
-  { fileKey: 'adjustments',     idsKey: 'logslate:sync:adjustment_ids',     table: () => db.adjustments as unknown as EntityTable<SyncItem, 'id'> },
-  { fileKey: 'accounts',        idsKey: 'logslate:sync:account_ids',        table: () => db.accounts as unknown as EntityTable<SyncItem, 'id'> },
-  { fileKey: 'days',            idsKey: 'logslate:sync:day_ids',            table: () => db.days as unknown as EntityTable<SyncItem, 'id'> },
-  { fileKey: 'models',          idsKey: 'logslate:sync:model_ids',          table: () => db.models as unknown as EntityTable<SyncItem, 'id'> },
-  { fileKey: 'symbols',         idsKey: 'logslate:sync:symbol_ids',         table: () => db.symbols as unknown as EntityTable<SyncItem, 'id'> },
-  { fileKey: 'progress_rules',  idsKey: 'logslate:sync:progress_rule_ids',  table: () => db.progress_rules as unknown as EntityTable<SyncItem, 'id'> },
-  { fileKey: 'progress_checks', idsKey: 'logslate:sync:progress_check_ids', table: () => db.progress_checks as unknown as EntityTable<SyncItem, 'id'> },
-  { fileKey: 'news',            idsKey: 'logslate:sync:news_ids',           table: () => db.news as unknown as EntityTable<SyncItem, 'id'> },
-]
+/** localStorage key for each table's last-synced id set. */
+const IDS_KEYS: Record<DataTableKey, string> = {
+  trades:          'logslate:sync:trade_ids',
+  adjustments:     'logslate:sync:adjustment_ids',
+  accounts:        'logslate:sync:account_ids',
+  days:            'logslate:sync:day_ids',
+  models:          'logslate:sync:model_ids',
+  symbols:         'logslate:sync:symbol_ids',
+  progress_rules:  'logslate:sync:progress_rule_ids',
+  progress_checks: 'logslate:sync:progress_check_ids',
+  news:            'logslate:sync:news_ids',
+}
+
+// Set by a backup import: the next sync makes Drive match local instead of
+// merging, so rows the backup left out stay gone and restored rows beat
+// newer Drive edits — "Replace everything" means exactly that.
+const LOCAL_WINS_KEY = 'logslate:sync:local_wins'
+
+export function markLocalAuthoritative(): void {
+  try {
+    localStorage.setItem(LOCAL_WINS_KEY, '1')
+  } catch {
+    // Storage blocked: sync can't run anyway (it needs the ledger).
+  }
+}
+
+function readFlag(key: string): boolean {
+  try {
+    return localStorage.getItem(key) === '1'
+  } catch {
+    return false
+  }
+}
+
+// Every row carries `id` + `updated_at`; Dexie's table types just can't be
+// widened to the shared shape without the cast.
+const SPECS: SyncSpec[] = DATA_TABLES.map(t => ({
+  fileKey: t.fileKey,
+  idsKey: IDS_KEYS[t.fileKey],
+  table: () => t.table() as unknown as EntityTable<SyncItem, 'id'>,
+}))
 
 interface SyncFile {
   version: number
@@ -141,7 +167,12 @@ function saveIdSet(key: string, ids: Set<string>): void {
 }
 
 export function lastSyncAt(): Date | null {
-  const v = localStorage.getItem(LAST_SYNC_AT_KEY)
+  let v: string | null
+  try {
+    v = localStorage.getItem(LAST_SYNC_AT_KEY)
+  } catch {
+    return null
+  }
   if (!v) return null
   const d = new Date(v)
   return Number.isNaN(d.getTime()) ? null : d
@@ -173,7 +204,7 @@ export function mergeById<T extends SyncItem>(
   return out
 }
 
-export interface SyncTableCounts {
+interface SyncTableCounts {
   local: number
   remote: number
   merged: number
@@ -182,9 +213,6 @@ export interface SyncResult {
   perTable: Record<string, SyncTableCounts>
   createdRemote: boolean
   skippedPush: boolean
-  fileId: string
-  modifiedTime: string
-  mergedAt: string
 }
 
 function sameSnapshot<T extends SyncItem>(remote: T[], merged: T[]): boolean {
@@ -196,9 +224,12 @@ function sameSnapshot<T extends SyncItem>(remote: T[], merged: T[]): boolean {
   })
 }
 
-function readArrayField(parsed: Partial<SyncFile> | null, key: string): SyncItem[] {
-  const v = parsed?.[key]
-  return Array.isArray(v) ? (v as SyncItem[]) : []
+// Every push writes the version and every table, so a file missing any of
+// them is corrupt.
+function isSyncFile(v: unknown): v is SyncFile {
+  if (!v || typeof v !== 'object') return false
+  const f = v as Record<string, unknown>
+  return typeof f.version === 'number' && SPECS.every(s => Array.isArray(f[s.fileKey]))
 }
 
 export interface SyncOptions {
@@ -225,9 +256,9 @@ export async function syncNow(options: SyncOptions = {}): Promise<SyncResult> {
     throw new DriveAccountMismatchError(currentUser.emailAddress)
   }
 
-  // Per-spec local arrays + last-synced id sets, in parallel.
-  const locals: SyncItem[][] = await Promise.all(SPECS.map(s => s.table().toArray()))
   const lastSyncedSets: Set<string>[] = SPECS.map(s => loadIdSet(s.idsKey))
+  const freshDb = readFlag(FRESH_DB_KEY)
+  const localWins = readFlag(LOCAL_WINS_KEY)
 
   const meta = await findAppDataFile(FILE_NAME)
 
@@ -242,59 +273,94 @@ export async function syncNow(options: SyncOptions = {}): Promise<SyncResult> {
     throw new DriveFileGoneError()
   }
 
-  // When the user has confirmed recreate-remote, drop lastSyncedIds so
-  // the merge keeps every local row instead of tombstoning them.
-  const effectiveLastSynced =
-    !meta && options.recreateRemoteIfMissing
-      ? SPECS.map(() => new Set<string>())
-      : lastSyncedSets
-
-  let parsed: Partial<SyncFile> | null = null
+  let parsed: SyncFile | null = null
   if (meta) {
     const text = await downloadAppDataFile(meta.id)
+    let v: unknown
     try {
-      parsed = JSON.parse(text) as Partial<SyncFile>
+      v = JSON.parse(text)
     } catch {
-      // Corrupt file. Without explicit confirmation we abort — silently
-      // overwriting would mask a real upstream problem and irreversibly
-      // discard whatever the corrupted bytes were. With confirmation,
-      // proceed as if remote were empty so the next push replaces it.
+      v = null
+    }
+    // Version guard first, since a newer client's file may be shaped
+    // differently: proceeding could silently drop data on the next push. No
+    // override: the answer is to update this device, not to clobber the
+    // newer client's work.
+    const version = (v as { version?: unknown } | null)?.version
+    if (typeof version === 'number' && version > FILE_VERSION) {
+      throw new DriveFileVersionError(version, FILE_VERSION)
+    }
+    if (isSyncFile(v)) {
+      parsed = v
+    } else {
+      // Unparseable, or missing a table. Without explicit confirmation we
+      // abort — silently overwriting would mask a real upstream problem and
+      // irreversibly discard whatever the corrupted bytes were. With
+      // confirmation, proceed as if remote were empty so the next push
+      // replaces it.
       if (!options.overwriteCorruptRemote) throw new DriveFileCorruptError()
       parsed = null
     }
-    // Version guard. If the file was written by a newer client, the
-    // shape may have fields we can't interpret — proceeding could
-    // silently drop data on the next push. No override: the answer is
-    // to update this device, not to clobber the newer client's work.
-    if (parsed && typeof parsed.version === 'number' && parsed.version > FILE_VERSION) {
-      throw new DriveFileVersionError(parsed.version, FILE_VERSION)
-    }
   }
 
-  const remotes: SyncItem[][] = SPECS.map(s => readArrayField(parsed, s.fileKey))
-  const merged: SyncItem[][] = SPECS.map((_, i) =>
-    mergeById(locals[i], remotes[i], effectiveLastSynced[i]),
+  const remotes: SyncItem[][] = SPECS.map(s =>
+    parsed ? (parsed[s.fileKey] as SyncItem[]) : [],
   )
-
-  // Single transaction: clear every table then bulk-add the merged rows.
+  // With no usable remote — the file is gone and the user confirmed
+  // recreating it, or it's corrupt and they confirmed overwriting it — an
+  // empty remote means nothing, so drop lastSyncedIds: otherwise the merge
+  // reads every previously synced row as deleted on Drive and wipes it.
+  const effectiveLastSynced =
+    parsed === null ? SPECS.map(() => new Set<string>()) : lastSyncedSets
+  // Read local, merge and write back in ONE transaction, after the network
+  // round-trip. Reading local before the download would lose anything the
+  // user wrote while Drive was answering: the clear below would wipe a row
+  // that's in neither the stale local read nor the remote.
+  let locals: SyncItem[][] = []
+  const merged: SyncItem[][] = []
   await db.transaction(
     'rw',
     SPECS.map(s => s.table()),
     async () => {
+      locals = await Promise.all(SPECS.map(s => s.table().toArray()))
+      // The database was recreated while the ledger survived (IndexedDB
+      // deleted from DevTools, say). Read against the ledger, every Drive row
+      // would look deleted here and the push would empty Drive — so pull
+      // everything instead. Known from the database's own creation event, not
+      // guessed from empty tables: deleting all your data looks the same.
+      const wiped = !localWins && freshDb && lastSyncedSets.some(set => set.size > 0)
       for (let i = 0; i < SPECS.length; i++) {
-        await SPECS[i].table().clear()
-        if (merged[i].length > 0) await SPECS[i].table().bulkAdd(merged[i])
+        if (localWins) {
+          merged[i] = locals[i]
+        } else if (wiped) {
+          // Drive wins every clash: the re-seeded `main` is newer than the
+          // real one but holds none of its settings.
+          const remoteIds = new Set(remotes[i].map(r => r.id))
+          merged[i] = [...remotes[i], ...locals[i].filter(l => !remoteIds.has(l.id))]
+        } else {
+          merged[i] = mergeById(locals[i], remotes[i], effectiveLastSynced[i])
+        }
+        // Write only what changed: `mergeById` hands back the local object
+        // itself for every row local already had right, so anything else is
+        // new or newer. Rewriting every row made a no-change sync freeze the
+        // UI for seconds at a few thousand trades.
+        const localRows = new Set(locals[i])
+        const changed = merged[i].filter(m => !localRows.has(m))
+        const keptIds = new Set(merged[i].map(m => m.id))
+        const gone = locals[i].filter(l => !keptIds.has(l.id)).map(l => l.id)
+        if (gone.length > 0) await SPECS[i].table().bulkDelete(gone)
+        if (changed.length > 0) await SPECS[i].table().bulkPut(changed)
       }
     },
   )
 
-  const remoteSameAsMerged = SPECS.every((_, i) => sameSnapshot(remotes[i], merged[i]))
+  // Push unless Drive already holds a readable file that matches. A missing
+  // file is created and a corrupt one replaced, even when local is empty.
+  const skippedPush =
+    parsed !== null && SPECS.every((_, i) => sameSnapshot(remotes[i], merged[i]))
 
-  let uploaded: DriveFileMeta
   let createdRemote = false
-  if (remoteSameAsMerged && meta) {
-    uploaded = meta
-  } else {
+  if (!skippedPush) {
     // Stale-write check. Between our pull and this push, another device
     // could in theory have written to Drive. If so, blindly pushing
     // would silently clobber their changes. Refetch the metadata; if
@@ -333,7 +399,7 @@ export async function syncNow(options: SyncOptions = {}): Promise<SyncResult> {
     SPECS.forEach((s, i) => {
       file[s.fileKey] = merged[i]
     })
-    uploaded = await uploadAppDataFile({ id: meta?.id, name: FILE_NAME, body: JSON.stringify(file) })
+    await uploadAppDataFile({ id: meta?.id, name: FILE_NAME, body: JSON.stringify(file) })
     createdRemote = !meta
   }
 
@@ -348,8 +414,10 @@ export async function syncNow(options: SyncOptions = {}): Promise<SyncResult> {
   // synced, there's nothing to "fingerprint" — fresh sign-ins to a new
   // account on first install should succeed without a stored id.
   localStorage.setItem(DRIVE_USER_KEY, currentUser.permissionId)
-  const at = new Date().toISOString()
-  localStorage.setItem(LAST_SYNC_AT_KEY, at)
+  localStorage.setItem(LAST_SYNC_AT_KEY, new Date().toISOString())
+  // Both one-shot: the ledger now describes this database and Drive matches.
+  removeFromStorage(FRESH_DB_KEY)
+  removeFromStorage(LOCAL_WINS_KEY)
 
   const perTable: Record<string, SyncTableCounts> = {}
   SPECS.forEach((s, i) => {
@@ -363,16 +431,13 @@ export async function syncNow(options: SyncOptions = {}): Promise<SyncResult> {
   return {
     perTable,
     createdRemote,
-    skippedPush: remoteSameAsMerged,
-    fileId: uploaded.id,
-    modifiedTime: uploaded.modifiedTime,
-    mergedAt: at,
+    skippedPush,
   }
 }
 
 // Clear the last-synced state locally. Resets the per-table id sets, the
-// Drive user fingerprint, and the last-sync timestamp — used by the tests
-// and reserved for an explicit user-initiated "wipe sync state" action.
+// Drive user fingerprint, and the last-sync timestamp. Backup import calls it,
+// since the restored database no longer matches what was last synced.
 // NOT called on Drive sign-out: keeping the state across a sign-out lets
 // us detect account mismatches AND preserves deletion tombstones for the
 // same-account sign-in case.

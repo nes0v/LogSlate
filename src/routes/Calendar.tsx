@@ -10,18 +10,17 @@ import {
 } from 'date-fns'
 import { monthDayGrid } from '@/lib/calendar-grid'
 import { Image as ImageIcon, StickyNote, type LucideIcon } from 'lucide-react'
-import { nyDateKey } from '@/lib/tz'
+import { useNyToday } from '@/lib/use-ny-today'
 import { db } from '@/db/schema'
 import { useActiveAccountId } from '@/lib/active-account'
 import { classifyTrade, computeNetPnl } from '@/lib/trade-math'
 import { classifyDayPnl } from '@/lib/advanced-stats'
 import { equityBefore } from '@/lib/day-pnl'
-import { resolveResets } from '@/lib/adjustment-resets'
 import { useStartingBalance } from '@/lib/use-starting-balance'
 import { signedAdjustment } from '@/lib/trade-stats'
 import { listAdjustments, listAllTrades } from '@/db/queries'
 import { useAccountQuery } from '@/lib/use-account-query'
-import { formatUsd } from '@/lib/money'
+import { formatUsd, roundTo } from '@/lib/money'
 import { parseYearMonth } from '@/lib/buckets'
 import { ForexFactoryNews } from '@/components/ForexFactoryNews'
 import { PageHeader } from '@/components/PageHeader'
@@ -32,22 +31,28 @@ const DATE_KEY = 'yyyy-MM-dd'
 
 // Shared PNL → text-tone mapping. Used by the month-net header tile and
 // the WeekCard total so the sign-based color stays consistent.
+// Judged on whole cents, so float dust (−3.6e-15) reads neutral like $0.00.
 function pnlToneClass(amount: number): string {
-  if (amount > 0) return 'text-(--color-win)'
-  if (amount < 0) return 'text-(--color-loss)'
+  const cents = roundTo(amount)
+  if (cents > 0) return 'text-(--color-win)'
+  if (cents < 0) return 'text-(--color-loss)'
   return 'text-(--color-text-dim)'
 }
 
 export function CalendarRoute() {
   const { ym } = useParams()
   const navigate = useNavigate()
+  // Reactive "today" in NY, so an idle calendar moves its today ring (and the
+  // bare `/` month) across midnight.
+  const today = useNyToday()
 
   // Memoize date derivations so `useMemo` deps compare by stable reference.
+  // The bare `/` route shows today's month.
   const { month, gridStart, days } = useMemo(() => {
-    const month = parseYearMonth(ym)
+    const month = parseYearMonth(ym ?? today.slice(0, 7))
     const { start: gridStart, days } = monthDayGrid(month)
     return { month, gridStart, days }
-  }, [ym])
+  }, [ym, today])
 
   // Start of the visible grid — the cutoff for the equity baseline below.
   const rangeStart = format(gridStart, DATE_KEY)
@@ -115,23 +120,13 @@ export function CalendarRoute() {
     return { byDate, netByDate, byMonth }
   }, [trades, dayRows])
 
-  // Resolved once here so the per-day walk and the grid baseline below both
-  // see reset rows as real steps rather than as their target balance.
-  const resolvedAdjustments = useMemo(
-    () =>
-      startingBalance === undefined
-        ? []
-        : resolveResets(adjustments ?? [], netByDate, startingBalance),
-    [adjustments, netByDate, startingBalance],
-  )
-
   const adjByDate = useMemo(() => {
     const m = new Map<string, number>()
-    for (const a of resolvedAdjustments) {
+    for (const a of adjustments ?? []) {
       m.set(a.date, (m.get(a.date) ?? 0) + signedAdjustment(a))
     }
     return m
-  }, [resolvedAdjustments])
+  }, [adjustments])
 
   // Real account equity at the moment the grid starts. Walking forward
   // day-by-day from this baseline gives each cell its own start-of-day
@@ -139,8 +134,8 @@ export function CalendarRoute() {
   // query keyed on the cutoff date would reintroduce the stale first frame.
   const gridStartEquity = useMemo(() => {
     if (!trades || !dayRows || !adjustments || startingBalance === undefined) return undefined
-    return equityBefore(rangeStart, netByDate, resolvedAdjustments, startingBalance)
-  }, [trades, dayRows, adjustments, resolvedAdjustments, startingBalance, netByDate, rangeStart])
+    return equityBefore(rangeStart, netByDate, adjustments, startingBalance)
+  }, [trades, dayRows, adjustments, startingBalance, netByDate, rangeStart])
 
   // Gate the month grid on equity too — otherwise the first paint
   // classifies near-threshold days with `band = $8` (equity defaults
@@ -241,7 +236,7 @@ export function CalendarRoute() {
         title={
           <MonthPicker
             value={format(month, 'yyyy-MM')}
-            onChange={v => v && navigate(`/month/${v}`)}
+            onChange={v => navigate(`/month/${v}`)}
             renderTrigger={({ toggle }) => (
               <button
                 type="button"
@@ -309,7 +304,7 @@ export function CalendarRoute() {
                     // NY-trading-only. Local `isToday()` would treat
                     // the user's local day as today, which is wrong
                     // for a non-NY-resident trader.
-                    isToday={key === nyDateKey()}
+                    isToday={key === today}
                     hasScreenshot={screenshotDays.has(key)}
                     hasNote={noteDays.has(key)}
                   />

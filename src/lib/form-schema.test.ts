@@ -122,6 +122,39 @@ describe('formToDraft', () => {
     ])
   })
 
+  it('keeps a long held through the 17:00 close a long', () => {
+    const draft = formToDraft(
+      validForm({
+        date: '2026-10-28',
+        executions: [
+          { kind: 'buy', order_type: 'lmt', price: 20000, time: '15:00:00', contracts: 1 },
+          { kind: 'sell', order_type: 'lmt', price: 20010, time: '18:00:00', contracts: 1 },
+        ],
+      }),
+      symbolSnapshot(),
+    )
+    expect(draft.executions.map(e => e.time)).toEqual([
+      '2026-10-28T15:00:00.000Z',
+      '2026-10-28T18:00:00.000Z',
+    ])
+    expect(draft.session).toBe('pm')
+  })
+
+  it('keeps an overnight short from the evening open a short', () => {
+    const draft = formToDraft(
+      validForm({
+        date: '2026-10-28',
+        executions: [
+          { kind: 'sell', order_type: 'lmt', price: 20010, time: '18:00:00', contracts: 1 },
+          { kind: 'buy', order_type: 'lmt', price: 20000, time: '09:00:00', contracts: 1 },
+        ],
+      }),
+      symbolSnapshot(),
+    )
+    expect(draft.executions.map(e => e.kind)).toEqual(['sell', 'buy'])
+    expect(draft.executions[0].time).toBe('2026-10-27T18:00:00.000Z')
+  })
+
   it('keeps a long held through midnight a long in the evening session', () => {
     const draft = formToDraft(
       validForm({

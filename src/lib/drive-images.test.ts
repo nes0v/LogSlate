@@ -23,7 +23,7 @@ describe('parseScreenshotRef', () => {
     expect(parseScreenshotRef('pending:xyz')).toEqual({ kind: 'pending', pendingId: 'xyz' })
   })
 
-  it('rejects unknown prefixes (e.g. legacy base64 from before v6)', () => {
+  it('rejects unknown prefixes', () => {
     expect(parseScreenshotRef('data:image/png;base64,abc')).toBeNull()
     expect(parseScreenshotRef('some-other-string')).toBeNull()
   })

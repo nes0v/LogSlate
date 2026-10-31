@@ -2,30 +2,21 @@ import { describe, expect, it } from 'vitest'
 import { isWeekend } from 'date-fns'
 import { dateKeyToDate } from '@/lib/tz'
 import type { ProgressRule, ProgressRulePeriod } from '@/db/types'
+import { progressRule } from '@/test/fixtures'
 import {
   checklistFor,
   closePeriod,
   lastPeriodEnd,
   openPeriod,
   openPeriodStart,
+  restartFrom,
   ruleActiveOn,
   ruleCountsOn,
   ruleHasHistoryBefore,
   tradingDayAfter,
 } from './progress-periods'
 
-function rule(overrides: Partial<ProgressRule> = {}): ProgressRule {
-  return {
-    id: 'r1',
-    account_id: 'main',
-    text: 'Test rule',
-    periods: [],
-    sort: 0,
-    created_at: '2026-05-01T00:00:00.000Z',
-    updated_at: '2026-05-01T00:00:00.000Z',
-    ...overrides,
-  }
-}
+const rule = progressRule
 
 describe('ruleActiveOn', () => {
   it('returns true when the date sits inside an open period', () => {
@@ -59,6 +50,21 @@ describe('ruleActiveOn', () => {
     expect(ruleActiveOn(r, '2026-12-01')).toBe(true)
   })
 
+})
+
+describe('restartFrom', () => {
+  it('starts on the day given, or Monday from a weekend', () => {
+    expect(restartFrom(rule({ periods: [] }), '2026-05-13')).toBe('2026-05-13')
+    expect(restartFrom(rule({ periods: [] }), '2026-05-16')).toBe('2026-05-18')
+  })
+
+  it('keeps a later planned start', () => {
+    const planned = rule({ periods: [{ from: '2026-05-18', until: null }] })
+    expect(restartFrom(planned, '2026-05-15')).toBe('2026-05-18')
+    // An earlier, already-running start is not kept.
+    const running = rule({ periods: [{ from: '2026-05-01', until: null }] })
+    expect(restartFrom(running, '2026-05-15')).toBe('2026-05-15')
+  })
 })
 
 describe('openPeriodStart', () => {
@@ -224,7 +230,7 @@ describe('weekend anchoring', () => {
 
 describe('openPeriod re-opening rather than splitting', () => {
   it('re-opens the last period when no trading day elapsed in between', () => {
-    // Retired from Monday's page (closes at Friday), then kept from
+    // Deleted from Monday's page (closes at Friday), then restored from
     // Friday's page — one uninterrupted run, not two periods meeting on
     // the same day.
     const r = rule({ periods: [{ from: '2026-09-01', until: '2026-09-18' }] })

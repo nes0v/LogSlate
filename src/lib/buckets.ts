@@ -1,6 +1,4 @@
 import {
-  addDays,
-  addMonths,
   eachDayOfInterval,
   eachMonthOfInterval,
   eachQuarterOfInterval,
@@ -245,5 +243,3 @@ export function parseYearMonth(ym: string | undefined): Date {
   // default landing month in sync with the trade-date timezone.
   return startOfMonth(parse(nyDateKey().slice(0, 7), 'yyyy-MM', new Date()))
 }
-
-export { addMonths, addDays }

@@ -15,7 +15,7 @@ import {
 import { bucketNavTarget, drillDownRange, timeframeFromParams } from '@/lib/stats-nav'
 import { ChevronRight, X } from 'lucide-react'
 import { dateKeyToDate } from '@/lib/tz'
-import type { EquityAdjustment, Model } from '@/db/types'
+import type { AdjustmentKind, Model } from '@/db/types'
 import { listAdjustments, listAllTrades, listModels, listSymbols } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
 import {
@@ -47,7 +47,6 @@ import { useAccountQuery } from '@/lib/use-account-query'
 import { firstExecutionMs } from '@/lib/trade-math'
 import { adjustmentsByDate, aggregate, computeCandles, foldOverridesIntoStats, signedAdjustment, type AggregateStats } from '@/lib/trade-stats'
 import { equityBefore, netPnlByDate } from '@/lib/day-pnl'
-import { byCreatedThenId, resolveResets } from '@/lib/adjustment-resets'
 import { useStartingBalance } from '@/lib/use-starting-balance'
 import { useChartAdjustmentPrefs } from '@/lib/chart-adjustment-prefs'
 import {
@@ -69,7 +68,7 @@ import {
 import { StatsFilterBar } from '@/components/StatsFilterBar'
 import { IncludeOverridesToggle } from '@/components/IncludeOverridesToggle'
 import { ShowScratchesToggle } from '@/components/ShowScratchesToggle'
-import { BTN_ACCENT } from '@/components/form/buttonClass'
+import { BTN_ACCENT, SECTION_TOGGLE } from '@/components/form/buttonClass'
 import { loadJsonFromStorage, saveJsonToStorage } from '@/lib/storage'
 
 const TRADES_SECTION_OPEN_STORAGE_KEY = 'logslate.overview.tradesSectionOpen'
@@ -207,7 +206,10 @@ export function OverviewRoute() {
   // the render back a beat.
   const contentReady = useDeferredValue(loaded)
 
-  const filtered = useMemo(() => applyFilters(allTrades ?? [], filters, includeScratches), [allTrades, filters, includeScratches])
+  const filtered = useMemo(
+    () => applyFilters(allTrades ?? [], filters, includeScratches, modelById),
+    [allTrades, filters, includeScratches, modelById],
+  )
   // Hide the scratch toggle when the current view has no scratch trades to
   // hide (mirrors the override toggle's hasOverridesInWindow).
   const hasScratchesInWindow = useHasScratchesInWindow({
@@ -217,14 +219,14 @@ export function OverviewRoute() {
     ready: loaded,
     filtered,
     includeScratches,
+    modelIds: modelById,
   })
   // Drop symbol/model filters carried over from another account (their
   // per-account ids match nothing here) so the page doesn't render empty.
   useValidAccountFilters(allTrades, symbols, models, filters.symbol_id, filters.model, patch => update(patch))
-  // Aggregate once at the route level and pass down. Previously each
-  // memo'd child (HeroNetPnl, CompositeScoreSection) computed
-  // `aggregate(filtered)` independently — same data, multiple
-  // full-array passes per render.
+  // Aggregate once at the route level and pass down, so the memo'd children
+  // (HeroNetPnl, CompositeScoreSection) don't each make a full pass over
+  // `filtered`.
   const baseStats = useMemo(() => aggregate(filtered), [filtered])
   const { rangeStart, rangeEnd } = useWindowRange(filtered, filters)
   // Global "Show override days" toggle: intent, gating, the effective
@@ -290,16 +292,7 @@ export function OverviewRoute() {
     () => netPnlByDate(allTrades ?? [], overridesByDate),
     [allTrades, overridesByDate],
   )
-  // Every adjustment consumer on this page reads THIS list, not the raw one:
-  // a reset row stores its target balance, and only `resolveResets` turns that
-  // into the step the equity math can add.
-  const resolvedAdjustments = useMemo(
-    () =>
-      startingBalance === undefined
-        ? []
-        : resolveResets(allAdjustments ?? [], netByDate, startingBalance),
-    [allAdjustments, netByDate, startingBalance],
-  )
+  const adjustments = useMemo(() => allAdjustments ?? [], [allAdjustments])
 
   // Inputs the composite-score card needs. Computed locally from the
   // already-loaded `allTrades` + `allAdjustments` so the card doesn't
@@ -310,20 +303,20 @@ export function OverviewRoute() {
   const compositeStartingEquity = useMemo(
     () =>
       rangeStart
-        ? equityBefore(rangeStart, netByDate, resolvedAdjustments, startingBalance ?? 0)
+        ? equityBefore(rangeStart, netByDate, adjustments, startingBalance ?? 0)
         : 0,
-    [netByDate, resolvedAdjustments, rangeStart, startingBalance],
+    [netByDate, adjustments, rangeStart, startingBalance],
   )
   const compositeAdjByDate = useMemo(() => {
     const m = new Map<string, number>()
     if (!rangeStart || !rangeEnd) return m
-    for (const a of resolvedAdjustments) {
+    for (const a of adjustments) {
       if (a.date >= rangeStart && a.date <= rangeEnd) {
         m.set(a.date, (m.get(a.date) ?? 0) + signedAdjustment(a))
       }
     }
     return m
-  }, [resolvedAdjustments, rangeStart, rangeEnd])
+  }, [adjustments, rangeStart, rangeEnd])
 
   // Chart trades = `allTrades` with non-date filters applied. The date
   // filter only sets the initial viewport (`chartVisibleFrom/To` below),
@@ -345,8 +338,8 @@ export function OverviewRoute() {
     [chartFilterKey],
   )
   const chartFiltered = useMemo(
-    () => applyFilters(allTrades ?? [], chartFilters, includeScratches),
-    [allTrades, chartFilters, includeScratches],
+    () => applyFilters(allTrades ?? [], chartFilters, includeScratches, modelById),
+    [allTrades, chartFilters, includeScratches, modelById],
   )
 
   // Bucket-aligned range that spans the earliest..latest dates across
@@ -372,8 +365,8 @@ export function OverviewRoute() {
   }, [chartFiltered, allAdjustments, effectiveOverrides, timeframe])
 
   const chartAdjByDate = useMemo(
-    () => adjustmentsByDate(resolvedAdjustments),
-    [resolvedAdjustments],
+    () => adjustmentsByDate(adjustments),
+    [adjustments],
   )
 
   // Same derivation as the composite baseline, off the same map — deliberately
@@ -388,11 +381,11 @@ export function OverviewRoute() {
         ? equityBefore(
             format(tfChartRange.start, 'yyyy-MM-dd'),
             netByDate,
-            resolvedAdjustments,
+            adjustments,
             startingBalance ?? 0,
           )
         : 0,
-    [tfChartRange, netByDate, resolvedAdjustments, startingBalance],
+    [tfChartRange, netByDate, adjustments, startingBalance],
   )
 
   const tfBuckets = useMemo(() => {
@@ -419,27 +412,20 @@ export function OverviewRoute() {
   // Marker visibility is user-controlled per kind (Settings → Adjustments).
   // Hidden kinds still pull the equity curve down (via tfAdjByBucket →
   // computeCandles); the toggles only suppress the drawn labels.
-  // Resets are deliberately NOT in this sum. Cash flows are additive — a
-  // bucket holding two deposits is one combined marker — but a reset carries a
-  // target balance, and adding $50,000 to a $1,000 deposit would print $51,000,
-  // a number that never existed. They get their own series below.
   const tfMarkerAdjByBucket = useMemo(() => {
-    const byDate = adjustmentsByDate(
-      resolvedAdjustments.filter(a =>
-        a.kind === 'fee'
-          ? markerPrefs.fees
-          : a.kind === 'reset'
-            ? false
-            : markerPrefs.deposits,
-      ),
-    )
+    const shown: Record<AdjustmentKind, boolean> = {
+      deposit: markerPrefs.deposits,
+      withdraw: markerPrefs.deposits,
+      fee: markerPrefs.fees,
+    }
+    const byDate = adjustmentsByDate(adjustments.filter(a => shown[a.kind]))
     const map = new Map<string, number>()
     for (const [dateKey, amount] of byDate.entries()) {
       const k = dateToBucketKey(dateKey, timeframe)
       map.set(k, (map.get(k) ?? 0) + amount)
     }
     return map
-  }, [resolvedAdjustments, timeframe, markerPrefs])
+  }, [adjustments, timeframe, markerPrefs])
 
   const tfAdjustmentMarkers = useMemo(() => {
     const keys = new Set(tfBuckets.map(b => b.key))
@@ -449,29 +435,6 @@ export function OverviewRoute() {
     }
     return out
   }, [tfMarkerAdjByBucket, tfBuckets])
-
-  // Reset markers carry the TARGET balance the account was set to, not the
-  // step it took to get there — the step is an artefact of where equity
-  // happened to be, where the target is the thing the user chose. Where a
-  // bucket holds several, the LAST one wins: that's where the account actually
-  // ended up. Shares the deposits toggle rather than owning a third one.
-  const tfResetMarkers = useMemo(() => {
-    if (!markerPrefs.deposits) return []
-    const keys = new Set(tfBuckets.map(b => b.key))
-    const byBucket = new Map<string, EquityAdjustment>()
-    for (const a of resolvedAdjustments) {
-      if (a.kind !== 'reset') continue
-      const k = dateToBucketKey(a.date, timeframe)
-      if (!keys.has(k)) continue
-      const prev = byBucket.get(k)
-      // Same winner the resolver picks, by the same rule — otherwise the label
-      // could name one target while the curve steps to another.
-      if (!prev || a.date > prev.date || (a.date === prev.date && byCreatedThenId(prev, a) < 0)) {
-        byBucket.set(k, a)
-      }
-    }
-    return [...byBucket].map(([x, a]) => ({ x, amount: a.amount }))
-  }, [resolvedAdjustments, timeframe, markerPrefs, tfBuckets])
 
   // Filter's bucket-aligned keys, used to compare against the chart's
   // emitted visible-range keys (so the "Set date filter" button only
@@ -670,7 +633,7 @@ export function OverviewRoute() {
             saveJsonToStorage(TRADES_SECTION_OPEN_STORAGE_KEY, open)
           }}
         >
-          <summary className="text-sm font-medium cursor-pointer text-(--color-text) list-none flex items-center gap-1">
+          <summary className={`${SECTION_TOGGLE} list-none`}>
             <ChevronRight className="size-4 group-open:rotate-90" />
             Trades{' '}
             <span className="text-(--color-text-dim) font-normal">({filtered.length})</span>
@@ -715,7 +678,6 @@ export function OverviewRoute() {
         <TradingViewChart
           points={tfCandles}
           adjustments={tfAdjustmentMarkers}
-          resets={tfResetMarkers}
           timeframe={timeframe}
           viewportFrom={rangeStart ?? undefined}
           viewportTo={rangeEnd ?? undefined}

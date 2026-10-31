@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { db, ensureMainAccount } from './schema'
 import { nextWeekdayKey, nyToday } from '@/lib/tz'
+import { tradingDayAfter } from '@/lib/progress-periods'
 import {
   addDayScreenshot,
   addPendingDayScreenshot,
@@ -8,6 +9,8 @@ import {
   countAccountData,
   countTradesUsingModel,
   createAccount,
+  createModel,
+  deleteModel,
   createSymbol,
   createAdjustment,
   createTrade,
@@ -15,7 +18,6 @@ import {
   deleteAdjustment,
   deleteTrade,
   getAccount,
-  getAccountResetContext,
   getDay,
   getDayNote,
   getTrade,
@@ -30,15 +32,14 @@ import {
   listDayOverrides,
   removeDayScreenshot,
   reorderModels,
-  resetAccountBalance,
   setDayNote,
   setDayFeesOverride,
   setDayPnlOverride,
   slugifyAccountName,
+  updateModel,
   updateTrade,
 } from './queries'
 import { MAIN_ACCOUNT_ID } from './types'
-import { accountEquity } from '@/lib/day-pnl'
 import { readSymbolFilterCache } from '@/lib/symbol-filter-cache'
 import { adjustmentDraft, tradeDraft } from '@/test/fixtures'
 
@@ -119,10 +120,8 @@ describe('weekend guard', () => {
     expect(await listAdjustments(MAIN_ACCOUNT_ID)).toHaveLength(0)
   })
 
-  it('setDayPnlOverride rejects a weekend date but still allows clearing', async () => {
+  it('setDayPnlOverride rejects a weekend date', async () => {
     await expect(setDayPnlOverride(MAIN_ACCOUNT_ID, '2026-04-18', -500)).rejects.toThrow(/weekend/i)
-    // Clearing a (legacy) weekend row is always allowed.
-    await expect(setDayPnlOverride(MAIN_ACCOUNT_ID, '2026-04-18', null)).resolves.toBeUndefined()
   })
 
   it('accepts a weekday date', async () => {
@@ -155,30 +154,6 @@ describe('day-override / trade mutual exclusion', () => {
   it('setDayPnlOverride rejects an override on a day that has trades', async () => {
     await createTrade(tradeDraft({ date: '2026-04-15' }))
     await expect(setDayPnlOverride(MAIN_ACCOUNT_ID, '2026-04-15', -1000)).rejects.toThrow(/trade/i)
-    expect(await getDayPnlOverride(MAIN_ACCOUNT_ID, '2026-04-15')).toBeNull()
-  })
-
-  it('setDayPnlOverride(null) clears even when trades exist (recovers a legacy both-day)', async () => {
-    // Force a contradictory legacy row directly, bypassing the guard.
-    await db.days.put({
-      id: `${MAIN_ACCOUNT_ID}:2026-04-15`,
-      account_id: MAIN_ACCOUNT_ID,
-      date: '2026-04-15',
-      screenshots: [],
-      pnl_override: -1000,
-      created_at: '2026-04-15T00:00:00.000Z',
-      updated_at: '2026-04-15T00:00:00.000Z',
-    })
-    await createTrade(tradeDraft({ date: '2026-04-15' })) // would normally be blocked
-      .catch(() => {})
-    await db.trades.add({
-      ...tradeDraft({ date: '2026-04-15' }),
-      id: 'legacy-trade',
-      account_id: MAIN_ACCOUNT_ID,
-      created_at: '2026-04-15T00:00:00.000Z',
-      updated_at: '2026-04-15T00:00:00.000Z',
-    })
-    await setDayPnlOverride(MAIN_ACCOUNT_ID, '2026-04-15', null)
     expect(await getDayPnlOverride(MAIN_ACCOUNT_ID, '2026-04-15')).toBeNull()
   })
 })
@@ -341,7 +316,6 @@ describe('account queries', () => {
           fee_per_side: 1.24,
           scratch_handles: 2,
           draft: false,
-          sort: 1,
         },
         MAIN_ACCOUNT_ID,
       )
@@ -404,7 +378,23 @@ describe('account queries', () => {
       expect(rules[0].sort).toBe(2)
     })
 
-    it('a blank cloned rule waits to be named', async () => {
+    it('a rule planned for a later session keeps that start on the clone', async () => {
+      const later = tradingDayAfter(nextWeekdayKey(nyToday()))
+      await db.progress_rules.put({
+        id: 'src-planned',
+        account_id: MAIN_ACCOUNT_ID,
+        text: 'planned',
+        periods: [{ from: later, until: null }],
+        sort: 1,
+        created_at: '2026-01-01T00:00:00.000Z',
+        updated_at: '2026-01-01T00:00:00.000Z',
+      })
+      const clone = await cloneAccount({ name: 'Eval 2', starting_balance: 0 }, MAIN_ACCOUNT_ID)
+      const [planned] = await db.progress_rules.where('account_id').equals(clone.id).toArray()
+      expect(planned.periods).toEqual([{ from: later, until: null }])
+    })
+
+    it('a blank rule is not cloned', async () => {
       await db.progress_rules.put({
         id: 'src-blank',
         account_id: MAIN_ACCOUNT_ID,
@@ -415,8 +405,7 @@ describe('account queries', () => {
         updated_at: '2026-01-01T00:00:00.000Z',
       })
       const clone = await cloneAccount({ name: 'Eval 2', starting_balance: 0 }, MAIN_ACCOUNT_ID)
-      const [blank] = await db.progress_rules.where('account_id').equals(clone.id).toArray()
-      expect(blank.periods).toEqual([])
+      expect(await db.progress_rules.where('account_id').equals(clone.id).count()).toBe(0)
     })
 
     it('a cloned line runs from today', async () => {
@@ -456,7 +445,7 @@ describe('account queries', () => {
       const cached = readSymbolFilterCache(clone.id)
       expect(cached?.map(s => s.name)).toEqual(['NQ'])
       // Same rows that landed in the table, not the source's.
-      expect(cached?.[0].account_id).toBe(clone.id)
+      expect(cached?.[0].id).toBe((await listSymbols(clone.id))[0].id)
     })
 
     it('writes no cache entry when the source has no symbols', async () => {
@@ -497,58 +486,6 @@ describe('account queries', () => {
         cloneAccount({ name: 'Eval 2', starting_balance: 0 }, 'nope'),
       ).rejects.toThrow(/no longer exists/)
       expect(await db.accounts.count()).toBe(1)
-    })
-  })
-
-  describe('resetAccountBalance', () => {
-    const equityOf = async (id: string) => {
-      const c = await getAccountResetContext(id)
-      return accountEquity(c.netByDate, c.adjustments, c.startingBalance)
-    }
-
-    it('rewrites the opening balance outright when nothing is logged yet', async () => {
-      // No curve to stay continuous with, so a ledger row would be inventing an
-      // event. This is also the only route back from a fat-fingered balance.
-      const a = await createAccount({ name: 'Typo', starting_balance: 5_000 })
-      await resetAccountBalance(a.id, 50_000, '2026-08-27')
-      expect((await getAccount(a.id))?.starting_balance).toBe(50_000)
-      expect(await db.adjustments.where('account_id').equals(a.id).count()).toBe(0)
-    })
-
-    it('records a reset row once there is history, leaving the opening balance alone', async () => {
-      await createTrade(tradeDraft())
-      await resetAccountBalance(MAIN_ACCOUNT_ID, 50_000, '2026-08-27')
-      const rows = await listAdjustments(MAIN_ACCOUNT_ID)
-      expect(rows).toHaveLength(1)
-      expect(rows[0].kind).toBe('reset')
-      // Stored as the TARGET, not the step.
-      expect(rows[0].amount).toBe(50_000)
-      expect((await getAccount(MAIN_ACCOUNT_ID))?.starting_balance).toBe(0)
-    })
-
-    it('lands equity exactly on the target', async () => {
-      const a = await createAccount({ name: 'Eval', starting_balance: 50_000 })
-      await createAdjustment({ date: '2026-08-03', kind: 'withdraw', amount: 2_000, note: '' }, a.id)
-      expect(await equityOf(a.id)).toBeCloseTo(48_000, 5)
-      await resetAccountBalance(a.id, 50_000, '2026-08-27')
-      expect(await equityOf(a.id)).toBeCloseTo(50_000, 5)
-    })
-
-    it('treats a day override as history, so the target still lands', async () => {
-      // An override-only account has no trades and no adjustments, but its
-      // equity is NOT its opening balance — rewriting the field would leave the
-      // override stacked on top and miss the target by exactly its value.
-      const a = await createAccount({ name: 'Override', starting_balance: 50_000 })
-      await setDayPnlOverride(a.id, '2026-08-03', -500)
-      expect(await equityOf(a.id)).toBeCloseTo(49_500, 5)
-      await resetAccountBalance(a.id, 50_000, '2026-08-27')
-      expect(await equityOf(a.id)).toBeCloseTo(50_000, 5)
-    })
-
-    it('rejects a negative balance', async () => {
-      await expect(resetAccountBalance(MAIN_ACCOUNT_ID, -1, '2026-08-27')).rejects.toThrow(
-        /zero or a positive number/,
-      )
     })
   })
 
@@ -641,6 +578,7 @@ describe('account queries', () => {
       sessions: [],
       groups: [],
       draft: false,
+      sort: 1,
       created_at: now,
       updated_at: now,
     })
@@ -652,6 +590,7 @@ describe('account queries', () => {
       sessions: [],
       groups: [],
       draft: false,
+      sort: 1,
       created_at: now,
       updated_at: now,
     })
@@ -678,7 +617,6 @@ describe('account queries', () => {
       account_id: a.id,
       date: '2026-04-20',
       rule_id: 'r-alpha',
-      checked: true,
       created_at: now,
       updated_at: now,
     })
@@ -687,7 +625,6 @@ describe('account queries', () => {
       account_id: MAIN_ACCOUNT_ID,
       date: '2026-04-20',
       rule_id: 'r-main',
-      checked: true,
       created_at: now,
       updated_at: now,
     })
@@ -705,7 +642,10 @@ describe('account queries', () => {
   it('deleteAccount clears the account-scoped localStorage keys', async () => {
     const a = await createAccount({ name: 'Alpha', starting_balance: 0 })
     localStorage.setItem(`logslate:equity_view_default:${a.id}`, 'candles')
-    localStorage.setItem(`logslate:drive:screenshots_folder:${a.id}`, 'folder123')
+    localStorage.setItem(
+      `logslate:drive:screenshots_folder:${a.id}`,
+      JSON.stringify({ id: 'folder123' }),
+    )
     localStorage.setItem(`logslate:drive:month_folders:${a.id}`, '{"2026-04":"m1"}')
     // Main account's keys should survive.
     localStorage.setItem(`logslate:equity_view_default:${MAIN_ACCOUNT_ID}`, 'curve')
@@ -740,6 +680,7 @@ describe('account queries', () => {
       sessions: [],
       groups: [],
       draft: false,
+      sort: 1,
       created_at: '2026-04-15T00:00:00Z',
       updated_at: '2026-04-15T00:00:00Z',
     })
@@ -753,6 +694,7 @@ describe('account queries', () => {
       fee_per_side: 2.25,
       scratch_handles: 4,
       draft: false,
+      sort: 1,
       created_at: '2026-04-15T00:00:00Z',
       updated_at: '2026-04-15T00:00:00Z',
     })
@@ -770,7 +712,6 @@ describe('account queries', () => {
       account_id: a.id,
       date: '2026-04-15',
       rule_id: 'pr1',
-      checked: true,
       created_at: '2026-04-15T00:00:00Z',
       updated_at: '2026-04-15T00:00:00Z',
     })
@@ -946,6 +887,26 @@ describe('ensureMainAccount', () => {
   })
 })
 
+describe('symbol queries', () => {
+  const draft = (name: string) => ({
+    name,
+    description: '',
+    point_value: 20,
+    tick_size: 0.25,
+    fee_per_side: 2.25,
+    scratch_handles: 4,
+    draft: false,
+  })
+
+  it('createSymbol puts a new symbol below every existing one', async () => {
+    await createSymbol(draft('b'), MAIN_ACCOUNT_ID)
+    await createSymbol(draft('a'), MAIN_ACCOUNT_ID)
+    await createSymbol(draft('other'), 'other-account')
+    const rows = await listSymbols(MAIN_ACCOUNT_ID)
+    expect(rows.map(r => r.name)).toEqual(['b', 'a'])
+  })
+})
+
 describe('model queries', () => {
   async function putModel(
     id: string,
@@ -961,13 +922,32 @@ describe('model queries', () => {
       sessions: [],
       groups: [],
       draft: false,
-      sort: opts.sort,
+      sort: opts.sort ?? 1,
       created_at: ts,
       updated_at: ts,
     })
   }
 
-  it('listModels falls back to alphabetical (case-insensitive) when no sort is set', async () => {
+  it('createModel puts a new model below every existing one', async () => {
+    await putModel('m1', 'zeta', { sort: 4 })
+    const m = await createModel(MAIN_ACCOUNT_ID, { name: 'alpha', groups: [] })
+    expect(m.sort).toBe(5)
+    expect((await listModels(MAIN_ACCOUNT_ID)).map(r => r.name)).toEqual(['zeta', 'alpha'])
+  })
+
+  it('updateModel patches fields and bumps updated_at; deleteModel removes the row', async () => {
+    await putModel('m1', 'zeta')
+    const before = (await db.models.get('m1'))!.updated_at
+    await new Promise(r => setTimeout(r, 2))
+    await updateModel('m1', { name: 'eta', description: 'd' })
+    const after = (await db.models.get('m1'))!
+    expect(after).toMatchObject({ name: 'eta', description: 'd', sort: 1 })
+    expect(after.updated_at > before).toBe(true)
+    await deleteModel('m1')
+    expect(await db.models.get('m1')).toBeUndefined()
+  })
+
+  it('listModels breaks a sort tie alphabetically (case-insensitive)', async () => {
     await putModel('m1', 'beta')
     await putModel('m2', 'Alpha')
     await putModel('m3', 'gamma', { accountId: 'other-account' })
@@ -981,20 +961,6 @@ describe('model queries', () => {
     await putModel('m3', 'gamma', { sort: 1 })
     const rows = await listModels(MAIN_ACCOUNT_ID)
     expect(rows.map(m => m.name)).toEqual(['gamma', 'beta', 'Alpha'])
-  })
-
-  it('listModels puts rows with no sort at the bottom, alphabetical among themselves', async () => {
-    await putModel('m1', 'sorted-2', { sort: 2 })
-    await putModel('m2', 'sorted-1', { sort: 1 })
-    await putModel('m3', 'unsorted-zeta')
-    await putModel('m4', 'unsorted-alpha')
-    const rows = await listModels(MAIN_ACCOUNT_ID)
-    expect(rows.map(m => m.name)).toEqual([
-      'sorted-1',
-      'sorted-2',
-      'unsorted-alpha',
-      'unsorted-zeta',
-    ])
   })
 
   it('reorderModels assigns 1..N to each id in the supplied order', async () => {

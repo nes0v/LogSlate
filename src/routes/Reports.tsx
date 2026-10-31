@@ -35,7 +35,6 @@ import { useValidAccountFilters } from '@/lib/use-valid-account-filters'
 import { useAccountQuery } from '@/lib/use-account-query'
 import { aggregate, foldOverridesIntoStats, signedAdjustment, type AggregateStats } from '@/lib/trade-stats'
 import { equityBefore, netPnlByDate } from '@/lib/day-pnl'
-import { resolveResets } from '@/lib/adjustment-resets'
 import { useStartingBalance } from '@/lib/use-starting-balance'
 import {
   classifyTrade,
@@ -56,7 +55,7 @@ import {
   rDistribution,
   type ScatterPoint,
 } from '@/lib/advanced-stats'
-import { formatUsd } from '@/lib/money'
+import { formatUsd, roundTo } from '@/lib/money'
 import { format } from 'date-fns'
 import { dateKeyToDate, formatDisplayDate } from '@/lib/tz'
 import { StatsFilterBar } from '@/components/StatsFilterBar'
@@ -163,12 +162,12 @@ export function ReportsRoute() {
   // from, so it joins the `loaded` gate below rather than arriving a render late
   // and shifting every drawdown percentage under the report.
   const startingBalance = useStartingBalance()
-  // Resolved at the route level and handed to the filter bar, which used to
-  // open its own subscription for this (and for `allTrades`). Same query count,
-  // but account-tagged, so an account switch can't leave the Model dropdown
-  // showing the previous account's names for a frame.
+  // Resolved at the route level and handed to the filter bar, account-tagged,
+  // so an account switch can't leave the Model dropdown showing the previous
+  // account's names for a frame.
   const models = useAccountQuery(accountId, () => listModels(accountId))
   const symbols = useAccountQuery(accountId, () => listSymbols(accountId))
+  const modelIds = useMemo(() => new Set((models ?? []).map(m => m.id)), [models])
   // Day-level overrides + the default filter window (shared with Overview).
   // `rangeReady` is last-trade-date + overrides only — it does NOT wait on the
   // full trades payload, so the `loaded` gate below checks `allTrades` itself
@@ -179,6 +178,7 @@ export function ReportsRoute() {
     allTrades !== undefined &&
     allAdjustments !== undefined &&
     rangeReady &&
+    models !== undefined &&
     startingBalance !== undefined
   // Same split as Overview: the filter bar paints as soon as the default window
   // resolves, the report body follows a beat later, so building the tab's
@@ -189,8 +189,8 @@ export function ReportsRoute() {
   // stat via applyFilters. Store-backed so it persists across page navigation.
   const includeScratches = includeScratchesIntent(params)
   const filtered = useMemo(
-    () => applyFilters(allTrades ?? [], filters, includeScratches),
-    [allTrades, filters, includeScratches],
+    () => applyFilters(allTrades ?? [], filters, includeScratches, modelIds),
+    [allTrades, filters, includeScratches, modelIds],
   )
   // Hide the scratch toggle when the view has no scratch trades to hide.
   const hasScratchesInWindow = useHasScratchesInWindow({
@@ -200,6 +200,7 @@ export function ReportsRoute() {
     ready: loaded,
     filtered,
     includeScratches,
+    modelIds,
   })
   // Drop symbol/model filters carried over from another account (their
   // per-account ids match nothing here) so the page doesn't render empty.
@@ -247,33 +248,23 @@ export function ReportsRoute() {
     () => netPnlByDate(allTrades ?? [], overridesByDate),
     [allTrades, overridesByDate],
   )
-  // Every adjustment consumer on this page reads THIS list, not the raw one:
-  // a reset row stores its target balance, and only `resolveResets` turns that
-  // into the step the equity math can add.
-  const resolvedAdjustments = useMemo(
-    () =>
-      startingBalance === undefined
-        ? []
-        : resolveResets(allAdjustments ?? [], netByDate, startingBalance),
-    [allAdjustments, netByDate, startingBalance],
-  )
   const advStartingEquity = useMemo(
     () =>
       rangeStart
-        ? equityBefore(rangeStart, netByDate, resolvedAdjustments, startingBalance ?? 0)
+        ? equityBefore(rangeStart, netByDate, allAdjustments ?? [], startingBalance ?? 0)
         : 0,
-    [netByDate, resolvedAdjustments, rangeStart, startingBalance],
+    [netByDate, allAdjustments, rangeStart, startingBalance],
   )
   const advAdjByDate = useMemo(() => {
     const m = new Map<string, number>()
     if (!rangeStart || !rangeEnd) return m
-    for (const a of resolvedAdjustments) {
+    for (const a of allAdjustments ?? []) {
       if (a.date >= rangeStart && a.date <= rangeEnd) {
         m.set(a.date, (m.get(a.date) ?? 0) + signedAdjustment(a))
       }
     }
     return m
-  }, [resolvedAdjustments, rangeStart, rangeEnd])
+  }, [allAdjustments, rangeStart, rangeEnd])
 
   // Day overrides inside the active window. Date-grouped breakdowns (Time)
   // fold these in only when the "Include override days" toggle is on. Scoped
@@ -546,9 +537,7 @@ function DaysAndTimeReport({
 
 /**
  * One row per cohort: Trades, Win %, Net PNL, Avg win/loss, Avg duration,
- * Total fees. Shared by every Compare axis; the Symbol axis reproduces what
- * the old standalone Symbol tab showed, which is why that tab was folded into
- * Compare. Scrolls horizontally on narrow screens rather than crushing the
+ * Total fees. Shared by every Compare axis. Scrolls horizontally on narrow screens rather than crushing the
  * columns.
  */
 function CompareTable({ groups }: { groups: Array<{ label: string; trades: TradeRecord[] }> }) {
@@ -672,8 +661,8 @@ function RiskReport({
         count: v.count,
         wins: v.wins,
         losses: v.losses,
-        pnl: v.pnl,
-        avgRealized: v.realizedN > 0 ? v.realizedSum / v.realizedN : null,
+        pnl: roundTo(v.pnl),
+        avgRealized: v.realizedN > 0 ? roundTo(v.realizedSum / v.realizedN) : null,
       }))
   }, [trades])
 
@@ -712,8 +701,8 @@ function RiskReport({
         count: v.count,
         wins: v.wins,
         losses: v.losses,
-        pnl: v.pnl,
-        avgRealized: v.realizedN > 0 ? v.realizedSum / v.realizedN : null,
+        pnl: roundTo(v.pnl),
+        avgRealized: v.realizedN > 0 ? roundTo(v.realizedSum / v.realizedN) : null,
       }))
   }, [trades])
 
@@ -1031,8 +1020,10 @@ function ReportTable({ rows }: { rows: ReportRow[] }) {
           <div className="text-right">PNL</div>
         </div>
         {rows.map(r => {
-          const intensity = max === 0 ? 0 : Math.abs(r.pnl) / max
-          const tone = r.pnl > 0 ? 'var(--color-win)' : r.pnl < 0 ? 'var(--color-loss)' : 'var(--color-panel-2)'
+          // Bucket sums carry float dust; tone the cents that are shown.
+          const pnl = roundTo(r.pnl)
+          const intensity = max === 0 ? 0 : Math.abs(pnl) / max
+          const tone = pnl > 0 ? 'var(--color-win)' : pnl < 0 ? 'var(--color-loss)' : 'var(--color-panel-2)'
           // Bar centered at 50% — winners go right, losers go left.
           const half = (intensity * 100) / 2
           return (
@@ -1054,7 +1045,7 @@ function ReportTable({ rows }: { rows: ReportRow[] }) {
                     className="absolute top-0 bottom-0 rounded-xs"
                     style={{
                       width: `${half}%`,
-                      left: r.pnl >= 0 ? '50%' : `${50 - half}%`,
+                      left: pnl >= 0 ? '50%' : `${50 - half}%`,
                       backgroundColor: tone,
                       opacity: 0.85,
                     }}
@@ -1064,12 +1055,12 @@ function ReportTable({ rows }: { rows: ReportRow[] }) {
               <div
                 className={cn(
                   'text-right font-mono tabular-nums',
-                  r.pnl > 0 && 'text-(--color-win)',
-                  r.pnl < 0 && 'text-(--color-loss)',
-                  r.pnl === 0 && 'text-(--color-text-dim)',
+                  pnl > 0 && 'text-(--color-win)',
+                  pnl < 0 && 'text-(--color-loss)',
+                  pnl === 0 && 'text-(--color-text-dim)',
                 )}
               >
-                {formatUsd(r.pnl)}
+                {formatUsd(pnl)}
               </div>
             </div>
           )
@@ -1193,9 +1184,8 @@ function Scatter({
 }) {
   // Measure the container so the SVG viewBox matches the real pixel
   // width — otherwise preserveAspectRatio="meet" letterboxes the chart
-  // into the card and leaves big empty bands on either side. Initial
-  // guess of 480 lines up with the old fixed viewBox so the first
-  // paint isn't visibly off before ResizeObserver fires.
+  // into the card and leaves big empty bands on either side. The initial
+  // guess of 480 keeps the first paint close before ResizeObserver fires.
   const containerRef = useRef<HTMLDivElement>(null)
   const [W, setW] = useState(480)
   useEffect(() => {

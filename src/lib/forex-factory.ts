@@ -45,7 +45,7 @@ const STORE_KEY = 'logslate:ff:week.v1'
 
 const PROXY_KEY = (import.meta.env.VITE_CORSPROXY_KEY ?? '').trim()
 
-export const FF_IMPACTS = ['High', 'Medium', 'Low', 'Holiday'] as const
+const FF_IMPACTS = ['High', 'Medium', 'Low', 'Holiday'] as const
 export type FFImpact = (typeof FF_IMPACTS)[number]
 
 // ForexFactory-style impact dot fill. Single source of truth for every news
@@ -65,8 +65,6 @@ export interface FFEvent {
   country: string // e.g. "USD", "EUR", "ALL"
   date: string // ISO 8601
   impact: FFImpact
-  forecast: string
-  previous: string
 }
 
 /** The one cached week, exactly as the feed served it. */
@@ -144,13 +142,31 @@ function normalizeImpact(s: unknown): FFImpact {
   return (FF_IMPACTS as readonly string[]).includes(v) ? (v as FFImpact) : 'Low'
 }
 
+// Per transport, and they're tried in turn — keep the total wait bearable.
+const FETCH_TIMEOUT_MS = 10_000
+
+// A request that hangs (rather than fails) would otherwise pin the shared
+// in-flight promise until reload; the timeout turns it into a normal error.
 async function fetchVia(t: Transport, force: boolean): Promise<FFEvent[]> {
+  try {
+    return await fetchViaTimed(t, force)
+  } catch (e) {
+    // The timeout covers the body read too, so it's caught out here.
+    if (e instanceof DOMException && e.name === 'TimeoutError') {
+      throw new Error("The news feed didn't answer in time.")
+    }
+    throw e
+  }
+}
+
+async function fetchViaTimed(t: Transport, force: boolean): Promise<FFEvent[]> {
   // On a manual refresh, bypass the browser HTTP cache too — the proxies
   // return cacheable responses, so a default fetch would be served from
   // memory/disk cache and never hit the wire.
   const resp = await fetch(t.url(FEED_URL), {
     cache: force ? 'no-store' : 'default',
     headers: t.headers,
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   })
   if (resp.status === 429) {
     // Either hop can throttle. An upstream throttle carries x-final-url.
@@ -200,8 +216,6 @@ async function fetchVia(t: Transport, force: boolean): Promise<FFEvent[]> {
     country: String(e.country ?? ''),
     date: String(e.date ?? ''),
     impact: normalizeImpact(e.impact),
-    forecast: String(e.forecast ?? ''),
-    previous: String(e.previous ?? ''),
   }))
 }
 
@@ -298,7 +312,7 @@ function writeStore(store: Store): void {
     try {
       localStorage.setItem(STORE_KEY, JSON.stringify({ ...store, week: '', events: [] }))
     } catch {
-      // storage unavailable entirely — run from memory for this session
+      // storage unavailable entirely — nothing is cached this session
     }
   }
 }
@@ -320,9 +334,9 @@ function isStale(store: Store): boolean {
   if (now - store.failedAt < RETRY_MS) return false
   // The freshness window is a floor, and it holds even when the cached week
   // has ended. Between NY rolling into Sunday and the feed rolling with it
-  // — hours, most weeks — the stored week is always "last week", and
-  // treating that as stale put every single call on the wire against a feed
-  // that allows two downloads per five minutes. Refetching cannot conjure a
+  // — hours, most weeks — the stored week is always "last week"; treating
+  // that as stale would put every call on the wire against a feed that
+  // allows two downloads per five minutes. Refetching cannot conjure a
   // week the feed has not published; waiting out the window can.
   return now - store.fetchedAt > FRESH_MS
 }

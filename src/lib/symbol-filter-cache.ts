@@ -1,5 +1,12 @@
-import type { TradingSymbol } from '@/db/types'
 import { removeStorageKeysWithPrefix } from '@/lib/storage'
+
+/** One Symbol pill. A `TradingSymbol` row is one too, so an account clone can
+ *  seed its symbol rows directly; the bar hides entries marked `draft`. */
+export interface SymbolFilterEntry {
+  id: string
+  name: string
+  draft?: boolean
+}
 
 // Per-account snapshot of the symbol list, backed by localStorage so the
 // Stats/Reports filter bar can render the Symbol pills on the very first frame
@@ -10,16 +17,16 @@ const SYMBOL_CACHE_PREFIX = 'logslate:symbol_filter_cache'
 
 const keyFor = (accountId: string) => `${SYMBOL_CACHE_PREFIX}:${accountId}`
 
-export function readSymbolFilterCache(accountId: string): TradingSymbol[] | undefined {
+export function readSymbolFilterCache(accountId: string): SymbolFilterEntry[] | undefined {
   try {
     const raw = localStorage.getItem(keyFor(accountId))
-    return raw ? (JSON.parse(raw) as TradingSymbol[]) : undefined
+    return raw ? (JSON.parse(raw) as SymbolFilterEntry[]) : undefined
   } catch {
     return undefined
   }
 }
 
-export function writeSymbolFilterCache(accountId: string, rows: TradingSymbol[]): void {
+export function writeSymbolFilterCache(accountId: string, rows: SymbolFilterEntry[]): void {
   try {
     localStorage.setItem(keyFor(accountId), JSON.stringify(rows))
   } catch {

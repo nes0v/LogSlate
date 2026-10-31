@@ -60,13 +60,7 @@ export function SymbolsRoute() {
   }, [visible, selectedId])
 
   async function createNew() {
-    // Slot the new row below every existing one. Persist a dense order with the
-    // new id last rather than a bare `maxSort+1`: sort-less symbols
-    // (they sort to the bottom), so a plain increment would jump the new row
-    // above them. Reordering the current display order + the new row backfills
-    // `sort` on everything and keeps the newcomer at the bottom.
     const rec = await createSymbol({ ...BLANK_DRAFT }, accountId)
-    await reorderSymbols([...visible.map(s => s.id), rec.id])
     setSelectedId(rec.id)
   }
 
@@ -209,6 +203,7 @@ function SymbolEditorImpl({ symbol, onSave, onDelete }: SymbolEditorProps) {
           value={name}
           onChange={e => setName(e.target.value)}
           placeholder="Symbol name"
+          aria-label="Symbol name"
           className="flex-1 min-w-0 bg-transparent border-0 outline-none text-lg font-medium font-mono"
         />
         <button
@@ -244,6 +239,7 @@ function SymbolEditorImpl({ symbol, onSave, onDelete }: SymbolEditorProps) {
         value={description}
         onChange={e => setDescription(e.target.value)}
         placeholder="Notes about this instrument (exchange, hours, quirks…)"
+        aria-label="Symbol notes"
         className={cn(inputClass, 'w-full min-h-[95px] resize-none overflow-hidden')}
       />
 

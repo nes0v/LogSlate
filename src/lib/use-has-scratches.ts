@@ -25,6 +25,8 @@ export interface HasScratchesArgs {
   /** The "show scratch trades" intent. When off, `filtered` has had scratches
    *  removed — the very rows we're looking for — so we re-filter instead. */
   includeScratches: boolean
+  /** Passed through to `applyFilters`. */
+  modelIds?: { has(id: string): boolean }
 }
 
 /**
@@ -41,13 +43,14 @@ export function useHasScratchesInWindow({
   ready,
   filtered,
   includeScratches,
+  modelIds,
 }: HasScratchesArgs): boolean {
   const live = useMemo(() => {
     const source = includeScratches
       ? filtered
-      : applyFilters(allTrades ?? [], filters, true)
+      : applyFilters(allTrades ?? [], filters, true, modelIds)
     return source.some(t => classifyTrade(t) === 'scratch')
-  }, [allTrades, filters, filtered, includeScratches])
+  }, [allTrades, filters, filtered, includeScratches, modelIds])
   useEffect(() => {
     if (ready) lastHasScratches.set(accountId, live)
   }, [ready, accountId, live])

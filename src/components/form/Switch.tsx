@@ -47,7 +47,7 @@ export function Switch({
       >
         <span
           className={cn(
-            'inline-block size-3 rounded-full bg-(--color-accent-fg) shadow-(--shadow-xs)',
+            'inline-block size-3 rounded-full bg-(--color-accent-fg)',
             checked ? 'translate-x-3.5' : 'translate-x-0.5',
           )}
         />

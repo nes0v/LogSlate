@@ -23,6 +23,10 @@ export const BTN_ACTION =
   `${BTN_BASE} border border-(--color-border) text-(--color-text-dim)`
 export const BTN_DELETE = `${BTN_ACTION} hover:text-(--color-loss)`
 
+/** Chevron + "Title (N)" toggle that opens a collapsed section. */
+export const SECTION_TOGGLE =
+  'text-sm font-medium cursor-pointer text-(--color-text) flex items-center gap-1'
+
 /** "+ Add …" text link under a list (Add execution, Add rule, Add line). */
 export const BTN_ADD_LINK =
   'inline-flex items-center gap-1 text-xs text-(--color-accent) hover:underline disabled:text-(--color-text-faint) disabled:no-underline disabled:cursor-not-allowed'

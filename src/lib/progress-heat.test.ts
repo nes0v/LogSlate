@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { isWeekend } from 'date-fns'
 import { dateKeyToDate } from '@/lib/tz'
-import type { ProgressCheck, ProgressRule } from '@/db/types'
+import type { ProgressRule } from '@/db/types'
+import { progressCheck, progressRule } from '@/test/fixtures'
 import {
   averageAdherence,
   buildHeat,
@@ -10,30 +11,9 @@ import {
   type HeatCell,
 } from './progress-heat'
 
-function rule(id = 'r1', overrides: Partial<ProgressRule> = {}): ProgressRule {
-  return {
-    id,
-    account_id: 'main',
-    text: 'Test rule',
-    periods: [{ from: '2026-01-01', until: null }],
-    sort: 0,
-    created_at: '2026-01-01T00:00:00.000Z',
-    updated_at: '2026-01-01T00:00:00.000Z',
-    ...overrides,
-  }
-}
-
-function check(date: string, ruleId: string, checked = true): ProgressCheck {
-  return {
-    id: `main:${date}:${ruleId}`,
-    account_id: 'main',
-    date,
-    rule_id: ruleId,
-    checked,
-    created_at: '2026-01-01T00:00:00.000Z',
-    updated_at: '2026-01-01T00:00:00.000Z',
-  }
-}
+const rule = (id = 'r1', overrides: Partial<ProgressRule> = {}) =>
+  progressRule({ id, periods: [{ from: '2026-01-01', until: null }], ...overrides })
+const check = progressCheck
 
 function cell(overrides: Partial<HeatCell> = {}): HeatCell {
   return { date: '2026-09-18', pct: 1, checked: 1, total: 1, future: false, ...overrides }
@@ -82,13 +62,13 @@ describe('buildHeat', () => {
     ])
   })
 
-  it('ignores an unticked row and a tick for a rule not active that day', () => {
+  it('ignores a tick for a rule not active that day', () => {
     const rules = [rule('a')]
     const heat = buildHeat({
       date: '2026-09-18',
       today: '2026-09-18',
       rules,
-      checks: [check('2026-09-18', 'a', false), check('2026-09-18', 'gone')],
+      checks: [check('2026-09-18', 'gone')],
       count: 1,
     })
     expect(heat[0]).toMatchObject({ checked: 0, total: 1, pct: 0 })
@@ -138,8 +118,8 @@ describe('currentStreak', () => {
   })
 
   it('counts past the 30 cells the strip can show', () => {
-    // Two perfect months used to read the same as one: the walk was over the
-    // heat strip, so it stopped at its 30th cell.
+    // The streak walks the whole history, not the heat strip, so two
+    // perfect months don't stop at the strip's 30th cell.
     const days = heatDays('2026-09-18', 45)
     expect(
       currentStreak({

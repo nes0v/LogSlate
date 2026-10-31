@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import { createAdjustment, deleteAdjustment } from '@/db/queries'
 import type { AdjustmentKind, EquityAdjustment } from '@/db/types'
-import { ADJUSTMENT_KIND_COLOR } from '@/db/types'
+import { ADJUSTMENT_KIND_COLOR, ADJUSTMENT_KIND_PREFIX } from '@/db/types'
 import { useConfirm } from '@/components/ConfirmDialog'
 import { inputClassCompact as inputClass } from '@/components/form/Field'
 import { DatePicker } from '@/components/form/DatePicker'
@@ -11,7 +11,7 @@ import { Pills } from '@/components/form/Pills'
 import { Switch } from '@/components/form/Switch'
 import { BTN_ACCENT } from '@/components/form/buttonClass'
 import { setChartAdjustmentPref, useChartAdjustmentPrefs } from '@/lib/chart-adjustment-prefs'
-import { formatUsd } from '@/lib/money'
+import { formatUsd, roundTo } from '@/lib/money'
 import { formatDisplayDate, nyToday, previousWeekdayKey } from '@/lib/tz'
 import { cn } from '@/lib/utils'
 
@@ -42,12 +42,8 @@ export function EquityAdjustmentsPanel({ adjustments }: EquityAdjustmentsPanelPr
       setError('Amount must be a positive number.')
       return
     }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      setError('Invalid date.')
-      return
-    }
     setError(null)
-    await createAdjustment({ date, kind, amount, note: '' })
+    await createAdjustment({ date, kind, amount })
     setAmount(null)
   }
 
@@ -55,16 +51,13 @@ export function EquityAdjustmentsPanel({ adjustments }: EquityAdjustmentsPanelPr
     if (await confirm({ title: 'Delete this adjustment?' })) await deleteAdjustment(id)
   }
 
-  // Resets are excluded from these totals on purpose: no money moved, so
-  // folding a reset in would overstate what was actually deposited.
   const totalDeposits = list
     .filter(a => a.kind === 'deposit')
     .reduce((s, a) => s + a.amount, 0)
   const totalWithdraws = list
     .filter(a => a.kind === 'withdraw')
     .reduce((s, a) => s + a.amount, 0)
-  const net = totalDeposits - totalWithdraws
-  const resetCount = list.filter(a => a.kind === 'reset').length
+  const net = roundTo(totalDeposits - totalWithdraws)
 
   return (
     <div className="space-y-3">
@@ -140,13 +133,12 @@ export function EquityAdjustmentsPanel({ adjustments }: EquityAdjustmentsPanelPr
                       action, so right-aligning here columns the amounts up
                       against the delete button. Colour comes from the shared
                       kind map, and the prefix carries the meaning now that the
-                      kind label is gone: + in, − out, → set to. A reset's
-                      amount is a target balance, so it takes no sign. */}
+                      kind label is gone: + in, − out. */}
                   <td
                     className="px-3 py-2 font-mono font-medium tabular-nums whitespace-nowrap text-right"
                     style={{ color: ADJUSTMENT_KIND_COLOR[a.kind] }}
                   >
-                    {a.kind === 'deposit' ? '+' : a.kind === 'reset' ? '→ ' : '−'}
+                    {ADJUSTMENT_KIND_PREFIX[a.kind]}
                     {formatUsd(a.amount)}
                   </td>
                   <td className="px-3 py-2 w-10 text-right">
@@ -166,7 +158,7 @@ export function EquityAdjustmentsPanel({ adjustments }: EquityAdjustmentsPanelPr
           </div>
           <div className="text-xs text-(--color-text-dim) font-mono">
             {list.length} adjustment{list.length === 1 ? '' : 's'}
-            {resetCount > 0 && ` (${resetCount} reset${resetCount === 1 ? '' : 's'})`} · deposits{' '}
+            {' '}· deposits{' '}
             {formatUsd(totalDeposits)} · withdrawals {formatUsd(totalWithdraws)} · net{' '}
             <span
               className={cn(

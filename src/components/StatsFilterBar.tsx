@@ -1,6 +1,8 @@
 import { useMemo } from 'react'
+import Dexie from 'dexie'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { listSymbols } from '@/db/queries'
+import { db } from '@/db/schema'
 import { useActiveAccountId } from '@/lib/active-account'
 import {
   DEFAULT_MODEL_NAME,
@@ -16,7 +18,11 @@ import {
   SIDE_OPTS,
   WEEKDAY_OPTS,
 } from '@/lib/filter-options'
-import { readSymbolFilterCache, writeSymbolFilterCache } from '@/lib/symbol-filter-cache'
+import {
+  readSymbolFilterCache,
+  writeSymbolFilterCache,
+  type SymbolFilterEntry,
+} from '@/lib/symbol-filter-cache'
 import {
   MODEL_NONE,
   type HoldBucket,
@@ -65,18 +71,46 @@ export function StatsFilterBar({
   // Seed only depends on the account, so parse localStorage once per account
   // instead of on every keystroke re-render.
   const symbolSeed = useMemo(() => readSymbolFilterCache(accountId) ?? [], [accountId])
+  // The pill list, built in one query so the cache holds the final list and
+  // the first frame shows every pill. In sidebar order; a draft shows only
+  // once trades use it (made draft after logging); a deleted symbol whose
+  // trades remain goes last under the name frozen on those trades — marked
+  // "(deleted)" if a live symbol has the same name — so its history stays
+  // filterable.
   const symbols = useLiveQuery(
-    async () => {
+    async (): Promise<SymbolFilterEntry[]> => {
       const rows = await listSymbols(accountId)
-      writeSymbolFilterCache(accountId, rows)
-      return rows
+      const usedKeys = await db.trades
+        .where('[account_id+symbol_id]')
+        .between([accountId, Dexie.minKey], [accountId, Dexie.maxKey])
+        .uniqueKeys()
+      const used = new Set(usedKeys.map(k => (k as unknown as [string, string])[1]))
+      const known = new Set(rows.map(s => s.id))
+      // Names already on a pill, so no two pills read the same.
+      const taken = new Set(rows.map(s => s.name))
+      const deleted: SymbolFilterEntry[] = []
+      for (const id of used) {
+        if (known.has(id)) continue
+        const t = await db.trades.where('[account_id+symbol_id]').equals([accountId, id]).first()
+        const base = t?.symbol_spec.name ?? id
+        let name = taken.has(base) ? `${base} (deleted)` : base
+        for (let n = 2; taken.has(name); n++) name = `${base} (deleted ${n})`
+        taken.add(name)
+        deleted.push({ id, name })
+      }
+      const entries = [
+        ...rows
+          .filter(s => !s.draft || used.has(s.id))
+          .map(s => ({ id: s.id, name: s.name })),
+        ...deleted,
+      ]
+      writeSymbolFilterCache(accountId, entries)
+      return entries
     },
     [accountId],
     symbolSeed,
   )
 
-  // Per-account symbol options, in the user's sidebar order, "All" first.
-  // Drafts are hidden (they can't have trades logged against them).
   const symbolOpts = useMemo(
     () => [
       { value: null, label: 'All' },

@@ -1,9 +1,11 @@
 import { Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
+import { isWeekend } from 'date-fns'
 import { TradeForm } from '@/components/TradeForm'
 import { createTrade, getDayPnlOverride } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
-import { formatDisplayDate, isDateKey, nyToday } from '@/lib/tz'
+import { dateKeyToDate, formatDisplayDate, isDateKey, nyToday } from '@/lib/tz'
+import { refreshDayCache } from '@/lib/day-cache'
 import { errorMessage } from '@/lib/utils'
 import type { TradeDraft } from '@/db/types'
 
@@ -45,6 +47,12 @@ export function TradeNewRoute() {
     overrideResult?.forAccount === accountId && overrideResult?.forDate === date
       ? overrideResult.value
       : undefined
+  // A weekend date (hand-typed, or today on a Sat/Sun) can't hold a trade,
+  // and `createTrade` would reject the form on save. Bounce to the month,
+  // like the weekend Day page does.
+  if (isWeekend(dateKeyToDate(date))) {
+    return <Navigate to={`/month/${date.slice(0, 7)}`} replace />
+  }
   if (override != null) {
     return <Navigate to={`/day/${date}`} replace />
   }
@@ -54,8 +62,9 @@ export function TradeNewRoute() {
       await createTrade(draft)
     } catch (e) {
       alert(errorMessage(e))
-      return
+      return false
     }
+    await refreshDayCache(accountId, draft.date)
     navigate(`/day/${draft.date}`)
   }
 
@@ -68,6 +77,9 @@ export function TradeNewRoute() {
         </span>
       </div>
       <TradeForm
+        // A new account means a fresh form: prices, symbol and model typed for
+        // the old account would otherwise carry over onto the new one.
+        key={accountId}
         initialDate={date}
         onSubmit={handleSubmit}
         onCancel={() => navigate(cameFrom ?? `/day/${date}`)}

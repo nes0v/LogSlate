@@ -8,8 +8,6 @@ function ff(partial: Partial<FFEvent> & { date: string }): FFEvent {
     title: 'Some Event',
     country: 'USD',
     impact: 'High',
-    forecast: '',
-    previous: '',
     ...partial,
   }
 }
@@ -60,11 +58,14 @@ describe('syncWeekNews identity', () => {
     // A speaker appearing twice in one day. Keying on day + title alone kept
     // only whichever row happened to be written last.
     await syncWeekNews([
-      ff({ title: 'FOMC Member Speaks', date: '2026-05-12T13:00:00.000Z', impact: 'Medium', forecast: 'morning' }),
-      ff({ title: 'FOMC Member Speaks', date: '2026-05-12T20:00:00.000Z', impact: 'Medium', forecast: 'evening' }),
+      ff({ title: 'FOMC Member Speaks', date: '2026-05-12T13:00:00.000Z', impact: 'Medium' }),
+      ff({ title: 'FOMC Member Speaks', date: '2026-05-12T20:00:00.000Z', impact: 'Medium' }),
     ])
-    const rows = await db.news.orderBy('id').toArray()
-    expect(rows.map(r => r.forecast).sort()).toEqual(['evening', 'morning'])
+    const rows = await db.news.toArray()
+    expect(rows.map(r => r.scheduled_at).sort()).toEqual([
+      '2026-05-12T13:00:00.000Z',
+      '2026-05-12T20:00:00.000Z',
+    ])
   })
 
   it("leaves a row's updated_at alone when the feed still says the same thing", async () => {
@@ -79,14 +80,14 @@ describe('syncWeekNews identity', () => {
   })
 
   it('rewrites a row when the feed revises it', async () => {
-    await syncWeekNews([ff({ title: 'CPI', date: '2026-05-12T12:30:00.000Z', forecast: '0.2%' })])
+    await syncWeekNews([ff({ title: 'CPI', date: '2026-05-12T12:30:00.000Z', impact: 'Medium' })])
     const before = (await db.news.toArray())[0]
     // updated_at has millisecond resolution; two back-to-back calls would
     // otherwise land on the same stamp and prove nothing.
     await new Promise(r => setTimeout(r, 2))
-    await syncWeekNews([ff({ title: 'CPI', date: '2026-05-12T12:30:00.000Z', forecast: '0.3%', previous: '0.2%' })])
+    await syncWeekNews([ff({ title: 'CPI', date: '2026-05-12T12:30:00.000Z', impact: 'High' })])
     const after = (await db.news.toArray())[0]
-    expect(after.forecast).toBe('0.3%')
+    expect(after.impact).toBe('High')
     expect(after.updated_at).not.toBe(before.updated_at)
     expect(after.created_at).toBe(before.created_at)
   })
@@ -109,7 +110,7 @@ describe('syncWeekNews identity', () => {
 describe('readArchivedWeek', () => {
   it('returns the week grouped by day, each day in time order', async () => {
     await syncWeekNews([
-      ff({ title: 'PPI', date: '2026-05-12T14:00:00.000Z', impact: 'Medium', forecast: '0.2%', previous: '0.1%' }),
+      ff({ title: 'PPI', date: '2026-05-12T14:00:00.000Z', impact: 'Medium' }),
       ff({ title: 'CPI', date: '2026-05-12T12:30:00.000Z', impact: 'High' }),
       ff({ title: 'Next day', date: '2026-05-13T12:30:00.000Z' }),
     ])
@@ -122,8 +123,6 @@ describe('readArchivedWeek', () => {
       country: 'USD',
       date: '2026-05-12T14:00:00.000Z',
       impact: 'Medium',
-      forecast: '0.2%',
-      previous: '0.1%',
     })
   })
 

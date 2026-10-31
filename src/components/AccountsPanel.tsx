@@ -1,18 +1,14 @@
-import { useRef, useState } from 'react'
-import { Check, RotateCcw, Trash2 } from 'lucide-react'
+import { useState } from 'react'
+import { Check, Trash2 } from 'lucide-react'
 import {
   cloneAccount,
   countAccountData,
   createAccount,
   deleteAccount,
-  getAccountResetContext,
-  resetAccountBalance,
 } from '@/db/queries'
-import type { AccountResetContext } from '@/db/queries'
 import type { Account } from '@/db/types'
 import { useActiveAccountId } from '@/lib/active-account'
 import { useConfirm } from '@/components/ConfirmDialog'
-import { ResetAccountDialog } from '@/components/ResetAccountDialog'
 import { inputClassCompact as inputClass } from '@/components/form/Field'
 import { NumberInput } from '@/components/form/NumberInput'
 import { Select } from '@/components/form/Select'
@@ -31,46 +27,6 @@ export function AccountsPanel({ accounts }: AccountsPanelProps) {
   const [newBalance, setNewBalance] = useState<number | null>(null)
   const [copyFrom, setCopyFrom] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  // The account whose reset dialog is open, plus the history the dialog prices
-  // against. Fetched when the dialog opens rather than for every row up front —
-  // it's a full scan per account, and the user resets one at a time.
-  const [resetting, setResetting] = useState<Account | null>(null)
-  const [resetContext, setResetContext] = useState<AccountResetContext | undefined>(undefined)
-  // Opening the dialog for one account, closing it, then opening another
-  // before the first scan lands would stamp the first account's history onto
-  // the second's dialog — and the step it previews is derived from exactly
-  // that history. Only the newest request is allowed to apply.
-  const resetRequest = useRef(0)
-
-  async function openReset(account: Account) {
-    const request = ++resetRequest.current
-    setResetting(account)
-    setResetContext(undefined)
-    try {
-      const context = await getAccountResetContext(account.id)
-      if (resetRequest.current === request) setResetContext(context)
-    } catch (err) {
-      // Without this the dialog sits with its Reset button disabled forever,
-      // since "no context yet" and "context failed" look identical to it.
-      if (resetRequest.current !== request) return
-      setResetting(null)
-      setError(errorMessage(err))
-    }
-  }
-
-  async function handleReset(newBalance: number, date: string) {
-    const account = resetting
-    resetRequest.current++
-    setResetting(null)
-    if (!account) return
-    try {
-      await resetAccountBalance(account.id, newBalance, date)
-      setError(null)
-    } catch (err) {
-      setError(errorMessage(err))
-    }
-  }
-
   // Deleting the account that's selected as the clone source leaves a stale id
   // in state: the dropdown renders blank (its option is gone) while submit
   // would still clone from it and fail. Reading through the live list keeps
@@ -81,7 +37,7 @@ export function AccountsPanel({ accounts }: AccountsPanelProps) {
     e.preventDefault()
     try {
       // Blank balance means an unfunded account that gets deposited into
-      // later — the pre-existing behaviour, so it stays the default.
+      // later.
       const draft = { name: newName, starting_balance: newBalance ?? 0 }
       if (copySource) await cloneAccount(draft, copySource)
       else await createAccount(draft)
@@ -194,8 +150,7 @@ export function AccountsPanel({ accounts }: AccountsPanelProps) {
                       </td>
                       {/* The opening balance, which is fixed at creation, so
                           this row is the only place it's ever visible. Titled
-                          because a bare number here reads as "current balance",
-                          and after a reset the two are no longer the same. */}
+                          because a bare number here reads as "current balance". */}
                       <td
                         className="px-3 py-2 text-right font-mono tabular-nums text-xs text-(--color-text-dim) whitespace-nowrap"
                         title="Starting balance"
@@ -204,17 +159,6 @@ export function AccountsPanel({ accounts }: AccountsPanelProps) {
                       </td>
                       <td className="px-3 py-2 w-16">
                         <div className="flex items-center justify-end gap-1">
-                          {/* Reset is offered on every account — the one you're
-                              trading is the one most likely to need it. */}
-                          <button
-                            type="button"
-                            onClick={() => void openReset(a)}
-                            aria-label={`Reset ${a.name} balance`}
-                            title="Reset balance"
-                            className="p-1 rounded-(--radius) text-(--color-text-dim) hover:text-(--color-accent) hover:bg-(--color-panel-3)"
-                          >
-                            <RotateCcw className="size-3.5" />
-                          </button>
                           {isActive ? (
                             <span
                               aria-label="Active account"
@@ -244,15 +188,6 @@ export function AccountsPanel({ accounts }: AccountsPanelProps) {
           </div>
         )}
       </div>
-
-      {resetting && (
-        <ResetAccountDialog
-          account={resetting}
-          context={resetContext}
-          onCancel={() => setResetting(null)}
-          onConfirm={(b, d) => void handleReset(b, d)}
-        />
-      )}
     </section>
   )
 }

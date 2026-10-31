@@ -1,15 +1,16 @@
 // Google Drive sync using Google Identity Services (GIS) token flow.
 //
-// Scope: https://www.googleapis.com/auth/drive.appdata — the app can only see
-// its own private folder in the user's Drive (invisible from the Drive UI),
-// never the user's other files. Revocable via https://myaccount.google.com/
+// Scopes: `drive.appdata` — the app's own private folder (invisible from the
+// Drive UI), where the sync file lives — and `drive.file` — only the files
+// and folders the app itself creates, where screenshots go. Never the
+// user's other files. Revocable via https://myaccount.google.com/
 //
 // State is exposed as an external store so components can subscribe via
 // useSyncExternalStore. All mutations go through `update()` to notify subscribers.
 
 import { useSyncExternalStore } from 'react'
 
-export type DriveStatus = 'signed-out' | 'signing-in' | 'signed-in' | 'error'
+type DriveStatus = 'signed-out' | 'signing-in' | 'signed-in' | 'error'
 
 export interface DriveState {
   status: DriveStatus
@@ -49,10 +50,10 @@ function saveToken(t: StoredToken | null) {
 // ---------- external store ----------
 
 // Boot: drop any expired stored token and derive the initial status from
-// what's left. We used to silently refresh here, but GIS's `prompt: 'none'`
-// flow flashes a cross-origin popup in modern Chrome (COOP blocks
-// `window.closed`, refresh then fails with "no access token") — worse UX
-// than asking the user to reconnect.
+// what's left. No silent refresh: GIS's `prompt: 'none'` flow flashes a
+// cross-origin popup in modern Chrome (COOP blocks `window.closed`, refresh
+// then fails with "no access token") — worse UX than asking the user to
+// reconnect.
 function initStatus(): DriveStatus {
   const stored = loadToken()
   if (!stored) return 'signed-out'
@@ -150,7 +151,7 @@ export function parseExpiresIn(raw: unknown): number {
   return Math.min(Math.max(n, MIN_EXPIRES_SEC), MAX_EXPIRES_SEC)
 }
 
-function requestToken(prompt: '' | 'none' | 'consent'): Promise<string> {
+function requestToken(): Promise<string> {
   return new Promise<string>((resolve, reject) => {
     const clientId = getClientId()
     if (!clientId) {
@@ -181,7 +182,7 @@ function requestToken(prompt: '' | 'none' | 'consent'): Promise<string> {
         reject(new Error(type))
       },
     })
-    client.requestAccessToken({ prompt })
+    client.requestAccessToken({ prompt: '' })
   })
 }
 
@@ -191,7 +192,7 @@ export async function signIn(): Promise<void> {
   update({ status: 'signing-in', error: null })
   try {
     await loadGis()
-    await requestToken('')
+    await requestToken()
   } catch (e) {
     // requestToken already updated state to 'error'; rethrow for callers.
     throw e instanceof Error ? e : new Error(String(e))
@@ -292,11 +293,10 @@ export async function fetchDriveUser(): Promise<DriveUser> {
 // These operate on files/folders the app created in the user's main Drive.
 // Screenshots live here so the user can browse them manually.
 
-// Raised when a Drive call 403s because the current token doesn't hold the
-// scope we asked for. Happens after we add a new scope to SCOPE: existing
-// tokens only carry the scopes they were minted with, and silent refresh
-// reuses that set — so the user has to Disconnect + Connect once to
-// re-consent. The UI surfaces this differently from generic errors.
+// Raised when a Drive call 403s, most often because the token doesn't hold
+// the scope we asked for (consent wasn't granted). The user has to
+// Disconnect + Connect once to re-consent.
+// The UI surfaces this differently from generic errors.
 export class DriveScopeError extends Error {
   constructor(message = 'Drive access is missing the screenshot folder scope. Disconnect and reconnect in Settings to re-grant access.') {
     super(message)

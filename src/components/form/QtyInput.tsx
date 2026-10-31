@@ -1,20 +1,22 @@
+import { useState } from 'react'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface QtyInputProps {
   value: number
   onChange: (v: number) => void
-  min?: number
-  max?: number
   className?: string
 }
 
 // Integer quantity input with stacked +/- buttons that fill the input's
 // right edge (no gap top/bottom/right). Replaces the browser-default
 // number spinner for a consistent look across platforms.
-export function QtyInput({ value, onChange, min = 1, max, className }: QtyInputProps) {
-  const inc = () => onChange(Math.min(max ?? Number.POSITIVE_INFINITY, value + 1))
-  const dec = () => onChange(Math.max(min, value - 1))
+export function QtyInput({ value, onChange, className }: QtyInputProps) {
+  const inc = () => onChange(value + 1)
+  const dec = () => onChange(Math.max(1, value - 1))
+  // What's typed while the field is empty. Without it, clearing the field
+  // snaps straight back to 1 and typing "3" reads "13". Blur restores `value`.
+  const [draft, setDraft] = useState<string | null>(null)
 
   return (
     <div
@@ -27,10 +29,26 @@ export function QtyInput({ value, onChange, min = 1, max, className }: QtyInputP
       <input
         type="text"
         inputMode="numeric"
-        value={value}
+        aria-label="Contracts"
+        value={draft ?? value}
         onChange={e => {
-          const n = Number(e.target.value.replace(/\D/g, ''))
-          if (Number.isFinite(n)) onChange(Math.max(min, Math.min(max ?? n, n)))
+          const digits = e.target.value.replace(/\D/g, '')
+          const n = Number(digits)
+          if (digits === '' || n < 1) {
+            setDraft(digits)
+            return
+          }
+          setDraft(null)
+          onChange(n)
+        }}
+        onBlur={() => setDraft(null)}
+        onKeyDown={e => {
+          // Enter would submit `value` while the field shows blank/0; put
+          // the real value back instead so what's saved is what's shown.
+          if (e.key === 'Enter' && draft !== null) {
+            e.preventDefault()
+            setDraft(null)
+          }
         }}
         className="flex-1 min-w-0 bg-transparent px-2.5 text-sm text-(--color-text) outline-none"
       />

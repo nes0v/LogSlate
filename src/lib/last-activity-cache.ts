@@ -29,8 +29,7 @@ const PREFIX = 'logslate:last_activity_date'
 const keyFor = (accountId: string) => `${PREFIX}:${accountId}`
 
 /** Cached anchor for `accountId`, or null when there's nothing usable stored.
- *  A null result just means the pickers show "Any" for a frame — the same
- *  behaviour as before this cache existed.
+ *  A null result just means the pickers show "Any" for a frame.
  *
  *  Validated with `isDateKey`, not a shape regex: this value feeds
  *  `defaultRange` → date-fns, and a well-shaped but impossible key like

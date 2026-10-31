@@ -1,11 +1,10 @@
 // Which day the Progress page treats as "now", and which days it will let you
 // act on.
 //
-// Pulled out of the route so these can be tested without mounting React.
-// Every bug this area has had came from exactly these comparisons — a Today
-// button that walked onto a Saturday, a Friday left editable after it closed,
-// a checklist tickable a day early — and until now the only way to check them
-// was to open the app on the right day of the week and click around.
+// Kept out of the route so these can be tested without mounting React:
+// these comparisons — a Today button that must not walk onto a Saturday, a
+// Friday that locks once it closes, a checklist not tickable a day early —
+// otherwise only show on the right day of the week.
 //
 // All arguments and results are `YYYY-MM-DD` keys. Those are zero-padded, so
 // a plain string compare is a date compare.

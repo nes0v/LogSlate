@@ -379,6 +379,16 @@ describe('ratioStats', () => {
     expect(Number.isFinite(stats.tailRatio!)).toBe(true)
   })
 
+  it('K-Ratio ignores deposits', () => {
+    const dates = ['2026-04-01', '2026-04-02', '2026-04-03', '2026-04-06', '2026-04-07', '2026-04-08']
+    const trades = dates.map((d, i) => tradeWithPnl(i % 2 === 0 ? 100 : -100, { date: d }))
+    const plain = ratioStats(dailyEquitySeries(trades, dates, 50_000))
+    const funded = ratioStats(
+      dailyEquitySeries(trades, dates, 50_000, new Map([['2026-04-06', 10_000]])),
+    )
+    expect(funded.kRatio).toBeCloseTo(plain.kRatio!, 10)
+  })
+
   it('uses the canonical N-basis downside deviation for Sortino', () => {
     // Daily PNL +100, -50, +100. Downside deviation = sqrt((-50)² / 3)
     // (squared losses ÷ TOTAL days), NOT sqrt((-50)² / 1) (÷ loss count).
@@ -397,9 +407,9 @@ describe('ratioStats', () => {
   })
 
   it('tail ratio stays bounded when a single boundary loss is microscopic', () => {
-    // 60 days, one microscopic loss (-$0.01) plus normal PNL. Under the
-    // old |p95|/|p5| formula a near-zero boundary value would blow the
-    // ratio up to ~10,000+. The averaged-tail variant pulls in three or
+    // 60 days, one microscopic loss (-$0.01) plus normal PNL. Under a
+    // single-percentile |p95|/|p5| formula a near-zero boundary value would
+    // blow the ratio up to ~10,000+. The averaged-tail variant pulls in three or
     // more losses so the divisor reflects the user's typical loser, not
     // the boundary outlier.
     const trades: ReturnType<typeof tradeWithPnl>[] = []
@@ -432,7 +442,8 @@ describe('ratioStats', () => {
       '2026-04-05',
     ]
     const series = dailyEquitySeries(
-      dates.map((d, i) => tradeWithPnl(i % 3 === 0 ? -50 : 100, { date: d })),
+      // Losing tail (3 worst days: -80, -80, +100) averages below zero.
+      dates.map((d, i) => tradeWithPnl(i % 3 === 0 ? -80 : 100, { date: d })),
       dates,
       0,
     )
@@ -455,7 +466,7 @@ describe('ratioStats', () => {
 describe('rDistribution', () => {
   it('places each trade into one bucket and accumulates', () => {
     // Bucket label = nearest integer R, with half-bin boundaries at
-    // ±0.5R. So +1R covers (0, 1.5], +2R covers (1.5, 2.5], and so on.
+    // ±0.5R. So +1R covers [0, 1.5), +2R covers [1.5, 2.5), and so on.
     // A 1.05R loss (slippage past stop) sits in -1R, not -2R.
     const trades = [
       tradeWithPnl(50, { stop_loss: 100 }), // +0.5R -> +1R
@@ -474,6 +485,20 @@ describe('rDistribution', () => {
     expect(get('5R+').count).toBe(1)
     // Cumulative ends at total.
     expect(buckets[buckets.length - 1].cumulative).toBe(6)
+  })
+
+  it('rounds an exact half-R away from zero', () => {
+    const buckets = rDistribution([
+      tradeWithPnl(150, { stop_loss: 100 }),
+      tradeWithPnl(-150, { stop_loss: 100 }),
+      tradeWithPnl(250, { stop_loss: 100 }),
+      tradeWithPnl(-250, { stop_loss: 100 }),
+    ])
+    const get = (label: string) => buckets.find(b => b.label === label)!.count
+    expect(get('+2R')).toBe(1)
+    expect(get('-2R')).toBe(1)
+    expect(get('+3R')).toBe(1)
+    expect(get('-3R')).toBe(1)
   })
 
   it('skips trades without a stop', () => {
@@ -580,6 +605,7 @@ describe('compositeScore', () => {
       profitFactor: 1.5,
       payoff: 1.2,
       winRate: 0.55,
+      maxDd: -1000,
       maxDdPct: -0.1,
       recoveryFactor: 2,
       dailyPnls: [100, -20, 50, 30, -10, 80],
@@ -601,6 +627,7 @@ describe('compositeScore', () => {
       profitFactor: 0.5,
       payoff: 0.5,
       winRate: 0.3,
+      maxDd: -1000,
       maxDdPct: -0.5,
       recoveryFactor: 0.2,
       dailyPnls: [-50, -30],
@@ -615,15 +642,15 @@ describe('compositeScore', () => {
   })
 
   it('treats a pure-winners window as max PF + max payoff + max recovery', () => {
-    // The single-2R-trade case the user hit: no losers, no drawdown.
-    // Previously this scored ~35 because PF=Infinity, payoff=null, and
-    // recoveryFactor=null all mapped to 0. Now those three components
-    // should be at the ceiling; consistency is null (one day) so the
+    // A single 2R trade: no losers, no drawdown. PF=Infinity,
+    // payoff=null and recoveryFactor=null must score at the ceiling, not
+    // map to 0; consistency is null (one day) so the
     // remaining five reweight pro-rata.
     const score = compositeScore({
       profitFactor: Infinity,
       payoff: null,
       winRate: 1.0,
+      maxDd: 0,
       maxDdPct: 0,
       recoveryFactor: null,
       dailyPnls: [200],
@@ -641,6 +668,26 @@ describe('compositeScore', () => {
     expect(score.total).toBe(100)
   })
 
+  it('does not score a dollar drawdown as perfect when equity starts at 0', () => {
+    // Start 0: -500, -500, +1500. ddPct reads 0 (no positive peak to divide
+    // by), but there WAS a $1000 drawdown.
+    const score = compositeScore({
+      profitFactor: 1.5,
+      payoff: 1.5,
+      winRate: 1 / 3,
+      maxDd: -1000,
+      maxDdPct: 0,
+      recoveryFactor: 0.5,
+      dailyPnls: [-500, -500, 1500],
+      netPnl: 500,
+      wins: 1,
+      losses: 2,
+      peakEquity: 0,
+    })
+    expect(score.parts.maxDd).toBeNull()
+    expect(score.parts.recovery).toBe(0)
+  })
+
   it('treats maxDd as null when ddPct underflows on a fresh-account window', () => {
     // accountStartEquity = 0 (no prior trades/adjustments) plus a window
     // where a small early peak gets dwarfed by a later loss. ddPct goes
@@ -651,6 +698,7 @@ describe('compositeScore', () => {
       profitFactor: 1.12,
       payoff: 1.28,
       winRate: 0.47,
+      maxDd: -1000,
       maxDdPct: -3.0, // 300% drawdown of small running peak
       recoveryFactor: 0.5, // recovery legitimately ≤ 1 → stays at 0
       dailyPnls: [50, -30, 80, -120, 40, -10],
@@ -675,6 +723,7 @@ describe('compositeScore', () => {
       profitFactor: 1.12,
       payoff: 1.28,
       winRate: 0.47,
+      maxDd: -1000,
       maxDdPct: -3.0,
       recoveryFactor: 0.5,
       dailyPnls: [50, -30, 80, -120, 40, -10],
@@ -694,6 +743,7 @@ describe('compositeScore', () => {
       profitFactor: 2.0,
       payoff: 1.5,
       winRate: 0.5,
+      maxDd: -1000,
       maxDdPct: -0.2,
       recoveryFactor: 2.5,
       dailyPnls: [100],

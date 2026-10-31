@@ -14,13 +14,10 @@ const MONTHS_SHORT = [
 ]
 
 interface MonthPickerProps {
-  /** YYYY-MM or null/empty for unselected. */
-  value: string | null
-  onChange: (v: string | null) => void
-  placeholder?: string
+  /** YYYY-MM. */
+  value: string
+  onChange: (v: string) => void
   className?: string
-  /** Show a "Clear" footer button (only emits null when this is true). */
-  clearable?: boolean
   /** Tighter trigger padding for dense rows. */
   compact?: boolean
   ariaLabel?: string
@@ -30,8 +27,7 @@ interface MonthPickerProps {
   renderTrigger?: (args: { open: boolean; toggle: () => void; display: string }) => ReactNode
 }
 
-function parseYearMonth(v: string | null): { year: number; month: number } | null {
-  if (!v) return null
+function parseYearMonth(v: string): { year: number; month: number } | null {
   const m = /^(\d{4})-(\d{2})$/.exec(v)
   if (!m) return null
   return { year: Number(m[1]), month: Number(m[2]) - 1 }
@@ -40,9 +36,7 @@ function parseYearMonth(v: string | null): { year: number; month: number } | nul
 export function MonthPicker({
   value,
   onChange,
-  placeholder = 'Select month',
   className,
-  clearable = false,
   compact = false,
   ariaLabel,
   renderTrigger,
@@ -67,7 +61,7 @@ export function MonthPicker({
   const selected = parseYearMonth(value)
   const display = selected
     ? `${MONTHS_SHORT[selected.month]} ${selected.year}`
-    : placeholder
+    : value
 
   function pick(monthIdx: number) {
     const mm = String(monthIdx + 1).padStart(2, '0')
@@ -93,14 +87,7 @@ export function MonthPicker({
           aria-label={ariaLabel}
           className={triggerClass}
         >
-          <span
-            className={cn(
-              'truncate',
-              !selected && 'text-(--color-text-faint)',
-            )}
-          >
-            {display}
-          </span>
+          <span className="truncate">{display}</span>
           <CalendarIcon className="size-4 shrink-0 text-(--color-text-dim)" />
         </button>
       )}
@@ -150,7 +137,7 @@ export function MonthPicker({
               )
             })}
           </div>
-          <div className="mt-2 pt-2 border-t border-(--color-border) flex items-center justify-between text-xs">
+          <div className="mt-2 pt-2 border-t border-(--color-border) flex items-center text-xs">
             <button
               type="button"
               onClick={() => {
@@ -161,18 +148,6 @@ export function MonthPicker({
             >
               This month
             </button>
-            {clearable && value && (
-              <button
-                type="button"
-                onClick={() => {
-                  onChange(null)
-                  setOpen(false)
-                }}
-                className="px-2 py-1 rounded text-(--color-text-dim) hover:text-(--color-text) hover:bg-(--color-panel-2)"
-              >
-                Clear
-              </button>
-            )}
           </div>
         </div>
       )}

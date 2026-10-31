@@ -2,10 +2,11 @@ import type {
   AdjustmentDraft,
   EquityAdjustment,
   Execution,
+  ProgressCheck,
+  ProgressRule,
   SymbolSnapshot,
   TradeDraft,
   TradeRecord,
-  TradingSymbol,
 } from '@/db/types'
 import { MAIN_ACCOUNT_ID } from '@/db/types'
 
@@ -23,24 +24,6 @@ export function symbolSnapshot(overrides: Partial<SymbolSnapshot> = {}): SymbolS
     tick_size: 0.25,
     fee_per_side: 2.25,
     scratch_handles: 4,
-    ...overrides,
-  }
-}
-
-export function tradingSymbol(overrides: Partial<TradingSymbol> = {}): TradingSymbol {
-  const now = '2026-04-15T15:00:00.000Z'
-  return {
-    id: overrides.id ?? nextId(),
-    account_id: overrides.account_id ?? MAIN_ACCOUNT_ID,
-    name: 'NQ',
-    description: '',
-    point_value: 20,
-    tick_size: 0.25,
-    fee_per_side: 2.25,
-    scratch_handles: 4,
-    draft: false,
-    created_at: now,
-    updated_at: now,
     ...overrides,
   }
 }
@@ -94,7 +77,6 @@ export function adjustmentDraft(overrides: Partial<AdjustmentDraft> = {}): Adjus
     date: '2026-04-01',
     kind: 'deposit',
     amount: 1000,
-    note: '',
     ...overrides,
   }
 }
@@ -108,5 +90,38 @@ export function adjustmentRecord(overrides: Partial<EquityAdjustment> = {}): Equ
     account_id: overrides.account_id ?? MAIN_ACCOUNT_ID,
     created_at: overrides.created_at ?? now,
     updated_at: overrides.updated_at ?? now,
+  }
+}
+
+const PROGRESS_TS = '2026-01-01T00:00:00.000Z'
+
+export function progressRule(overrides: Partial<ProgressRule> = {}): ProgressRule {
+  return {
+    id: 'r1',
+    account_id: MAIN_ACCOUNT_ID,
+    text: 'Test rule',
+    periods: [],
+    sort: 0,
+    created_at: PROGRESS_TS,
+    updated_at: PROGRESS_TS,
+    ...overrides,
+  }
+}
+
+/** A tick: the row's existence is the check. Id mirrors `toggleProgressCheck`. */
+export function progressCheck(
+  date: string,
+  ruleId: string,
+  overrides: Partial<ProgressCheck> = {},
+): ProgressCheck {
+  const account_id = overrides.account_id ?? MAIN_ACCOUNT_ID
+  return {
+    id: `${account_id}:${date}:${ruleId}`,
+    account_id,
+    date,
+    rule_id: ruleId,
+    created_at: PROGRESS_TS,
+    updated_at: PROGRESS_TS,
+    ...overrides,
   }
 }

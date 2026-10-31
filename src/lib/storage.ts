@@ -1,7 +1,7 @@
 // Tiny wrappers around `localStorage` JSON read/write that swallow:
 //  - localStorage being unavailable (privacy mode, quota errors)
-//  - JSON parse failures (corrupt entry from a previous schema)
-//  - shape mismatches from a previous version of the app
+//  - JSON parse failures (a corrupt or hand-edited entry)
+//  - shape mismatches (the validator rejects it)
 //
 // Each caller supplies a validator that returns the parsed value when
 // the shape matches and `null` otherwise; the helper returns the
