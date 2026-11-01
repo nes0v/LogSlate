@@ -614,12 +614,13 @@ function RuleManager({
           )
         )}
       </div>
-      {/* Dimmed but still hoverable: every control inside carries its own
-          `disabled`, so the panel is inert without `pointer-events-none` —
-          which would also swallow the hover that surfaces each row's
-          tooltip, exactly when the panel is locked and the tooltip is the
-          only thing left explaining the row. */}
-      <div className={cn('space-y-1', disabled && 'opacity-50')}>
+      {/* Locked rows dim but stay hoverable: every control inside carries
+          its own `disabled`, so the panel is inert without
+          `pointer-events-none` — which would also swallow the hover that
+          surfaces each row's tooltip, exactly when the panel is locked and
+          the tooltip is the only thing left explaining the row. The dim is
+          per row so a divider can keep its line at full strength. */}
+      <div className="space-y-1">
         {visible.map((r, i) => r.kind === 'line' ? (
           <LineRow
             key={r.id}
@@ -786,9 +787,13 @@ function LineRow({
         lifted && 'bg-(--color-panel-2)',
       )}
     >
-      <RowGrip sortable={sortable} disabled={disabled} />
+      {/* Locked: the grip and ✕ dim, the line itself stays — at half
+          opacity it all but disappears. */}
+      <RowGrip sortable={sortable} disabled={disabled} className={disabled ? 'opacity-50' : undefined} />
       <div className="flex-1 border-t border-(--color-panel-2)" />
-      <RowDelete onClick={() => onDelete(rule.id)} disabled={disabled} />
+      <span className={cn('flex shrink-0', disabled && 'opacity-50')}>
+        <RowDelete onClick={() => onDelete(rule.id)} disabled={disabled} />
+      </span>
     </div>
   )
 }
@@ -841,6 +846,7 @@ function RuleRow({
       className={cn(
         'flex items-start gap-2 px-1 py-1 rounded-sm',
         lifted && 'bg-(--color-panel-2)',
+        disabled && 'opacity-50',
       )}
     >
       <RowGrip sortable={sortable} disabled={disabled} className="mt-px" />
@@ -893,7 +899,10 @@ function RuleRow({
         }}
         className={cn(
           'flex-1 bg-transparent border-0 outline-none text-sm leading-tight p-0 placeholder:text-(--color-text-faint)',
-          startsOn && 'text-(--color-text-dim)',
+          // Locked, the row's opacity already dims it: a second dim on
+          // top made not-yet-started rules read fainter than the rest.
+          // The "from …" label still says when it starts.
+          startsOn && !disabled && 'text-(--color-text-dim)',
         )}
       />
       {startsOn && (

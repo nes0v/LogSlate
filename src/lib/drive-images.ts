@@ -579,9 +579,16 @@ export async function resolveScreenshotUrl(
   return entry
 }
 
-// --- queue drain (runs at the start of every manual sync) ---
+// --- queue drain (runs at the start of every manual sync, and before an export) ---
 
-export async function drainPendingUploads(): Promise<void> {
+/** Screenshots still waiting to upload. */
+export function countPendingUploads(): Promise<number> {
+  return db.pending_uploads.count()
+}
+
+/** `report: false` skips the failure notice, for a caller that says it its
+ *  own way (export names what the backup left out). */
+export async function drainPendingUploads({ report = true } = {}): Promise<void> {
   if (!canUploadToDrive()) return
   const pending = await db.pending_uploads.toArray()
   let failed = 0
@@ -638,7 +645,7 @@ export async function drainPendingUploads(): Promise<void> {
       failed++
     }
   }
-  if (failed > 0) {
+  if (failed > 0 && report) {
     pushError(
       `${failed} screenshot${failed === 1 ? '' : 's'} couldn't upload to Drive — will retry on the next sync.`,
     )

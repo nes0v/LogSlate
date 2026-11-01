@@ -148,6 +148,17 @@ describe('currentStreak', () => {
     ).toBe(1)
   })
 
+  it('keeps the streak through an unfinished today, and adds it once finished', () => {
+    const days = ['2026-09-16', '2026-09-17', '2026-09-18']
+    const streak = (checks: ReturnType<typeof perfect>, today: string) =>
+      currentStreak({ date: '2026-09-18', today, rules, checks, tradedDays: new Set(days) })
+    const halfToday = perfect(days).filter(c => !(c.date === '2026-09-18' && c.rule_id === 'b'))
+    expect(streak(halfToday, '2026-09-18')).toBe(2)
+    expect(streak(perfect(days), '2026-09-18')).toBe(3)
+    // Once the day is over, unfinished breaks it.
+    expect(streak(halfToday, '2026-09-19')).toBe(0)
+  })
+
   it('breaks on a traded day that had no active rules', () => {
     const days = ['2026-09-17', '2026-09-18']
     const late = [rule('a', { periods: [{ from: '2026-09-18', until: null }] })]

@@ -103,7 +103,9 @@ export function buildHeat(args: {
  * Weekends, days that haven't happened, and weekdays without any trades are
  * skipped — the market was closed, or the user wasn't trading, so there was
  * no routine to judge. Neither extends nor breaks the streak. A *traded* day
- * below 100%, or with no active rules at all, does break it.
+ * below 100%, or with no active rules at all, does break it — except today,
+ * which can still be finished: it adds one the moment every rule is ticked,
+ * and only breaks the streak once it's over.
  */
 export function currentStreak(args: {
   date: string
@@ -128,7 +130,8 @@ export function currentStreak(args: {
     ) {
       const { total, pct } = dayScore(rules, key, byDay.get(key) ?? [])
       if (total > 0 && pct >= 1) streak++
-      else break
+      // Today is still open: unfinished, it neither counts nor breaks.
+      else if (key !== today) break
     }
     cursor = addDays(cursor, -1)
     key = format(cursor, 'yyyy-MM-dd')

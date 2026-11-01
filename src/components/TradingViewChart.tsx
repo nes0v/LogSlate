@@ -1293,7 +1293,10 @@ export function TradingViewChart({
         if (fromIdx === -1) fromIdx = 0
         if (toIdx === -1) toIdx = data.length - 1
         const targetFrom = fromIdx
-        const targetTo = toIdx + 3
+        // The 3-bar margin is only empty space after the LAST candle. Ending
+        // earlier, it would show the next bars' candles and widen the emitted
+        // range past the filter (so "Set date to range" showed on arrival).
+        const targetTo = toIdx >= lastCandleIdx ? toIdx + 3 : toIdx
         // Skip the apply when the chart's current DATA viewport (the
         // visible logical range, with the right edge clamped to the
         // last candle) already matches the target — prevents the

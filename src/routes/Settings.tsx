@@ -9,6 +9,8 @@ import { useAccountQuery } from '@/lib/use-account-query'
 import { isConfigured, revalidateDriveToken, signIn, signOut, useDriveState } from '@/lib/drive'
 import { lastSyncAt } from '@/lib/sync'
 import { exportBackup, importBackup } from '@/lib/backup'
+import { countPendingUploads, drainPendingUploads } from '@/lib/drive-images'
+import { pushError } from '@/lib/notifications'
 import { AccountsPanel } from '@/components/AccountsPanel'
 import { useConfirm } from '@/components/ConfirmDialog'
 import { AdjustmentsPanel } from '@/components/AdjustmentsPanel'
@@ -82,6 +84,24 @@ export function SettingsRoute() {
     // local rows look like remote-side deletions and get cleanly wiped
     // when the new account's data is pulled in.
     clearAutoSyncState()
+  }
+
+  // Upload queued screenshots first: a backup holds only references, so a
+  // screenshot still in the queue would be missing from it. Any that can't
+  // go (signed out, offline, Drive refusing) are named, not silently left out.
+  async function handleExport() {
+    try {
+      await drainPendingUploads({ report: false })
+    } catch {
+      // Scope error — the count below still reports what's left behind.
+    }
+    await exportBackup()
+    const left = await countPendingUploads()
+    if (left > 0) {
+      pushError(
+        `${left} screenshot${left === 1 ? ' isn\'t' : 's aren\'t'} uploaded to Drive yet, so this backup doesn't include ${left === 1 ? 'it' : 'them'}.`,
+      )
+    }
   }
 
   async function handleImport(file: File) {
@@ -337,7 +357,7 @@ export function SettingsRoute() {
             Import will replace all local trades with the contents of a backup.
           </p>
           <div className="rounded-(--radius) bg-(--color-panel-2) p-3 flex items-center justify-end gap-2">
-            <button onClick={exportBackup} className={BTN_ACCENT}>
+            <button onClick={handleExport} className={BTN_ACCENT}>
               <CloudDownload className="size-4" /> Export
             </button>
             <button
