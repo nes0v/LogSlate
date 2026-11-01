@@ -152,12 +152,13 @@ export function AccountsPanel({ accounts }: AccountsPanelProps) {
                           this row is the only place it's ever visible. Titled
                           because a bare number here reads as "current balance". */}
                       <td
-                        className="px-3 py-2 text-right font-mono tabular-nums text-xs text-(--color-text-dim) whitespace-nowrap"
+                        className="pl-3 pr-2.5 py-2 text-right font-mono tabular-nums text-xs text-(--color-text-dim) whitespace-nowrap"
                         title="Starting balance"
                       >
                         {formatUsd(a.starting_balance)}
                       </td>
-                      <td className="px-3 py-2 w-16">
+                      {/* Sized to the icon (`w-px`) so the balance sits right beside it. */}
+                      <td className="pr-3 py-2 w-px">
                         <div className="flex items-center justify-end gap-1">
                           {isActive ? (
                             <span
