@@ -99,7 +99,7 @@ export function SymbolsRoute() {
           No symbols yet — add one so you can log trades.
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-3">
+        <div className="grid grid-cols-[260px_1fr] gap-3">
           <aside className="bg-(--color-panel) rounded-(--radius) p-3 max-h-[80vh] overflow-y-auto">
             <div className={SORTABLE_ROW_GAP_CLASS}>
               {visible.map((s, i) => (
@@ -243,7 +243,7 @@ function SymbolEditorImpl({ symbol, onSave, onDelete }: SymbolEditorProps) {
         className={cn(inputClass, 'w-full min-h-[95px] resize-none overflow-hidden')}
       />
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <Field label="Point value ($ / point)">
           <NumberInput value={pointValue} onChange={setPointValue} className={inputClass} />
         </Field>

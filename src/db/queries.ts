@@ -27,7 +27,7 @@ import {
   ruleActiveOn,
   ruleHasHistoryBefore,
 } from '@/lib/progress-periods'
-import { nextWeekdayKey, nyToday } from '@/lib/tz'
+import { latestTradeDate, nextWeekdayKey, nyToday } from '@/lib/tz'
 
 function now(): string {
   return new Date().toISOString()
@@ -56,6 +56,13 @@ function assertWeekday(date: string): void {
   }
 }
 
+function assertNotFuture(date: string): void {
+  const latest = latestTradeDate()
+  if (date > latest) {
+    throw new Error(`${date} hasn't happened yet — a trade can be dated up to ${latest}.`)
+  }
+}
+
 // Accounts use a slug of their name as the id — so the same account name
 // created independently on two devices lands on the same row and merges
 // cleanly on sync, instead of showing up as two separate accounts.
@@ -76,6 +83,7 @@ export function slugifyAccountName(name: string): string {
 export async function createTrade(draft: TradeDraft, accountId?: string): Promise<TradeRecord> {
   const acct = accountId ?? getActiveAccountId()
   assertWeekday(draft.date)
+  assertNotFuture(draft.date)
   // A day is logged EITHER as individual trades OR as one manual net-PNL
   // override — never both (the override would silently hide the trades). The
   // Day-page UI already hides the New-trade button on an override day; this
@@ -106,6 +114,8 @@ export async function updateTrade(id: string, patch: Partial<TradeDraft>): Promi
   if (patch.date !== undefined) {
     assertWeekday(patch.date)
     const trade = await db.trades.get(id)
+    // Only a move: re-saving a trade already on a later date stays possible.
+    if (trade && trade.date !== patch.date) assertNotFuture(patch.date)
     if (trade) {
       const acct = trade.account_id
       await db.transaction('rw', db.days, db.trades, async () => {
@@ -618,7 +628,7 @@ export async function addDayScreenshot(
 
 // Atomically queues a screenshot blob for later Drive upload AND attaches
 // its `pending:` ref to the day — both in one transaction. If the app dies
-// between the two writes (e.g. Android tab eviction), there is no window
+// between the two writes (a crash or a closed tab), there is no window
 // where the blob exists without its ref, or the ref without its blob.
 export async function addPendingDayScreenshot(
   accountId: string,

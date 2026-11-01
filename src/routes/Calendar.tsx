@@ -21,7 +21,8 @@ import { signedAdjustment } from '@/lib/trade-stats'
 import { listAdjustments, listAllTrades } from '@/db/queries'
 import { useAccountQuery } from '@/lib/use-account-query'
 import { formatUsd, roundTo } from '@/lib/money'
-import { parseYearMonth } from '@/lib/buckets'
+import { isYearMonth, parseYearMonth } from '@/lib/buckets'
+import { NotFoundRoute } from '@/routes/NotFound'
 import { ForexFactoryNews } from '@/components/ForexFactoryNews'
 import { PageHeader } from '@/components/PageHeader'
 import { MonthPicker } from '@/components/form/MonthPicker'
@@ -39,7 +40,15 @@ function pnlToneClass(amount: number): string {
   return 'text-(--color-text-dim)'
 }
 
+// `/month/2026-13` or `/month/abc` is no month: Not found, as a bad day URL
+// is. A thin wrapper so the view's hooks always run in the same order.
 export function CalendarRoute() {
+  const { ym } = useParams()
+  if (ym !== undefined && !isYearMonth(ym)) return <NotFoundRoute />
+  return <CalendarView />
+}
+
+function CalendarView() {
   const { ym } = useParams()
   const navigate = useNavigate()
   // Reactive "today" in NY, so an idle calendar moves its today ring (and the
@@ -350,7 +359,7 @@ interface PerDayCell extends DayAggregate {
 
 // Shared sizing for both day cells and week summary cards so the row
 // height stays uniform across the grid.
-const CELL_HEIGHT_CLASS = 'h-[80px] sm:h-[100px]'
+const CELL_HEIGHT_CLASS = 'h-[100px]'
 
 // Index into a week's `days` array used as the week-card label anchor.
 // The calendar grid stays Sunday-first (see `monthDayGrid`) so position

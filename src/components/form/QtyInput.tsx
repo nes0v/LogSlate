@@ -28,7 +28,6 @@ export function QtyInput({ value, onChange, className }: QtyInputProps) {
     >
       <input
         type="text"
-        inputMode="numeric"
         aria-label="Contracts"
         value={draft ?? value}
         onChange={e => {

@@ -9,9 +9,8 @@ interface NumberInputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, '
 
 // Number entry that keeps the user's typed string buffered locally so
 // partial values like "1." aren't clobbered when the parent re-renders
-// from a number-typed form value. `type="text"` + `inputMode="decimal"`
-// gets a numeric soft-keyboard on mobile while still letting the user
-// type any character.
+// from a number-typed form value. `type="text"` so the user can type any
+// character while editing.
 //
 // `w-full min-w-0` is baked in so the input can shrink below its
 // intrinsic ~150px size when placed in a grid/flex cell.
@@ -30,7 +29,6 @@ export function NumberInput({ value, onChange, className, decimals, ...rest }: N
   return (
     <input
       type="text"
-      inputMode="decimal"
       className={cn('w-full min-w-0', className)}
       value={text}
       onFocus={() => {

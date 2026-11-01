@@ -8,7 +8,7 @@ import {
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { router } from '@/router'
 import '@/index.css'
-import '@/db/seed' // registers dev helpers on window in dev builds; no-op in prod
+import '@/db/dev-console' // window.__logslate in dev builds; no-op in prod
 
 void ensureMainAccount()
 void cleanOrphanedPendingRefs()

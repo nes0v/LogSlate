@@ -148,7 +148,8 @@ export function StatsFilterBar({
         <Field label="From" className="w-[135px]">
           <DatePicker
             value={filters.from}
-            onChange={v => update({ from: v })}
+            // Past the current To, the range would be empty: To follows.
+            onChange={v => update(v && filters.to && v > filters.to ? { from: v, to: v } : { from: v })}
             placeholder="Any"
             clearable
             disableWeekends
@@ -158,7 +159,8 @@ export function StatsFilterBar({
         <Field label="To" className="w-[135px]">
           <DatePicker
             value={filters.to}
-            onChange={v => update({ to: v })}
+            // Before the current From: From follows, as above.
+            onChange={v => update(v && filters.from && v < filters.from ? { from: v, to: v } : { to: v })}
             placeholder="Any"
             clearable
             disableWeekends

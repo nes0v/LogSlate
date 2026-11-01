@@ -241,7 +241,6 @@ export function useSortableReorder<T extends { id: string }>({
         zIndex: isDragged ? 10 : undefined,
         position: 'relative' as const,
         cursor: isActiveDrag ? 'grabbing' : undefined,
-        touchAction: 'none' as const,
       },
     }
   }

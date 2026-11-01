@@ -194,7 +194,7 @@ export function TradeForm({
   return (
     <form onSubmit={handleSubmit(submit)}>
       <div className="space-y-3">
-        <div className="grid lg:grid-cols-2 gap-3 items-start">
+        <div className="grid grid-cols-2 gap-3 items-start">
           <div className="space-y-3">
             <section className="bg-(--color-panel) rounded-(--radius) p-3 space-y-3">
           <div className="flex flex-wrap items-start gap-3">
@@ -298,7 +298,6 @@ export function TradeForm({
                     render={({ field }) => (
                       <input
                         type="text"
-                        inputMode="numeric"
                         placeholder="hh:mm:ss"
                         maxLength={8}
                         className={cn(inputClass, 'font-mono w-full min-w-0')}
@@ -435,9 +434,9 @@ export function TradeForm({
 
             <LiveStatsSection control={control} symbolsById={symbolsById} original={original} />
 
-            {/* Buttons live inside the left column on lg+ so growing the
-                Notes textarea (right column) doesn't push them down. */}
-            <div className="hidden lg:flex items-center gap-2">
+            {/* Buttons live inside the left column so growing the Notes
+                textarea (right column) doesn't push them down. */}
+            <div className="flex items-center gap-2">
               <ActionButtons
                 isSubmitting={isSubmitting}
                 isDirty={isDirty}
@@ -530,16 +529,6 @@ export function TradeForm({
             />
           </Field>
             </section>
-          </div>
-
-          {/* On smaller screens the grid collapses to a single column; the
-              buttons go last so they appear after the right column. */}
-          <div className="flex lg:hidden items-center gap-2">
-            <ActionButtons
-              isSubmitting={isSubmitting}
-              isDirty={isDirty}
-              onCancel={onCancel}
-            />
           </div>
         </div>
       </div>

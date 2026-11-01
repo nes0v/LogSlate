@@ -4,7 +4,7 @@ import { isWeekend } from 'date-fns'
 import { TradeForm } from '@/components/TradeForm'
 import { createTrade, getDayPnlOverride } from '@/db/queries'
 import { useActiveAccountId } from '@/lib/active-account'
-import { dateKeyToDate, formatDisplayDate, isDateKey, nyToday } from '@/lib/tz'
+import { dateKeyToDate, formatDisplayDate, isDateKey, latestTradeDate, nyToday } from '@/lib/tz'
 import { refreshDayCache } from '@/lib/day-cache'
 import { errorMessage } from '@/lib/utils'
 import type { TradeDraft } from '@/db/types'
@@ -52,6 +52,10 @@ export function TradeNewRoute() {
   // like the weekend Day page does.
   if (isWeekend(dateKeyToDate(date))) {
     return <Navigate to={`/month/${date.slice(0, 7)}`} replace />
+  }
+  // Nor a day that hasn't happened (`createTrade` would reject it too).
+  if (date > latestTradeDate()) {
+    return <Navigate to={`/day/${date}`} replace />
   }
   if (override != null) {
     return <Navigate to={`/day/${date}`} replace />

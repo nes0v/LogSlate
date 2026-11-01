@@ -17,7 +17,7 @@ import { parseScreenshotRef, resolveScreenshotUrl } from '@/lib/drive-images'
 import { useActiveAccountId } from '@/lib/active-account'
 import { aggregate } from '@/lib/trade-stats'
 import { useArrowNavigation } from '@/lib/use-arrow-navigation'
-import { dateKeyToDate, isDateKey } from '@/lib/tz'
+import { dateKeyToDate, isDateKey, latestTradeDate } from '@/lib/tz'
 import { NotFoundRoute } from '@/routes/NotFound'
 import { DayNewsSection } from '@/components/DayNewsSection'
 import { DayNoteSection } from '@/components/DayNoteSection'
@@ -288,8 +288,9 @@ function DayView() {
         nextLabel="Next day with activity"
         rightSlot={
           // Held back until the override has loaded: on an override day it
-          // would otherwise show for a frame and vanish.
-          pnlOverride === undefined || overrideActive ? undefined : (
+          // would otherwise show for a frame and vanish. None on a day that
+          // hasn't happened yet.
+          pnlOverride === undefined || overrideActive || date > latestTradeDate() ? undefined : (
             <Link
               to={`/trade/new?date=${date}`}
               state={{ from: `/day/${date}` }}

@@ -232,10 +232,15 @@ export function bucketKeyToTs(key: string): number {
 
 // ---------- period navigation helpers ----------
 
+/** `YYYY-MM` with a real month. Month must be 01–12: a bare `\d{2}` would
+ *  let `2026-13` through, and date-fns silently rolls it over to Jan 2027
+ *  instead of rejecting it. */
+export function isYearMonth(ym: string | undefined): ym is string {
+  return ym !== undefined && /^\d{4}-(0[1-9]|1[0-2])$/.test(ym)
+}
+
 export function parseYearMonth(ym: string | undefined): Date {
-  // Month must be 01–12. A bare `\d{2}` would let `2026-13` through, and
-  // date-fns silently rolls it over to Jan 2027 instead of rejecting it.
-  if (ym && /^\d{4}-(0[1-9]|1[0-2])$/.test(ym)) {
+  if (isYearMonth(ym)) {
     const d = parse(ym, 'yyyy-MM', new Date())
     if (!Number.isNaN(d.getTime())) return startOfMonth(d)
   }

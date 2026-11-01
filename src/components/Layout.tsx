@@ -44,17 +44,14 @@ export function Layout() {
               (the row's `items-center`) leaves their baselines ~1px apart and
               the brand reads as sitting low. Baseline-aligning fixes that; the
               right-side controls stay centered in the outer row. */}
-          {/* min-w-0 so this group can shrink below its content width on a
-              phone — without it the nav's `overflow-x-auto` never engages and
-              the whole header pushes the page wider than the viewport. */}
-          <div className="flex items-baseline gap-4 min-w-0">
+          <div className="flex items-baseline gap-4 shrink-0">
             <Link
               to="/"
               className="font-semibold tracking-tight text-(--color-text) hover:opacity-90"
             >
               LogSlate
             </Link>
-            <nav className="flex items-baseline gap-4 text-sm overflow-x-auto">
+            <nav className="flex items-baseline gap-4 text-sm">
               {links.map(l => (
                 <NavLink
                   key={l.to}
@@ -73,15 +70,17 @@ export function Layout() {
               ))}
             </nav>
           </div>
-          <div className="ml-auto flex items-center gap-4">
+          {/* When the row runs out of room, only the account name gives way
+              (it truncates); brand, nav and the readouts keep their size. */}
+          <div className="ml-auto flex items-center gap-4 min-w-0">
             <SyncStatusIndicator />
             {navReady ? (
               <>
-                <div className="flex items-baseline gap-1.5 font-mono text-sm tabular-nums">
+                <div className="flex items-baseline gap-1.5 font-mono text-sm tabular-nums shrink-0">
                   <span className="text-xs uppercase tracking-wider text-(--color-text-dim)">Equity</span>
                   <span className="text-(--color-text)">{formatUsd(equity)}</span>
                 </div>
-                <div className="flex items-baseline gap-1.5 font-mono text-sm tabular-nums">
+                <div className="flex items-baseline gap-1.5 font-mono text-sm tabular-nums shrink-0">
                   <span className="text-xs uppercase tracking-wider text-(--color-text-dim)">Risk</span>
                   <span className="text-(--color-text)">{formatUsd(Math.max(40, equity * 0.02))}</span>
                 </div>

@@ -157,11 +157,11 @@ export function SettingsRoute() {
       </div>
 
       {!loaded ? null : (
-      // Two columns from `lg` up: the settings stack on the left, cash flow on
+      // Two columns: the settings stack on the left, cash flow on
       // the right, which otherwise left the whole right half of the page empty.
       // `items-start` so the columns size independently instead of the shorter
       // one stretching to match.
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+      <div className="grid grid-cols-2 gap-8 items-start">
       <div className="space-y-8 min-w-0">
       <section>
         <h2 className="text-sm font-medium mb-2">Google Drive sync</h2>

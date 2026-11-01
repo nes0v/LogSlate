@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  latestTradeDate,
   nextWeekdayKey,
   nyDateKey,
   nyMonthKey,
@@ -47,6 +48,23 @@ describe('nyMonthKey', () => {
 describe('nyToday', () => {
   it('matches nyDateKey() for the current instant', () => {
     expect(nyToday()).toBe(nyDateKey())
+  })
+})
+
+describe('latestTradeDate', () => {
+  afterEach(() => vi.useRealTimers())
+  const at = (iso: string) => vi.useFakeTimers({ now: new Date(iso) })
+
+  it('is the next weekday from Monday to Thursday', () => {
+    at('2026-11-02T15:00:00Z') // Mon 10:00 NY
+    expect(latestTradeDate()).toBe('2026-11-03')
+  })
+
+  it('is Monday from Friday and over the weekend', () => {
+    at('2026-10-30T22:30:00Z') // Fri 18:30 NY — the Sunday-evening session files under Monday
+    expect(latestTradeDate()).toBe('2026-11-02')
+    at('2026-11-01T15:00:00Z') // Sun
+    expect(latestTradeDate()).toBe('2026-11-02')
   })
 })
 

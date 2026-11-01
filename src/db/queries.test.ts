@@ -130,6 +130,15 @@ describe('weekend guard', () => {
   })
 })
 
+describe('future guard', () => {
+  it('createTrade accepts the next trading day but nothing later', async () => {
+    const next = tradingDayAfter(nyToday())
+    await createTrade(tradeDraft({ date: next }))
+    await expect(createTrade(tradeDraft({ date: tradingDayAfter(next) }))).rejects.toThrow(/hasn't happened/)
+    expect(await listAllTrades(MAIN_ACCOUNT_ID)).toHaveLength(1)
+  })
+})
+
 describe('day-override / trade mutual exclusion', () => {
   it('createTrade rejects a trade on a day that has a PNL override', async () => {
     await setDayPnlOverride(MAIN_ACCOUNT_ID, '2026-04-15', -1000)

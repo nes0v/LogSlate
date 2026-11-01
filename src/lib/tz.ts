@@ -143,3 +143,12 @@ export function nextWeekdayKey(dateKey: string): string {
   else if (wd === 0) d.setDate(d.getDate() + 1)
   return toDateKey(d)
 }
+
+/** Latest date a trade can carry: the trading day after today. An evening
+ *  fill (≥17:00 NY) files under the next trading day, so that one is real;
+ *  anything later hasn't happened yet. */
+export function latestTradeDate(): string {
+  const d = dateKeyToDate(nyToday())
+  d.setDate(d.getDate() + 1)
+  return nextWeekdayKey(toDateKey(d))
+}

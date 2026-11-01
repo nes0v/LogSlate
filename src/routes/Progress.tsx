@@ -376,7 +376,7 @@ export function ProgressRoute() {
       {!loaded ? null : (
         <>
       {/* Score band */}
-      <section className="bg-(--color-panel) rounded-(--radius) p-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <section className="bg-(--color-panel) rounded-(--radius) p-3 grid grid-cols-3 gap-3">
         <ScoreTile
           label={isCurrentDay ? "Today's adherence" : 'Adherence'}
           value={
@@ -461,7 +461,7 @@ export function ProgressRoute() {
       </section>
 
       {/* Rule list / today's checklist */}
-      <section className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+      <section className="grid grid-cols-2 gap-3">
         <div className="bg-(--color-panel) rounded-(--radius) p-3 space-y-2">
           <div className="text-sm font-medium mb-2">
             {isCurrentDay ? "Today's checklist" : 'Checklist'}
@@ -735,7 +735,6 @@ function RowGrip({
       // that blur saves it, and a rule with history would put its "save as
       // a new rule?" confirm up in the middle of the drag.
       onMouseDown={e => e.preventDefault()}
-      style={{ touchAction: 'none' }}
       className={cn(
         'size-4 inline-flex items-center justify-center shrink-0 -mr-1 text-(--color-text-faint)',
         disabled ? 'cursor-not-allowed' : 'cursor-grab hover:text-(--color-text-dim)',
@@ -780,8 +779,7 @@ function LineRow({
   return (
     <div
       data-sortable-row
-      // Handle-only `touch-action`, as in RuleRow below.
-      style={{ ...sortable.style, touchAction: undefined }}
+      style={sortable.style}
       className={cn(
         'flex items-center gap-2 px-1 py-1 rounded-sm',
         lifted && 'bg-(--color-panel-2)',
@@ -840,9 +838,7 @@ function RuleRow({
   return (
     <div
       data-sortable-row
-      // The hook's `touch-action: none` belongs on the handle alone: across
-      // the whole row it would stop a finger scrolling the page.
-      style={{ ...sortable.style, touchAction: undefined }}
+      style={sortable.style}
       className={cn(
         'flex items-start gap-2 px-1 py-1 rounded-sm',
         lifted && 'bg-(--color-panel-2)',

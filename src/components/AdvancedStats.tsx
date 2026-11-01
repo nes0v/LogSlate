@@ -304,7 +304,7 @@ export const DistributionDonuts = memo(function DistributionDonuts({
   return (
     <section className="space-y-2">
       <h2 className="text-sm font-medium">Distributions</h2>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      <div className="grid grid-cols-3 gap-3">
         <DonutChart title="Outcomes" segments={outcomeDonut} />
         <DonutChart title="Ratings" segments={ratingDonut} />
         <DonutChart title="Sessions" segments={sessionDonut} />
@@ -715,16 +715,14 @@ function MetricGroup({
 }) {
   // Each row gets exactly N columns where N is the number of tiles in this
   // group, so the row fills the full width regardless of how many tiles
-  // (4, 5, 6) the group has. Below the lg breakpoint we fall back to a
-  // generic 2/3 grid so narrow viewports don't squeeze tiles into unreadable
-  // strips. `minmax(0, 1fr)` lets tile content (long labels) ellipsize
-  // instead of forcing the column wider than its share.
+  // (4, 5, 6) the group has. `minmax(0, 1fr)` lets tile content (long
+  // labels) ellipsize instead of forcing the column wider than its share.
   const count = Math.max(1, Children.count(children))
   return (
     <div>
       <h3 className="text-sm font-medium mb-2">{title}</h3>
       <div
-        className="grid grid-cols-2 sm:grid-cols-3 gap-y-3 gap-x-2 lg:[grid-template-columns:var(--cols)]"
+        className="grid gap-y-3 gap-x-2 [grid-template-columns:var(--cols)]"
         style={{ ['--cols' as string]: `repeat(${count}, minmax(0, 1fr))` }}
       >
         {children}

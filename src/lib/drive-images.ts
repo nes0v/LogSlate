@@ -339,7 +339,7 @@ async function uploadDirectly(
 // The caller persists the returned `pending` record in the same
 // transaction that attaches its ref to the owning record, so the blob and
 // its reference are committed atomically (no orphan blob / dangling ref if
-// the app dies mid-way — a real risk on Android tab eviction).
+// the app dies mid-way: a crash or a closed tab).
 async function stagePending(
   blob: Blob,
   resolved: ResolvedFilename,

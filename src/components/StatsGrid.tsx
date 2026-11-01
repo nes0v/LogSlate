@@ -18,7 +18,7 @@ export function StatsGrid({ stats, hideBreakdown, emptyPnl }: StatsGridProps) {
   // Toned on the shown value, so −0.001x reads "0.00x" in neutral, not red.
   const avgRr = s.avg_realized_rr === null ? null : roundTo(s.avg_realized_rr)
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+    <div className="grid grid-cols-4 gap-3">
       <Stat
         label="PNL"
         value={emptyPnl ? '—' : formatUsd(s.net_pnl)}

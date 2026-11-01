@@ -54,19 +54,19 @@ export function AccountSwitcher({ accounts }: AccountSwitcherProps) {
   const activeName = active?.name ?? 'Main'
 
   return (
-    <div ref={rootRef} className="relative">
+    <div ref={rootRef} className="relative min-w-0">
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
         className={cn(
-          'h-8 flex items-center justify-between gap-2 pl-2.5 pr-2 text-sm rounded-(--radius)',
+          'h-8 w-full flex items-center justify-between gap-2 pl-2.5 pr-2 text-sm rounded-(--radius)',
           'bg-(--color-bg) text-(--color-text) cursor-pointer',
           'focus:outline-none focus:ring-2 focus:ring-(--color-accent-soft)',
         )}
       >
         <span className="flex items-center gap-1.5 min-w-0">
           <User className="size-4 shrink-0 text-(--color-text-dim)" />
-          <span className="max-w-56 truncate">{activeName}</span>
+          <span className="max-w-56 truncate" title={activeName}>{activeName}</span>
         </span>
         <ChevronDown className="size-4 shrink-0 text-(--color-text-dim)" />
       </button>

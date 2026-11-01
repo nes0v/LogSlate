@@ -90,8 +90,8 @@ export function AccountsPanel({ accounts }: AccountsPanelProps) {
         </p>
 
         {/* Wraps rather than sharing a fixed grid: two labelled fields plus the
-            button don't fit a phone row, and the sibling adjustments form
-            already solves it this way. */}
+            button don't always fit the column, and the sibling adjustments
+            form already solves it this way. */}
         <form
           onSubmit={handleCreate}
           className="bg-(--color-panel-2) rounded-(--radius) p-3 flex flex-wrap gap-3 items-end"

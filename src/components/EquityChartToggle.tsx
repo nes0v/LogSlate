@@ -10,7 +10,7 @@ interface EquityChartToggleProps {
 
 /** Custom inline SVGs — lucide's chart icons include the L-shaped
  *  axis (vertical + horizontal baseline) which the user wants stripped. */
-export function LineGlyph({ className }: { className?: string }) {
+function LineGlyph({ className }: { className?: string }) {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -27,7 +27,7 @@ export function LineGlyph({ className }: { className?: string }) {
   )
 }
 
-export function CandleGlyph({ className }: { className?: string }) {
+function CandleGlyph({ className }: { className?: string }) {
   return (
     <svg
       viewBox="0 0 24 24"

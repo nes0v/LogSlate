@@ -124,7 +124,7 @@ export function ModelsRoute() {
       {!loaded ? null : visible.length === 0 ? (
         <EmptyPanel>No models yet.</EmptyPanel>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-3">
+        <div className="grid grid-cols-[260px_1fr] gap-3">
           <aside className="bg-(--color-panel) rounded-(--radius) p-3 max-h-[80vh] overflow-y-auto">
             <div className={SORTABLE_ROW_GAP_CLASS}>
               {visible.map((p, i) => (

@@ -100,7 +100,7 @@ export function EquityAdjustmentsPanel({ adjustments }: EquityAdjustmentsPanelPr
           />
         </div>
         {/* Grows into the leftover space on a wide row, but has a floor so it
-            wraps to its own line instead of being crushed on a phone. */}
+            wraps to its own line instead of being crushed. */}
         <label className="text-xs text-(--color-text-dim) space-y-2 flex-1 min-w-[7rem]">
           <div>Amount (USD)</div>
           <NumberInput
