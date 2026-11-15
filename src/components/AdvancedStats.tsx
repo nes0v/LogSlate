@@ -104,7 +104,7 @@ const EMOTION_COLORS: Record<(typeof EMOTIONS)[number], string> = {
 }
 
 // Palette for the model donut. Cycled by index when the user has more
-// models than colors — at 9 entries that should never realistically wrap.
+// models than colors — at 10 entries that should never realistically wrap.
 const MODEL_PALETTE = [
   'var(--color-accent)',
   '#c4b5fd',
@@ -115,6 +115,7 @@ const MODEL_PALETTE = [
   '#2563eb',
   '#f472b6',
   '#fb923c',
+  '#a3e635',
 ]
 
 export const DistributionDonuts = memo(function DistributionDonuts({
