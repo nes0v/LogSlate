@@ -23,7 +23,7 @@
 // reference to `drive:{id}`.
 
 import { db } from '@/db/schema'
-import { getActiveAccountId } from '@/lib/active-account'
+import { requireActiveAccountId } from '@/lib/active-account'
 import {
   createDriveFolder,
   deleteDriveFile,
@@ -373,7 +373,7 @@ export async function storeScreenshot(
   ctx: ScreenshotContext,
 ): Promise<StoredScreenshot> {
   const resolved = resolveFilename(blob, ctx)
-  const accountId = getActiveAccountId()
+  const accountId = requireActiveAccountId()
   if (!canUploadToDrive()) return stagePending(blob, resolved, accountId)
   try {
     return { ref: await uploadDirectly(blob, resolved, accountId) }

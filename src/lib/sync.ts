@@ -10,6 +10,7 @@
 
 import type { EntityTable } from 'dexie'
 import { db, FRESH_DB_KEY } from '@/db/schema'
+import { SEED_ACCOUNT_ID } from '@/db/types'
 import {
   downloadAppDataFile,
   fetchDriveUser,
@@ -245,6 +246,28 @@ export interface SyncOptions {
   overwriteCorruptRemote?: boolean
 }
 
+const ACCOUNTS_SPEC = SPECS.findIndex(s => s.fileKey === 'accounts')
+
+// A database created from nothing seeds a starter account so the app has
+// somewhere to land (`ensureSeedAccount`). Once Drive brings real accounts,
+// that starter is clutter — and merging would push it to Drive for good. It's
+// dropped only while it's untouched and nothing has been logged under it.
+function isUnusedSeed(locals: SyncItem[][], remotes: SyncItem[][]): boolean {
+  const remoteAccounts = remotes[ACCOUNTS_SPEC]
+  if (remoteAccounts.length === 0) return false
+  if (remoteAccounts.some(r => r.id === SEED_ACCOUNT_ID)) return false
+  const seed = locals[ACCOUNTS_SPEC].find(r => r.id === SEED_ACCOUNT_ID) as
+    | (SyncItem & { created_at?: string })
+    | undefined
+  // Edited since it was seeded (its balance set, say): the user kept it.
+  if (!seed || seed.updated_at !== seed.created_at) return false
+  return locals.every(
+    (rows, i) =>
+      i === ACCOUNTS_SPEC ||
+      !rows.some(r => (r as { account_id?: unknown }).account_id === SEED_ACCOUNT_ID),
+  )
+}
+
 export async function syncNow(options: SyncOptions = {}): Promise<SyncResult> {
   // GUARD 1 — Drive account fingerprint. Detect "user signed into a
   // different Google account since their last sync" before touching any
@@ -329,16 +352,20 @@ export async function syncNow(options: SyncOptions = {}): Promise<SyncResult> {
       // everything instead. Known from the database's own creation event, not
       // guessed from empty tables: deleting all your data looks the same.
       const wiped = !localWins && freshDb && lastSyncedSets.some(set => set.size > 0)
+      const dropSeed = !localWins && freshDb && isUnusedSeed(locals, remotes)
       for (let i = 0; i < SPECS.length; i++) {
         if (localWins) {
           merged[i] = locals[i]
         } else if (wiped) {
-          // Drive wins every clash: the re-seeded `main` is newer than the
-          // real one but holds none of its settings.
+          // Drive wins every clash: a row re-created locally since the wipe
+          // is newer than Drive's copy but holds none of its history.
           const remoteIds = new Set(remotes[i].map(r => r.id))
           merged[i] = [...remotes[i], ...locals[i].filter(l => !remoteIds.has(l.id))]
         } else {
           merged[i] = mergeById(locals[i], remotes[i], effectiveLastSynced[i])
+        }
+        if (dropSeed && i === ACCOUNTS_SPEC) {
+          merged[i] = merged[i].filter(r => r.id !== SEED_ACCOUNT_ID)
         }
         // Write only what changed: `mergeById` hands back the local object
         // itself for every row local already had right, so anything else is

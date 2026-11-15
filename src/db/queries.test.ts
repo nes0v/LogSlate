@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { db, ensureMainAccount } from './schema'
+import { setActiveAccountId } from '@/lib/active-account'
+import { db, ensureSeedAccount } from './schema'
 import { nextWeekdayKey, nyToday } from '@/lib/tz'
 import { tradingDayAfter } from '@/lib/progress-periods'
 import {
@@ -39,7 +40,7 @@ import {
   updateModel,
   updateTrade,
 } from './queries'
-import { MAIN_ACCOUNT_ID } from './types'
+import { SEED_ACCOUNT_ID } from './types'
 import { readSymbolFilterCache } from '@/lib/symbol-filter-cache'
 import { adjustmentDraft, tradeDraft } from '@/test/fixtures'
 
@@ -57,7 +58,8 @@ beforeEach(async () => {
   // per-account localStorage caches (symbol filter, Drive folders) are keyed on
   // exactly that. Without this, one test's cache is visible to the next.
   localStorage.clear()
-  await ensureMainAccount()
+  await ensureSeedAccount()
+  setActiveAccountId(SEED_ACCOUNT_ID)
 })
 afterEach(async () => {
   await db.trades.clear()
@@ -74,7 +76,7 @@ describe('trade queries', () => {
     expect(t.id).toBeTruthy()
     expect(t.created_at).toBeTruthy()
     expect(t.updated_at).toBe(t.created_at)
-    expect(t.account_id).toBe(MAIN_ACCOUNT_ID)
+    expect(t.account_id).toBe(SEED_ACCOUNT_ID)
   })
 
   it('getTrade round-trips through storage', async () => {
@@ -103,7 +105,7 @@ describe('trade queries', () => {
     await createTrade(tradeDraft())
     await createTrade(tradeDraft())
     await createTrade(tradeDraft(), 'other-account')
-    expect(await listAllTrades(MAIN_ACCOUNT_ID)).toHaveLength(3)
+    expect(await listAllTrades(SEED_ACCOUNT_ID)).toHaveLength(3)
     expect(await listAllTrades('other-account')).toHaveLength(1)
   })
 })
@@ -112,21 +114,21 @@ describe('weekend guard', () => {
   // 2026-04-18 is a Saturday, 2026-04-19 a Sunday; 2026-04-17 a Friday.
   it('createTrade rejects a weekend-dated trade', async () => {
     await expect(createTrade(tradeDraft({ date: '2026-04-18' }))).rejects.toThrow(/weekend/i)
-    expect(await listAllTrades(MAIN_ACCOUNT_ID)).toHaveLength(0)
+    expect(await listAllTrades(SEED_ACCOUNT_ID)).toHaveLength(0)
   })
 
   it('createAdjustment rejects a weekend-dated deposit', async () => {
     await expect(createAdjustment(adjustmentDraft({ date: '2026-04-19' }))).rejects.toThrow(/weekend/i)
-    expect(await listAdjustments(MAIN_ACCOUNT_ID)).toHaveLength(0)
+    expect(await listAdjustments(SEED_ACCOUNT_ID)).toHaveLength(0)
   })
 
   it('setDayPnlOverride rejects a weekend date', async () => {
-    await expect(setDayPnlOverride(MAIN_ACCOUNT_ID, '2026-04-18', -500)).rejects.toThrow(/weekend/i)
+    await expect(setDayPnlOverride(SEED_ACCOUNT_ID, '2026-04-18', -500)).rejects.toThrow(/weekend/i)
   })
 
   it('accepts a weekday date', async () => {
     await createTrade(tradeDraft({ date: '2026-04-17' }))
-    expect(await listAllTrades(MAIN_ACCOUNT_ID)).toHaveLength(1)
+    expect(await listAllTrades(SEED_ACCOUNT_ID)).toHaveLength(1)
   })
 })
 
@@ -135,72 +137,72 @@ describe('future guard', () => {
     const next = tradingDayAfter(nyToday())
     await createTrade(tradeDraft({ date: next }))
     await expect(createTrade(tradeDraft({ date: tradingDayAfter(next) }))).rejects.toThrow(/hasn't happened/)
-    expect(await listAllTrades(MAIN_ACCOUNT_ID)).toHaveLength(1)
+    expect(await listAllTrades(SEED_ACCOUNT_ID)).toHaveLength(1)
   })
 })
 
 describe('day-override / trade mutual exclusion', () => {
   it('createTrade rejects a trade on a day that has a PNL override', async () => {
-    await setDayPnlOverride(MAIN_ACCOUNT_ID, '2026-04-15', -1000)
+    await setDayPnlOverride(SEED_ACCOUNT_ID, '2026-04-15', -1000)
     await expect(createTrade(tradeDraft({ date: '2026-04-15' }))).rejects.toThrow(/override/i)
-    expect(await listAllTrades(MAIN_ACCOUNT_ID)).toHaveLength(0)
+    expect(await listAllTrades(SEED_ACCOUNT_ID)).toHaveLength(0)
   })
 
   it('updateTrade refuses to move a trade onto a day that has an override', async () => {
     // The create path is guarded above; the edit path can reach the same
     // contradictory state by changing an existing trade's date.
     const t = await createTrade(tradeDraft({ date: '2026-04-15' }))
-    await setDayPnlOverride(MAIN_ACCOUNT_ID, '2026-04-16', -100)
+    await setDayPnlOverride(SEED_ACCOUNT_ID, '2026-04-16', -100)
     await expect(updateTrade(t.id, { date: '2026-04-16' })).rejects.toThrow(/override/i)
   })
 
   it('createTrade allows trades on a different day than the override', async () => {
-    await setDayPnlOverride(MAIN_ACCOUNT_ID, '2026-04-15', -1000)
+    await setDayPnlOverride(SEED_ACCOUNT_ID, '2026-04-15', -1000)
     await createTrade(tradeDraft({ date: '2026-04-16' }))
-    expect(await listAllTrades(MAIN_ACCOUNT_ID)).toHaveLength(1)
+    expect(await listAllTrades(SEED_ACCOUNT_ID)).toHaveLength(1)
   })
 
   it('setDayPnlOverride rejects an override on a day that has trades', async () => {
     await createTrade(tradeDraft({ date: '2026-04-15' }))
-    await expect(setDayPnlOverride(MAIN_ACCOUNT_ID, '2026-04-15', -1000)).rejects.toThrow(/trade/i)
-    expect(await getDayPnlOverride(MAIN_ACCOUNT_ID, '2026-04-15')).toBeNull()
+    await expect(setDayPnlOverride(SEED_ACCOUNT_ID, '2026-04-15', -1000)).rejects.toThrow(/trade/i)
+    expect(await getDayPnlOverride(SEED_ACCOUNT_ID, '2026-04-15')).toBeNull()
   })
 })
 
 describe('day fees override', () => {
   it('no-ops when the day has no PNL override (fees alone is meaningless)', async () => {
-    await setDayFeesOverride(MAIN_ACCOUNT_ID, '2026-04-15', 80)
-    expect(await getDayFeesOverride(MAIN_ACCOUNT_ID, '2026-04-15')).toBeNull()
-    expect(await getDay(MAIN_ACCOUNT_ID, '2026-04-15')).toBeUndefined()
+    await setDayFeesOverride(SEED_ACCOUNT_ID, '2026-04-15', 80)
+    expect(await getDayFeesOverride(SEED_ACCOUNT_ID, '2026-04-15')).toBeNull()
+    expect(await getDay(SEED_ACCOUNT_ID, '2026-04-15')).toBeUndefined()
   })
 
   it('stores fees on an override day and clearing the net drops the fees', async () => {
-    await setDayPnlOverride(MAIN_ACCOUNT_ID, '2026-04-15', 295)
-    await setDayFeesOverride(MAIN_ACCOUNT_ID, '2026-04-15', 80)
-    expect(await getDayFeesOverride(MAIN_ACCOUNT_ID, '2026-04-15')).toBe(80)
-    expect((await listDayOverrides(MAIN_ACCOUNT_ID)).fees).toEqual(
+    await setDayPnlOverride(SEED_ACCOUNT_ID, '2026-04-15', 295)
+    await setDayFeesOverride(SEED_ACCOUNT_ID, '2026-04-15', 80)
+    expect(await getDayFeesOverride(SEED_ACCOUNT_ID, '2026-04-15')).toBe(80)
+    expect((await listDayOverrides(SEED_ACCOUNT_ID)).fees).toEqual(
       new Map([['2026-04-15', 80]]),
     )
 
     // Clearing the net override orphans the fees, so they're dropped too —
     // and the now-empty row is garbage-collected.
-    await setDayPnlOverride(MAIN_ACCOUNT_ID, '2026-04-15', null)
-    expect(await getDayFeesOverride(MAIN_ACCOUNT_ID, '2026-04-15')).toBeNull()
-    expect(await getDay(MAIN_ACCOUNT_ID, '2026-04-15')).toBeUndefined()
+    await setDayPnlOverride(SEED_ACCOUNT_ID, '2026-04-15', null)
+    expect(await getDayFeesOverride(SEED_ACCOUNT_ID, '2026-04-15')).toBeNull()
+    expect(await getDay(SEED_ACCOUNT_ID, '2026-04-15')).toBeUndefined()
   })
 
   it('stores the magnitude so a negative fee adds to the total, not subtracts', async () => {
-    await setDayPnlOverride(MAIN_ACCOUNT_ID, '2026-04-15', 295)
-    await setDayFeesOverride(MAIN_ACCOUNT_ID, '2026-04-15', -80)
-    expect(await getDayFeesOverride(MAIN_ACCOUNT_ID, '2026-04-15')).toBe(80)
+    await setDayPnlOverride(SEED_ACCOUNT_ID, '2026-04-15', 295)
+    await setDayFeesOverride(SEED_ACCOUNT_ID, '2026-04-15', -80)
+    expect(await getDayFeesOverride(SEED_ACCOUNT_ID, '2026-04-15')).toBe(80)
   })
 
   it('setDayFeesOverride(null) clears fees but keeps the net override', async () => {
-    await setDayPnlOverride(MAIN_ACCOUNT_ID, '2026-04-15', 295)
-    await setDayFeesOverride(MAIN_ACCOUNT_ID, '2026-04-15', 80)
-    await setDayFeesOverride(MAIN_ACCOUNT_ID, '2026-04-15', null)
-    expect(await getDayFeesOverride(MAIN_ACCOUNT_ID, '2026-04-15')).toBeNull()
-    expect(await getDayPnlOverride(MAIN_ACCOUNT_ID, '2026-04-15')).toBe(295)
+    await setDayPnlOverride(SEED_ACCOUNT_ID, '2026-04-15', 295)
+    await setDayFeesOverride(SEED_ACCOUNT_ID, '2026-04-15', 80)
+    await setDayFeesOverride(SEED_ACCOUNT_ID, '2026-04-15', null)
+    expect(await getDayFeesOverride(SEED_ACCOUNT_ID, '2026-04-15')).toBeNull()
+    expect(await getDayPnlOverride(SEED_ACCOUNT_ID, '2026-04-15')).toBe(295)
   })
 })
 
@@ -209,13 +211,13 @@ describe('adjustment queries', () => {
     const a = await createAdjustment(adjustmentDraft())
     expect(a.id).toBeTruthy()
     expect(a.created_at).toBe(a.updated_at)
-    expect(a.account_id).toBe(MAIN_ACCOUNT_ID)
+    expect(a.account_id).toBe(SEED_ACCOUNT_ID)
   })
 
   it('deleteAdjustment removes the record', async () => {
     const a = await createAdjustment(adjustmentDraft())
     await deleteAdjustment(a.id)
-    expect(await listAdjustments(MAIN_ACCOUNT_ID)).toHaveLength(0)
+    expect(await listAdjustments(SEED_ACCOUNT_ID)).toHaveLength(0)
   })
 
   it('listAdjustments orders by date and scopes by account', async () => {
@@ -223,7 +225,7 @@ describe('adjustment queries', () => {
     await createAdjustment(adjustmentDraft({ date: '2026-04-01' }))
     await createAdjustment(adjustmentDraft({ date: '2026-04-10' }))
     await createAdjustment(adjustmentDraft({ date: '2026-04-06' }), 'other-account')
-    const out = await listAdjustments(MAIN_ACCOUNT_ID)
+    const out = await listAdjustments(SEED_ACCOUNT_ID)
     expect(out.map(a => a.date)).toEqual(['2026-04-01', '2026-04-10', '2026-04-20'])
   })
 })
@@ -247,16 +249,15 @@ describe('slugifyAccountName', () => {
     expect(slugifyAccountName('!!!')).toBe('')
   })
 
-  it('produces the MAIN_ACCOUNT_ID slug for "Main"', () => {
-    expect(slugifyAccountName('Main')).toBe(MAIN_ACCOUNT_ID)
+  it('produces the SEED_ACCOUNT_ID slug for "Test Account"', () => {
+    expect(slugifyAccountName('Test Account')).toBe(SEED_ACCOUNT_ID)
   })
 })
 
 describe('account queries', () => {
-  it('createAccount derives id from the name slug and is not main', async () => {
+  it('createAccount derives id from the name slug', async () => {
     const a = await createAccount({ name: 'Funded Challenge', starting_balance: 0 })
     expect(a.id).toBe('funded-challenge')
-    expect(a.is_main).toBe(false)
     expect(a.created_at).toBe(a.updated_at)
   })
 
@@ -295,8 +296,8 @@ describe('account queries', () => {
     )
   })
 
-  it('createAccount rejects reusing the Main slug', async () => {
-    await expect(createAccount({ name: 'Main', starting_balance: 0 })).rejects.toThrow(/collides/)
+  it('createAccount rejects reusing the seeded account slug', async () => {
+    await expect(createAccount({ name: 'Test Account', starting_balance: 0 })).rejects.toThrow(/collides/)
   })
 
   describe('cloneAccount', () => {
@@ -306,7 +307,7 @@ describe('account queries', () => {
       const ts = '2026-01-02T00:00:00.000Z'
       await db.models.put({
         id: 'src-model',
-        account_id: MAIN_ACCOUNT_ID,
+        account_id: SEED_ACCOUNT_ID,
         name: 'Breakout',
         description: 'the playbook',
         sessions: ['am'],
@@ -326,12 +327,12 @@ describe('account queries', () => {
           scratch_handles: 2,
           draft: false,
         },
-        MAIN_ACCOUNT_ID,
+        SEED_ACCOUNT_ID,
       )
       await db.progress_rules.bulkPut([
         {
           id: 'src-rule',
-          account_id: MAIN_ACCOUNT_ID,
+          account_id: SEED_ACCOUNT_ID,
           text: 'no trades before 9:45',
           periods: [{ from: '2026-01-02', until: null }],
           sort: 2,
@@ -340,7 +341,7 @@ describe('account queries', () => {
         },
         {
           id: 'src-hidden',
-          account_id: MAIN_ACCOUNT_ID,
+          account_id: SEED_ACCOUNT_ID,
           text: 'retired rule',
           periods: [{ from: '2025-01-02', until: '2025-06-01' }],
           hidden: true,
@@ -356,7 +357,7 @@ describe('account queries', () => {
       await seedSource()
       const clone = await cloneAccount(
         { name: 'Eval 2', starting_balance: 50_000 },
-        MAIN_ACCOUNT_ID,
+        SEED_ACCOUNT_ID,
       )
 
       const models = await listModels(clone.id)
@@ -372,13 +373,13 @@ describe('account queries', () => {
       expect(symbols[0].point_value).toBe(20)
 
       // Source keeps its own copies — a clone is never a move.
-      expect(await listModels(MAIN_ACCOUNT_ID)).toHaveLength(1)
-      expect(await listSymbols(MAIN_ACCOUNT_ID)).toHaveLength(1)
+      expect(await listModels(SEED_ACCOUNT_ID)).toHaveLength(1)
+      expect(await listSymbols(SEED_ACCOUNT_ID)).toHaveLength(1)
     })
 
     it('cloned rules run from today, skipping hidden ones', async () => {
       await seedSource()
-      const clone = await cloneAccount({ name: 'Eval 2', starting_balance: 0 }, MAIN_ACCOUNT_ID)
+      const clone = await cloneAccount({ name: 'Eval 2', starting_balance: 0 }, SEED_ACCOUNT_ID)
       const rules = await db.progress_rules.where('account_id').equals(clone.id).toArray()
       expect(rules).toHaveLength(1)
       expect(rules[0].text).toBe('no trades before 9:45')
@@ -391,14 +392,14 @@ describe('account queries', () => {
       const later = tradingDayAfter(nextWeekdayKey(nyToday()))
       await db.progress_rules.put({
         id: 'src-planned',
-        account_id: MAIN_ACCOUNT_ID,
+        account_id: SEED_ACCOUNT_ID,
         text: 'planned',
         periods: [{ from: later, until: null }],
         sort: 1,
         created_at: '2026-01-01T00:00:00.000Z',
         updated_at: '2026-01-01T00:00:00.000Z',
       })
-      const clone = await cloneAccount({ name: 'Eval 2', starting_balance: 0 }, MAIN_ACCOUNT_ID)
+      const clone = await cloneAccount({ name: 'Eval 2', starting_balance: 0 }, SEED_ACCOUNT_ID)
       const [planned] = await db.progress_rules.where('account_id').equals(clone.id).toArray()
       expect(planned.periods).toEqual([{ from: later, until: null }])
     })
@@ -406,21 +407,21 @@ describe('account queries', () => {
     it('a blank rule is not cloned', async () => {
       await db.progress_rules.put({
         id: 'src-blank',
-        account_id: MAIN_ACCOUNT_ID,
+        account_id: SEED_ACCOUNT_ID,
         text: '',
         periods: [{ from: '2026-01-02', until: null }],
         sort: 1,
         created_at: '2026-01-01T00:00:00.000Z',
         updated_at: '2026-01-01T00:00:00.000Z',
       })
-      const clone = await cloneAccount({ name: 'Eval 2', starting_balance: 0 }, MAIN_ACCOUNT_ID)
+      const clone = await cloneAccount({ name: 'Eval 2', starting_balance: 0 }, SEED_ACCOUNT_ID)
       expect(await db.progress_rules.where('account_id').equals(clone.id).count()).toBe(0)
     })
 
     it('a cloned line runs from today', async () => {
       await db.progress_rules.put({
         id: 'src-line',
-        account_id: MAIN_ACCOUNT_ID,
+        account_id: SEED_ACCOUNT_ID,
         text: '',
         kind: 'line',
         periods: [{ from: '2026-01-02', until: null }],
@@ -431,7 +432,7 @@ describe('account queries', () => {
       // An archived line is skipped like any archived rule.
       await db.progress_rules.put({
         id: 'src-old-line',
-        account_id: MAIN_ACCOUNT_ID,
+        account_id: SEED_ACCOUNT_ID,
         text: '',
         kind: 'line',
         periods: [{ from: '2025-01-02', until: '2025-06-01' }],
@@ -440,7 +441,7 @@ describe('account queries', () => {
         created_at: '2026-01-01T00:00:00.000Z',
         updated_at: '2026-01-01T00:00:00.000Z',
       })
-      const clone = await cloneAccount({ name: 'Eval 2', starting_balance: 0 }, MAIN_ACCOUNT_ID)
+      const clone = await cloneAccount({ name: 'Eval 2', starting_balance: 0 }, SEED_ACCOUNT_ID)
       const cloned = await db.progress_rules.where('account_id').equals(clone.id).toArray()
       expect(cloned).toHaveLength(1)
       const [line] = cloned
@@ -450,7 +451,7 @@ describe('account queries', () => {
 
     it('seeds the symbol filter cache so the clone paints its pills immediately', async () => {
       await seedSource()
-      const clone = await cloneAccount({ name: 'Eval 2', starting_balance: 0 }, MAIN_ACCOUNT_ID)
+      const clone = await cloneAccount({ name: 'Eval 2', starting_balance: 0 }, SEED_ACCOUNT_ID)
       const cached = readSymbolFilterCache(clone.id)
       expect(cached?.map(s => s.name)).toEqual(['NQ'])
       // Same rows that landed in the table, not the source's.
@@ -459,21 +460,21 @@ describe('account queries', () => {
 
     it('writes no cache entry when the source has no symbols', async () => {
       await db.symbols.clear()
-      const clone = await cloneAccount({ name: 'Bare', starting_balance: 0 }, MAIN_ACCOUNT_ID)
+      const clone = await cloneAccount({ name: 'Bare', starting_balance: 0 }, SEED_ACCOUNT_ID)
       // An empty cache reads the same as none, so writing one is a stray key.
       expect(readSymbolFilterCache(clone.id)).toBeUndefined()
     })
 
     it('takes the balance from the draft, not from the source account', async () => {
-      await db.accounts.update(MAIN_ACCOUNT_ID, { starting_balance: 25_000 })
-      const clone = await cloneAccount({ name: 'Eval 2', starting_balance: 50_000 }, MAIN_ACCOUNT_ID)
+      await db.accounts.update(SEED_ACCOUNT_ID, { starting_balance: 25_000 })
+      const clone = await cloneAccount({ name: 'Eval 2', starting_balance: 50_000 }, SEED_ACCOUNT_ID)
       expect(clone.starting_balance).toBe(50_000)
-      expect((await getAccount(MAIN_ACCOUNT_ID))?.starting_balance).toBe(25_000)
+      expect((await getAccount(SEED_ACCOUNT_ID))?.starting_balance).toBe(25_000)
     })
 
     it('copies no history', async () => {
       await seedSource()
-      const clone = await cloneAccount({ name: 'Eval 2', starting_balance: 0 }, MAIN_ACCOUNT_ID)
+      const clone = await cloneAccount({ name: 'Eval 2', starting_balance: 0 }, SEED_ACCOUNT_ID)
       const counts = await countAccountData(clone.id)
       expect(counts.trades).toBe(0)
       expect(counts.adjustments).toBe(0)
@@ -484,7 +485,7 @@ describe('account queries', () => {
     it('leaves nothing behind when the name is rejected', async () => {
       await seedSource()
       await expect(
-        cloneAccount({ name: 'main', starting_balance: 0 }, MAIN_ACCOUNT_ID),
+        cloneAccount({ name: 'Test Account', starting_balance: 0 }, SEED_ACCOUNT_ID),
       ).rejects.toThrow(/collides/)
       expect(await db.accounts.count()).toBe(1)
       expect(await db.models.count()).toBe(1)
@@ -498,21 +499,30 @@ describe('account queries', () => {
     })
   })
 
-  it('listAccounts puts main first then alphabetical', async () => {
-    await createAccount({ name: 'Zulu', starting_balance: 0 })
-    await createAccount({ name: 'Alpha', starting_balance: 0 })
+  it('listAccounts orders oldest-created first, not by name', async () => {
+    await db.accounts.update(SEED_ACCOUNT_ID, { created_at: '2026-01-02T00:00:00.000Z' })
+    const zulu = await createAccount({ name: 'Zulu', starting_balance: 0 })
+    const alpha = await createAccount({ name: 'Alpha', starting_balance: 0 })
+    await db.accounts.update(zulu.id, { created_at: '2026-01-01T00:00:00.000Z' })
+    await db.accounts.update(alpha.id, { created_at: '2026-01-03T00:00:00.000Z' })
     const all = await listAccounts()
-    expect(all.map(a => a.name)).toEqual(['main', 'Alpha', 'Zulu'])
+    expect(all.map(a => a.name)).toEqual(['Zulu', 'Test Account', 'Alpha'])
+  })
+
+  it('createTrade refuses to save a trade when no account is selected', async () => {
+    setActiveAccountId('')
+    await expect(createTrade(tradeDraft())).rejects.toThrow(/no account/i)
+    expect(await db.trades.count()).toBe(0)
   })
 
   it('deleteAccount refuses to remove the last remaining account', async () => {
-    // Only the auto-seeded Main exists at this point.
-    await expect(deleteAccount(MAIN_ACCOUNT_ID)).rejects.toThrow(/at least one/i)
+    // Only the auto-seeded account exists at this point.
+    await expect(deleteAccount(SEED_ACCOUNT_ID)).rejects.toThrow(/at least one/i)
   })
 
-  it('deleteAccount allows removing Main when other accounts exist', async () => {
+  it('deleteAccount allows removing the seeded account when other accounts exist', async () => {
     await createAccount({ name: 'Alpha', starting_balance: 0 })
-    await deleteAccount(MAIN_ACCOUNT_ID)
+    await deleteAccount(SEED_ACCOUNT_ID)
     const remaining = await listAccounts()
     expect(remaining.map(a => a.name)).toEqual(['Alpha'])
   })
@@ -521,15 +531,15 @@ describe('account queries', () => {
     const a = await createAccount({ name: 'Alpha', starting_balance: 0 })
     await createTrade(tradeDraft(), a.id)
     await createTrade(tradeDraft(), a.id)
-    await createTrade(tradeDraft(), MAIN_ACCOUNT_ID)
+    await createTrade(tradeDraft(), SEED_ACCOUNT_ID)
     await createAdjustment(adjustmentDraft(), a.id)
 
     await deleteAccount(a.id)
 
-    expect(await listAccounts()).toHaveLength(1) // Main only
+    expect(await listAccounts()).toHaveLength(1) // only the seeded account
     expect(await listAllTrades(a.id)).toHaveLength(0)
     expect(await listAdjustments(a.id)).toHaveLength(0)
-    expect(await listAllTrades(MAIN_ACCOUNT_ID)).toHaveLength(1) // other account untouched
+    expect(await listAllTrades(SEED_ACCOUNT_ID)).toHaveLength(1) // other account untouched
   })
 
   it('deleteAccount cascades to days and pending_uploads', async () => {
@@ -544,8 +554,8 @@ describe('account queries', () => {
       updated_at: now,
     })
     await db.days.put({
-      id: `${MAIN_ACCOUNT_ID}:2026-04-20`,
-      account_id: MAIN_ACCOUNT_ID,
+      id: `${SEED_ACCOUNT_ID}:2026-04-20`,
+      account_id: SEED_ACCOUNT_ID,
       date: '2026-04-20',
       screenshots: ['drive:other'],
       created_at: now,
@@ -561,7 +571,7 @@ describe('account queries', () => {
     })
     await db.pending_uploads.put({
       id: 'p2',
-      account_id: MAIN_ACCOUNT_ID,
+      account_id: SEED_ACCOUNT_ID,
       blob: new Blob(['y']),
       filename: '20-apr-2026-y.png',
       month_key: '2026-04',
@@ -571,9 +581,9 @@ describe('account queries', () => {
     await deleteAccount(a.id)
 
     expect(await db.days.where('account_id').equals(a.id).count()).toBe(0)
-    expect(await db.days.where('account_id').equals(MAIN_ACCOUNT_ID).count()).toBe(1)
+    expect(await db.days.where('account_id').equals(SEED_ACCOUNT_ID).count()).toBe(1)
     expect(await db.pending_uploads.where('account_id').equals(a.id).count()).toBe(0)
-    expect(await db.pending_uploads.where('account_id').equals(MAIN_ACCOUNT_ID).count()).toBe(1)
+    expect(await db.pending_uploads.where('account_id').equals(SEED_ACCOUNT_ID).count()).toBe(1)
   })
 
   it('deleteAccount cascades to models, progress_rules, and progress_checks', async () => {
@@ -592,9 +602,9 @@ describe('account queries', () => {
       updated_at: now,
     })
     await db.models.put({
-      id: 'm-main',
-      account_id: MAIN_ACCOUNT_ID,
-      name: 'Main model',
+      id: 'm-seed',
+      account_id: SEED_ACCOUNT_ID,
+      name: 'Seed model',
       description: '',
       sessions: [],
       groups: [],
@@ -613,8 +623,8 @@ describe('account queries', () => {
       updated_at: now,
     })
     await db.progress_rules.put({
-      id: 'r-main',
-      account_id: MAIN_ACCOUNT_ID,
+      id: 'r-seed',
+      account_id: SEED_ACCOUNT_ID,
       text: 'Review yesterday',
       periods: [{ from: '2026-01-01', until: null }],
       sort: 1,
@@ -630,10 +640,10 @@ describe('account queries', () => {
       updated_at: now,
     })
     await db.progress_checks.put({
-      id: `${MAIN_ACCOUNT_ID}:2026-04-20:r-main`,
-      account_id: MAIN_ACCOUNT_ID,
+      id: `${SEED_ACCOUNT_ID}:2026-04-20:r-seed`,
+      account_id: SEED_ACCOUNT_ID,
       date: '2026-04-20',
-      rule_id: 'r-main',
+      rule_id: 'r-seed',
       created_at: now,
       updated_at: now,
     })
@@ -641,11 +651,11 @@ describe('account queries', () => {
     await deleteAccount(a.id)
 
     expect(await db.models.where('account_id').equals(a.id).count()).toBe(0)
-    expect(await db.models.where('account_id').equals(MAIN_ACCOUNT_ID).count()).toBe(1)
+    expect(await db.models.where('account_id').equals(SEED_ACCOUNT_ID).count()).toBe(1)
     expect(await db.progress_rules.where('account_id').equals(a.id).count()).toBe(0)
-    expect(await db.progress_rules.where('account_id').equals(MAIN_ACCOUNT_ID).count()).toBe(1)
+    expect(await db.progress_rules.where('account_id').equals(SEED_ACCOUNT_ID).count()).toBe(1)
     expect(await db.progress_checks.where('account_id').equals(a.id).count()).toBe(0)
-    expect(await db.progress_checks.where('account_id').equals(MAIN_ACCOUNT_ID).count()).toBe(1)
+    expect(await db.progress_checks.where('account_id').equals(SEED_ACCOUNT_ID).count()).toBe(1)
   })
 
   it('deleteAccount clears the account-scoped localStorage keys', async () => {
@@ -656,15 +666,15 @@ describe('account queries', () => {
       JSON.stringify({ id: 'folder123' }),
     )
     localStorage.setItem(`logslate:drive:month_folders:${a.id}`, '{"2026-04":"m1"}')
-    // Main account's keys should survive.
-    localStorage.setItem(`logslate:equity_view_default:${MAIN_ACCOUNT_ID}`, 'curve')
+    // The seeded account's keys should survive.
+    localStorage.setItem(`logslate:equity_view_default:${SEED_ACCOUNT_ID}`, 'curve')
 
     await deleteAccount(a.id)
 
     expect(localStorage.getItem(`logslate:equity_view_default:${a.id}`)).toBeNull()
     expect(localStorage.getItem(`logslate:drive:screenshots_folder:${a.id}`)).toBeNull()
     expect(localStorage.getItem(`logslate:drive:month_folders:${a.id}`)).toBeNull()
-    expect(localStorage.getItem(`logslate:equity_view_default:${MAIN_ACCOUNT_ID}`)).toBe('curve')
+    expect(localStorage.getItem(`logslate:equity_view_default:${SEED_ACCOUNT_ID}`)).toBe('curve')
   })
 
   it('countAccountData reports counts for every table the cascade touches', async () => {
@@ -724,7 +734,7 @@ describe('account queries', () => {
       created_at: '2026-04-15T00:00:00Z',
       updated_at: '2026-04-15T00:00:00Z',
     })
-    await createTrade(tradeDraft(), MAIN_ACCOUNT_ID)
+    await createTrade(tradeDraft(), SEED_ACCOUNT_ID)
 
     expect(await countAccountData(a.id)).toEqual({
       trades: 2,
@@ -735,7 +745,7 @@ describe('account queries', () => {
       progressRules: 1,
       progressChecks: 1,
     })
-    expect(await countAccountData(MAIN_ACCOUNT_ID)).toEqual({
+    expect(await countAccountData(SEED_ACCOUNT_ID)).toEqual({
       trades: 1,
       adjustments: 0,
       days: 0,
@@ -748,7 +758,7 @@ describe('account queries', () => {
 })
 
 describe('day queries', () => {
-  const ACCT = MAIN_ACCOUNT_ID
+  const ACCT = SEED_ACCOUNT_ID
   const DATE = '2026-04-20'
 
   describe('getDay / listDayScreenshotsFor / getDayNote', () => {
@@ -866,31 +876,30 @@ describe('day queries', () => {
   })
 })
 
-describe('ensureMainAccount', () => {
-  it('creates the main account when absent', async () => {
+describe('ensureSeedAccount', () => {
+  it('creates a regular Test Account when the DB is empty', async () => {
     await db.accounts.clear()
-    await ensureMainAccount()
-    const main = await db.accounts.get(MAIN_ACCOUNT_ID)
-    expect(main?.name).toBe('main')
-    expect(main?.is_main).toBe(true)
+    await ensureSeedAccount()
+    const seeded = await db.accounts.get(SEED_ACCOUNT_ID)
+    expect(seeded?.name).toBe('Test Account')
+    expect(seeded).not.toHaveProperty('is_main')
   })
 
-  it('is a no-op when main already exists (preserves the existing row)', async () => {
+  it('is a no-op when the seeded account already exists (preserves the existing row)', async () => {
     await db.accounts.clear()
-    await ensureMainAccount()
-    const first = await db.accounts.get(MAIN_ACCOUNT_ID)
+    await ensureSeedAccount()
+    const first = await db.accounts.get(SEED_ACCOUNT_ID)
     await new Promise(r => setTimeout(r, 2))
-    await ensureMainAccount()
-    const second = await db.accounts.get(MAIN_ACCOUNT_ID)
+    await ensureSeedAccount()
+    const second = await db.accounts.get(SEED_ACCOUNT_ID)
     expect(second?.created_at).toBe(first?.created_at)
     expect(second?.updated_at).toBe(first?.updated_at)
   })
 
-  it('does not resurrect Main when another account exists (deleted-Main case)', async () => {
-    // Simulate the user having deleted Main after creating another account.
+  it('does not resurrect the seeded account once the user deleted it', async () => {
     await createAccount({ name: 'Alpha', starting_balance: 0 })
-    await db.accounts.delete(MAIN_ACCOUNT_ID)
-    await ensureMainAccount()
+    await db.accounts.delete(SEED_ACCOUNT_ID)
+    await ensureSeedAccount()
     const all = await listAccounts()
     expect(all.map(a => a.name)).toEqual(['Alpha'])
   })
@@ -908,10 +917,10 @@ describe('symbol queries', () => {
   })
 
   it('createSymbol puts a new symbol below every existing one', async () => {
-    await createSymbol(draft('b'), MAIN_ACCOUNT_ID)
-    await createSymbol(draft('a'), MAIN_ACCOUNT_ID)
+    await createSymbol(draft('b'), SEED_ACCOUNT_ID)
+    await createSymbol(draft('a'), SEED_ACCOUNT_ID)
     await createSymbol(draft('other'), 'other-account')
-    const rows = await listSymbols(MAIN_ACCOUNT_ID)
+    const rows = await listSymbols(SEED_ACCOUNT_ID)
     expect(rows.map(r => r.name)).toEqual(['b', 'a'])
   })
 })
@@ -925,7 +934,7 @@ describe('model queries', () => {
     const ts = new Date().toISOString()
     await db.models.put({
       id,
-      account_id: opts.accountId ?? MAIN_ACCOUNT_ID,
+      account_id: opts.accountId ?? SEED_ACCOUNT_ID,
       name,
       description: '',
       sessions: [],
@@ -939,9 +948,9 @@ describe('model queries', () => {
 
   it('createModel puts a new model below every existing one', async () => {
     await putModel('m1', 'zeta', { sort: 4 })
-    const m = await createModel(MAIN_ACCOUNT_ID, { name: 'alpha', groups: [] })
+    const m = await createModel(SEED_ACCOUNT_ID, { name: 'alpha', groups: [] })
     expect(m.sort).toBe(5)
-    expect((await listModels(MAIN_ACCOUNT_ID)).map(r => r.name)).toEqual(['zeta', 'alpha'])
+    expect((await listModels(SEED_ACCOUNT_ID)).map(r => r.name)).toEqual(['zeta', 'alpha'])
   })
 
   it('updateModel patches fields and bumps updated_at; deleteModel removes the row', async () => {
@@ -960,7 +969,7 @@ describe('model queries', () => {
     await putModel('m1', 'beta')
     await putModel('m2', 'Alpha')
     await putModel('m3', 'gamma', { accountId: 'other-account' })
-    const rows = await listModels(MAIN_ACCOUNT_ID)
+    const rows = await listModels(SEED_ACCOUNT_ID)
     expect(rows.map(m => m.name)).toEqual(['Alpha', 'beta'])
   })
 
@@ -968,7 +977,7 @@ describe('model queries', () => {
     await putModel('m1', 'beta', { sort: 2 })
     await putModel('m2', 'Alpha', { sort: 3 })
     await putModel('m3', 'gamma', { sort: 1 })
-    const rows = await listModels(MAIN_ACCOUNT_ID)
+    const rows = await listModels(SEED_ACCOUNT_ID)
     expect(rows.map(m => m.name)).toEqual(['gamma', 'beta', 'Alpha'])
   })
 
@@ -977,7 +986,7 @@ describe('model queries', () => {
     await putModel('m2', 'second')
     await putModel('m3', 'third')
     await reorderModels(['m3', 'm1', 'm2'])
-    const rows = await listModels(MAIN_ACCOUNT_ID)
+    const rows = await listModels(SEED_ACCOUNT_ID)
     expect(rows.map(m => m.id)).toEqual(['m3', 'm1', 'm2'])
     expect(rows.map(m => m.sort)).toEqual([1, 2, 3])
   })
@@ -985,10 +994,10 @@ describe('model queries', () => {
   it('reorderModels bumps updated_at on every renumbered row', async () => {
     await putModel('m1', 'a')
     await putModel('m2', 'b')
-    const before = await listModels(MAIN_ACCOUNT_ID)
+    const before = await listModels(SEED_ACCOUNT_ID)
     await new Promise(r => setTimeout(r, 5))
     await reorderModels(['m2', 'm1'])
-    const after = await listModels(MAIN_ACCOUNT_ID)
+    const after = await listModels(SEED_ACCOUNT_ID)
     for (const m of after) {
       const prev = before.find(b => b.id === m.id)!
       expect(m.updated_at > prev.updated_at).toBe(true)
@@ -998,12 +1007,12 @@ describe('model queries', () => {
   it('reorderModels is a no-op for an empty list', async () => {
     await putModel('m1', 'unchanged', { sort: 7 })
     await reorderModels([])
-    const rows = await listModels(MAIN_ACCOUNT_ID)
+    const rows = await listModels(SEED_ACCOUNT_ID)
     expect(rows[0].sort).toBe(7)
   })
 
   it('listModels returns an empty array when the account has no models', async () => {
-    const rows = await listModels(MAIN_ACCOUNT_ID)
+    const rows = await listModels(SEED_ACCOUNT_ID)
     expect(rows).toEqual([])
   })
 
@@ -1013,9 +1022,9 @@ describe('model queries', () => {
     await createTrade(tradeDraft({ model_id: 'm-target' }))
     await createTrade(tradeDraft({ model_id: 'm-other' }))
     await createTrade(tradeDraft({ model_id: null }))
-    expect(await countTradesUsingModel(MAIN_ACCOUNT_ID, 'm-target')).toBe(2)
-    expect(await countTradesUsingModel(MAIN_ACCOUNT_ID, 'm-other')).toBe(1)
-    expect(await countTradesUsingModel(MAIN_ACCOUNT_ID, 'm-missing')).toBe(0)
+    expect(await countTradesUsingModel(SEED_ACCOUNT_ID, 'm-target')).toBe(2)
+    expect(await countTradesUsingModel(SEED_ACCOUNT_ID, 'm-other')).toBe(1)
+    expect(await countTradesUsingModel(SEED_ACCOUNT_ID, 'm-missing')).toBe(0)
   })
 
   it('countTradesUsingModel scopes by account', async () => {
@@ -1023,7 +1032,7 @@ describe('model queries', () => {
     const altId = (await listAccounts()).find(a => a.name === 'Alt')!.id
     await createTrade(tradeDraft({ model_id: 'shared' }))
     await createTrade(tradeDraft({ model_id: 'shared' }), altId)
-    expect(await countTradesUsingModel(MAIN_ACCOUNT_ID, 'shared')).toBe(1)
+    expect(await countTradesUsingModel(SEED_ACCOUNT_ID, 'shared')).toBe(1)
     expect(await countTradesUsingModel(altId, 'shared')).toBe(1)
   })
 })

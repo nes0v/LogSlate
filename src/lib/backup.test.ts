@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { setActiveAccountId } from '@/lib/active-account'
 import { DATA_TABLE_KEYS } from '@/lib/data-tables'
-import { db, ensureMainAccount } from '@/db/schema'
+import { db, ensureSeedAccount } from '@/db/schema'
 import { createAdjustment, createTrade, listAllTrades, listAdjustments } from '@/db/queries'
-import { MAIN_ACCOUNT_ID } from '@/db/types'
+import { SEED_ACCOUNT_ID } from '@/db/types'
 import { exportBackup, importBackup } from './backup'
 import { readSymbolFilterCache } from '@/lib/symbol-filter-cache'
 import { readLastActivityDate } from '@/lib/last-activity-cache'
@@ -12,7 +13,8 @@ beforeEach(async () => {
   await db.trades.clear()
   await db.adjustments.clear()
   await db.accounts.clear()
-  await ensureMainAccount()
+  await ensureSeedAccount()
+  setActiveAccountId(SEED_ACCOUNT_ID)
 })
 afterEach(async () => {
   await db.trades.clear()
@@ -56,20 +58,19 @@ describe('importBackup', () => {
     expect(result.trades).toBe(1)
     expect(result.adjustments).toBe(1)
 
-    const trades = await listAllTrades(MAIN_ACCOUNT_ID)
+    const trades = await listAllTrades(SEED_ACCOUNT_ID)
     expect(trades).toHaveLength(1)
     expect(trades[0].notes).toBe('seed trade') // pre-import trade was wiped
 
-    const adjustments = await listAdjustments(MAIN_ACCOUNT_ID)
+    const adjustments = await listAdjustments(SEED_ACCOUNT_ID)
     expect(adjustments).toHaveLength(1)
     expect(adjustments[0].amount).toBe(100)
   })
 
   it('round-trips a funded account through export and import', async () => {
     await db.accounts.put({
-      id: MAIN_ACCOUNT_ID,
-      name: 'main',
-      is_main: true,
+      id: SEED_ACCOUNT_ID,
+      name: 'Test Account',
       starting_balance: 50_000,
       created_at: '2026-01-01T00:00:00.000Z',
       updated_at: '2026-01-01T00:00:00.000Z',
@@ -77,7 +78,7 @@ describe('importBackup', () => {
     const file = backupFile({ accounts: await db.accounts.toArray() })
     await db.accounts.clear()
     await importBackup(file)
-    expect((await db.accounts.get(MAIN_ACCOUNT_ID))?.starting_balance).toBe(50_000)
+    expect((await db.accounts.get(SEED_ACCOUNT_ID))?.starting_balance).toBe(50_000)
   })
 
   it('rejects a backup from an older version', async () => {
@@ -97,7 +98,7 @@ describe('importBackup', () => {
       { type: 'application/json' },
     )
     await expect(importBackup(file)).rejects.toThrow(/newer version/)
-    expect(await listAllTrades(MAIN_ACCOUNT_ID)).toHaveLength(1)
+    expect(await listAllTrades(SEED_ACCOUNT_ID)).toHaveLength(1)
   })
 
   it('rejects a backup missing a table', async () => {
@@ -105,20 +106,20 @@ describe('importBackup', () => {
     const payload = { version: 9, trades: [], exported_at: new Date().toISOString() }
     const file = new File([JSON.stringify(payload)], 'partial.json', { type: 'application/json' })
     await expect(importBackup(file)).rejects.toThrow(/is not an array/)
-    expect(await listAllTrades(MAIN_ACCOUNT_ID)).toHaveLength(1)
+    expect(await listAllTrades(SEED_ACCOUNT_ID)).toHaveLength(1)
   })
 
   it('drops caches derived from the database it just replaced', async () => {
     // Both are first-paint seeds read synchronously before any query resolves,
     // so a stale one paints the PREVIOUS database's symbols and date window.
     localStorage.setItem(
-      `logslate:symbol_filter_cache:${MAIN_ACCOUNT_ID}`,
+      `logslate:symbol_filter_cache:${SEED_ACCOUNT_ID}`,
       JSON.stringify([{ id: 'gone', name: 'GONE' }]),
     )
-    localStorage.setItem(`logslate:last_activity_date:${MAIN_ACCOUNT_ID}`, '2020-01-02')
+    localStorage.setItem(`logslate:last_activity_date:${SEED_ACCOUNT_ID}`, '2020-01-02')
     await importBackup(backupFile({}))
-    expect(readSymbolFilterCache(MAIN_ACCOUNT_ID)).toBeUndefined()
-    expect(readLastActivityDate(MAIN_ACCOUNT_ID)).toBeNull()
+    expect(readSymbolFilterCache(SEED_ACCOUNT_ID)).toBeUndefined()
+    expect(readLastActivityDate(SEED_ACCOUNT_ID)).toBeNull()
   })
 
   it('rejects malformed input', async () => {
@@ -130,7 +131,7 @@ describe('importBackup', () => {
     await createTrade(tradeDraft({ notes: 'must survive' }))
     const file = new File(['not json {{{'], 'bad.json', { type: 'application/json' })
     await expect(importBackup(file)).rejects.toThrow(/not valid JSON/)
-    const trades = await listAllTrades(MAIN_ACCOUNT_ID)
+    const trades = await listAllTrades(SEED_ACCOUNT_ID)
     expect(trades).toHaveLength(1)
     expect(trades[0].notes).toBe('must survive')
   })
@@ -139,7 +140,7 @@ describe('importBackup', () => {
     await createTrade(tradeDraft({ notes: 'must survive' }))
     const file = backupFile({ models: 'oops' })
     await expect(importBackup(file)).rejects.toThrow(/models is not an array/)
-    const trades = await listAllTrades(MAIN_ACCOUNT_ID)
+    const trades = await listAllTrades(SEED_ACCOUNT_ID)
     expect(trades).toHaveLength(1) // pre-import data preserved
   })
 
@@ -147,7 +148,7 @@ describe('importBackup', () => {
     await createTrade(tradeDraft({ notes: 'must survive' }))
     const file = backupFile({ trades: [{ id: 42, notes: 'wrong-type id' }] })
     await expect(importBackup(file)).rejects.toThrow(/missing a string id/)
-    const trades = await listAllTrades(MAIN_ACCOUNT_ID)
+    const trades = await listAllTrades(SEED_ACCOUNT_ID)
     expect(trades).toHaveLength(1)
   })
 })

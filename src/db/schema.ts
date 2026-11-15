@@ -11,7 +11,7 @@ import type {
   TradeRecord,
   TradingSymbol,
 } from '@/db/types'
-import { MAIN_ACCOUNT_ID } from '@/db/types'
+import { SEED_ACCOUNT_ID } from '@/db/types'
 
 class LogslateDB extends Dexie {
   trades!: EntityTable<TradeRecord, 'id'>
@@ -48,7 +48,7 @@ class LogslateDB extends Dexie {
     //   - `*screenshots` on `days` is multi-entry so the drainer locates
     //     day rows by ref.
     //   - `news.date` — Day page looks up news by date.
-    this.version(22).stores({
+    this.version(23).stores({
       trades: '&id, [account_id+date], [account_id+model_id], [account_id+symbol_id]',
       adjustments: '&id, [account_id+date]',
       accounts: '&id',
@@ -78,17 +78,16 @@ export const FRESH_DB_KEY = 'logslate:sync:fresh_db'
 
 export const db = new LogslateDB()
 
-// Seeds a default 'main' account on a truly fresh DB so the app always has
+// Seeds a regular "Test Account" on a truly fresh DB so the app always has
 // somewhere to land. Once any account exists this is a no-op — including
-// after the user has deleted main themselves (we don't resurrect it).
-export async function ensureMainAccount(): Promise<void> {
+// after the user has deleted it (we don't resurrect it).
+export async function ensureSeedAccount(): Promise<void> {
   const total = await db.accounts.count()
   if (total > 0) return
   const ts = new Date().toISOString()
   await db.accounts.put({
-    id: MAIN_ACCOUNT_ID,
-    name: 'main',
-    is_main: true,
+    id: SEED_ACCOUNT_ID,
+    name: 'Test Account',
     starting_balance: 0,
     created_at: ts,
     updated_at: ts,

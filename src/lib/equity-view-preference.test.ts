@@ -3,7 +3,7 @@ import { renderHook } from '@testing-library/react'
 import { act } from 'react'
 import { setDefaultEquityView, useDefaultEquityView } from './equity-view-preference'
 import { setActiveAccountId } from './active-account'
-import { MAIN_ACCOUNT_ID } from '@/db/types'
+import { SEED_ACCOUNT_ID } from '@/db/types'
 
 beforeEach(() => {
   localStorage.clear()
@@ -20,7 +20,7 @@ function viewFor(accountId: string) {
   const { result, unmount } = renderHook(() => useDefaultEquityView())
   const view = result.current
   unmount()
-  setActiveAccountId(MAIN_ACCOUNT_ID)
+  setActiveAccountId(SEED_ACCOUNT_ID)
   return view
 }
 
@@ -72,7 +72,7 @@ describe('equity view preference', () => {
     setActiveAccountId('acct-1')
     setDefaultEquityView('curve')
     // Reset back so it doesn't leak into other suites.
-    setActiveAccountId(MAIN_ACCOUNT_ID)
+    setActiveAccountId(SEED_ACCOUNT_ID)
     expect(viewFor('acct-1')).toBe('curve')
   })
 })
@@ -85,7 +85,7 @@ describe('useDefaultEquityView', () => {
     setDefaultEquityView('curve', 'acct-1')
     rerender()
     expect(result.current).toBe('curve')
-    setActiveAccountId(MAIN_ACCOUNT_ID)
+    setActiveAccountId(SEED_ACCOUNT_ID)
   })
 
   it('stops rendering after unmount', () => {
@@ -99,7 +99,7 @@ describe('useDefaultEquityView', () => {
     const before = renders
     act(() => setDefaultEquityView('curve', 'acct-2'))
     expect(renders).toBe(before)
-    setActiveAccountId(MAIN_ACCOUNT_ID)
+    setActiveAccountId(SEED_ACCOUNT_ID)
   })
 
   it('still applies a choice when localStorage throws', () => {
@@ -117,6 +117,6 @@ describe('useDefaultEquityView', () => {
     expect(result.current).toBe('curve')
     get.mockRestore()
     set.mockRestore()
-    setActiveAccountId(MAIN_ACCOUNT_ID)
+    setActiveAccountId(SEED_ACCOUNT_ID)
   })
 })

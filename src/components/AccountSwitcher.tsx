@@ -1,11 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Check, ChevronDown, User } from 'lucide-react'
-import { MAIN_ACCOUNT_ID, type Account } from '@/db/types'
-import {
-  getActiveAccountId,
-  setActiveAccountId,
-  useActiveAccountId,
-} from '@/lib/active-account'
+import type { Account } from '@/db/types'
+import { setActiveAccountId, useActiveAccountId } from '@/lib/active-account'
 import { cn } from '@/lib/utils'
 
 interface AccountSwitcherProps {
@@ -20,19 +16,6 @@ export function AccountSwitcher({ accounts }: AccountSwitcherProps) {
   const activeId = useActiveAccountId()
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
-
-  // If the active account was deleted (e.g. by a sync from another device),
-  // fall back to a real account so the UI doesn't render an empty dataset
-  // forever. Prefer MAIN when it exists; otherwise take whichever account
-  // happens to be first (covers the case where the user has deleted MAIN
-  // and only synced other accounts in).
-  useEffect(() => {
-    if (accounts.length === 0) return
-    const current = getActiveAccountId()
-    if (accounts.some(a => a.id === current)) return
-    const main = accounts.find(a => a.id === MAIN_ACCOUNT_ID)
-    setActiveAccountId(main?.id ?? accounts[0].id)
-  }, [accounts])
 
   useEffect(() => {
     if (!open) return
@@ -50,8 +33,8 @@ export function AccountSwitcher({ accounts }: AccountSwitcherProps) {
     }
   }, [open])
 
-  const active = accounts.find(a => a.id === activeId) ?? accounts.find(a => a.is_main)
-  const activeName = active?.name ?? 'Main'
+  const active = accounts.find(a => a.id === activeId) ?? accounts[0]
+  const activeName = active?.name ?? ''
 
   return (
     <div ref={rootRef} className="relative min-w-0">

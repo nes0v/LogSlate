@@ -3,22 +3,21 @@
 // external store so every component that reads the active id re-renders
 // atomically when it changes.
 //
-// Falls back to MAIN_ACCOUNT_ID only when nothing is remembered. It does NOT
-// verify the remembered id still resolves to a real account — that would mean
-// reading the accounts table, which this store deliberately doesn't know
-// about. `AccountSwitcher` does that repair where the account list loads.
+// Returns '' when nothing is remembered. It does NOT verify the remembered id
+// still resolves to a real account — that would mean reading the accounts
+// table, which this store deliberately doesn't know about. `Layout` does that
+// repair where the account list loads, and holds the pages back until it has.
 
 import { useSyncExternalStore } from 'react'
-import { MAIN_ACCOUNT_ID } from '@/db/types'
 
 const STORAGE_KEY = 'logslate:active_account'
 
 function load(): string {
   try {
     const v = localStorage.getItem(STORAGE_KEY)
-    return v && v.length > 0 ? v : MAIN_ACCOUNT_ID
+    return v ?? ''
   } catch {
-    return MAIN_ACCOUNT_ID
+    return ''
   }
 }
 
@@ -26,6 +25,13 @@ let current: string = load()
 const listeners = new Set<() => void>()
 
 export function getActiveAccountId(): string {
+  return current
+}
+
+/** The active id for a write. Throws instead of tagging a row with no account:
+ *  such a row belongs to nothing, so no page shows it and no delete clears it. */
+export function requireActiveAccountId(): string {
+  if (!current) throw new Error('No account is selected.')
   return current
 }
 

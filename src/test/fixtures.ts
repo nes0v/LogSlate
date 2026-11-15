@@ -8,7 +8,7 @@ import type {
   TradeDraft,
   TradeRecord,
 } from '@/db/types'
-import { MAIN_ACCOUNT_ID } from '@/db/types'
+import { SEED_ACCOUNT_ID } from '@/db/types'
 
 let idSeq = 0
 function nextId(): string {
@@ -66,7 +66,7 @@ export function tradeRecord(overrides: Partial<TradeRecord> = {}): TradeRecord {
   return {
     ...draft,
     id: overrides.id ?? nextId(),
-    account_id: overrides.account_id ?? MAIN_ACCOUNT_ID,
+    account_id: overrides.account_id ?? SEED_ACCOUNT_ID,
     created_at: overrides.created_at ?? now,
     updated_at: overrides.updated_at ?? now,
   }
@@ -87,7 +87,7 @@ export function adjustmentRecord(overrides: Partial<EquityAdjustment> = {}): Equ
   return {
     ...draft,
     id: overrides.id ?? nextId(),
-    account_id: overrides.account_id ?? MAIN_ACCOUNT_ID,
+    account_id: overrides.account_id ?? SEED_ACCOUNT_ID,
     created_at: overrides.created_at ?? now,
     updated_at: overrides.updated_at ?? now,
   }
@@ -98,7 +98,7 @@ const PROGRESS_TS = '2026-01-01T00:00:00.000Z'
 export function progressRule(overrides: Partial<ProgressRule> = {}): ProgressRule {
   return {
     id: 'r1',
-    account_id: MAIN_ACCOUNT_ID,
+    account_id: SEED_ACCOUNT_ID,
     text: 'Test rule',
     periods: [],
     sort: 0,
@@ -114,7 +114,7 @@ export function progressCheck(
   ruleId: string,
   overrides: Partial<ProgressCheck> = {},
 ): ProgressCheck {
-  const account_id = overrides.account_id ?? MAIN_ACCOUNT_ID
+  const account_id = overrides.account_id ?? SEED_ACCOUNT_ID
   return {
     id: `${account_id}:${date}:${ruleId}`,
     account_id,

@@ -67,7 +67,6 @@ export interface SymbolSnapshot {
 export interface Account {
   id: string
   name: string
-  is_main: boolean
   /** Capital the account opens with, before any trade or cash flow. Fixed at
    *  creation. Deliberately NOT an adjustment row: a prop-firm eval starts at
    *  its size without money moving, so counting it as a deposit would inflate
@@ -78,8 +77,9 @@ export interface Account {
   updated_at: string
 }
 
-// The Main account uses a fixed id so it stays identical across devices on sync.
-export const MAIN_ACCOUNT_ID = 'main'
+// Id of the starter account seeded into an empty database (`ensureSeedAccount`).
+// A regular account in every way; the constant only keeps the seed deterministic.
+export const SEED_ACCOUNT_ID = 'test-account'
 
 export type AccountDraft = Pick<Account, 'name' | 'starting_balance'>
 

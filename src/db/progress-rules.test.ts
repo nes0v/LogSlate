@@ -97,12 +97,12 @@ describe('deleteProgressRule', () => {
 
 describe('toggleProgressCheck', () => {
   it('ticks, then unticks, deleting the row rather than storing a false', async () => {
-    expect(await toggleProgressCheck('main', '2026-09-16', 'r')).toBe(true)
-    expect(await db.progress_checks.get('main:2026-09-16:r')).toMatchObject({
+    expect(await toggleProgressCheck('test-account', '2026-09-16', 'r')).toBe(true)
+    expect(await db.progress_checks.get('test-account:2026-09-16:r')).toMatchObject({
       date: '2026-09-16',
       rule_id: 'r',
     })
-    expect(await toggleProgressCheck('main', '2026-09-16', 'r')).toBe(false)
+    expect(await toggleProgressCheck('test-account', '2026-09-16', 'r')).toBe(false)
     expect(await db.progress_checks.count()).toBe(0)
   })
 
@@ -110,8 +110,8 @@ describe('toggleProgressCheck', () => {
     // Both calls start before either has written: on screen the row still
     // reads unticked for the second one.
     const [first, second] = await Promise.all([
-      toggleProgressCheck('main', '2026-09-16', 'r'),
-      toggleProgressCheck('main', '2026-09-16', 'r'),
+      toggleProgressCheck('test-account', '2026-09-16', 'r'),
+      toggleProgressCheck('test-account', '2026-09-16', 'r'),
     ])
     expect([first, second]).toEqual([true, false])
     expect(await db.progress_checks.count()).toBe(0)
@@ -122,21 +122,21 @@ describe('toggleProgressCheck', () => {
 describe('createProgressLine', () => {
   it('runs from the day it was added on, not before', async () => {
     // Added while planning Tuesday: Monday's checklist never shows it.
-    const made = await createProgressLine('main', '2026-09-15')
+    const made = await createProgressLine('test-account', '2026-09-15')
     expect(made.kind).toBe('line')
     expect(made.periods).toEqual([{ from: '2026-09-15', until: null }])
   })
 
   it('from the weekend, starts on Monday', async () => {
-    const made = await createProgressLine('main', '2026-09-19')
+    const made = await createProgressLine('test-account', '2026-09-19')
     expect(made.periods).toEqual([{ from: '2026-09-21', until: null }])
   })
 })
 
 describe('deleteBlankProgressRule', () => {
   it('deletes a rule that was never named, and leaves a named one', async () => {
-    const blank = await createProgressRule('main')
-    const named = await createProgressRule('main')
+    const blank = await createProgressRule('test-account')
+    const named = await createProgressRule('test-account')
     await setProgressRuleText(named.id, '2026-09-14', 'Max 3 trades')
     await deleteBlankProgressRule(blank.id)
     await deleteBlankProgressRule(named.id)
@@ -151,7 +151,7 @@ describe('createProgressRule', () => {
       { ...rule('a', []), sort: 1 },
       { ...rule('b', []), sort: 7 },
     ])
-    const made = await createProgressRule('main')
+    const made = await createProgressRule('test-account')
     expect(made.sort).toBe(8)
     expect(made.periods).toEqual([])
     expect(made.text).toBe('')
@@ -159,8 +159,8 @@ describe('createProgressRule', () => {
 
   it('gives two quick taps two different places in the list', async () => {
     const [one, two] = await Promise.all([
-      createProgressRule('main'),
-      createProgressRule('main'),
+      createProgressRule('test-account'),
+      createProgressRule('test-account'),
     ])
     expect(one.sort).not.toBe(two.sort)
     expect(await db.progress_rules.count()).toBe(2)
@@ -168,7 +168,7 @@ describe('createProgressRule', () => {
 
   it('counts only this account\u2019s rules', async () => {
     await db.progress_rules.put({ ...rule('other', []), account_id: 'second', sort: 99 })
-    expect((await createProgressRule('main')).sort).toBe(1)
+    expect((await createProgressRule('test-account')).sort).toBe(1)
   })
 })
 
@@ -326,7 +326,7 @@ describe('reorderProgressRules', () => {
       { ...rule('b', []), sort: 2 },
       { ...rule('c', []), sort: 3 },
     ])
-    await reorderProgressRules('main', ['c', 'a', 'b'])
+    await reorderProgressRules('test-account', ['c', 'a', 'b'])
     expect(await order()).toEqual(['c', 'a', 'b'])
   })
 
@@ -336,7 +336,7 @@ describe('reorderProgressRules', () => {
       { ...rule('old', []), sort: 2, hidden: true },
       { ...rule('b', []), sort: 3 },
     ])
-    await reorderProgressRules('main', ['b', 'a'])
+    await reorderProgressRules('test-account', ['b', 'a'])
     expect(await order()).toEqual(['b', 'old', 'a'])
   })
 
@@ -346,7 +346,7 @@ describe('reorderProgressRules', () => {
       { ...rule('b', []), sort: 2 },
       { ...rule('new', []), sort: 3 },
     ])
-    await reorderProgressRules('main', ['gone', 'b', 'a'])
+    await reorderProgressRules('test-account', ['gone', 'b', 'a'])
     expect(await order()).toEqual(['b', 'a', 'new'])
   })
 
@@ -356,7 +356,7 @@ describe('reorderProgressRules', () => {
       { ...rule('b', []), sort: 2 },
       { ...rule('c', []), sort: 3 },
     ])
-    await reorderProgressRules('main', ['b', 'a', 'c'])
+    await reorderProgressRules('test-account', ['b', 'a', 'c'])
     expect((await db.progress_rules.get('c'))!.updated_at).toBe(TS)
     expect((await db.progress_rules.get('a'))!.updated_at).not.toBe(TS)
   })
@@ -366,7 +366,7 @@ describe('reorderProgressRules', () => {
       { ...rule('a', []), sort: 1 },
       { ...rule('x', []), account_id: 'other', sort: 7 },
     ])
-    await reorderProgressRules('main', ['a'])
+    await reorderProgressRules('test-account', ['a'])
     expect((await db.progress_rules.get('x'))!.sort).toBe(7)
   })
 })

@@ -15,7 +15,7 @@ import type {
   TradingSymbol,
   TradingSymbolDraft,
 } from '@/db/types'
-import { getActiveAccountId } from '@/lib/active-account'
+import { requireActiveAccountId } from '@/lib/active-account'
 import { clearSymbolFilterCache, writeSymbolFilterCache } from '@/lib/symbol-filter-cache'
 import { clearLastActivityDate } from '@/lib/last-activity-cache'
 import { clearDefaultEquityView } from '@/lib/equity-view-preference'
@@ -81,7 +81,7 @@ export function slugifyAccountName(name: string): string {
 // ---------- trades ----------
 
 export async function createTrade(draft: TradeDraft, accountId?: string): Promise<TradeRecord> {
-  const acct = accountId ?? getActiveAccountId()
+  const acct = accountId ?? requireActiveAccountId()
   assertWeekday(draft.date)
   assertNotFuture(draft.date)
   // A day is logged EITHER as individual trades OR as one manual net-PNL
@@ -255,7 +255,7 @@ export async function createSymbol(
   draft: TradingSymbolDraft,
   accountId?: string,
 ): Promise<TradingSymbol> {
-  const account = accountId ?? getActiveAccountId()
+  const account = accountId ?? requireActiveAccountId()
   return db.transaction('rw', db.symbols, async () => {
     const ts = now()
     const rec: TradingSymbol = {
@@ -317,7 +317,7 @@ export async function createAdjustment(
   const rec: EquityAdjustment = {
     ...draft,
     id: newId(),
-    account_id: accountId ?? getActiveAccountId(),
+    account_id: accountId ?? requireActiveAccountId(),
     created_at: ts,
     updated_at: ts,
   }
@@ -340,12 +340,11 @@ export async function listAdjustments(accountId: string): Promise<EquityAdjustme
 
 export async function listAccounts(): Promise<Account[]> {
   const all = await db.accounts.toArray()
-  // Main first, then alphabetical by name (stable).
-  return all.sort((a, b) => {
-    if (a.is_main && !b.is_main) return -1
-    if (!a.is_main && b.is_main) return 1
-    return a.name.localeCompare(b.name)
-  })
+  // Oldest first, by creation time. ISO-8601 UTC strings sort chronologically
+  // as plain strings; the id breaks ties so the order is stable.
+  return all.sort(
+    (a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id),
+  )
 }
 
 export async function getAccount(id: string): Promise<Account | undefined> {
@@ -368,7 +367,6 @@ function newAccountRow(draft: AccountDraft): Account {
   return {
     id,
     name,
-    is_main: false,
     starting_balance: balance,
     created_at: ts,
     updated_at: ts,

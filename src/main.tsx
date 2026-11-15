@@ -3,14 +3,14 @@ import { createRoot } from 'react-dom/client'
 import { RouterProvider } from 'react-router-dom'
 import {
   cleanOrphanedPendingRefs,
-  ensureMainAccount,
+  ensureSeedAccount,
 } from '@/db/schema'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { router } from '@/router'
 import '@/index.css'
 import '@/db/dev-console' // window.__logslate in dev builds; no-op in prod
 
-void ensureMainAccount()
+void ensureSeedAccount()
 void cleanOrphanedPendingRefs()
 
 createRoot(document.getElementById('root')!).render(

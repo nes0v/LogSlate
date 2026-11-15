@@ -3,7 +3,7 @@
 // the local DB is replaced with its contents.
 
 import type { EntityTable } from 'dexie'
-import { db, ensureMainAccount } from '@/db/schema'
+import { db, ensureSeedAccount } from '@/db/schema'
 import { clearSyncState, markLocalAuthoritative } from '@/lib/sync'
 import { refreshAllDayCaches } from '@/lib/day-cache'
 import { clearAllSymbolFilterCaches } from '@/lib/symbol-filter-cache'
@@ -106,7 +106,7 @@ export async function importBackup(
     },
   )
   // A backup with no accounts still leaves the app somewhere to land.
-  await ensureMainAccount()
+  await ensureSeedAccount()
 
   // Same reasoning as the sync ledger below: these localStorage snapshots are
   // DERIVED from tables that were just swapped out, so they now describe data

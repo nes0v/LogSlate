@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { Link, NavLink, Outlet } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { AccountSwitcher } from '@/components/AccountSwitcher'
@@ -6,7 +7,7 @@ import { NotificationBanner } from '@/components/NotificationBanner'
 import { PendingUploadBanner } from '@/components/PendingUploadBanner'
 import { SyncStatusIndicator } from '@/components/SyncStatusIndicator'
 import { listAccounts } from '@/db/queries'
-import { useActiveAccountId } from '@/lib/active-account'
+import { setActiveAccountId, useActiveAccountId } from '@/lib/active-account'
 import { useLastActivityCache } from '@/lib/use-last-activity-cache'
 import { useNewsSync } from '@/lib/use-news-sync'
 import { useAccountRollup } from '@/lib/use-account-rollup'
@@ -33,7 +34,18 @@ export function Layout() {
   // can render in one go once both are ready, instead of either piece
   // jumping in independently.
   const accounts = useLiveQuery(() => listAccounts(), [])
-  const navReady = equity !== undefined && accounts !== undefined
+  // The remembered id can be missing (first run, storage cleared) or point at
+  // an account that's gone (deleted, or dropped by a sync). Repair it to the
+  // oldest account, and hold the pages back until it resolves: a page
+  // rendered against a dead id shows an empty account, then jumps.
+  const activeKnown = accounts?.some(a => a.id === accountId) ?? false
+  useEffect(() => {
+    if (accounts && accounts.length > 0 && !activeKnown) setActiveAccountId(accounts[0].id)
+  }, [accounts, activeKnown])
+  // With no accounts at all there's nothing to repair to; let the pages
+  // render so Settings can still create one.
+  const pagesReady = activeKnown || accounts?.length === 0
+  const navReady = equity !== undefined && accounts !== undefined && activeKnown
   return (
     <ConfirmProvider>
     <div className="app-grain min-h-full flex flex-col">
@@ -93,7 +105,7 @@ export function Layout() {
       <main className="relative z-1 flex-1 mx-auto max-w-7xl w-full px-4 pt-6 pb-40">
         <NotificationBanner />
         <PendingUploadBanner />
-        <Outlet />
+        {pagesReady ? <Outlet /> : null}
       </main>
     </div>
     </ConfirmProvider>

@@ -1,18 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   getActiveAccountId,
+  requireActiveAccountId,
   setActiveAccountId,
   useActiveAccountId,
 } from './active-account'
-import { MAIN_ACCOUNT_ID } from '@/db/types'
+import { SEED_ACCOUNT_ID } from '@/db/types'
 import { renderHook } from '@testing-library/react'
 
 beforeEach(() => {
-  setActiveAccountId(MAIN_ACCOUNT_ID)
+  setActiveAccountId(SEED_ACCOUNT_ID)
   localStorage.clear()
 })
 afterEach(() => {
-  setActiveAccountId(MAIN_ACCOUNT_ID)
+  setActiveAccountId(SEED_ACCOUNT_ID)
   localStorage.clear()
   vi.restoreAllMocks()
 })
@@ -43,7 +44,7 @@ describe('getActiveAccountId / setActiveAccountId', () => {
 describe('useActiveAccountId', () => {
   it('returns the current value and re-renders on change', () => {
     const { result, rerender } = renderHook(() => useActiveAccountId())
-    expect(result.current).toBe(MAIN_ACCOUNT_ID)
+    expect(result.current).toBe(SEED_ACCOUNT_ID)
     setActiveAccountId('beta')
     rerender()
     expect(result.current).toBe('beta')
@@ -56,5 +57,17 @@ describe('useActiveAccountId', () => {
     // runs in the cleanup returned from `subscribe` and is exercised here.
     setActiveAccountId('gamma')
     expect(getActiveAccountId()).toBe('gamma')
+  })
+})
+
+describe('requireActiveAccountId', () => {
+  it('returns the active id', () => {
+    setActiveAccountId('alpha')
+    expect(requireActiveAccountId()).toBe('alpha')
+  })
+
+  it('throws instead of handing a write an empty id', () => {
+    setActiveAccountId('')
+    expect(() => requireActiveAccountId()).toThrow(/no account/i)
   })
 })

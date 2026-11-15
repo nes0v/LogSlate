@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DATA_TABLE_KEYS } from '@/lib/data-tables'
 import type { Account } from '@/db/types'
-import { MAIN_ACCOUNT_ID } from '@/db/types'
-import { db } from '@/db/schema'
+import { SEED_ACCOUNT_ID } from '@/db/types'
+import { db, ensureSeedAccount } from '@/db/schema'
 import { FRESH_DB_KEY } from '@/db/schema'
 import {
   clearSyncState,
@@ -51,7 +51,6 @@ function accountRecord(overrides: Partial<Account> = {}): Account {
   return {
     id: 'alpha',
     name: 'Alpha',
-    is_main: false,
     starting_balance: 0,
     created_at: now,
     updated_at: now,
@@ -118,10 +117,10 @@ describe('mergeById — adjustments', () => {
 
 describe('mergeById — accounts', () => {
   it('unions disjoint accounts from both sides', () => {
-    const local = [accountRecord({ id: MAIN_ACCOUNT_ID, name: 'Main', is_main: true })]
+    const local = [accountRecord({ id: SEED_ACCOUNT_ID, name: 'Test Account' })]
     const remote = [accountRecord({ id: 'funded', name: 'Funded' })]
     const merged = mergeById(local, remote, new Set())
-    expect(merged.map(a => a.id).sort()).toEqual(['funded', MAIN_ACCOUNT_ID].sort())
+    expect(merged.map(a => a.id).sort()).toEqual(['funded', SEED_ACCOUNT_ID].sort())
   })
 
   it('prefers the newer side when the two copies of a row differ', () => {
@@ -235,38 +234,102 @@ describe('syncNow', () => {
   }
 
   it('pulls everything back when the database was wiped but the ledger survived', async () => {
-    const real = accountRecord({ id: MAIN_ACCOUNT_ID, name: 'Main', is_main: true, starting_balance: 50_000 })
-    const trade = tradeRecord({ id: 't1' })
+    const real = accountRecord({ id: 'alpha', name: 'Alpha', starting_balance: 50_000 })
+    const trade = tradeRecord({ id: 't1', account_id: 'alpha' })
     findFile.mockResolvedValue({ id: 'f', name: 'logslate.json', modifiedTime: 't' })
     downloadFile.mockResolvedValue(JSON.stringify(syncFile({ accounts: [real], trades: [trade] })))
     uploadFile.mockResolvedValue(uploaded('f'))
-    // Ledger from an earlier sync; the database itself is fresh, with only a
-    // re-seeded main (newer, unfunded).
+    // Ledger from an earlier sync; the database itself is fresh, and a row
+    // with the same id was re-created since (newer, unfunded).
     localStorage.setItem('logslate:sync:trade_ids', JSON.stringify(['t1']))
-    localStorage.setItem('logslate:sync:account_ids', JSON.stringify([MAIN_ACCOUNT_ID]))
+    localStorage.setItem('logslate:sync:account_ids', JSON.stringify(['alpha']))
     // What the database's creation event leaves behind (see schema.ts).
     localStorage.setItem(FRESH_DB_KEY, '1')
-    await db.accounts.add(
-      accountRecord({ id: MAIN_ACCOUNT_ID, name: 'Main', is_main: true, updated_at: '2099-01-01T00:00:00Z' }),
-    )
+    await db.accounts.add(accountRecord({ id: 'alpha', name: 'Alpha', updated_at: '2099-01-01T00:00:00Z' }))
 
     await syncNow()
 
     expect(await db.trades.get('t1')).toBeDefined()
-    expect((await db.accounts.get(MAIN_ACCOUNT_ID))?.starting_balance).toBe(50_000)
+    expect((await db.accounts.get('alpha'))?.starting_balance).toBe(50_000)
+  })
+
+  describe('the starter account seeded into a fresh database', () => {
+    const real = accountRecord({ id: 'main', name: 'main', starting_balance: 50_000 })
+
+    async function freshDbWithSeed() {
+      localStorage.setItem(FRESH_DB_KEY, '1')
+      await ensureSeedAccount()
+      findFile.mockResolvedValue({ id: 'f', name: 'logslate.json', modifiedTime: 't' })
+      downloadFile.mockResolvedValue(JSON.stringify(syncFile({ accounts: [real] })))
+      uploadFile.mockResolvedValue(uploaded('f'))
+    }
+
+    // What reached Drive: the pushed file, or Drive's own file when the merge
+    // already matched it and no push was needed.
+    async function driveAccountIds(): Promise<string[]> {
+      const call = uploadFile.mock.calls.at(-1)
+      const body = call ? call[0].body : await downloadFile.mock.results.at(-1)!.value
+      return (JSON.parse(body) as { accounts: Account[] }).accounts.map(a => a.id)
+    }
+
+    it('is dropped after a wipe once Drive brings the real accounts back', async () => {
+      await freshDbWithSeed()
+      localStorage.setItem('logslate:sync:account_ids', JSON.stringify(['main']))
+
+      await syncNow()
+
+      expect((await db.accounts.toArray()).map(a => a.id)).toEqual(['main'])
+      expect(await driveAccountIds()).toEqual(['main'])
+    })
+
+    it('is dropped on a first sync into a new install (no ledger)', async () => {
+      await freshDbWithSeed()
+
+      await syncNow()
+
+      expect((await db.accounts.toArray()).map(a => a.id)).toEqual(['main'])
+      expect(await driveAccountIds()).toEqual(['main'])
+    })
+
+    it('is kept once something was logged under it', async () => {
+      await freshDbWithSeed()
+      await db.trades.add(tradeRecord({ id: 'mine', account_id: SEED_ACCOUNT_ID }))
+
+      await syncNow()
+
+      expect((await db.accounts.toArray()).map(a => a.id).sort()).toEqual(['main', SEED_ACCOUNT_ID])
+    })
+
+    it('is kept when Drive has no accounts to land on', async () => {
+      await freshDbWithSeed()
+      downloadFile.mockResolvedValue(JSON.stringify(syncFile({})))
+
+      await syncNow()
+
+      expect((await db.accounts.toArray()).map(a => a.id)).toEqual([SEED_ACCOUNT_ID])
+    })
+
+    it('is an ordinary account once the database is no longer fresh', async () => {
+      await freshDbWithSeed()
+      localStorage.removeItem(FRESH_DB_KEY)
+
+      await syncNow()
+
+      expect((await db.accounts.toArray()).map(a => a.id).sort()).toEqual(['main', SEED_ACCOUNT_ID])
+    })
   })
 
   it('keeps a deletion that empties the database (not a wipe)', async () => {
     const eval1 = accountRecord({ id: 'eval-1', name: 'Eval 1' })
     const trade = tradeRecord({ id: 't1', account_id: 'eval-1' })
-    await db.accounts.bulkAdd([accountRecord({ id: MAIN_ACCOUNT_ID, name: 'Main', is_main: true }), eval1])
+    await db.accounts.bulkAdd([accountRecord({ id: SEED_ACCOUNT_ID, name: 'Test Account' }), eval1])
     await db.trades.add(trade)
     findFile.mockResolvedValue(null)
     uploadFile.mockResolvedValue(uploaded('f'))
     await syncNow()
     const pushed = uploadFile.mock.calls.at(-1)![0].body
 
-    // The user deletes the only account with data; main is empty.
+    // The user deletes the only account with data; Test Account is empty.
     await db.trades.clear()
     await db.accounts.delete('eval-1')
     findFile.mockResolvedValue({ id: 'f', name: 'logslate.json', modifiedTime: 't' })
