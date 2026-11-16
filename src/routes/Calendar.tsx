@@ -14,9 +14,10 @@ import { useNyToday } from '@/lib/use-ny-today'
 import { db } from '@/db/schema'
 import { useActiveAccountId } from '@/lib/active-account'
 import { classifyTrade, computeNetPnl } from '@/lib/trade-math'
-import { classifyDayPnl } from '@/lib/advanced-stats'
+import { classifyDay } from '@/lib/advanced-stats'
 import { equityBefore } from '@/lib/day-pnl'
-import { useStartingBalance } from '@/lib/use-starting-balance'
+import { useAccountBasis } from '@/lib/use-account-basis'
+import { limitTimeline } from '@/lib/loss-limit'
 import { signedAdjustment } from '@/lib/trade-stats'
 import { listAdjustments, listAllTrades } from '@/db/queries'
 import { useAccountQuery } from '@/lib/use-account-query'
@@ -80,20 +81,24 @@ function CalendarView() {
     db.days.where('account_id').equals(accountId).toArray(),
   )
   // Needed so per-day equity walks pick up mid-month deposits / withdrawals
-  // when applying the ±0.4% scratch band.
+  // when applying the scratch band.
   const adjustments = useAccountQuery(accountId, () => listAdjustments(accountId))
   // The account's opening capital, which the grid's equity walk starts from —
-  // on a funded account it's what makes the ±0.4% band a real number instead of
-  // the $8 floor.
-  const startingBalance = useStartingBalance()
+  // without a loss limit it's what makes the 0.4%-of-equity band a real number
+  // instead of the $8 floor.
+  const basis = useAccountBasis()
+  const startingBalance = basis?.startingBalance
+  // Loss-limit rules — with a limit, the scratch band sizes off the room
+  // above it instead of equity (see `classifyDay`).
+  const lossLimit = basis?.lossLimit
 
   // Everything per-trade happens HERE, keyed only on the data. The month is
   // deliberately not a dep: paging through months must never re-walk the
   // account, which is what made these queries account-wide affordable.
   //
-  // Wins/losses are tracked apart from `count` so a day holding only scratches
-  // renders in the dim/scratch tone instead of being miscoloured by fee or
-  // slippage residue in the PNL sum. `wins` also feeds the win-rate badge.
+  // Wins/losses are tracked apart from `count` for the win-rate badge, which
+  // leaves scratches out. The day's tone comes from its PNL alone
+  // (`classifyDay`).
   const { byDate, netByDate, byMonth } = useMemo(() => {
     const byDate = new Map<string, DayAggregate>()
     for (const t of trades ?? []) {
@@ -106,9 +111,8 @@ function CalendarView() {
       else if (outcome === 'loss') cur.losses += 1
       byDate.set(t.date, cur)
     }
-    // A day-level override REPLACES that day's trade PNL. Mark the day so it
-    // colours by its PNL even with no decided trades (a tilt day reads red,
-    // not as a dim scratch).
+    // A day-level override REPLACES that day's trade PNL. Marked so the cell
+    // can label itself as an override.
     for (const d of dayRows ?? []) {
       if (typeof d.pnl_override !== 'number') continue
       const cur =
@@ -147,9 +151,10 @@ function CalendarView() {
   }, [trades, dayRows, adjustments, startingBalance, netByDate, rangeStart])
 
   // Gate the month grid on equity too — otherwise the first paint
-  // classifies near-threshold days with `band = $8` (equity defaults
-  // to 0 while loading) and re-renders to the real ±0.4%/$8 band a
-  // moment later, briefly flashing the wrong cell tone.
+  // classifies near-threshold days against the wrong band (equity defaults
+  // to 0 while loading) and re-renders a moment later, briefly flashing the
+  // wrong cell tone. `gridStartEquity` waits on the account basis, which
+  // carries the loss limit in the same object, so the limit is covered too.
   const loaded =
     trades !== undefined &&
     dayRows !== undefined &&
@@ -175,9 +180,20 @@ function CalendarView() {
     return s
   }, [dayRows])
 
+  // The loss limit across the account's whole history. Account-wide like
+  // `netByDate`, not month-scoped: a trailing limit depends on every day
+  // before the grid, not just the visible ones.
+  const timeline = useMemo(
+    () =>
+      lossLimit && adjustments
+        ? limitTimeline(lossLimit, startingBalance ?? 0, netByDate, adjustments)
+        : null,
+    [lossLimit, startingBalance, netByDate, adjustments],
+  )
+
   // The only month-scoped pass: walk the ~42 visible days in date order,
   // threading running equity through each so cells carry their own
-  // start-of-day baseline for the ±0.4% scratch band. Copies each aggregate
+  // start-of-day baseline for the scratch band. Copies each aggregate
   // instead of writing `startEquity` onto it — `byDate` is shared across
   // months, and mutating it would leak one month's baseline into the next.
   const perDay = useMemo(() => {
@@ -186,11 +202,17 @@ function CalendarView() {
     for (const d of days) {
       const key = format(d, DATE_KEY)
       const agg = byDate.get(key)
-      if (agg) m.set(key, { ...agg, startEquity: runningEquity })
+      if (agg) {
+        m.set(key, {
+          ...agg,
+          startEquity: runningEquity,
+          room: timeline?.roomBefore(key) ?? null,
+        })
+      }
       runningEquity += (agg?.pnl ?? 0) + (adjByDate.get(key) ?? 0)
     }
     return m
-  }, [byDate, adjByDate, gridStartEquity, days])
+  }, [byDate, adjByDate, gridStartEquity, timeline, days])
 
   const monthNet = byMonth.get(format(month, 'yyyy-MM')) ?? 0
 
@@ -347,7 +369,7 @@ interface DayAggregate {
   wins: number
   losses: number
   // Set when the day's PNL comes from a manual `Day.pnl_override` rather than
-  // its trades — used so the tone classifies by PNL even with no decided trades.
+  // its trades — the cell labels itself "override".
   isOverride?: boolean
 }
 
@@ -355,6 +377,8 @@ interface DayAggregate {
 // it stood entering that day. Only days on screen get one.
 interface PerDayCell extends DayAggregate {
   startEquity: number
+  // Room above the loss limit entering that day, or null without a limit.
+  room: number | null
 }
 
 // Shared sizing for both day cells and week summary cards so the row
@@ -383,7 +407,7 @@ function DayCell({ date, inMonth, cell, isToday, hasScreenshot, hasNote }: DayCe
   if (isWeekend(date)) return <WeekendCell date={date} />
 
   const decided = cell ? cell.wins + cell.losses : 0
-  const variant = pickVariant(inMonth, cell, decided)
+  const variant = pickVariant(inMonth, cell)
   const palette = CELL_PALETTE[variant]
   const winRate =
     cell && decided > 0 ? Math.round((cell.wins / decided) * 100) : null
@@ -557,14 +581,11 @@ const CELL_PALETTE: Record<CellVariant, CellPalette> = {
 function pickVariant(
   inMonth: boolean,
   cell: PerDayCell | undefined,
-  decided: number,
 ): CellVariant {
   if (!inMonth) return 'pad'
   if (!cell) return 'empty'
-  // Override days carry a real PNL with no decided trades — colour them by
-  // that figure instead of forcing the neutral scratch tone.
-  if (decided === 0 && !cell.isOverride) return 'scratch'
-  return classifyDayPnl(cell.pnl, cell.startEquity)
+  // Same rule as the Reports day win rate: the day's PNL against the band.
+  return classifyDay(cell.pnl, cell.startEquity, cell.room)
 }
 
 function WeekCard({

@@ -35,7 +35,8 @@ import { useValidAccountFilters } from '@/lib/use-valid-account-filters'
 import { useAccountQuery } from '@/lib/use-account-query'
 import { aggregate, foldOverridesIntoStats, signedAdjustment, type AggregateStats } from '@/lib/trade-stats'
 import { equityBefore, netPnlByDate } from '@/lib/day-pnl'
-import { useStartingBalance } from '@/lib/use-starting-balance'
+import { useAccountBasis } from '@/lib/use-account-basis'
+import { limitTimeline } from '@/lib/loss-limit'
 import {
   classifyTrade,
   computePlannedRr,
@@ -159,9 +160,12 @@ export function ReportsRoute() {
   const allTrades = useAccountQuery(accountId, () => listAllTrades(accountId))
   const allAdjustments = useAccountQuery(accountId, () => listAdjustments(accountId))
   // The account's opening capital — the baseline `advStartingEquity` starts
-  // from, so it joins the `loaded` gate below rather than arriving a render late
-  // and shifting every drawdown percentage under the report.
-  const startingBalance = useStartingBalance()
+  // from — and its loss limit, both from one row. Joins the `loaded` gate below
+  // rather than arriving a render late and shifting every drawdown percentage
+  // and the day win rate under the report.
+  const basis = useAccountBasis()
+  const startingBalance = basis?.startingBalance
+  const lossLimit = basis?.lossLimit
   // Resolved at the route level and handed to the filter bar, account-tagged,
   // so an account switch can't leave the Model dropdown showing the previous
   // account's names for a frame.
@@ -179,7 +183,7 @@ export function ReportsRoute() {
     allAdjustments !== undefined &&
     rangeReady &&
     models !== undefined &&
-    startingBalance !== undefined
+    basis !== undefined
   // Same split as Overview: the filter bar paints as soon as the default window
   // resolves, the report body follows a beat later, so building the tab's
   // charts and tables never holds the date pickers on "Any".
@@ -255,6 +259,13 @@ export function ReportsRoute() {
         : 0,
     [netByDate, allAdjustments, rangeStart, startingBalance],
   )
+  // Room above the loss limit entering each day, from the account's full,
+  // unfiltered history — the filters must not change how much can be lost.
+  const roomBefore = useMemo(() => {
+    if (!lossLimit) return undefined
+    return limitTimeline(lossLimit, startingBalance ?? 0, netByDate, allAdjustments ?? [])
+      .roomBefore
+  }, [lossLimit, startingBalance, netByDate, allAdjustments])
   const advAdjByDate = useMemo(() => {
     const m = new Map<string, number>()
     if (!rangeStart || !rangeEnd) return m
@@ -411,6 +422,7 @@ export function ReportsRoute() {
                   rangeStart={rangeStart}
                   rangeEnd={rangeEnd}
                   accountStartEquity={advStartingEquity}
+                  roomBefore={roomBefore}
                   adjByDate={advAdjByDate}
                   overridesByDate={effectiveOverrides}
                 />

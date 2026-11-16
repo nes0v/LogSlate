@@ -856,41 +856,67 @@ export interface DailyStats {
   scratchDays: number
 }
 
-// A day whose absolute pnl is within this fraction of start-of-day equity
-// counts as a scratch even if pnl ≠ 0 — small chops on top of a real
-// account shouldn't tip the day into the green/red bucket. A hard
+// A day whose absolute pnl is within this fraction of its base — start-of-day
+// equity, or the room above the loss limit when the account has one (see
+// `classifyDay`) — counts as a scratch even if pnl ≠ 0. Small chops on top
+// of a real account shouldn't tip the day into the green/red bucket. A hard
 // floor keeps tiny accounts (where 0.4% rounds to pennies) from going
 // green/red on a few dollars of slippage.
 const SCRATCH_DAY_PCT = 0.004
 const SCRATCH_DAY_MIN_USD = 8
 
-export function classifyDayPnl(
+/**
+ * One trading day's outcome — the single rule behind both the calendar's day
+ * tone and the Reports day win rate, so the two never disagree. Decided by the
+ * day's net PNL alone, against the band. Deliberately NOT "all its trades were
+ * scratches": ten −$6 scratches are a −$60 day, which on a $2K-room eval is
+ * real money, not noise.
+ *
+ * `room` is the account's room above its loss limit entering the day
+ * (`LimitTimeline.roomBefore`), or null without a limit. With one, the band
+ * comes from the room: on a $50K eval with a $2K limit, 0.4% of $50K would
+ * call a −$150 day a scratch. A blown account (no room left) falls to the
+ * floor. Required (not defaulted) so every caller decides where it comes from.
+ *
+ * Judged in whole cents, the way the figures are shown: room-based bands land
+ * on round amounts ($10 at $2,500 of room) that a day can hit exactly, and
+ * +16.01 − 6.01 sums to 10.000000000000002 — a "$10.00" day must not tip green
+ * on one caller and stay a scratch on another that pre-rounded.
+ */
+export function classifyDay(
   pnl: number,
   startEquity: number,
+  room: number | null,
 ): TradeOutcome {
-  const band = Math.max(startEquity * SCRATCH_DAY_PCT, SCRATCH_DAY_MIN_USD)
-  if (Math.abs(pnl) <= band) return 'scratch'
-  if (pnl > 0) return 'win'
-  if (pnl < 0) return 'loss'
-  return 'scratch'
+  const base = room ?? startEquity
+  const band = roundTo(Math.max(base * SCRATCH_DAY_PCT, SCRATCH_DAY_MIN_USD))
+  const p = roundTo(pnl)
+  if (Math.abs(p) <= band) return 'scratch'
+  return p > 0 ? 'win' : 'loss'
+}
+
+export interface DailyStatsOptions {
+  /** Real account equity right before the first day of the series — so the
+   *  equity-based scratch band (accounts without a loss limit) uses real
+   *  capital rather than period-relative PNL. */
+  startEquity?: number
+  /** Lets the running-equity walk track mid-period deposits/withdrawals, so
+   *  the equity-based band reflects real capital throughout the range. Without
+   *  it a $5k mid-period deposit doesn't lift the band, and near-threshold days
+   *  can be misread as wins/losses instead of scratches. */
+  adjustmentsByDate?: Map<string, number>
+  /** Room above the loss limit entering a date (`LimitTimeline.roomBefore`).
+   *  Absent or null = no limit, band from equity. Taken from the REAL account
+   *  history, so a filtered series still gets the real room. */
+  roomBefore?: (date: string) => number | null
 }
 
 /** Aggregates the equity series down to per-trading-day metrics. Only
- *  days with at least one trade count toward the rates and average.
- *  `accountStartEquity` is the real account equity right before the first
- *  day of the series — needed so the ±0.4% scratch band uses real capital
- *  rather than period-relative PNL.
- *
- *  `adjustmentsByDate` (optional) lets the running-equity walk track
- *  mid-period deposits/withdrawals so the per-day scratch threshold
- *  reflects real capital throughout the range, not just at its start.
- *  Without it, a $5k mid-period deposit doesn't lift the threshold, so
- *  some near-threshold days can be misclassified as wins/losses instead
- *  of scratches. */
+ *  days with at least one trade count toward the rates and average. Each
+ *  day is classified by `classifyDay`, the same rule as the calendar. */
 export function dailyStats(
   series: EquityPoint[],
-  accountStartEquity = 0,
-  adjustmentsByDate?: Map<string, number>,
+  { startEquity = 0, adjustmentsByDate, roomBefore }: DailyStatsOptions = {},
 ): DailyStats {
   const tradingDays = series.filter(p => p.pnl !== 0)
   if (tradingDays.length === 0) {
@@ -910,12 +936,12 @@ export function dailyStats(
   let red = 0
   let even = 0
   let total = 0
-  let runningEquity = accountStartEquity
+  let runningEquity = startEquity
   for (const p of series) {
     if (p.pnl !== 0) {
       if (p.pnl > best) best = p.pnl
       if (p.pnl < worst) worst = p.pnl
-      const outcome = classifyDayPnl(p.pnl, runningEquity)
+      const outcome = classifyDay(p.pnl, runningEquity, roomBefore?.(p.date) ?? null)
       if (outcome === 'win') green++
       else if (outcome === 'loss') red++
       else even++

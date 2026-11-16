@@ -414,6 +414,7 @@ export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
   rangeStart,
   rangeEnd,
   accountStartEquity,
+  roomBefore,
   adjByDate,
   overridesByDate,
 }: {
@@ -421,6 +422,9 @@ export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
   stats: AggregateStats
   rangeStart: string | null
   rangeEnd: string | null
+  /** Room above the loss limit entering a date, for `dailyStats`'s scratch
+   *  band. Absent = no limit. Route-owned for the same reason as below. */
+  roomBefore?: (date: string) => number | null
   /** Real account equity strictly before `rangeStart`. Owned by the
    *  route (Reports) so the card doesn't open its own Dexie
    *  subscriptions — those resolved a tick after the page-level gate
@@ -485,8 +489,13 @@ export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
   const maeMfe = useMemo(() => maeMfeStats(filtered), [filtered])
   const extremes = useMemo(() => extremeStats(filtered), [filtered])
   const dayStats = useMemo(
-    () => dailyStats(rawSeries, accountStartEquity, adjByDate),
-    [rawSeries, accountStartEquity, adjByDate],
+    () =>
+      dailyStats(rawSeries, {
+        startEquity: accountStartEquity,
+        adjustmentsByDate: adjByDate,
+        roomBefore,
+      }),
+    [rawSeries, accountStartEquity, adjByDate, roomBefore],
   )
   const totalDays =
     dayStats.greenDays + dayStats.redDays + dayStats.scratchDays
@@ -508,7 +517,7 @@ export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
           label="Expectancy"
           value={expR === null ? '—' : `${expR.toFixed(2)} R`}
           caption={expDollars === null ? undefined : `${formatUsd(expDollars)} / trade`}
-          tone={expR === null ? 'dim' : expR > 0 ? 'win' : expR < 0 ? 'loss' : 'dim'}
+          tone={signTone(expR)}
         />
         <KpiTile
           label="Avg win"
@@ -559,27 +568,19 @@ export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
         <KpiTile
           label="Best day"
           value={dayStats.bestDay === null ? '—' : formatUsd(dayStats.bestDay)}
-          tone={dayStats.bestDay === null ? 'dim' : 'win'}
+          tone={signTone(dayStats.bestDay)}
           tooltip="Highest single-day net PNL."
         />
         <KpiTile
           label="Worst day"
           value={dayStats.worstDay === null ? '—' : formatUsd(dayStats.worstDay)}
-          tone={dayStats.worstDay === null ? 'dim' : 'loss'}
+          tone={signTone(dayStats.worstDay)}
           tooltip="Lowest single-day net PNL."
         />
         <KpiTile
           label="Avg daily PNL"
           value={dayStats.avgDailyPnl === null ? '—' : formatUsd(dayStats.avgDailyPnl)}
-          tone={
-            dayStats.avgDailyPnl === null
-              ? 'dim'
-              : dayStats.avgDailyPnl > 0
-                ? 'win'
-                : dayStats.avgDailyPnl < 0
-                  ? 'loss'
-                  : 'dim'
-          }
+          tone={signTone(dayStats.avgDailyPnl)}
           caption={`across ${totalDays} day${totalDays === 1 ? '' : 's'}`}
           tooltip="Mean PNL across days that had at least one trade."
         />
@@ -700,7 +701,7 @@ export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
               ? '—'
               : `${streaks.current > 0 ? '+' : ''}${streaks.current}`
           }
-          tone={streaks.current > 0 ? 'win' : streaks.current < 0 ? 'loss' : 'dim'}
+          tone={signTone(streaks.current)}
         />
       </MetricGroup>
     </div>
@@ -926,6 +927,16 @@ function CompositeScoreCard({ score }: { score: ReturnType<typeof compositeScore
       </div>
     </section>
   )
+}
+
+// Colours a figure by its sign, not by which tile it's in: a worst day that
+// still made money is green, a best day that lost is red. Judged at the
+// 2 decimals every tile using it displays, so a value that SHOWS as zero
+// ("$0.00", "0.00 R") reads neutral rather than red or green.
+function signTone(v: number | null): 'win' | 'loss' | 'dim' {
+  const shown = v === null ? 0 : roundTo(v)
+  if (shown === 0) return 'dim'
+  return shown > 0 ? 'win' : 'loss'
 }
 
 function round2(v: number | null): number | null {

@@ -73,8 +73,28 @@ export interface Account {
    *  the deposit totals and draw a cash-flow marker for a transfer that never
    *  happened. Every equity baseline starts here instead of at 0. */
   starting_balance: number
+  // Prop-firm loss-limit rules. Unindexed, so older rows just lack them (no
+  // migration). Stored only when set — an unset field is ABSENT, never null —
+  // and read only through `lossLimitOf`. No `max_loss_usd` = no limit. See
+  // `src/lib/loss-limit.ts`.
+  /** Max drawdown allowed, USD (e.g. 2000 on a 50K eval). */
+  max_loss_usd?: number
+  /** Present (true) = the limit trails the highest end-of-day balance. */
+  trailing?: true
+  /** Highest value a trailing limit can reach (e.g. 50100) — the "Stops
+   *  trailing at" field. The cap is on the LIMIT, not the balance: a 2000
+   *  limit reaches 50100 when the balance peaks at 52100. */
+  trail_stop_usd?: number
   created_at: string
   updated_at: string
+}
+
+/** An account's loss-limit rules, fully specified (`null` = not set). What
+ *  `lossLimitOf` reads and `updateAccountLossLimit` writes. */
+export interface LossLimit {
+  max_loss_usd: number | null
+  trailing: boolean
+  trail_stop_usd: number | null
 }
 
 // Id of the starter account seeded into an empty database (`ensureSeedAccount`).

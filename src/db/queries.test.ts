@@ -37,6 +37,7 @@ import {
   setDayFeesOverride,
   setDayPnlOverride,
   slugifyAccountName,
+  updateAccountLossLimit,
   updateModel,
   updateTrade,
 } from './queries'
@@ -300,6 +301,90 @@ describe('account queries', () => {
     await expect(createAccount({ name: 'Test Account', starting_balance: 0 })).rejects.toThrow(/collides/)
   })
 
+  describe('updateAccountLossLimit', () => {
+    const full = { max_loss_usd: 2000, trailing: true, trail_stop_usd: 50_100 }
+    const read = () => getAccount(SEED_ACCOUNT_ID)
+
+    it('stores set values and leaves unset ones absent', async () => {
+      await updateAccountLossLimit(SEED_ACCOUNT_ID, full)
+      expect(await read()).toMatchObject(full)
+      await updateAccountLossLimit(SEED_ACCOUNT_ID, { trail_stop_usd: null })
+      const a = await read()
+      expect(a).toMatchObject({ max_loss_usd: 2000, trailing: true })
+      expect(a).not.toHaveProperty('trail_stop_usd')
+    })
+
+    it('merges into the stored row, not a stale snapshot', async () => {
+      // Two quick edits, each sending only its own field: the second must not
+      // write back the first's old value.
+      await updateAccountLossLimit(SEED_ACCOUNT_ID, { max_loss_usd: 2000 })
+      await Promise.all([
+        updateAccountLossLimit(SEED_ACCOUNT_ID, { max_loss_usd: 2500 }),
+        updateAccountLossLimit(SEED_ACCOUNT_ID, { trailing: true }),
+      ])
+      expect(await read()).toMatchObject({ max_loss_usd: 2500, trailing: true })
+    })
+
+    it('clearing the max loss clears the trailing rules with it', async () => {
+      await updateAccountLossLimit(SEED_ACCOUNT_ID, full)
+      await updateAccountLossLimit(SEED_ACCOUNT_ID, { max_loss_usd: null })
+      const a = await read()
+      expect(a).not.toHaveProperty('max_loss_usd')
+      expect(a).not.toHaveProperty('trailing')
+      expect(a).not.toHaveProperty('trail_stop_usd')
+    })
+
+    it('switching to static clears the stop', async () => {
+      await updateAccountLossLimit(SEED_ACCOUNT_ID, full)
+      await updateAccountLossLimit(SEED_ACCOUNT_ID, { trailing: false })
+      const a = await read()
+      expect(a?.max_loss_usd).toBe(2000)
+      expect(a).not.toHaveProperty('trailing')
+      expect(a).not.toHaveProperty('trail_stop_usd')
+    })
+
+    it('rejects a max loss that is zero, negative or non-finite', async () => {
+      for (const bad of [0, -5, Infinity]) {
+        await expect(
+          updateAccountLossLimit(SEED_ACCOUNT_ID, { max_loss_usd: bad }),
+        ).rejects.toThrow(/Max loss/)
+      }
+    })
+
+    it('rejects a stop below the starting limit, allows it at or above', async () => {
+      await db.accounts.update(SEED_ACCOUNT_ID, { starting_balance: 50_000 })
+      await updateAccountLossLimit(SEED_ACCOUNT_ID, { max_loss_usd: 2000, trailing: true })
+      await expect(
+        updateAccountLossLimit(SEED_ACCOUNT_ID, { trail_stop_usd: 47_999 }),
+      ).rejects.toThrow(/at least \$48,000/)
+      await updateAccountLossLimit(SEED_ACCOUNT_ID, { trail_stop_usd: 48_000 })
+      expect((await read())?.trail_stop_usd).toBe(48_000)
+    })
+
+    it('a max loss that would lift the starting limit past the stop names the max loss', async () => {
+      await db.accounts.update(SEED_ACCOUNT_ID, { starting_balance: 50_000 })
+      await updateAccountLossLimit(SEED_ACCOUNT_ID, {
+        max_loss_usd: 2000,
+        trailing: true,
+        trail_stop_usd: 48_000,
+      })
+      await expect(
+        updateAccountLossLimit(SEED_ACCOUNT_ID, { max_loss_usd: 1500 }),
+      ).rejects.toThrow('Max loss must be at least $2,000.00 while trailing stops at $48,000.00.')
+      expect((await read())?.max_loss_usd).toBe(2000)
+    })
+
+    it('allows a stop of zero on an account logged from a $0 balance', async () => {
+      // The seed account starts at 0: its starting limit is −2,000.
+      await updateAccountLossLimit(SEED_ACCOUNT_ID, { ...full, trail_stop_usd: 0 })
+      expect((await read())?.trail_stop_usd).toBe(0)
+    })
+
+    it('throws for an account that no longer exists', async () => {
+      await expect(updateAccountLossLimit('gone', full)).rejects.toThrow(/no longer exists/)
+    })
+  })
+
   describe('cloneAccount', () => {
     // A source account carrying one of everything the clone touches, plus a
     // hidden rule and a trade that must NOT come along.
@@ -375,6 +460,19 @@ describe('account queries', () => {
       // Source keeps its own copies — a clone is never a move.
       expect(await listModels(SEED_ACCOUNT_ID)).toHaveLength(1)
       expect(await listSymbols(SEED_ACCOUNT_ID)).toHaveLength(1)
+    })
+
+    it('does not copy the loss-limit rules', async () => {
+      await updateAccountLossLimit(SEED_ACCOUNT_ID, {
+        max_loss_usd: 2000,
+        trailing: true,
+        trail_stop_usd: 50_100,
+      })
+      const clone = await cloneAccount({ name: 'Eval 2', starting_balance: 50_000 }, SEED_ACCOUNT_ID)
+      const a = await getAccount(clone.id)
+      expect(a).not.toHaveProperty('max_loss_usd')
+      expect(a).not.toHaveProperty('trailing')
+      expect(a).not.toHaveProperty('trail_stop_usd')
     })
 
     it('cloned rules run from today, skipping hidden ones', async () => {

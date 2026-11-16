@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  classifyDay,
   cohortStats,
   compositeScore,
   dailyEquitySeries,
@@ -872,5 +873,53 @@ describe('pnlByHour mode', () => {
     expect(first[14].count).toBe(0)
     expect(last[14].count).toBe(1)
     expect(last[9].count).toBe(0)
+  })
+})
+
+describe('classifyDay', () => {
+  it('sizes the band off the room, not equity', () => {
+    // No limit: 0.4% of 50K = ±200, so −150 is a scratch.
+    expect(classifyDay(-150, 50_000, null)).toBe('scratch')
+    // Room 2,000 → ±8, so −150 is a loss.
+    expect(classifyDay(-150, 50_000, 2000)).toBe('loss')
+    // Room 2,900 → ±11.60.
+    expect(classifyDay(11, 53_000, 2900)).toBe('scratch')
+    expect(classifyDay(12, 53_000, 2900)).toBe('win')
+  })
+
+  it('a blown account (no room) falls to the $8 floor', () => {
+    expect(classifyDay(7, 47_000, -1000)).toBe('scratch')
+    expect(classifyDay(9, 47_000, -1000)).toBe('win')
+  })
+
+  it('judges whole cents, so float residue on the band edge stays a scratch', () => {
+    // $2,500 of room → a $10 band; +16.01 − 6.01 = 10.000000000000002.
+    expect(classifyDay(16.01 - 6.01, 50_000, 2500)).toBe('scratch')
+    expect(classifyDay(10.01, 50_000, 2500)).toBe('win')
+    expect(classifyDay(-10.01, 50_000, 2500)).toBe('loss')
+  })
+
+  it('judges the PNL even when every trade was a scratch', () => {
+    // Ten −$6 scratch trades: a −$60 day is a loss, not a scratch.
+    expect(classifyDay(-60, 50_000, 2000)).toBe('loss')
+  })
+})
+
+describe('dailyStats with a loss limit', () => {
+  const series = [
+    { date: '2026-04-01', pnl: -150, equity: -150, peak: 0, dd: -150, ddPct: 0 },
+    { date: '2026-04-02', pnl: 30, equity: -120, peak: 0, dd: -120, ddPct: 0 },
+  ]
+
+  it('classifies against the room, not the filtered equity', () => {
+    // Without a limit both days sit inside ±0.4% of $50K.
+    const plain = dailyStats(series, { startEquity: 50_000 })
+    expect(plain.scratchDays).toBe(2)
+    // With $2K of room (±$8) both days are decided. The series' own equity
+    // plays no part — the room comes from the real history.
+    const limited = dailyStats(series, { startEquity: 50_000, roomBefore: () => 2000 })
+    expect(limited.redDays).toBe(1)
+    expect(limited.greenDays).toBe(1)
+    expect(limited.scratchDays).toBe(0)
   })
 })

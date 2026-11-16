@@ -26,7 +26,7 @@ const links = [
 export function Layout() {
   useNewsSync()
   const accountId = useActiveAccountId()
-  const { equity, lastActivityDate } = useAccountRollup()
+  const { equity, lastActivityDate, breached } = useAccountRollup()
   // Keeps the Stats/Reports default-window anchor in step with the data from
   // wherever it changes — the Day page, a Drive sync pull, a backup import.
   useLastActivityCache(accountId, lastActivityDate)
@@ -45,6 +45,8 @@ export function Layout() {
   // With no accounts at all there's nothing to repair to; let the pages
   // render so Settings can still create one.
   const pagesReady = activeKnown || accounts?.length === 0
+  // `breached` comes out of the same rollup pass as `equity`, so it's ready
+  // whenever equity is.
   const navReady = equity !== undefined && accounts !== undefined && activeKnown
   return (
     <ConfirmProvider>
@@ -92,10 +94,16 @@ export function Layout() {
                   <span className="text-xs uppercase tracking-wider text-(--color-text-dim)">Equity</span>
                   <span className="text-(--color-text)">{formatUsd(equity)}</span>
                 </div>
-                <div className="flex items-baseline gap-1.5 font-mono text-sm tabular-nums shrink-0">
-                  <span className="text-xs uppercase tracking-wider text-(--color-text-dim)">Risk</span>
-                  <span className="text-(--color-text)">{formatUsd(Math.max(40, equity * 0.02))}</span>
-                </div>
+                {/* The balance touched the loss limit at some point (see
+                    `isBreached`). Nothing shows while the account is alive. */}
+                {breached && (
+                  <span
+                    title="The balance touched this account's loss limit (Settings → Loss limit)."
+                    className="font-mono text-sm uppercase tracking-wider font-semibold text-(--color-loss) shrink-0"
+                  >
+                    Breached
+                  </span>
+                )}
                 <AccountSwitcher accounts={accounts} />
               </>
             ) : null}

@@ -6,6 +6,7 @@ import type {
   AdjustmentDraft,
   Day,
   EquityAdjustment,
+  LossLimit,
   Model,
   ModelDraft,
   PendingUpload,
@@ -28,6 +29,8 @@ import {
   ruleHasHistoryBefore,
 } from '@/lib/progress-periods'
 import { latestTradeDate, nextWeekdayKey, nyToday } from '@/lib/tz'
+import { lossLimitOf } from '@/lib/loss-limit'
+import { formatUsd } from '@/lib/money'
 
 function now(): string {
   return new Date().toISOString()
@@ -387,6 +390,56 @@ async function assertSlugFree(id: string): Promise<void> {
   }
 }
 
+/**
+ * Applies a change to an account's loss-limit rules. The change is merged into
+ * the row as it is stored NOW, inside the transaction — never into a caller's
+ * render snapshot, which a quick second edit would otherwise write back over
+ * the first.
+ *
+ * Unset values are stored as ABSENT fields (Dexie deletes a key updated to
+ * `undefined`), so `Account` has one "not set" state rather than two. A rule
+ * that means nothing in context is cleared with it rather than kept hidden,
+ * where it would come back unseen later: clearing the max loss clears the
+ * trailing rules, and switching to Static clears the stop.
+ */
+export async function updateAccountLossLimit(
+  id: string,
+  change: Partial<LossLimit>,
+): Promise<void> {
+  await db.transaction('rw', db.accounts, async () => {
+    const account = await db.accounts.get(id)
+    if (!account) throw new Error('This account no longer exists.')
+    const next = { ...lossLimitOf(account), ...change }
+    const maxLoss = next.max_loss_usd
+    if (maxLoss !== null && (!Number.isFinite(maxLoss) || maxLoss <= 0)) {
+      throw new Error('Max loss must be a positive number.')
+    }
+    const trailing = maxLoss !== null && next.trailing
+    const stop = trailing ? next.trail_stop_usd : null
+    // Below the starting limit the stop could never be reached — Trailing
+    // would silently act as Static. Zero and below are fine where the
+    // starting limit is lower still (an account logged from a $0 balance).
+    if (stop !== null && maxLoss !== null) {
+      const startingLimit = account.starting_balance - maxLoss
+      if (!Number.isFinite(stop) || stop < startingLimit) {
+        // Worded around the field being edited: lowering the max loss can
+        // lift the starting limit past a stop the user didn't touch.
+        throw new Error(
+          change.trail_stop_usd === undefined
+            ? `Max loss must be at least ${formatUsd(account.starting_balance - stop)} while trailing stops at ${formatUsd(stop)}.`
+            : `Stops trailing at must be at least ${formatUsd(startingLimit)}.`,
+        )
+      }
+    }
+    await db.accounts.update(id, {
+      max_loss_usd: maxLoss ?? undefined,
+      trailing: trailing ? true : undefined,
+      trail_stop_usd: stop ?? undefined,
+      updated_at: now(),
+    })
+  })
+}
+
 export async function createAccount(draft: AccountDraft): Promise<Account> {
   const rec = newAccountRow(draft)
   await db.transaction('rw', db.accounts, async () => {
@@ -466,6 +519,8 @@ export async function cloneAccount(
           }),
         )
 
+      // Loss-limit rules are deliberately NOT copied: they're tied to the
+      // account's size and firm, so whoever creates the account sets them.
       await db.accounts.add(rec)
       if (clonedModels.length > 0) await db.models.bulkAdd(clonedModels)
       if (clonedSymbols.length > 0) await db.symbols.bulkAdd(clonedSymbols)

@@ -1,25 +1,12 @@
-import { getAccount } from '@/db/queries'
-import { useActiveAccountId } from '@/lib/active-account'
-import { useAccountQuery } from '@/lib/use-account-query'
+import { useAccountBasis } from '@/lib/use-account-basis'
 
 /**
- * The active account's opening capital, or `undefined` while the row loads.
- *
- * Every windowed equity calculation starts from this rather than from 0 — see
- * `equityBefore` in `day-pnl`. Callers must fold it into their `loaded` gate:
- * arriving a render late redraws a funded account's curve from zero to funded,
- * and shifts the calendar's scratch band and every drawdown percentage with it.
- *
- * Resolves to a NUMBER rather than the account row on purpose: `getAccount`
- * returns `undefined` for a missing id, which through `useAccountQuery` would be
- * indistinguishable from "still loading" and would hang every gate that waits on
- * it. Collapsing a missing row to 0 here leaves `undefined` meaning only the one
- * thing callers test for.
+ * The active account's opening capital, or `undefined` while the row loads —
+ * for callers that need only the balance. Every windowed equity calculation
+ * starts from this rather than from 0; fold it into the `loaded` gate. Callers
+ * that also need the loss limit use `useAccountBasis` directly, so the row is
+ * subscribed to once.
  */
 export function useStartingBalance(): number | undefined {
-  const accountId = useActiveAccountId()
-  return useAccountQuery(
-    accountId,
-    async () => (await getAccount(accountId))?.starting_balance ?? 0,
-  )
+  return useAccountBasis()?.startingBalance
 }

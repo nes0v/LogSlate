@@ -14,6 +14,7 @@ import { pushError } from '@/lib/notifications'
 import { AccountsPanel } from '@/components/AccountsPanel'
 import { useConfirm } from '@/components/ConfirmDialog'
 import { AdjustmentsPanel } from '@/components/AdjustmentsPanel'
+import { LossLimitPanel } from '@/components/LossLimitPanel'
 import { BTN_ACCENT, BTN_OUTLINED } from '@/components/form/buttonClass'
 import { Pills } from '@/components/form/Pills'
 import { setDefaultRangeMonths, useDefaultRangeMonths, type DefaultRangeMonths } from '@/lib/default-range-preference'
@@ -44,6 +45,10 @@ export function SettingsRoute() {
   const accounts = useLiveQuery(() => listAccounts(), [])
   const adjustments = useAccountQuery(accountId, () => listAdjustments(accountId))
   const loaded = accounts !== undefined && adjustments !== undefined
+  // Layout repairs a dead active id before pages render, so this is only
+  // missing when there are no accounts at all — and then there's no limit
+  // to edit, so the panel is left out rather than drawn empty.
+  const activeAccount = accounts?.find(a => a.id === accountId)
 
   async function handleSync() {
     await requestManualSync()
@@ -389,6 +394,7 @@ export function SettingsRoute() {
 
       <div className="space-y-8 min-w-0">
         <AdjustmentsPanel adjustments={adjustments} />
+        {activeAccount && <LossLimitPanel account={activeAccount} />}
       </div>
       </div>
       )}
