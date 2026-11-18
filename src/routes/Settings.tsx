@@ -413,7 +413,7 @@ function DefaultRangeSection({ accountId }: { accountId: string }) {
   const weeks = useDefaultRangeWeeks(accountId)
   return (
     <section>
-      <h2 className="text-sm font-medium mb-2">Default date range</h2>
+      <h2 className="text-sm font-medium mb-2">Date range</h2>
       <div className="rounded-(--radius) bg-(--color-panel) p-3 space-y-3">
         <p className="text-sm text-(--color-text-dim)">
           How far back Overview and Reports default to when no date filter is set.
@@ -426,7 +426,7 @@ function DefaultRangeSection({ accountId }: { accountId: string }) {
             step={1}
             onChange={w => setDefaultRangeWeeks(accountId, w)}
             label={`${weeks} weeks`}
-            ariaLabel="Default date range (weeks)"
+            ariaLabel="Date range (weeks)"
           />
         </div>
       </div>

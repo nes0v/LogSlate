@@ -275,7 +275,7 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   color: var(--color-paper-text);
 }
 
-/* Range slider (form/Slider — Scratch threshold, Default date range): a thin
+/* Range slider (form/Slider — Scratch threshold, Date range): a thin
  * rounded-full track — accent up to the thumb (`--fill`, set inline),
  * border-strong after it — and an accent knob with a hole the color of the
  * card behind it, the same look as the Composite Score radar's dots. */
