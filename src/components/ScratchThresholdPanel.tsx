@@ -14,7 +14,7 @@ export function ScratchThresholdPanel({ account }: { account: Account }) {
       <h2 className="text-sm font-medium mb-2">Scratch threshold</h2>
       <div className="rounded-(--radius) bg-(--color-panel) p-3 space-y-3">
         <p className="text-sm text-(--color-text-dim)">
-          Days that move less than this count as scratches. Never below $8.
+          A day that ends within this percentage of your room above the loss limit (or of the starting balance, with no limit) counts as a scratch, not a win or loss. Never less than $8.
         </p>
         {/* Keyed on the account so a drag never carries across a switch. */}
         <ScratchSlider key={account.id} account={account} />

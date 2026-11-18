@@ -278,7 +278,9 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
 /* Range slider (form/Slider — Scratch threshold, Date range): a thin
  * rounded-full track — accent up to the thumb (`--fill`, set inline),
  * border-strong after it — and an accent knob with a hole the color of the
- * card behind it, the same look as the Composite Score radar's dots. */
+ * card behind it, the same look as the Composite Score radar's dots. The
+ * ring is a real border, not a radial-gradient or SVG: borders get true
+ * antialiasing at any display scaling, so the tiny hole reads round. */
 .range {
   appearance: none;
   height: 19px;
@@ -311,14 +313,17 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   height: 13px;
   margin-top: -5px;
   border-radius: 9999px;
-  background: radial-gradient(circle, var(--color-panel-2) 2.5px, var(--color-accent) 2.5px);
+  box-sizing: border-box;
+  border: 3px solid var(--color-accent);
+  background: var(--color-panel-2);
 }
 .range::-moz-range-thumb {
   width: 13px;
   height: 13px;
-  border: none;
   border-radius: 9999px;
-  background: radial-gradient(circle, var(--color-panel-2) 2.5px, var(--color-accent) 2.5px);
+  box-sizing: border-box;
+  border: 3px solid var(--color-accent);
+  background: var(--color-panel-2);
 }
 .range:focus-visible::-webkit-slider-thumb {
   box-shadow: 0 0 0 3px var(--color-accent-soft);
