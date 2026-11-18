@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react'
 
 /** Slider bounds, whole weeks. */
 export const MIN_RANGE_WEEKS = 4
-export const MAX_RANGE_WEEKS = 12
+export const MAX_RANGE_WEEKS = 16
 
 // The default range in weeks, per account, in localStorage rather than on the
 // account row: the pickers need the window on the first painted frame (see

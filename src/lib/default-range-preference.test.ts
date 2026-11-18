@@ -37,7 +37,7 @@ describe('default range preference', () => {
   })
 
   it('ignores out-of-range or junk values', () => {
-    setDefaultRangeWeeks('a', 13)
+    setDefaultRangeWeeks('a', 17)
     expect(weeksFor('a')).toBe(4)
     localStorage.setItem('logslate:default_range_weeks:a', 'x')
     expect(weeksFor('a')).toBe(4)
@@ -53,8 +53,8 @@ describe('default range preference', () => {
     unmount()
   })
 
-  it('ignores a stored number outside 4–12', () => {
-    localStorage.setItem('logslate:default_range_weeks:a', '13')
+  it('ignores a stored number outside 4–16', () => {
+    localStorage.setItem('logslate:default_range_weeks:a', '17')
     expect(weeksFor('a')).toBe(4)
   })
 
