@@ -36,7 +36,7 @@ import { useAccountQuery } from '@/lib/use-account-query'
 import { aggregate, foldOverridesIntoStats, signedAdjustment, type AggregateStats } from '@/lib/trade-stats'
 import { equityBefore, netPnlByDate } from '@/lib/day-pnl'
 import { useAccountBasis } from '@/lib/use-account-basis'
-import { limitTimeline } from '@/lib/loss-limit'
+import { DEFAULT_SCRATCH_PCT, limitTimeline } from '@/lib/loss-limit'
 import {
   classifyTrade,
   computePlannedRr,
@@ -85,7 +85,7 @@ export function ReportsRoute() {
   const navigate = useNavigate()
   const location = useLocation()
   // Read the shared slot synchronously on render when the URL has no
-  // filter params — otherwise the first paint uses the default one-month
+  // filter params — otherwise the first paint uses the default
   // window and only snaps to the real filter once the hydration effect
   // mirrors slot → URL, which surfaces as a content "jump" on nav-link
   // clicks.
@@ -166,6 +166,7 @@ export function ReportsRoute() {
   const basis = useAccountBasis()
   const startingBalance = basis?.startingBalance
   const lossLimit = basis?.lossLimit
+  const scratchPct = basis?.scratchPct ?? DEFAULT_SCRATCH_PCT
   // Resolved at the route level and handed to the filter bar, account-tagged,
   // so an account switch can't leave the Model dropdown showing the previous
   // account's names for a frame.
@@ -423,6 +424,7 @@ export function ReportsRoute() {
                   rangeEnd={rangeEnd}
                   accountStartEquity={advStartingEquity}
                   roomBefore={roomBefore}
+                  scratchPct={scratchPct}
                   adjByDate={advAdjByDate}
                   overridesByDate={effectiveOverrides}
                 />

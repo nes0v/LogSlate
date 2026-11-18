@@ -38,11 +38,13 @@ import {
   setDayPnlOverride,
   slugifyAccountName,
   updateAccountLossLimit,
+  updateAccountScratchPct,
   updateModel,
   updateTrade,
 } from './queries'
 import { SEED_ACCOUNT_ID } from './types'
 import { readSymbolFilterCache } from '@/lib/symbol-filter-cache'
+import { setDefaultRangeWeeks } from '@/lib/default-range-preference'
 import { adjustmentDraft, tradeDraft } from '@/test/fixtures'
 
 beforeEach(async () => {
@@ -299,6 +301,34 @@ describe('account queries', () => {
 
   it('createAccount rejects reusing the seeded account slug', async () => {
     await expect(createAccount({ name: 'Test Account', starting_balance: 0 })).rejects.toThrow(/collides/)
+  })
+
+  describe('updateAccountScratchPct', () => {
+    const read = () => getAccount(SEED_ACCOUNT_ID)
+
+    it('stores a non-default threshold and leaves the default absent', async () => {
+      await updateAccountScratchPct(SEED_ACCOUNT_ID, 0.7)
+      expect((await read())?.scratch_pct).toBe(0.7)
+      await updateAccountScratchPct(SEED_ACCOUNT_ID, 0.4)
+      expect(await read()).not.toHaveProperty('scratch_pct')
+    })
+
+    it('snaps slider float residue to tenths', async () => {
+      await updateAccountScratchPct(SEED_ACCOUNT_ID, 0.1 + 0.2)
+      expect((await read())?.scratch_pct).toBe(0.3)
+    })
+
+    it('rejects values outside 0.2–1.2 and leaves the row alone', async () => {
+      await updateAccountScratchPct(SEED_ACCOUNT_ID, 0.9)
+      for (const bad of [0.1, 1.3, Number.NaN]) {
+        await expect(updateAccountScratchPct(SEED_ACCOUNT_ID, bad)).rejects.toThrow(/between/)
+      }
+      expect((await read())?.scratch_pct).toBe(0.9)
+    })
+
+    it('rejects a missing account', async () => {
+      await expect(updateAccountScratchPct('nope', 0.5)).rejects.toThrow(/no longer exists/)
+    })
   })
 
   describe('updateAccountLossLimit', () => {
@@ -611,6 +641,14 @@ describe('account queries', () => {
     setActiveAccountId('')
     await expect(createTrade(tradeDraft())).rejects.toThrow(/no account/i)
     expect(await db.trades.count()).toBe(0)
+  })
+
+  it('deleteAccount forgets the default date range, so a reused id starts fresh', async () => {
+    const other = await createAccount({ name: 'Eval B', starting_balance: 0 })
+    setDefaultRangeWeeks(other.id, 9)
+    expect(localStorage.getItem(`logslate:default_range_weeks:${other.id}`)).toBe('9')
+    await deleteAccount(other.id)
+    expect(localStorage.getItem(`logslate:default_range_weeks:${other.id}`)).toBeNull()
   })
 
   it('deleteAccount refuses to remove the last remaining account', async () => {

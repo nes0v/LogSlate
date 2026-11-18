@@ -415,6 +415,7 @@ export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
   rangeEnd,
   accountStartEquity,
   roomBefore,
+  scratchPct,
   adjByDate,
   overridesByDate,
 }: {
@@ -425,6 +426,8 @@ export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
   /** Room above the loss limit entering a date, for `dailyStats`'s scratch
    *  band. Absent = no limit. Route-owned for the same reason as below. */
   roomBefore?: (date: string) => number | null
+  /** The account's scratch-day threshold, percent (`scratchPctOf`). */
+  scratchPct: number
   /** Real account equity strictly before `rangeStart`. Owned by the
    *  route (Reports) so the card doesn't open its own Dexie
    *  subscriptions — those resolved a tick after the page-level gate
@@ -494,8 +497,9 @@ export const AdvancedMetricsSections = memo(function AdvancedMetricsSections({
         startEquity: accountStartEquity,
         adjustmentsByDate: adjByDate,
         roomBefore,
+        scratchPct,
       }),
-    [rawSeries, accountStartEquity, adjByDate, roomBefore],
+    [rawSeries, accountStartEquity, adjByDate, roomBefore, scratchPct],
   )
   const totalDays =
     dayStats.greenDays + dayStats.redDays + dayStats.scratchDays

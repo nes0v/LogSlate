@@ -15,9 +15,15 @@ import { AccountsPanel } from '@/components/AccountsPanel'
 import { useConfirm } from '@/components/ConfirmDialog'
 import { AdjustmentsPanel } from '@/components/AdjustmentsPanel'
 import { LossLimitPanel } from '@/components/LossLimitPanel'
+import { ScratchThresholdPanel } from '@/components/ScratchThresholdPanel'
 import { BTN_ACCENT, BTN_OUTLINED } from '@/components/form/buttonClass'
-import { Pills } from '@/components/form/Pills'
-import { setDefaultRangeMonths, useDefaultRangeMonths, type DefaultRangeMonths } from '@/lib/default-range-preference'
+import {
+  MAX_RANGE_WEEKS,
+  MIN_RANGE_WEEKS,
+  setDefaultRangeWeeks,
+  useDefaultRangeWeeks,
+} from '@/lib/default-range-preference'
+import { Slider } from '@/components/form/Slider'
 import { cn, errorMessage } from '@/lib/utils'
 
 export function SettingsRoute() {
@@ -389,12 +395,13 @@ export function SettingsRoute() {
 
       <AccountsPanel accounts={accounts} />
 
-      <DefaultRangeSection />
       </div>
 
       <div className="space-y-8 min-w-0">
         <AdjustmentsPanel adjustments={adjustments} />
         {activeAccount && <LossLimitPanel account={activeAccount} />}
+        {activeAccount && <ScratchThresholdPanel account={activeAccount} />}
+        {activeAccount && <DefaultRangeSection accountId={activeAccount.id} />}
       </div>
       </div>
       )}
@@ -402,14 +409,8 @@ export function SettingsRoute() {
   )
 }
 
-const RANGE_OPTIONS: ReadonlyArray<{ value: DefaultRangeMonths; label: string }> = [
-  { value: 1, label: '1 month' },
-  { value: 2, label: '2 months' },
-  { value: 3, label: '3 months' },
-]
-
-function DefaultRangeSection() {
-  const months = useDefaultRangeMonths()
+function DefaultRangeSection({ accountId }: { accountId: string }) {
+  const weeks = useDefaultRangeWeeks(accountId)
   return (
     <section>
       <h2 className="text-sm font-medium mb-2">Default date range</h2>
@@ -417,11 +418,17 @@ function DefaultRangeSection() {
         <p className="text-sm text-(--color-text-dim)">
           How far back Overview and Reports default to when no date filter is set.
         </p>
-        <Pills
-          value={months}
-          options={RANGE_OPTIONS}
-          onChange={setDefaultRangeMonths}
-        />
+        <div className="bg-(--color-panel-2) rounded-(--radius) px-3 pt-[10px] pb-[9px]">
+          <Slider
+            value={weeks}
+            min={MIN_RANGE_WEEKS}
+            max={MAX_RANGE_WEEKS}
+            step={1}
+            onChange={w => setDefaultRangeWeeks(accountId, w)}
+            label={`${weeks} weeks`}
+            ariaLabel="Default date range (weeks)"
+          />
+        </div>
       </div>
     </section>
   )

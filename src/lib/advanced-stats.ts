@@ -860,9 +860,9 @@ export interface DailyStats {
 // equity, or the room above the loss limit when the account has one (see
 // `classifyDay`) — counts as a scratch even if pnl ≠ 0. Small chops on top
 // of a real account shouldn't tip the day into the green/red bucket. A hard
-// floor keeps tiny accounts (where 0.4% rounds to pennies) from going
-// green/red on a few dollars of slippage.
-const SCRATCH_DAY_PCT = 0.004
+// floor keeps tiny accounts (where the percent rounds to pennies) from going
+// green/red on a few dollars of slippage. The fraction is per account
+// (Settings → Scratch threshold, `scratchPctOf`), in percent.
 const SCRATCH_DAY_MIN_USD = 8
 
 /**
@@ -878,6 +878,9 @@ const SCRATCH_DAY_MIN_USD = 8
  * call a −$150 day a scratch. A blown account (no room left) falls to the
  * floor. Required (not defaulted) so every caller decides where it comes from.
  *
+ * `pct` is the account's scratch threshold in percent (0.4 = 0.4%) — also
+ * required, for the same reason.
+ *
  * Judged in whole cents, the way the figures are shown: room-based bands land
  * on round amounts ($10 at $2,500 of room) that a day can hit exactly, and
  * +16.01 − 6.01 sums to 10.000000000000002 — a "$10.00" day must not tip green
@@ -887,9 +890,15 @@ export function classifyDay(
   pnl: number,
   startEquity: number,
   room: number | null,
+  pct: number,
 ): TradeOutcome {
   const base = room ?? startEquity
-  const band = roundTo(Math.max(base * SCRATCH_DAY_PCT, SCRATCH_DAY_MIN_USD))
+  // In whole cents × tenths of a percent: both are integers, so the product
+  // is exact and the one division lands on the nearest double to the true
+  // band. `base * pct / 100` drifts — at 0.7%, $1,305 gave 9.13499… and
+  // rounded down to $9.13 instead of $9.14.
+  const raw = (Math.round(base * 100) * Math.round(pct * 10)) / 100_000
+  const band = roundTo(Math.max(raw, SCRATCH_DAY_MIN_USD))
   const p = roundTo(pnl)
   if (Math.abs(p) <= band) return 'scratch'
   return p > 0 ? 'win' : 'loss'
@@ -909,6 +918,8 @@ export interface DailyStatsOptions {
    *  Absent or null = no limit, band from equity. Taken from the REAL account
    *  history, so a filtered series still gets the real room. */
   roomBefore?: (date: string) => number | null
+  /** The account's scratch threshold in percent (`scratchPctOf`). */
+  scratchPct: number
 }
 
 /** Aggregates the equity series down to per-trading-day metrics. Only
@@ -916,7 +927,7 @@ export interface DailyStatsOptions {
  *  day is classified by `classifyDay`, the same rule as the calendar. */
 export function dailyStats(
   series: EquityPoint[],
-  { startEquity = 0, adjustmentsByDate, roomBefore }: DailyStatsOptions = {},
+  { startEquity = 0, adjustmentsByDate, roomBefore, scratchPct }: DailyStatsOptions,
 ): DailyStats {
   const tradingDays = series.filter(p => p.pnl !== 0)
   if (tradingDays.length === 0) {
@@ -941,7 +952,7 @@ export function dailyStats(
     if (p.pnl !== 0) {
       if (p.pnl > best) best = p.pnl
       if (p.pnl < worst) worst = p.pnl
-      const outcome = classifyDay(p.pnl, runningEquity, roomBefore?.(p.date) ?? null)
+      const outcome = classifyDay(p.pnl, runningEquity, roomBefore?.(p.date) ?? null, scratchPct)
       if (outcome === 'win') green++
       else if (outcome === 'loss') red++
       else even++

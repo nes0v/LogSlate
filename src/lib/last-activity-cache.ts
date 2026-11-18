@@ -18,7 +18,7 @@ import { isDateKey } from '@/lib/tz'
 // both synchronous) never flickers at all.
 //
 // The anchor date is cached rather than the computed `{from, to}` window: the
-// window also depends on the user's default-range-months preference, so a
+// window also depends on the user's default-range-weeks preference, so a
 // cached window would go stale the moment that changes, while the anchor
 // stays the single source of truth (see `defaultRange` in shared-filters).
 //

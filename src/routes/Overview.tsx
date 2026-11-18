@@ -84,7 +84,7 @@ export function OverviewRoute() {
   const navigate = useNavigate()
   const markerPrefs = useChartAdjustmentPrefs()
   // Read the shared slot synchronously on render when the URL is bare —
-  // otherwise the first paint uses the default one-month window and only
+  // otherwise the first paint uses the default window and only
   // snaps to the real filter once the hydration effect mirrors slot →
   // URL, which surfaces as a content "jump" on nav-link clicks.
   const urlFilters = useMemo<TradeFilters>(() => {
@@ -158,7 +158,7 @@ export function OverviewRoute() {
   const [viewportEpoch, setViewportEpoch] = useState(0)
 
   const accountId = useActiveAccountId()
-  // Day-level overrides + the default one-month filter window (shared with
+  // Day-level overrides + the default filter window (shared with
   // Reports). The window itself is seeded synchronously from the cached
   // activity anchor, so the pickers show real dates on the first frame rather
   // than waiting on any query here; `rangeReady` still gates the CONTENT below
@@ -569,7 +569,7 @@ export function OverviewRoute() {
   }, [filterFromKey, filterToKey])
 
   // "Clear" returns to the bare /overview URL and restores the chart's
-  // default state: filter back to the one-month default, timeframe
+  // default state: filter back to the default range, timeframe
   // back to D (URL clear handles tf), and viewport snapped to the new
   // default range via an epoch bump. The Line/Candles toggle is the
   // persisted preference itself, so it stays where the user left it.

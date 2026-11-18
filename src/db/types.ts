@@ -85,6 +85,9 @@ export interface Account {
    *  trailing at" field. The cap is on the LIMIT, not the balance: a 2000
    *  limit reaches 50100 when the balance peaks at 52100. */
   trail_stop_usd?: number
+  /** Scratch-day band, in PERCENT of the base (0.4 = 0.4%), 0.2–1.2 in
+   *  0.1 steps. Absent = the default; read only through `scratchPctOf`. */
+  scratch_pct?: number
   created_at: string
   updated_at: string
 }

@@ -17,7 +17,7 @@ import { classifyTrade, computeNetPnl } from '@/lib/trade-math'
 import { classifyDay } from '@/lib/advanced-stats'
 import { equityBefore } from '@/lib/day-pnl'
 import { useAccountBasis } from '@/lib/use-account-basis'
-import { limitTimeline } from '@/lib/loss-limit'
+import { DEFAULT_SCRATCH_PCT, limitTimeline } from '@/lib/loss-limit'
 import { signedAdjustment } from '@/lib/trade-stats'
 import { listAdjustments, listAllTrades } from '@/db/queries'
 import { useAccountQuery } from '@/lib/use-account-query'
@@ -84,13 +84,15 @@ function CalendarView() {
   // when applying the scratch band.
   const adjustments = useAccountQuery(accountId, () => listAdjustments(accountId))
   // The account's opening capital, which the grid's equity walk starts from —
-  // without a loss limit it's what makes the 0.4%-of-equity band a real number
+  // without a loss limit it's what makes the percent-of-equity band a real number
   // instead of the $8 floor.
   const basis = useAccountBasis()
   const startingBalance = basis?.startingBalance
   // Loss-limit rules — with a limit, the scratch band sizes off the room
   // above it instead of equity (see `classifyDay`).
   const lossLimit = basis?.lossLimit
+  // Scratch-day threshold, percent (Settings → Scratch threshold).
+  const scratchPct = basis?.scratchPct ?? DEFAULT_SCRATCH_PCT
 
   // Everything per-trade happens HERE, keyed only on the data. The month is
   // deliberately not a dep: paging through months must never re-walk the
@@ -207,12 +209,13 @@ function CalendarView() {
           ...agg,
           startEquity: runningEquity,
           room: timeline?.roomBefore(key) ?? null,
+          scratchPct,
         })
       }
       runningEquity += (agg?.pnl ?? 0) + (adjByDate.get(key) ?? 0)
     }
     return m
-  }, [byDate, adjByDate, gridStartEquity, timeline, days])
+  }, [byDate, adjByDate, gridStartEquity, timeline, scratchPct, days])
 
   const monthNet = byMonth.get(format(month, 'yyyy-MM')) ?? 0
 
@@ -379,6 +382,7 @@ interface PerDayCell extends DayAggregate {
   startEquity: number
   // Room above the loss limit entering that day, or null without a limit.
   room: number | null
+  scratchPct: number
 }
 
 // Shared sizing for both day cells and week summary cards so the row
@@ -585,7 +589,7 @@ function pickVariant(
   if (!inMonth) return 'pad'
   if (!cell) return 'empty'
   // Same rule as the Reports day win rate: the day's PNL against the band.
-  return classifyDay(cell.pnl, cell.startEquity, cell.room)
+  return classifyDay(cell.pnl, cell.startEquity, cell.room, cell.scratchPct)
 }
 
 function WeekCard({

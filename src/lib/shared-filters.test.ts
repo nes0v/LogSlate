@@ -14,47 +14,31 @@ afterEach(() => {
 })
 
 describe('defaultRange', () => {
-  it('returns a one-month inclusive window ending on baseDate', () => {
+  it('returns a four-week inclusive window ending on baseDate by default', () => {
     expect(defaultRange('2026-06-08')).toEqual({
-      from: '2026-05-08',
+      from: '2026-05-11',
       to: '2026-06-08',
     })
   })
 
-  it('clamps when the prior month is shorter (then rolls the weekend edge to Monday)', () => {
-    // subMonths(Mar 31) clamps to Feb 28, which is a Saturday → next Monday.
-    expect(defaultRange('2026-03-31')).toEqual({
-      from: '2026-03-02',
-      to: '2026-03-31',
+  it('sizes the window in weeks', () => {
+    expect(defaultRange('2026-06-08', 12)).toEqual({
+      from: '2026-03-16',
+      to: '2026-06-08',
     })
   })
 
-  it('rolls a weekend from-edge forward to the next weekday', () => {
-    // Jun 16 → May 16 (Saturday) → Monday May 18.
-    expect(defaultRange('2026-06-16')).toEqual({
-      from: '2026-05-18',
-      to: '2026-06-16',
-    })
-  })
-
-  it('rolls a weekend to-edge back to the previous weekday', () => {
-    // baseDate Sat Jun 20 → to Fri Jun 19; from May 20 (Wed) unchanged.
+  it('snaps both edges of a weekend baseDate to weekdays', () => {
+    // Sat Jun 20 → from Sat May 23 → Mon May 25; to → Fri Jun 19.
     expect(defaultRange('2026-06-20')).toEqual({
-      from: '2026-05-20',
+      from: '2026-05-25',
       to: '2026-06-19',
-    })
-  })
-
-  it('clamps to Feb 29 in a leap year', () => {
-    expect(defaultRange('2028-03-30')).toEqual({
-      from: '2028-02-29',
-      to: '2028-03-30',
     })
   })
 
   it('crosses the year boundary', () => {
     expect(defaultRange('2026-01-15')).toEqual({
-      from: '2025-12-15',
+      from: '2025-12-18',
       to: '2026-01-15',
     })
   })

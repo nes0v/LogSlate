@@ -21,6 +21,21 @@ export function lossLimitOf(a: Account | undefined): LossLimit {
   }
 }
 
+/** Scratch-day band every account starts on, in percent (0.4 = 0.4%). */
+export const DEFAULT_SCRATCH_PCT = 0.4
+/** Range of the Settings slider, percent, in 0.1 steps. */
+export const MIN_SCRATCH_PCT = 0.2
+export const MAX_SCRATCH_PCT = 1.2
+
+/** The one reader of an account's scratch threshold (percent). Clamped to
+ *  the slider's range in 0.1 steps: a hand-edited backup can carry any
+ *  number, and import doesn't check it. */
+export function scratchPctOf(a: Account | undefined): number {
+  const v = a?.scratch_pct
+  if (v === undefined || !Number.isFinite(v)) return DEFAULT_SCRATCH_PCT
+  return Math.round(Math.min(MAX_SCRATCH_PCT, Math.max(MIN_SCRATCH_PCT, v)) * 10) / 10
+}
+
 export interface LimitTimeline {
   /** False when the account has no limit: every lookup below returns null. */
   hasLimit: boolean

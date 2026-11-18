@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { getLastTradeDate, listDayOverrides } from '@/db/queries'
 import { defaultRange } from '@/lib/shared-filters'
 import { readLastActivityDate } from '@/lib/last-activity-cache'
-import { useDefaultRangeMonths } from '@/lib/default-range-preference'
+import { useDefaultRangeWeeks } from '@/lib/default-range-preference'
 import { useAccountQuery } from '@/lib/use-account-query'
 import type { TradeFilters } from '@/lib/filters'
 import { nyToday } from '@/lib/tz'
@@ -27,7 +27,7 @@ export interface DefaultRangeFilters {
    *  content). */
   rangeReady: boolean
   /** The default range — anchored on the most recent activity date, sized by
-   *  the user's default-range-months preference. Routes compare against it to
+   *  the account's default-range-weeks preference. Routes compare against it to
    *  drop a filter bound from the URL when it matches the default. */
   defaultWindow: { from: string; to: string }
   /** URL filters with the default range window filled into any unset bound.
@@ -43,7 +43,7 @@ export interface DefaultRangeFilters {
  * Shared filter/default-range plumbing for the Overview and Reports pages.
  * Both subscribe to day-level PNL overrides, derive the most recent activity
  * date (from a fast last-trade-date index lookup plus the overrides), and fill
- * the default range window (sized by the user's preference) into any unset
+ * the default range window (sized by the account's preference) into any unset
  * filter bound — with identical load-flash avoidance. The last-trade-date and
  * overrides queries resolve to `undefined` while loading so `rangeReady`
  * genuinely waits for them.
@@ -65,7 +65,7 @@ export function useDefaultRangeFilters(
   accountId: string,
   urlFilters: TradeFilters,
 ): DefaultRangeFilters {
-  const defaultMonths = useDefaultRangeMonths()
+  const defaultWeeks = useDefaultRangeWeeks(accountId)
   const lastTradeDateQuery = useAccountQuery(accountId, () => getLastTradeDate(accountId))
   // One subscription for both maps — they come off the same days-table scan,
   // and both sit on `rangeReady`'s critical path.
@@ -110,8 +110,8 @@ export function useDefaultRangeFilters(
   // the time the user can trigger that, `rangeReady` is true and this fallback
   // is unused. It never reaches the pickers.
   const defaultWindow = useMemo(
-    () => defaultRange(anchor ?? nyToday(), defaultMonths),
-    [anchor, defaultMonths],
+    () => defaultRange(anchor ?? nyToday(), defaultWeeks),
+    [anchor, defaultWeeks],
   )
 
   const filters = useMemo<TradeFilters>(() => {

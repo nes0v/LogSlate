@@ -274,3 +274,55 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   background: var(--color-paper-select);
   color: var(--color-paper-text);
 }
+
+/* Range slider (form/Slider — Scratch threshold, Default date range): a thin
+ * rounded-full track — accent up to the thumb (`--fill`, set inline),
+ * border-strong after it — and an accent knob with a hole the color of the
+ * card behind it, the same look as the Composite Score radar's dots. */
+.range {
+  appearance: none;
+  height: 19px;
+  background: transparent;
+  cursor: pointer;
+}
+.range:focus { outline: none; }
+.range::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 9999px;
+  background: linear-gradient(
+    to right,
+    var(--color-accent) var(--fill),
+    var(--color-border-strong) var(--fill)
+  );
+}
+.range::-moz-range-track {
+  height: 3px;
+  border-radius: 9999px;
+  background: var(--color-border-strong);
+}
+.range::-moz-range-progress {
+  height: 3px;
+  border-radius: 9999px;
+  background: var(--color-accent);
+}
+.range::-webkit-slider-thumb {
+  appearance: none;
+  width: 13px;
+  height: 13px;
+  margin-top: -5px;
+  border-radius: 9999px;
+  background: radial-gradient(circle, var(--color-panel-2) 2.5px, var(--color-accent) 2.5px);
+}
+.range::-moz-range-thumb {
+  width: 13px;
+  height: 13px;
+  border: none;
+  border-radius: 9999px;
+  background: radial-gradient(circle, var(--color-panel-2) 2.5px, var(--color-accent) 2.5px);
+}
+.range:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px var(--color-accent-soft);
+}
+.range:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 3px var(--color-accent-soft);
+}

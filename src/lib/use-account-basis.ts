@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { getAccount } from '@/db/queries'
 import type { LossLimit } from '@/db/types'
 import { useActiveAccountId } from '@/lib/active-account'
-import { lossLimitOf } from '@/lib/loss-limit'
+import { DEFAULT_SCRATCH_PCT, lossLimitOf, scratchPctOf } from '@/lib/loss-limit'
 import { useAccountQuery } from '@/lib/use-account-query'
 
 /** The active account's settings that every equity walk starts from. */
@@ -11,6 +11,8 @@ export interface AccountBasis {
   startingBalance: number
   /** Loss-limit rules — see `src/lib/loss-limit.ts`. */
   lossLimit: LossLimit
+  /** Scratch-day threshold, percent — see `classifyDay`. */
+  scratchPct: number
 }
 
 /**
@@ -33,13 +35,18 @@ export function useAccountBasis(): AccountBasis | undefined {
   const accountId = useActiveAccountId()
   const raw = useAccountQuery(accountId, async () => {
     const a = await getAccount(accountId)
-    return { startingBalance: a?.starting_balance ?? 0, ...lossLimitOf(a) }
+    return {
+      startingBalance: a?.starting_balance ?? 0,
+      scratchPct: scratchPctOf(a),
+      ...lossLimitOf(a),
+    }
   })
   const loading = raw === undefined
   const startingBalance = raw?.startingBalance ?? 0
   const maxLoss = raw?.max_loss_usd ?? null
   const trailing = raw?.trailing ?? false
   const stop = raw?.trail_stop_usd ?? null
+  const scratchPct = raw?.scratchPct ?? DEFAULT_SCRATCH_PCT
   return useMemo(
     () =>
       loading
@@ -47,7 +54,8 @@ export function useAccountBasis(): AccountBasis | undefined {
         : {
             startingBalance,
             lossLimit: { max_loss_usd: maxLoss, trailing, trail_stop_usd: stop },
+            scratchPct,
           },
-    [loading, startingBalance, maxLoss, trailing, stop],
+    [loading, startingBalance, maxLoss, trailing, stop, scratchPct],
   )
 }

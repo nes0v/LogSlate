@@ -20,6 +20,7 @@ import { requireActiveAccountId } from '@/lib/active-account'
 import { clearSymbolFilterCache, writeSymbolFilterCache } from '@/lib/symbol-filter-cache'
 import { clearLastActivityDate } from '@/lib/last-activity-cache'
 import { clearDefaultEquityView } from '@/lib/equity-view-preference'
+import { clearDefaultRangeWeeks } from '@/lib/default-range-preference'
 import { clearDriveFolderCaches, discardScreenshotRef } from '@/lib/drive-images'
 import {
   closePeriod,
@@ -29,7 +30,12 @@ import {
   ruleHasHistoryBefore,
 } from '@/lib/progress-periods'
 import { latestTradeDate, nextWeekdayKey, nyToday } from '@/lib/tz'
-import { lossLimitOf } from '@/lib/loss-limit'
+import {
+  DEFAULT_SCRATCH_PCT,
+  lossLimitOf,
+  MAX_SCRATCH_PCT,
+  MIN_SCRATCH_PCT,
+} from '@/lib/loss-limit'
 import { formatUsd } from '@/lib/money'
 
 function now(): string {
@@ -440,6 +446,20 @@ export async function updateAccountLossLimit(
   })
 }
 
+/** Sets an account's scratch-day threshold, in percent (0.2–1.2, 0.1 steps).
+ *  The default is stored as ABSENT, like the loss-limit fields. */
+export async function updateAccountScratchPct(id: string, pct: number): Promise<void> {
+  if (!Number.isFinite(pct) || pct < MIN_SCRATCH_PCT || pct > MAX_SCRATCH_PCT) {
+    throw new Error(`Scratch threshold must be between ${MIN_SCRATCH_PCT}% and ${MAX_SCRATCH_PCT}%.`)
+  }
+  const rounded = Math.round(pct * 10) / 10
+  const n = await db.accounts.update(id, {
+    scratch_pct: rounded === DEFAULT_SCRATCH_PCT ? undefined : rounded,
+    updated_at: now(),
+  })
+  if (n === 0) throw new Error('This account no longer exists.')
+}
+
 export async function createAccount(draft: AccountDraft): Promise<Account> {
   const rec = newAccountRow(draft)
   await db.transaction('rw', db.accounts, async () => {
@@ -580,6 +600,7 @@ export async function deleteAccount(id: string): Promise<void> {
   // Clear per-account preferences and caches so a later account that happens
   // to reuse this id doesn't inherit the old state.
   clearDefaultEquityView(id)
+  clearDefaultRangeWeeks(id)
   clearDriveFolderCaches(id)
   clearSymbolFilterCache(id)
   clearLastActivityDate(id)

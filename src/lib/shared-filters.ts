@@ -4,28 +4,27 @@
 // reload restores its exact view), but on first mount with an empty URL we
 // hydrate from this slot.
 
-import { format, subMonths } from 'date-fns'
+import { format, subWeeks } from 'date-fns'
 import { dateKeyToDate, nextWeekdayKey, previousWeekdayKey } from '@/lib/tz'
 import { coerceFilters, type TradeFilters } from '@/lib/filters'
+import { DEFAULT_RANGE_WEEKS } from '@/lib/default-range-preference'
 import { loadJsonFromStorage, removeFromStorage, saveJsonToStorage } from '@/lib/storage'
 
 const KEY = 'logslate.shared-filters.v2'
 
-/** Default one-month inclusive range ending on `baseDate` (YYYY-MM-DD) —
- *  same day-of-month one month back through `baseDate` (e.g. Jun 8 →
- *  May 8 – Jun 8). Anchored on the most recent trade date, so opening
- *  Stats/Reports lands on the user's actual trading window instead of a
- *  probably-empty trailing month. `subMonths` clamps short months
- *  (e.g. Mar 31 → Feb 28).
+/** Default inclusive range of `weeks` weeks ending on `baseDate`
+ *  (YYYY-MM-DD) — same weekday N weeks back through `baseDate` (e.g. Mon
+ *  Jun 8, 4 weeks → Mon May 11 – Jun 8). Anchored on the most recent trade
+ *  date, so opening Stats/Reports lands on the user's actual trading window
+ *  instead of a probably-empty trailing stretch.
  *
  *  Both edges are snapped to weekdays so the default matches the filters'
- *  weekday-only date pickers: `from` rolls forward to the next weekday (e.g.
- *  Jun 16 → May 16 Sat → May 18 Mon), `to` rolls back to the previous weekday.
- *  `to` is usually a real activity date (already a weekday); the snap only
- *  matters when it falls back to today on an empty account opened on a
- *  weekend. */
-export function defaultRange(baseDate: string, months = 1): { from: string; to: string } {
-  const from = format(subMonths(dateKeyToDate(baseDate), months), 'yyyy-MM-dd')
+ *  weekday-only date pickers: `from` rolls forward to the next weekday, `to`
+ *  rolls back to the previous one. Whole weeks keep `from` on `baseDate`'s
+ *  weekday, so the snap only matters when `baseDate` is itself a weekend —
+ *  today's fallback on an empty account opened on a weekend. */
+export function defaultRange(baseDate: string, weeks = DEFAULT_RANGE_WEEKS): { from: string; to: string } {
+  const from = format(subWeeks(dateKeyToDate(baseDate), weeks), 'yyyy-MM-dd')
   return {
     from: nextWeekdayKey(from),
     to: previousWeekdayKey(baseDate),

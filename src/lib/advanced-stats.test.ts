@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { DEFAULT_SCRATCH_PCT } from '@/lib/loss-limit'
 import {
   classifyDay,
   cohortStats,
@@ -810,7 +811,7 @@ describe('dailyStats', () => {
       { date: '2026-04-04', pnl: 60, equity: 120, peak: 120, dd: 0, ddPct: 0 },
       { date: '2026-04-05', pnl: -10, equity: 110, peak: 120, dd: -10, ddPct: -0.083 },
     ]
-    const d = dailyStats(series)
+    const d = dailyStats(series, { scratchPct: DEFAULT_SCRATCH_PCT })
     expect(d.bestDay).toBe(100)
     expect(d.worstDay).toBe(-40)
     expect(d.avgDailyPnl).toBeCloseTo((100 - 40 + 60 - 10) / 4, 5)
@@ -823,7 +824,7 @@ describe('dailyStats', () => {
     const series = [
       { date: '2026-04-01', pnl: 0, equity: 0, peak: 0, dd: 0, ddPct: 0 },
     ]
-    const d = dailyStats(series)
+    const d = dailyStats(series, { scratchPct: DEFAULT_SCRATCH_PCT })
     expect(d.bestDay).toBeNull()
     expect(d.worstDay).toBeNull()
     expect(d.avgDailyPnl).toBeNull()
@@ -879,29 +880,44 @@ describe('pnlByHour mode', () => {
 describe('classifyDay', () => {
   it('sizes the band off the room, not equity', () => {
     // No limit: 0.4% of 50K = ±200, so −150 is a scratch.
-    expect(classifyDay(-150, 50_000, null)).toBe('scratch')
+    expect(classifyDay(-150, 50_000, null, DEFAULT_SCRATCH_PCT)).toBe('scratch')
     // Room 2,000 → ±8, so −150 is a loss.
-    expect(classifyDay(-150, 50_000, 2000)).toBe('loss')
+    expect(classifyDay(-150, 50_000, 2000, DEFAULT_SCRATCH_PCT)).toBe('loss')
     // Room 2,900 → ±11.60.
-    expect(classifyDay(11, 53_000, 2900)).toBe('scratch')
-    expect(classifyDay(12, 53_000, 2900)).toBe('win')
+    expect(classifyDay(11, 53_000, 2900, DEFAULT_SCRATCH_PCT)).toBe('scratch')
+    expect(classifyDay(12, 53_000, 2900, DEFAULT_SCRATCH_PCT)).toBe('win')
   })
 
   it('a blown account (no room) falls to the $8 floor', () => {
-    expect(classifyDay(7, 47_000, -1000)).toBe('scratch')
-    expect(classifyDay(9, 47_000, -1000)).toBe('win')
+    expect(classifyDay(7, 47_000, -1000, DEFAULT_SCRATCH_PCT)).toBe('scratch')
+    expect(classifyDay(9, 47_000, -1000, DEFAULT_SCRATCH_PCT)).toBe('win')
   })
 
   it('judges whole cents, so float residue on the band edge stays a scratch', () => {
     // $2,500 of room → a $10 band; +16.01 − 6.01 = 10.000000000000002.
-    expect(classifyDay(16.01 - 6.01, 50_000, 2500)).toBe('scratch')
-    expect(classifyDay(10.01, 50_000, 2500)).toBe('win')
-    expect(classifyDay(-10.01, 50_000, 2500)).toBe('loss')
+    expect(classifyDay(16.01 - 6.01, 50_000, 2500, DEFAULT_SCRATCH_PCT)).toBe('scratch')
+    expect(classifyDay(10.01, 50_000, 2500, DEFAULT_SCRATCH_PCT)).toBe('win')
+    expect(classifyDay(-10.01, 50_000, 2500, DEFAULT_SCRATCH_PCT)).toBe('loss')
+  })
+
+  it('scales the band with the account threshold', () => {
+    // Room 2,000: 1.2% → ±24, 0.2% → ±$4 → the $8 floor.
+    expect(classifyDay(-20, 50_000, 2000, 1.2)).toBe('scratch')
+    expect(classifyDay(-20, 50_000, 2000, 0.4)).toBe('loss')
+    expect(classifyDay(8, 50_000, 2000, 0.2)).toBe('scratch')
+    expect(classifyDay(8.01, 50_000, 2000, 0.2)).toBe('win')
+  })
+
+  it('lands a half-cent band on the right cent (0.7% drifted before)', () => {
+    // 0.7% of $1,305 = $9.135 → $9.14. Plain `base * pct / 100` gave
+    // 9.13499… and called a +$9.14 day a win.
+    expect(classifyDay(9.14, 0, 1305, 0.7)).toBe('scratch')
+    expect(classifyDay(9.15, 0, 1305, 0.7)).toBe('win')
   })
 
   it('judges the PNL even when every trade was a scratch', () => {
     // Ten −$6 scratch trades: a −$60 day is a loss, not a scratch.
-    expect(classifyDay(-60, 50_000, 2000)).toBe('loss')
+    expect(classifyDay(-60, 50_000, 2000, DEFAULT_SCRATCH_PCT)).toBe('loss')
   })
 })
 
@@ -913,11 +929,11 @@ describe('dailyStats with a loss limit', () => {
 
   it('classifies against the room, not the filtered equity', () => {
     // Without a limit both days sit inside ±0.4% of $50K.
-    const plain = dailyStats(series, { startEquity: 50_000 })
+    const plain = dailyStats(series, { startEquity: 50_000, scratchPct: DEFAULT_SCRATCH_PCT })
     expect(plain.scratchDays).toBe(2)
     // With $2K of room (±$8) both days are decided. The series' own equity
     // plays no part — the room comes from the real history.
-    const limited = dailyStats(series, { startEquity: 50_000, roomBefore: () => 2000 })
+    const limited = dailyStats(series, { startEquity: 50_000, roomBefore: () => 2000, scratchPct: DEFAULT_SCRATCH_PCT })
     expect(limited.redDays).toBe(1)
     expect(limited.greenDays).toBe(1)
     expect(limited.scratchDays).toBe(0)
