@@ -704,9 +704,13 @@ export function TradingViewChart({
         rightOffset: 3,
       },
       // Wheel handling is fully owned by the custom `wheel` listener
-      // installed below. Disabling the built-in mouseWheel scale stops
-      // lightweight-charts from also reacting (which would double-zoom
-      // or zoom around the cursor instead of the right edge).
+      // installed below. Disabling the built-in wheel scroll/scale stops
+      // lightweight-charts from also reacting (which would double-zoom,
+      // zoom around the cursor instead of the right edge, or apply pans
+      // that our deferred range update then overwrites).
+      handleScroll: {
+        mouseWheel: false,
+      },
       handleScale: {
         mouseWheel: false,
         pinch: true,
@@ -859,49 +863,136 @@ export function TradingViewChart({
     window.addEventListener('mousemove', handleMouseMove)
     window.addEventListener('mouseup', handleMouseUp)
 
-    // Wheel handling — replaces lightweight-charts' default (which
-    // anchored zoom at the cursor and ignored the price scale entirely):
-    //  - over the right price scale (main pane only): vertical zoom by
-    //    shrinking/growing the visible price range around its centre.
-    //  - anywhere else: time-axis zoom that keeps the RIGHT edge of the
-    //    visible range fixed and grows/shrinks from the left, matching
+    // Wheel handling — fully replaces lightweight-charts' wheel support
+    // (`handleScroll.mouseWheel` / `handleScale.mouseWheel` are off):
+    //  - deltaY over the right price scale (main pane only): vertical zoom
+    //    by shrinking/growing the visible price range around its centre.
+    //  - deltaY anywhere else: time-axis zoom that keeps the RIGHT edge of
+    //    the visible range fixed and grows/shrinks from the left, matching
     //    how scrolling on the right-edge "expands" the chart.
+    //  - deltaY over the fees pane's price scale: grows/shrinks the fees
+    //    range from the top only — fee bars start at 0 on the bottom edge.
+    //  - deltaX (trackpad sideways swipe, shift+wheel): pans the time axis,
+    //    everywhere (price scale included). A diagonal swipe pans and
+    //    zooms together.
+    //
+    // Zoom is proportional to the scroll distance: a mouse-wheel notch
+    // (~100px, or 3 lines in Firefox) zooms by WHEEL_ZOOM_FACTOR, while a
+    // trackpad's stream of small-delta events adds up smoothly instead of
+    // each tiny event applying a full notch. Any delta of a notch or more
+    // counts as exactly one notch, so high-res mice / scaled displays
+    // match a regular notch; smaller (trackpad) deltas are scaled by the
+    // SWIPE_* sensitivities.
+    //
+    // Pan and zoom are accumulated and applied once per animation frame.
+    // `setVisibleLogicalRange` is deferred by the library to its next
+    // draw, so applying it per event (several per frame on a trackpad)
+    // computed each step from a stale range and dropped movement — the
+    // "scratchy" pan. Reading the range once per frame, after the library
+    // has applied the previous frame's update, keeps every delta.
     const WHEEL_ZOOM_FACTOR = 1.1
+    const WHEEL_NOTCH_PX = 100
+    const LINE_HEIGHT_PX = 40
+    const PANE_SEPARATOR_PX = 1
+    // Trackpad sensitivity (1 = 1:1 with the fingers). Only applies to
+    // sub-notch deltas, so a mouse-wheel notch still zooms a full step.
+    const SWIPE_ZOOM_SENSITIVITY = 0.6
+    const SWIPE_PAN_SENSITIVITY = 0.6
+    let pendingTimeZoom = 1
+    let pendingPriceZoom = 1
+    let pendingFeesZoom = 1
+    let pendingPanPx = 0
+    let wheelRaf = 0
+    const flushWheel = () => {
+      wheelRaf = 0
+      const timeZoom = pendingTimeZoom
+      const priceZoom = pendingPriceZoom
+      const feesZoom = pendingFeesZoom
+      const panPx = pendingPanPx
+      pendingTimeZoom = 1
+      pendingPriceZoom = 1
+      pendingFeesZoom = 1
+      pendingPanPx = 0
+      const chart = chartRef.current
+      if (!chart) return
+      // Equity: vertical zoom around the centre of the visible range.
+      if (priceZoom !== 1) {
+        const priceScale = seriesRef.current?.priceScale()
+        const range = priceScale?.getVisibleRange()
+        if (priceScale && range) {
+          const mid = (range.from + range.to) / 2
+          const half = ((range.to - range.from) / 2) * priceZoom
+          priceScale.setVisibleRange({ from: mid - half, to: mid + half })
+        }
+      }
+      // Fees: bars all start at 0 and sit on the pane's bottom edge, so
+      // pin the bottom at 0 and only move the top.
+      if (feesZoom !== 1) {
+        const priceScale = feesSeriesRef.current?.priceScale()
+        const range = priceScale?.getVisibleRange()
+        if (priceScale && range && range.to > 0) {
+          priceScale.setVisibleRange({ from: 0, to: range.to * feesZoom })
+        }
+      }
+      if (timeZoom === 1 && panPx === 0) return
+      const ts = chart.timeScale()
+      const lr = ts.getVisibleLogicalRange()
+      const width = ts.width()
+      if (!lr || width <= 0) return
+      // The library counts visible bars as `to - from + 1` (and maps a
+      // range back to bar spacing the same way), so zoom/pan on that.
+      const bars = (lr.to - lr.from + 1) * timeZoom
+      // Positive deltaX (fingers moving left with natural scrolling)
+      // moves the window toward later bars.
+      const shift = panPx * (bars / width)
+      // Right-anchored zoom — keep `to` fixed, move `from`.
+      const to = lr.to + shift
+      ts.setVisibleLogicalRange({ from: to - bars + 1, to })
+    }
     const handleWheel = (e: WheelEvent) => {
       const chart = chartRef.current
       if (!chart) return
       e.preventDefault()
-      const factor = e.deltaY > 0 ? WHEEL_ZOOM_FACTOR : 1 / WHEEL_ZOOM_FACTOR
+      const unit =
+        e.deltaMode === WheelEvent.DOM_DELTA_LINE
+          ? LINE_HEIGHT_PX
+          : e.deltaMode === WheelEvent.DOM_DELTA_PAGE
+            ? WHEEL_NOTCH_PX
+            : 1
+      // A delta of a full notch or more is a mouse wheel (or a hard
+      // flick) and counts as one notch; smaller trackpad deltas are
+      // scaled down by the swipe sensitivity.
+      const rawZoomPx = e.deltaY * unit
+      const zoomPx =
+        Math.abs(rawZoomPx) >= WHEEL_NOTCH_PX
+          ? Math.sign(rawZoomPx) * WHEEL_NOTCH_PX
+          : rawZoomPx * SWIPE_ZOOM_SENSITIVITY
+      const panPx = e.deltaX * unit * SWIPE_PAN_SENSITIVITY
+      pendingPanPx += panPx
+      if (zoomPx !== 0) addZoom(e, WHEEL_ZOOM_FACTOR ** (zoomPx / WHEEL_NOTCH_PX))
+      else if (panPx === 0) return
+      if (!wheelRaf) wheelRaf = requestAnimationFrame(flushWheel)
+    }
+    // Route a zoom step to the pane / axis under the pointer. Only done
+    // for events that zoom, so pure sideways pans skip the layout reads.
+    const addZoom = (e: WheelEvent, factor: number) => {
+      const chart = chartRef.current
+      if (!chart) return
       const rect = container.getBoundingClientRect()
       const x = e.clientX - rect.left
       const y = e.clientY - rect.top
       const priceScaleW = chart.priceScale('right').width()
       const overPriceScale = priceScaleW > 0 && x >= rect.width - priceScaleW
       // The main equity pane is pane 0 and sits on top — the fees pane
-      // (1) lives below it. Only forward price-axis wheel zoom to the
-      // main pane so spinning the wheel over the fees price labels
-      // doesn't yank the equity scale.
-      const mainPaneH = chart.panes()[0]?.getHeight() ?? rect.height
-      if (overPriceScale && y < mainPaneH) {
-        const series = seriesRef.current
-        const priceScale = series?.priceScale()
-        const range = priceScale?.getVisibleRange()
-        if (!priceScale || !range) return
-        const mid = (range.from + range.to) / 2
-        const half = ((range.to - range.from) / 2) * factor
-        priceScale.setVisibleRange({ from: mid - half, to: mid + half })
-        return
-      }
-      // Right-anchored time zoom — keep `to` fixed, move `from` so the
-      // visible window grows (zoom out) or shrinks (zoom in) from the
-      // LEFT only. This is the same effect lightweight-charts produces
-      // when the cursor naturally sits at the chart's right edge.
-      const ts = chart.timeScale()
-      const lr = ts.getVisibleLogicalRange()
-      if (!lr) return
-      const span = lr.to - lr.from
-      const newSpan = span * factor
-      ts.setVisibleLogicalRange({ from: lr.to - newSpan, to: lr.to })
+      // (1) lives below it, then the time axis. Over the price scale,
+      // vertical scroll zooms the scale of whichever pane it's beside;
+      // the time-axis corner below them falls back to time zoom.
+      const panes = chart.panes()
+      const mainPaneH = panes[0]?.getHeight() ?? rect.height
+      const feesPaneBottom = mainPaneH + PANE_SEPARATOR_PX + (panes[1]?.getHeight() ?? 0)
+      if (overPriceScale && y < mainPaneH) pendingPriceZoom *= factor
+      else if (overPriceScale && y < feesPaneBottom) pendingFeesZoom *= factor
+      else pendingTimeZoom *= factor
     }
     container.addEventListener('wheel', handleWheel, { passive: false })
 
@@ -987,6 +1078,7 @@ export function TradingViewChart({
       window.removeEventListener('mousemove', handleMouseMove)
       window.removeEventListener('mouseup', handleMouseUp)
       container.removeEventListener('wheel', handleWheel)
+      if (wheelRaf) cancelAnimationFrame(wheelRaf)
       if (feesCrosshairPrimRef.current) {
         feesSeries.detachPrimitive(feesCrosshairPrimRef.current)
         feesCrosshairPrimRef.current = null
